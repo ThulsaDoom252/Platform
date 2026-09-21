@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { loginAction, type LoginState } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,11 +31,20 @@ export function LoginForm() {
   const [login, setLogin] = useState(quickAccounts[0]?.login ?? "");
   const [password, setPassword] = useState(quickAccounts[0]?.password ?? "");
   const formRef = useRef<HTMLFormElement>(null);
+  const [autoSubmit, setAutoSubmit] = useState(false);
+
+  // Отправляем только после того, как новые значения реально попали в поля,
+  // иначе форма уходит со старым содержимым.
+  useEffect(() => {
+    if (!autoSubmit) return;
+    setAutoSubmit(false);
+    formRef.current?.requestSubmit();
+  }, [autoSubmit]);
 
   function quickLogin(l: string, p: string) {
     setLogin(l);
     setPassword(p);
-    requestAnimationFrame(() => formRef.current?.requestSubmit());
+    setAutoSubmit(true);
   }
 
   return (
