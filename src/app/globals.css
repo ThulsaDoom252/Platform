@@ -1,0 +1,191 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+
+  /* Semantic, theme-driven tokens */
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-content: var(--content);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-soft: var(--accent-soft);
+}
+
+/* ---------- Light (default) ---------- */
+:root {
+  --page: #f6f7fb;
+  --surface: #ffffff;
+  --surface-2: #f5f7fa;
+  --content: #1e2233;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --line: #eef1f6;
+
+  /* Semantic status hues (auto-adjusted in dark) */
+  --t-green: #059669;
+  --t-amber: #d97706;
+  --t-sky: #0284c7;
+  --t-violet: #7c3aed;
+  --t-rose: #e11d48;
+  --t-orange: #ea580c;
+
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
+
+  /* Яркая заливка уроков в расписании (текст поверх — белый) */
+  --lesson-green: #10b981;
+  --lesson-amber: #f59e0b;
+  --lesson-rose: #f43f5e;
+}
+
+/* ---------- Theme palettes ----------
+   Each theme defines the accent pair plus 4 harmonised chips (c1..c4)
+   used for stat icons, avatars and lesson blocks across the platform. */
+:root,
+:root[data-accent="indigo"] {
+  --accent: #6366f1;
+  --accent-2: #8b5cf6;
+  --c1: #6366f1;
+  --c1b: #8b5cf6;
+  --c2: #0ea5e9;
+  --c2b: #06b6d4;
+  --c3: #8b5cf6;
+  --c3b: #d946ef;
+  --c4: #f59e0b;
+  --c4b: #f97316;
+}
+
+:root[data-accent="emerald"] {
+  --accent: #10b981;
+  --accent-2: #14b8a6;
+  --c1: #10b981;
+  --c1b: #14b8a6;
+  --c2: #22c55e;
+  --c2b: #84cc16;
+  --c3: #06b6d4;
+  --c3b: #0ea5e9;
+  --c4: #f59e0b;
+  --c4b: #eab308;
+}
+
+:root[data-accent="rose"] {
+  --accent: #f43f5e;
+  --accent-2: #fb7185;
+  --c1: #f43f5e;
+  --c1b: #fb7185;
+  --c2: #ec4899;
+  --c2b: #d946ef;
+  --c3: #f97316;
+  --c3b: #f59e0b;
+  --c4: #8b5cf6;
+  --c4b: #a855f7;
+}
+
+:root[data-accent="violet"] {
+  --accent: #8b5cf6;
+  --accent-2: #a855f7;
+  --c1: #8b5cf6;
+  --c1b: #a855f7;
+  --c2: #d946ef;
+  --c2b: #ec4899;
+  --c3: #6366f1;
+  --c3b: #818cf8;
+  --c4: #06b6d4;
+  --c4b: #22d3ee;
+}
+
+/* ---------- Night mode ---------- */
+:root[data-mode="dark"] {
+  --page: #0f1320;
+  --surface: #171c2b;
+  --surface-2: #1f2637;
+  --content: #e7eaf3;
+  --muted: #9aa4b8;
+  --faint: #6b7488;
+  --line: #2a3143;
+
+  --t-green: #34d399;
+  --t-amber: #fbbf24;
+  --t-sky: #38bdf8;
+  --t-violet: #a78bfa;
+  --t-rose: #fb7185;
+  --t-orange: #fb923c;
+
+  --accent-soft: color-mix(in srgb, var(--accent) 24%, var(--surface));
+
+  /* В тёмной теме чуть глубже, чтобы белый текст не «резал» глаз */
+  --lesson-green: #059669;
+  --lesson-amber: #d97706;
+  --lesson-rose: #e11d48;
+}
+
+/* ---------- Tint helpers (work in both modes) ---------- */
+.tint-green,
+.tint-amber,
+.tint-sky,
+.tint-violet,
+.tint-rose,
+.tint-orange,
+.tint-accent {
+  background: color-mix(in srgb, var(--tint) 15%, var(--surface));
+  color: var(--tint);
+}
+.tint-green {
+  --tint: var(--t-green);
+}
+.tint-amber {
+  --tint: var(--t-amber);
+}
+.tint-sky {
+  --tint: var(--t-sky);
+}
+.tint-violet {
+  --tint: var(--t-violet);
+}
+.tint-rose {
+  --tint: var(--t-rose);
+}
+.tint-orange {
+  --tint: var(--t-orange);
+}
+.tint-accent {
+  --tint: var(--accent);
+}
+
+/* Gradient helpers driven by the active palette */
+.grad-accent {
+  background-image: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.grad-c1 {
+  background-image: linear-gradient(135deg, var(--c1), var(--c1b));
+}
+.grad-c2 {
+  background-image: linear-gradient(135deg, var(--c2), var(--c2b));
+}
+.grad-c3 {
+  background-image: linear-gradient(135deg, var(--c3), var(--c3b));
+}
+.grad-c4 {
+  background-image: linear-gradient(135deg, var(--c4), var(--c4b));
+}
+
+html {
+  background: var(--page);
+}
+
+body {
+  background: var(--page);
+  color: var(--content);
+  font-family: var(--font-poppins), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--content) 20%, transparent) transparent;
+}
