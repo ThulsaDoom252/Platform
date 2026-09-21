@@ -13,9 +13,13 @@ import {
   IconFolder,
   IconFile,
   IconSprout,
+  IconPlus,
 } from "@/components/icons";
 
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
+import { NodeEditor, type EditorTarget } from "./node-editor";
+import { ContentImporter } from "./content-importer";
+import { deleteNodeAction } from "@/lib/actions/materials";
 
 export type MaterialNode = {
   id: string;
@@ -53,11 +57,16 @@ function countFiles(node: MaterialNode): number {
 export function MaterialsExplorer({
   tree,
   progress,
+  editable = false,
 }: {
   tree: MaterialNode[];
   progress?: number;
+  /** Конструктор доступен только учителю. */
+  editable?: boolean;
 }) {
   const { t } = useT();
+  const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
+  const [importNode, setImportNode] = useState<{ id: string; name: string } | null>(null);
 
   const { byId, pathById } = useMemo(() => {
     const byId = new Map<string, MaterialNode>();
@@ -118,9 +127,23 @@ export function MaterialsExplorer({
 
   if (tree.length === 0) {
     return (
-      <div className="rounded-2xl bg-surface px-6 py-16 text-center ring-1 ring-line shadow-sm">
-        <p className="text-sm text-faint">{t.materials.noMaterials}</p>
-      </div>
+      <>
+        <div className="flex flex-col items-center gap-4 rounded-2xl bg-surface px-6 py-16 text-center ring-1 ring-line shadow-sm">
+          <p className="text-sm text-faint">{t.materials.noMaterials}</p>
+          {editable && (
+            <button
+              type="button"
+              onClick={() =>
+                setEditorTarget({ mode: "create", parentId: null, kind: "FOLDER" })
+              }
+              className="flex h-11 items-center gap-2 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              <IconPlus className="h-4 w-4" /> Создать раздел
+            </button>
+          )}
+        </div>
+        <NodeEditor target={editorTarget} onClose={() => setEditorTarget(null)} />
+      </>
     );
   }
 
@@ -174,6 +197,87 @@ export function MaterialsExplorer({
             >
               {isOpen ? t.materials.collapseAll : t.materials.expandAll}
             </button>
+          )}
+
+          {editable && (
+            <>
+              <div className="my-1 border-t border-line" />
+              {n.type === "FILE" && !n.fileKind && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportNode({ id: n.id, name: n.name });
+                    setMenuFor(null);
+                  }}
+                  className="block w-full px-3.5 py-2 text-left text-sm font-medium text-accent transition hover:bg-surface-2"
+                >
+                  Наполнить из текста
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setEditorTarget({
+                    mode: "edit",
+                    nodeId: n.id,
+                    name: n.name,
+                    icon: n.icon,
+                    description: n.description,
+                    isPage: n.type === "FILE" && !n.fileKind,
+                  });
+                  setMenuFor(null);
+                }}
+                className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
+              >
+                Переименовать / иконка
+              </button>
+              {n.type === "FOLDER" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorTarget({ mode: "create", parentId: n.id, kind: "FOLDER" });
+                      setMenuFor(null);
+                    }}
+                    className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
+                  >
+                    + Подпапка
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorTarget({ mode: "create", parentId: n.id, kind: "PAGE" });
+                      setMenuFor(null);
+                    }}
+                    className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
+                  >
+                    + Страница
+                  </button>
+                </>
+              )}
+              <form
+                action={deleteNodeAction}
+                onSubmit={(e) => {
+                  if (
+                    !confirm(
+                      `Удалить «${n.name}»${hasChildren ? " вместе со всем содержимым" : ""}? Это необратимо.`,
+                    )
+                  ) {
+                    e.preventDefault();
+                    return;
+                  }
+                  setMenuFor(null);
+                }}
+              >
+                <input type="hidden" name="nodeId" value={n.id} />
+                <button
+                  type="submit"
+                  className="block w-full px-3.5 py-2 text-left text-sm text-rose-500 transition hover:bg-surface-2"
+                >
+                  Удалить
+                </button>
+              </form>
+            </>
           )}
         </div>
       )}
@@ -337,6 +441,18 @@ export function MaterialsExplorer({
           </div>
         )}
 
+        {editable && pathOpen && (
+          <button
+            type="button"
+            onClick={() =>
+              setEditorTarget({ mode: "create", parentId: null, kind: "FOLDER" })
+            }
+            className="flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
+          >
+            <IconPlus className="h-4 w-4" /> Новый раздел
+          </button>
+        )}
+
         {typeof progress === "number" && (
           <div className="rounded-2xl bg-accent-soft p-3.5">
             <p className="flex items-center gap-2 text-sm font-semibold text-content">
@@ -414,12 +530,24 @@ export function MaterialsExplorer({
         </div>
 
         {isPhrasePage && selected && (
-          <PhraseReader
-            title={selected.name}
-            icon={selected.icon}
-            description={selected.description}
-            phrases={selected.phrases}
-          />
+          <>
+            {editable && (
+              <button
+                type="button"
+                onClick={() => setImportNode({ id: selected.id, name: selected.name })}
+                className="mb-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
+              >
+                <IconPlus className="h-4 w-4" />
+                {selected.phrases.length ? "Заменить содержимое" : "Наполнить из текста"}
+              </button>
+            )}
+            <PhraseReader
+              title={selected.name}
+              icon={selected.icon}
+              description={selected.description}
+              phrases={selected.phrases}
+            />
+          </>
         )}
 
         {!isPhrasePage && !contentNode && (
@@ -503,6 +631,13 @@ export function MaterialsExplorer({
           </div>
         )}
       </section>
+
+      {editable && (
+        <>
+          <NodeEditor target={editorTarget} onClose={() => setEditorTarget(null)} />
+          <ContentImporter node={importNode} onClose={() => setImportNode(null)} />
+        </>
+      )}
     </div>
   );
 }

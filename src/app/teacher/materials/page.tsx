@@ -12,7 +12,7 @@ export default async function TeacherMaterialsPage() {
         <h1 className="text-2xl font-bold text-content">{t.materials.title}</h1>
         <p className="mt-1 text-sm text-muted">{t.materials.teacherSubtitle}</p>
       </div>
-      <MaterialsExplorer tree={tree} />
+      <MaterialsExplorer tree={tree} editable />
     </div>
   );
 }

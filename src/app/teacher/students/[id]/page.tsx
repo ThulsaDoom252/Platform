@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -238,9 +239,19 @@ export default async function StudentDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Материалы, словарь, живой урок</CardTitle>
-          <CardDescription>Следующая итерация черновика — дерево материалов, доска, чат, автоперевод словаря</CardDescription>
+          <CardTitle>Материалы</CardTitle>
+          <CardDescription>
+            Дерево разделов ученика: переименование, иконки, наполнение страниц из текста
+          </CardDescription>
         </CardHeader>
+        <CardContent>
+          <Link
+            href={`/teacher/students/${id}/materials`}
+            className="inline-flex h-10 items-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Открыть материалы
+          </Link>
+        </CardContent>
       </Card>
     </div>
   );
