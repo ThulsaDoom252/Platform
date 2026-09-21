@@ -19,6 +19,7 @@ export const en = {
     messages: "Message teacher",
     statistics: "Statistics",
     profile: "Profile",
+    mistakes: "Mistakes",
     // короткие подписи для нижней навигации
     shortLessons: "Lessons",
     shortFiles: "Files",
@@ -256,6 +257,13 @@ export const en = {
     fieldOther: "Other contacts",
     newValue: "New value",
     sendForApproval: "Send for approval",
+  },
+
+  mistakes: {
+    title: "Mistakes",
+    subtitle: "Your mistakes from the lessons, sorted by topic.",
+    teacherSubtitle: "Personal list of this student's mistakes.",
+    empty: "No mistakes recorded yet — nice!",
   },
 
   phrases: {

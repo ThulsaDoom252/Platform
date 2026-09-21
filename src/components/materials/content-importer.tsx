@@ -12,15 +12,25 @@ import { cn } from "@/lib/utils";
  * Разбор делается прямо в браузере для мгновенного предпросмотра,
  * а при сохранении сервер разбирает текст заново — ему нельзя доверять клиенту.
  */
+const MODE_OPTIONS: Record<ParserMode, { label: string; hint: string }> = {
+  vocabulary: { label: "Словник", hint: "слово / фраза — перевод + примеры" },
+  rule: { label: "Правило", hint: "название, пояснение, примеры" },
+  mistake: { label: "Ошибка", hint: "как сказал → как правильно" },
+};
+
 export function ContentImporter({
   node,
   onClose,
+  scope = "MATERIAL",
 }: {
   node: { id: string; name: string } | null;
   onClose: () => void;
+  scope?: "MATERIAL" | "MISTAKE";
 }) {
+  const modes: ParserMode[] =
+    scope === "MISTAKE" ? ["mistake", "rule"] : ["vocabulary", "rule"];
   const [raw, setRaw] = useState("");
-  const [mode, setMode] = useState<ParserMode>("vocabulary");
+  const [mode, setMode] = useState<ParserMode>(modes[0]);
   const [applyTitle, setApplyTitle] = useState(true);
   const [state, formAction, pending] = useActionState<ParseState, FormData>(
     savePageContentAction,
@@ -62,12 +72,7 @@ export function ContentImporter({
         <div>
           <p className="mb-2 text-sm font-medium text-content">Тип материала</p>
           <div className="flex gap-2">
-            {(
-              [
-                ["vocabulary", "Словник", "слово / фраза — перевод + примеры"],
-                ["rule", "Правило", "название, пояснение, примеры"],
-              ] as const
-            ).map(([id, label, hint]) => (
+            {modes.map((id) => (
               <button
                 key={id}
                 type="button"
@@ -79,8 +84,12 @@ export function ContentImporter({
                     : "border-line hover:bg-surface-2",
                 )}
               >
-                <span className="block text-sm font-semibold text-content">{label}</span>
-                <span className="mt-0.5 block text-[11px] text-muted">{hint}</span>
+                <span className="block text-sm font-semibold text-content">
+                  {MODE_OPTIONS[id].label}
+                </span>
+                <span className="mt-0.5 block text-[11px] text-muted">
+                  {MODE_OPTIONS[id].hint}
+                </span>
               </button>
             ))}
           </div>
@@ -98,7 +107,9 @@ export function ContentImporter({
             placeholder={
               mode === "vocabulary"
                 ? "SPORTS & COMPETITION — СПОРТ І ЗМАГАННЯ\nЛЕКСИКА ПРО РЕЗУЛЬТАТИ…\n\nSingle-word Verbs & Participles\ndropped /drɒpt/ — виключений зі складу\n• The striker was dropped from the team. — Нападника виключили зі складу."
-                : "Present Simple\nВживаємо для регулярних дій.\n• I go to school every day. — Я ходжу до школи щодня."
+                : mode === "mistake"
+                  ? "Past Simple\nI go to school yesterday → I went to school yesterday\n• Прошедшее время, а не настоящее\n\nArticles\nI am student → I am a student"
+                  : "Present Simple\nВживаємо для регулярних дій.\n• I go to school every day. — Я ходжу до школи щодня."
             }
             className="mt-1.5 w-full resize-y rounded-xl border border-line bg-surface-2 px-3.5 py-3 font-mono text-[13px] leading-relaxed text-content outline-none transition placeholder:text-faint focus:border-accent"
           />

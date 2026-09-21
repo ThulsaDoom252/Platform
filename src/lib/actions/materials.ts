@@ -18,6 +18,7 @@ async function requireTeacher() {
 function revalidateMaterials() {
   revalidatePath("/teacher/materials");
   revalidatePath("/student/materials");
+  revalidatePath("/student/mistakes");
   revalidatePath("/teacher/students", "layout");
 }
 
@@ -54,6 +55,11 @@ export async function createNodeAction(
   const name = String(formData.get("name") || "").trim();
   const icon = String(formData.get("icon") || "").trim() || null;
   const kind = String(formData.get("kind") || "FOLDER");
+  // MATERIAL — общая библиотека, MISTAKE — личное дерево ошибок ученика.
+  const scope = String(formData.get("scope") || "MATERIAL") === "MISTAKE"
+    ? "MISTAKE"
+    : "MATERIAL";
+  const ownerId = String(formData.get("ownerId") || "") || null;
 
   if (!name) return { error: "Введи название" };
 
@@ -63,7 +69,13 @@ export async function createNodeAction(
     .where(
       parentId
         ? eq(materialNodes.parentId, parentId)
-        : isNull(materialNodes.parentId),
+        : and(
+            isNull(materialNodes.parentId),
+            eq(materialNodes.scope, scope),
+            ownerId && scope === "MISTAKE"
+              ? eq(materialNodes.ownerId, ownerId)
+              : isNull(materialNodes.ownerId),
+          ),
     );
 
   const [row] = await db
@@ -72,13 +84,16 @@ export async function createNodeAction(
       parentId,
       name,
       icon,
+      scope,
+      ownerId: scope === "MISTAKE" ? ownerId : null,
       // «Страница» — это FILE без fileKind: её открывает читалка фраз.
       type: kind === "PAGE" ? "FILE" : "FOLDER",
       sortOrder: (lastOrder ?? 0) + 1,
     })
     .returning();
 
-  if (!parentId) await assignToAllStudents(row.id);
+  // Личное дерево ошибок никому не раздаётся — оно и так принадлежит ученику.
+  if (!parentId && scope === "MATERIAL") await assignToAllStudents(row.id);
 
   revalidateMaterials();
   return { ok: true, nodeId: row.id };

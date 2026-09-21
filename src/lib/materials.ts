@@ -1,5 +1,5 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { materialNodes, studentMaterials, materialPhrases } from "@/lib/db/schema";
 
@@ -30,17 +30,13 @@ export type MaterialNode = {
   children: MaterialNode[];
 };
 
-/**
- * Дерево материалов.
- * Если передан studentId — возвращаются только назначенные ему ветки
- * (вместе со всем содержимым), иначе всё дерево целиком.
- */
-export async function getMaterialsTree(studentId?: string): Promise<MaterialNode[]> {
-  const rows = await db
-    .select()
-    .from(materialNodes)
-    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+type NodeRow = typeof materialNodes.$inferSelect;
 
+/** Собирает плоский список узлов в дерево. */
+async function buildTree(rows: NodeRow[]): Promise<{
+  roots: MaterialNode[];
+  byId: Map<string, MaterialNode>;
+}> {
   const phraseRows = await db
     .select()
     .from(materialPhrases)
@@ -82,13 +78,25 @@ export async function getMaterialsTree(studentId?: string): Promise<MaterialNode
   const roots: MaterialNode[] = [];
   for (const r of rows) {
     const node = byId.get(r.id)!;
-    if (r.parentId && byId.has(r.parentId)) {
-      byId.get(r.parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
+    if (r.parentId && byId.has(r.parentId)) byId.get(r.parentId)!.children.push(node);
+    else roots.push(node);
   }
 
+  return { roots, byId };
+}
+
+/**
+ * Общая библиотека материалов.
+ * Если передан studentId — только назначенные ему ветки, иначе всё дерево.
+ */
+export async function getMaterialsTree(studentId?: string): Promise<MaterialNode[]> {
+  const rows = await db
+    .select()
+    .from(materialNodes)
+    .where(and(eq(materialNodes.scope, "MATERIAL"), isNull(materialNodes.ownerId)))
+    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+
+  const { roots, byId } = await buildTree(rows);
   if (!studentId) return roots;
 
   const assigned = await db
@@ -96,14 +104,26 @@ export async function getMaterialsTree(studentId?: string): Promise<MaterialNode
     .from(studentMaterials)
     .where(eq(studentMaterials.studentId, studentId));
 
-  const assignedIds = new Set(assigned.map((a) => a.nodeId));
-  // Берём назначенные узлы как корни (они могут быть и не верхнего уровня).
   const result: MaterialNode[] = [];
-  for (const id of assignedIds) {
-    const n = byId.get(id);
+  for (const { nodeId } of assigned) {
+    const n = byId.get(nodeId);
     if (n) result.push(n);
   }
   return result;
+}
+
+/** Личное дерево ошибок ученика. */
+export async function getMistakesTree(studentId: string): Promise<MaterialNode[]> {
+  const rows = await db
+    .select()
+    .from(materialNodes)
+    .where(
+      and(eq(materialNodes.scope, "MISTAKE"), eq(materialNodes.ownerId, studentId)),
+    )
+    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+
+  const { roots } = await buildTree(rows);
+  return roots;
 }
 
 /** Плоский подсчёт файлов в ветке — для подписи «N материалов». */

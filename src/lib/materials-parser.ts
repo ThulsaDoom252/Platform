@@ -25,7 +25,7 @@ export type ParseResult = {
   warnings: string[];
 };
 
-export type ParserMode = "vocabulary" | "rule";
+export type ParserMode = "vocabulary" | "rule" | "mistake";
 
 /** Тире, которыми в документе разделены термин и перевод. */
 const DASH = /\s+[—–]\s+|\s+-{1,2}\s+/;
@@ -295,9 +295,94 @@ function parseRule(raw: string): ParseResult {
   return { title, description, phrases, warnings };
 }
 
+/** Стрелка как разделитель «было → стало». */
+const ARROW = /\s*(?:→|⟶|=>|->)\s*/;
+
+/**
+ * Ошибки ученика: «как сказал — как правильно», маркеры под записью — пояснение.
+ * Точные правила ещё уточняются, поэтому разбор намеренно простой.
+ */
+function parseMistakes(raw: string): ParseResult {
+  const warnings: string[] = [];
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const phrases: ParsedPhrase[] = [];
+  let currentSection: string | null = null;
+  let current: ParsedPhrase | null = null;
+
+  const flush = () => {
+    if (current) phrases.push(current);
+    current = null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const original = lines[i];
+    const hadBullet = BULLET.test(original);
+    const { icon, rest } = takeLeadingIcon(stripBullet(original));
+    const line = rest.trim();
+    if (!line) continue;
+
+    // Стрелка имеет приоритет: она однозначно означает исправление.
+    const arrowIdx = line.search(ARROW);
+    const parts =
+      arrowIdx !== -1
+        ? ([
+            line.slice(0, arrowIdx).trim(),
+            line.slice(arrowIdx + line.match(ARROW)![0].length).trim(),
+          ] as [string, string])
+        : splitByDash(line);
+
+    if (!parts || !parts[0] || !parts[1]) {
+      if (hadBullet && current) {
+        current.examples.push({ en: line, tr: "" });
+      } else if (looksLikeSection(line)) {
+        flush();
+        currentSection = line;
+      } else {
+        warnings.push(`Строка ${i + 1}: не удалось разобрать — «${line.slice(0, 60)}»`);
+      }
+      continue;
+    }
+
+    const [wrong, right] = parts;
+
+    // Маркер списка под записью — это пояснение, а не новая ошибка.
+    if (hadBullet && current) {
+      current.examples.push({ en: wrong, tr: right });
+      continue;
+    }
+
+    flush();
+    current = {
+      icon: icon ?? "❌",
+      section: currentSection,
+      kind: "PHRASE",
+      phrase: wrong,
+      transcription: null,
+      translation: right,
+      examples: [],
+    };
+  }
+
+  flush();
+
+  if (phrases.length === 0) {
+    warnings.push(
+      "Не найдено ни одной ошибки. Формат строки: «как сказал → как правильно».",
+    );
+  }
+
+  return { title: null, description: null, phrases, warnings };
+}
+
 export function parseMaterial(raw: string, mode: ParserMode): ParseResult {
   if (!raw.trim()) {
     return { title: null, description: null, phrases: [], warnings: ["Пустой текст."] };
   }
-  return mode === "rule" ? parseRule(raw) : parseVocabulary(raw);
+  if (mode === "rule") return parseRule(raw);
+  if (mode === "mistake") return parseMistakes(raw);
+  return parseVocabulary(raw);
 }

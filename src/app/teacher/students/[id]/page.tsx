@@ -239,17 +239,23 @@ export default async function StudentDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Материалы</CardTitle>
+          <CardTitle>Материалы и ошибки</CardTitle>
           <CardDescription>
-            Дерево разделов ученика: переименование, иконки, наполнение страниц из текста
+            Дерево разделов: переименование, иконки, наполнение страниц из текста
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-wrap gap-2.5">
           <Link
             href={`/teacher/students/${id}/materials`}
             className="inline-flex h-10 items-center rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90"
           >
             Открыть материалы
+          </Link>
+          <Link
+            href={`/teacher/students/${id}/mistakes`}
+            className="inline-flex h-10 items-center rounded-xl border border-line px-4 text-sm font-semibold text-content transition hover:bg-surface-2"
+          >
+            Ошибки ученика
           </Link>
         </CardContent>
       </Card>

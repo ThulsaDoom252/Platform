@@ -14,7 +14,13 @@ const inputCls =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
 export type EditorTarget =
-  | { mode: "create"; parentId: string | null; kind: "FOLDER" | "PAGE" }
+  | {
+      mode: "create";
+      parentId: string | null;
+      kind: "FOLDER" | "PAGE";
+      scope?: "MATERIAL" | "MISTAKE";
+      ownerId?: string;
+    }
   | {
       mode: "edit";
       nodeId: string;
@@ -80,6 +86,8 @@ export function NodeEditor({
           <>
             <input type="hidden" name="parentId" value={target.parentId ?? ""} />
             <input type="hidden" name="kind" value={target.kind} />
+            <input type="hidden" name="scope" value={target.scope ?? "MATERIAL"} />
+            <input type="hidden" name="ownerId" value={target.ownerId ?? ""} />
           </>
         )}
         <input type="hidden" name="icon" value={icon ?? ""} />

@@ -122,6 +122,13 @@ export const lessonsRelations = relations(lessons, ({ one, many }) => ({
 export const materialNodes = pgTable("material_nodes", {
   id: uuid("id").primaryKey().defaultRandom(),
   parentId: uuid("parent_id"),
+  /**
+   * MATERIAL — общая библиотека, которую учитель раздаёт ученикам.
+   * MISTAKE — личное дерево ошибок конкретного ученика.
+   */
+  scope: text("scope").notNull().default("MATERIAL"),
+  /** Владелец личного дерева. Для общей библиотеки null. */
+  ownerId: uuid("owner_id"),
   name: text("name").notNull(),
   imageUrl: text("image_url"),
   // Подзаголовок страницы материала

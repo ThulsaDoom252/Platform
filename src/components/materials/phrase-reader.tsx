@@ -25,6 +25,18 @@ export type MaterialPhrase = {
   examples: PhraseExample[];
 };
 
+/**
+ * Текст для озвучки.
+ * Пометки в скобках — «cook (noun)», «no love lost (between ...)» — это
+ * подсказки для чтения глазами, вслух их произносить не нужно.
+ */
+export function speakableText(text: string): string {
+  return text
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 /** Произношение через Web Speech API — без серверов и без платных API. */
 function useSpeech() {
   const [ukAvailable, setUkAvailable] = useState(false);
@@ -51,9 +63,11 @@ function useSpeech() {
   function speak(key: string, text: string, lang: "en-US" | "en-GB") {
     const synth = window.speechSynthesis;
     if (!synth) return;
+    const spoken = speakableText(text);
+    if (!spoken) return;
     synth.cancel();
 
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(spoken);
     u.lang = lang;
     const voices = synth.getVoices();
     const exact = voices.find((v) => v.lang.replace("_", "-") === lang);

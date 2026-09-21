@@ -19,6 +19,7 @@ export const ru: Dict = {
     messages: "Написать учителю",
     statistics: "Статистика",
     profile: "Профиль",
+    mistakes: "Ошибки",
     shortLessons: "Уроки",
     shortFiles: "Файлы",
     shortMore: "Ещё",
@@ -255,6 +256,13 @@ export const ru: Dict = {
     fieldOther: "Другие контакты",
     newValue: "Новое значение",
     sendForApproval: "Отправить на подтверждение",
+  },
+
+  mistakes: {
+    title: "Ошибки",
+    subtitle: "Твои ошибки с уроков, разложенные по темам.",
+    teacherSubtitle: "Личный список ошибок этого ученика.",
+    empty: "Ошибок пока не записано — отлично!",
   },
 
   phrases: {

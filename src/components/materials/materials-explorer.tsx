@@ -58,11 +58,20 @@ export function MaterialsExplorer({
   tree,
   progress,
   editable = false,
+  scope = "MATERIAL",
+  ownerId,
+  emptyText,
 }: {
   tree: MaterialNode[];
   progress?: number;
+  /** Текст пустого состояния (у ошибок он свой). */
+  emptyText?: string;
   /** Конструктор доступен только учителю. */
   editable?: boolean;
+  /** MATERIAL — общая библиотека, MISTAKE — личное дерево ошибок ученика. */
+  scope?: "MATERIAL" | "MISTAKE";
+  /** Владелец личного дерева (для scope MISTAKE). */
+  ownerId?: string;
 }) {
   const { t } = useT();
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
@@ -129,12 +138,18 @@ export function MaterialsExplorer({
     return (
       <>
         <div className="flex flex-col items-center gap-4 rounded-2xl bg-surface px-6 py-16 text-center ring-1 ring-line shadow-sm">
-          <p className="text-sm text-faint">{t.materials.noMaterials}</p>
+          <p className="text-sm text-faint">{emptyText ?? t.materials.noMaterials}</p>
           {editable && (
             <button
               type="button"
               onClick={() =>
-                setEditorTarget({ mode: "create", parentId: null, kind: "FOLDER" })
+                setEditorTarget({
+                  mode: "create",
+                  parentId: null,
+                  kind: "FOLDER",
+                  scope,
+                  ownerId,
+                })
               }
               className="flex h-11 items-center gap-2 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90"
             >
@@ -142,7 +157,11 @@ export function MaterialsExplorer({
             </button>
           )}
         </div>
-        <NodeEditor target={editorTarget} onClose={() => setEditorTarget(null)} />
+        <NodeEditor
+          key={editorTarget ? "create-root" : "none"}
+          target={editorTarget}
+          onClose={() => setEditorTarget(null)}
+        />
       </>
     );
   }
@@ -236,7 +255,13 @@ export function MaterialsExplorer({
                   <button
                     type="button"
                     onClick={() => {
-                      setEditorTarget({ mode: "create", parentId: n.id, kind: "FOLDER" });
+                      setEditorTarget({
+                        mode: "create",
+                        parentId: n.id,
+                        kind: "FOLDER",
+                        scope,
+                        ownerId,
+                      });
                       setMenuFor(null);
                     }}
                     className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
@@ -246,7 +271,13 @@ export function MaterialsExplorer({
                   <button
                     type="button"
                     onClick={() => {
-                      setEditorTarget({ mode: "create", parentId: n.id, kind: "PAGE" });
+                      setEditorTarget({
+                        mode: "create",
+                        parentId: n.id,
+                        kind: "PAGE",
+                        scope,
+                        ownerId,
+                      });
                       setMenuFor(null);
                     }}
                     className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
@@ -445,7 +476,13 @@ export function MaterialsExplorer({
           <button
             type="button"
             onClick={() =>
-              setEditorTarget({ mode: "create", parentId: null, kind: "FOLDER" })
+              setEditorTarget({
+                mode: "create",
+                parentId: null,
+                kind: "FOLDER",
+                scope,
+                ownerId,
+              })
             }
             className="flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
           >
@@ -634,8 +671,25 @@ export function MaterialsExplorer({
 
       {editable && (
         <>
-          <NodeEditor target={editorTarget} onClose={() => setEditorTarget(null)} />
-          <ContentImporter node={importNode} onClose={() => setImportNode(null)} />
+          {/* key пересоздаёт окно на каждую новую цель, иначе состояние
+              прошлого успешного действия закрыло бы его сразу. */}
+          <NodeEditor
+            key={
+              editorTarget
+                ? editorTarget.mode === "edit"
+                  ? `edit-${editorTarget.nodeId}`
+                  : `create-${editorTarget.parentId ?? "root"}-${editorTarget.kind}`
+                : "none"
+            }
+            target={editorTarget}
+            onClose={() => setEditorTarget(null)}
+          />
+          <ContentImporter
+            key={importNode ? `import-${importNode.id}` : "none"}
+            node={importNode}
+            onClose={() => setImportNode(null)}
+            scope={scope}
+          />
         </>
       )}
     </div>
