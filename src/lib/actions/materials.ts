@@ -727,6 +727,38 @@ export async function saveRuleBlocksAction(
   };
 }
 
+/**
+ * Сохранить правило после ручной правки.
+ * Блоки приходят уже разобранными, поэтому проверяем их так же строго,
+ * как и при вставке из буфера.
+ */
+export async function saveRuleEditAction(
+  nodeId: string,
+  blocks: unknown,
+  sourceText: string,
+): Promise<BulkState> {
+  await requireTeacher();
+  if (!nodeId) return { error: "Не выбрана страница" };
+
+  const clean = sanitizeBlocks(blocks);
+  if (clean.length === 0) return { error: "Пустое правило — нечего сохранять" };
+
+  await db.delete(materialBlocks).where(eq(materialBlocks.nodeId, nodeId));
+  await db.delete(materialPhrases).where(eq(materialPhrases.nodeId, nodeId));
+
+  await db.insert(materialBlocks).values(
+    clean.map((b, i) => ({ nodeId, sortOrder: i + 1, type: b.type, data: b })),
+  );
+
+  await db
+    .update(materialNodes)
+    .set({ pageKind: "RULE", sourceText: String(sourceText ?? "").slice(0, 200_000) })
+    .where(eq(materialNodes.id, nodeId));
+
+  revalidateMaterials();
+  return { ok: true, message: `Сохранено блоков: ${clean.length}` };
+}
+
 /** Выдать ветку конкретному ученику (или снять доступ). */
 export async function toggleAssignmentAction(formData: FormData) {
   await requireTeacher();

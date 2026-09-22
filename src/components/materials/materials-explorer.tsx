@@ -17,6 +17,7 @@ import {
   IconGrip,
   IconMaterials,
   IconX,
+  IconPencil,
 } from "@/components/icons";
 import { Modal } from "@/components/modal";
 
@@ -29,6 +30,7 @@ import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
 import { WordAdder, PhraseEditor } from "./phrase-form";
+import { RuleEditor } from "./rule-editor";
 import {
   clearPagesAction,
   deleteNodeAction,
@@ -126,6 +128,7 @@ export function MaterialsExplorer({
     icon: string | null;
   } | null>(null);
   const [addWordsTo, setAddWordsTo] = useState<{ id: string; name: string } | null>(null);
+  const [ruleEditNode, setRuleEditNode] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
 
   const { byId, pathById } = useMemo(() => {
@@ -1201,6 +1204,16 @@ export function MaterialsExplorer({
                   </button>
                 )}
 
+                {pageKind(selected) === "RULE" && (
+                  <button
+                    type="button"
+                    onClick={() => setRuleEditNode(selected)}
+                    className={pageBtn}
+                  >
+                    <IconPencil className="h-4 w-4" /> Редактировать
+                  </button>
+                )}
+
                 {pageKind(selected) !== "VOCAB" && (
                   <button
                     type="button"
@@ -1413,6 +1426,11 @@ export function MaterialsExplorer({
             phrase={editPhrase}
             sections={pageSections}
             onClose={() => setEditPhrase(null)}
+          />
+          <RuleEditor
+            key={ruleEditNode ? `ruleedit-${ruleEditNode.id}` : "ruleedit-idle"}
+            node={ruleEditNode}
+            onClose={() => setRuleEditNode(null)}
           />
 
           {bulkIcons && (
