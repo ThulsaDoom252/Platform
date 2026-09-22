@@ -228,6 +228,23 @@ export async function updateNodeIconsAction(
 export type MoveState = { ok?: boolean; error?: string };
 
 /**
+ * Ученику выдаётся корневая ветка целиком, поэтому узел, уехавший внутрь
+ * папки, не должен оставаться назначенным отдельно — иначе покажется дважды.
+ */
+async function syncRootAssignment(
+  nodeId: string,
+  parentId: string | null,
+  scope: string,
+) {
+  if (scope !== "MATERIAL") return;
+  if (parentId) {
+    await db.delete(studentMaterials).where(eq(studentMaterials.materialNodeId, nodeId));
+  } else {
+    await assignToAllStudents(nodeId);
+  }
+}
+
+/**
  * Перенести папку или страницу в другую папку либо в корень.
  * Ученику выдаётся корневая ветка целиком, поэтому назначения
  * пересобираем при каждом переносе — иначе узел покажется дважды.
@@ -289,12 +306,85 @@ export async function moveNodeAction(
     .set({ parentId, sortOrder: (lastOrder ?? 0) + 1 })
     .where(eq(materialNodes.id, nodeId));
 
-  if (node.scope === "MATERIAL") {
-    if (parentId) {
-      await db.delete(studentMaterials).where(eq(studentMaterials.materialNodeId, nodeId));
-    } else {
-      await assignToAllStudents(nodeId);
+  await syncRootAssignment(nodeId, parentId, node.scope);
+
+  revalidateMaterials();
+  return { ok: true };
+}
+
+/**
+ * Поставить узел рядом с другим — до или после него.
+ * Новым родителем становится родитель цели, поэтому одним действием
+ * и переставляем внутри папки, и переносим между папками.
+ */
+export async function reorderNodeAction(
+  nodeId: string,
+  targetId: string,
+  position: "before" | "after",
+): Promise<MoveState> {
+  await requireTeacher();
+
+  if (!nodeId || !targetId || nodeId === targetId) return { error: "Некуда переставлять" };
+
+  const rows = await db
+    .select({
+      id: materialNodes.id,
+      parentId: materialNodes.parentId,
+      scope: materialNodes.scope,
+      ownerId: materialNodes.ownerId,
+      sortOrder: materialNodes.sortOrder,
+      name: materialNodes.name,
+    })
+    .from(materialNodes);
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const node = byId.get(nodeId);
+  const target = byId.get(targetId);
+  if (!node || !target) return { error: "Элемент не найден" };
+  if (target.scope !== node.scope || target.ownerId !== node.ownerId) {
+    return { error: "Нельзя переносить между разделами" };
+  }
+
+  const newParent = target.parentId ?? null;
+  for (let cur: string | null = newParent; cur; cur = byId.get(cur)?.parentId ?? null) {
+    if (cur === nodeId) return { error: "Нельзя вложить папку в собственную подпапку" };
+  }
+
+  const siblings = rows
+    .filter(
+      (r) =>
+        r.id !== nodeId &&
+        (r.parentId ?? null) === newParent &&
+        r.scope === node.scope &&
+        (r.ownerId ?? null) === (node.ownerId ?? null),
+    )
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+  const at = siblings.findIndex((r) => r.id === targetId);
+  if (at < 0) return { error: "Элемент не найден" };
+
+  const index = position === "before" ? at : at + 1;
+  const ordered = [...siblings.slice(0, index), node, ...siblings.slice(index)];
+
+  // Переписываем порядок целиком: так не остаётся ни дыр, ни одинаковых номеров.
+  for (let i = 0; i < ordered.length; i++) {
+    const r = ordered[i];
+    const order = i + 1;
+    if (r.id === nodeId) {
+      await db
+        .update(materialNodes)
+        .set({ parentId: newParent, sortOrder: order })
+        .where(eq(materialNodes.id, r.id));
+    } else if (r.sortOrder !== order) {
+      await db
+        .update(materialNodes)
+        .set({ sortOrder: order })
+        .where(eq(materialNodes.id, r.id));
     }
+  }
+
+  if ((node.parentId ?? null) !== newParent) {
+    await syncRootAssignment(nodeId, newParent, node.scope);
   }
 
   revalidateMaterials();

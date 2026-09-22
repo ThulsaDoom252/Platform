@@ -32,10 +32,14 @@ import {
   deleteNodeAction,
   deleteNodesAction,
   moveNodeAction,
+  reorderNodeAction,
 } from "@/lib/actions/materials";
 
 /** Цель «в корень» у перетаскивания — папки с таким id не бывает. */
 const ROOT_DROP = "__root__";
+
+/** Куда попадёт перетаскиваемый узел относительно элемента под курсором. */
+type DropWhere = "before" | "after" | "into";
 
 export type MaterialNode = {
   id: string;
@@ -125,7 +129,8 @@ export function MaterialsExplorer({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const [dragId, setDragId] = useState<string | null>(null);
-  const [dropId, setDropId] = useState<string | null>(null);
+  /** Куда ляжет перетаскиваемый узел: внутрь элемента либо рядом с ним. */
+  const [dropAt, setDropAt] = useState<{ id: string; where: DropWhere } | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, startMove] = useTransition();
 
@@ -210,31 +215,66 @@ export function MaterialsExplorer({
 
 
   /**
-   * Папка принимает перетаскиваемый узел, если это не он сам
-   * и не его собственный потомок (иначе ветка оторвалась бы от дерева).
+   * Можно ли поставить перетаскиваемый узел рядом с этим элементом.
+   * Нельзя, если цель — он сам или лежит внутри него: ветка оторвалась бы.
    */
-  function canDropInto(targetId: string): boolean {
+  function canPlaceNear(targetId: string): boolean {
     if (!dragId || targetId === dragId) return false;
-    const target = byId.get(targetId);
-    if (!target || target.type !== "FOLDER") return false;
     return !(pathById.get(targetId) ?? []).some((p) => p.id === dragId);
+  }
+
+  /** Внутрь принимает только папка. */
+  function canDropInto(targetId: string): boolean {
+    return canPlaceNear(targetId) && byId.get(targetId)?.type === "FOLDER";
   }
 
   const canDropRoot = !!dragId && !tree.some((n) => n.id === dragId);
 
-  function performMove(nodeId: string, parentId: string | null) {
+  /**
+   * Край элемента означает «поставить рядом», середина папки — «положить внутрь».
+   * В дереве и списке делим по высоте, в сетке плиток — по ширине.
+   */
+  function zoneAt(e: React.DragEvent, n: MaterialNode, axis: "y" | "x"): DropWhere | null {
+    const r = e.currentTarget.getBoundingClientRect();
+    const near = canPlaceNear(n.id);
+    const into = canDropInto(n.id);
+    if (!near && !into) return null;
+
+    const pos = axis === "y" ? (e.clientY - r.top) / r.height : (e.clientX - r.left) / r.width;
+    const edge = axis === "y" ? 0.3 : 0.25;
+
+    if (into) {
+      if (near && pos < edge) return "before";
+      if (near && pos > 1 - edge) return "after";
+      return "into";
+    }
+    return pos < 0.5 ? "before" : "after";
+  }
+
+  function finishDrag() {
     setDragId(null);
-    setDropId(null);
+    setDropAt(null);
+  }
+
+  function performMove(nodeId: string, parentId: string | null) {
+    finishDrag();
     startMove(async () => {
       const res = await moveNodeAction(nodeId, parentId);
       if (res.error) setMoveError(res.error);
     });
   }
 
-  /** Свойства перетаскивания для строки дерева или плитки. */
-  const dragProps = (n: MaterialNode) => {
+  function performReorder(nodeId: string, targetId: string, where: "before" | "after") {
+    finishDrag();
+    startMove(async () => {
+      const res = await reorderNodeAction(nodeId, targetId, where);
+      if (res.error) setMoveError(res.error);
+    });
+  }
+
+  /** Свойства перетаскивания для строки дерева, плитки или строки списка. */
+  const dragProps = (n: MaterialNode, axis: "y" | "x" = "y") => {
     if (!editable) return {};
-    const accepts = canDropInto(n.id);
     return {
       draggable: true,
       onDragStart: (e: React.DragEvent) => {
@@ -244,32 +284,50 @@ export function MaterialsExplorer({
         setDragId(n.id);
         setMenu(null);
       },
-      onDragEnd: () => {
-        setDragId(null);
-        setDropId(null);
-      },
+      onDragEnd: finishDrag,
       onDragOver: (e: React.DragEvent) => {
-        if (!accepts) return;
+        const where = zoneAt(e, n, axis);
+        if (!where) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
-        if (dropId !== n.id) setDropId(n.id);
+        if (dropAt?.id !== n.id || dropAt.where !== where) setDropAt({ id: n.id, where });
       },
       onDragLeave: () => {
-        if (dropId === n.id) setDropId(null);
+        if (dropAt?.id === n.id) setDropAt(null);
       },
       onDrop: (e: React.DragEvent) => {
-        if (!accepts) return;
+        const where = zoneAt(e, n, axis);
+        if (!where || !dragId) return;
         e.preventDefault();
         e.stopPropagation();
-        performMove(dragId!, n.id);
+        if (where === "into") performMove(dragId, n.id);
+        else performReorder(dragId, n.id, where);
       },
     };
   };
 
-  /** Подсветка строки, над которой сейчас держат перетаскиваемый узел. */
+  /** Обводка, когда узел ляжет внутрь этого элемента. */
   const dropRing = (id: string) =>
-    dropId === id && canDropInto(id) ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : "";
+    dropAt?.id === id && dropAt.where === "into"
+      ? "ring-2 ring-accent ring-offset-1 ring-offset-surface"
+      : "";
+
+  /** Линия вставки, когда узел ляжет рядом с этим элементом. */
+  const dropLine = (id: string, axis: "y" | "x" = "y") => {
+    if (dropAt?.id !== id || dropAt.where === "into") return null;
+    const before = dropAt.where === "before";
+    return (
+      <span
+        className={cn(
+          "pointer-events-none absolute z-10 rounded-full bg-accent",
+          axis === "y"
+            ? cn("left-0 right-0 h-0.5", before ? "-top-px" : "-bottom-px")
+            : cn("bottom-0 top-0 w-0.5", before ? "-left-1" : "-right-1"),
+        )}
+      />
+    );
+  };
 
   /**
    * Ручка захвата. Строка дерева состоит из кнопок, а с кнопки браузер
@@ -749,6 +807,7 @@ export function MaterialsExplorer({
             dropRing(n.id),
           )}
         >
+          {dropLine(n.id)}
           {selectBox(n)}
           {gripHandle()}
           <button
@@ -820,6 +879,7 @@ export function MaterialsExplorer({
             dropRing(n.id),
           )}
         >
+          {dropLine(n.id)}
           {selectBox(n)}
           {gripHandle()}
           <button
@@ -924,10 +984,10 @@ export function MaterialsExplorer({
             onDragOver={(e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
-              if (dropId !== ROOT_DROP) setDropId(ROOT_DROP);
+              if (dropAt?.id !== ROOT_DROP) setDropAt({ id: ROOT_DROP, where: "into" });
             }}
             onDragLeave={() => {
-              if (dropId === ROOT_DROP) setDropId(null);
+              if (dropAt?.id === ROOT_DROP) setDropAt(null);
             }}
             onDrop={(e) => {
               e.preventDefault();
@@ -935,7 +995,7 @@ export function MaterialsExplorer({
             }}
             className={cn(
               "flex h-11 items-center justify-center rounded-xl border-2 border-dashed text-xs font-semibold transition",
-              dropId === ROOT_DROP
+              dropAt?.id === ROOT_DROP
                 ? "border-accent bg-accent-soft text-accent"
                 : "border-line text-faint",
             )}
@@ -1094,6 +1154,7 @@ export function MaterialsExplorer({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {items.map((n) => (
               <div key={n.id} className="group relative">
+                {dropLine(n.id, "x")}
                 {editable && (
                   <input
                     type="checkbox"
@@ -1110,7 +1171,7 @@ export function MaterialsExplorer({
                 type="button"
                 onClick={(e) => handleOpenClick(e, n, items.map((x) => x.id))}
                 {...menuHandlers(n)}
-                {...dragProps(n)}
+                {...dragProps(n, "x")}
                 className={cn(
                   "flex w-full flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-md",
                   selection.has(n.id)
@@ -1148,7 +1209,8 @@ export function MaterialsExplorer({
         {!isPhrasePage && view === "list" && items.length > 0 && (
           <div className="flex flex-col divide-y divide-line">
             {items.map((n) => (
-              <div key={n.id} className="group flex items-center gap-2">
+              <div key={n.id} className="group relative flex items-center gap-2">
+                {dropLine(n.id)}
                 {selectBox(n)}
               <button
                 type="button"
