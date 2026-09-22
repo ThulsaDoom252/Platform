@@ -200,6 +200,26 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
 }
 
 /**
+ * Убрать со страниц всё содержимое, оставив сами страницы на месте.
+ * Страница бывает либо словником, либо правилом, поэтому чистим оба хранилища.
+ */
+export async function clearPagesAction(ids: string[]): Promise<BulkState> {
+  await requireTeacher();
+
+  const clean = [...new Set((ids ?? []).filter((id) => typeof id === "string" && id))];
+  if (clean.length === 0) return { error: "Ничего не выбрано" };
+
+  await db.delete(materialPhrases).where(inArray(materialPhrases.nodeId, clean));
+  await db.delete(materialBlocks).where(inArray(materialBlocks.nodeId, clean));
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: clean.length === 1 ? "Страница очищена" : `Очищено страниц: ${clean.length}`,
+  };
+}
+
+/**
  * Сменить иконки сразу нескольким узлам.
  * Одна иконка на всех и «каждому своя» — это один и тот же вызов,
  * клиент просто присылает разный список пар.

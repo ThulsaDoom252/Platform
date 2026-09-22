@@ -29,11 +29,15 @@ import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
 import {
+  clearPagesAction,
   deleteNodeAction,
   deleteNodesAction,
   moveNodeAction,
   reorderNodeAction,
 } from "@/lib/actions/materials";
+
+/** Есть ли на странице что чистить: словник или разобранное правило. */
+const hasContent = (n: MaterialNode) => n.phrases.length > 0 || n.blocks.length > 0;
 
 /** Цель «в корень» у перетаскивания — папки с таким id не бывает. */
 const ROOT_DROP = "__root__";
@@ -460,6 +464,25 @@ export function MaterialsExplorer({
     });
   }
 
+  /** Убирает содержимое страниц, оставляя сами страницы. */
+  function clearPages(nodes: MaterialNode[]) {
+    const pages = nodes.filter(hasContent);
+    if (pages.length === 0) return;
+
+    const names = pages.map((n) => n.name).join(", ");
+    const question =
+      pages.length === 1
+        ? `Очистить «${names}»? Страница останется, содержимое пропадёт.`
+        : `Очистить ${pages.length} страниц?\n\n${names}\n\nСами страницы останутся.`;
+    if (!confirm(question)) return;
+
+    const ids = pages.map((n) => n.id);
+    startMove(async () => {
+      const res = await clearPagesAction(ids);
+      if (res.error) setMoveError(res.error);
+    });
+  }
+
   /** Закрывает окно наполнения и, если идёт очередь, переходит к следующей странице. */
   function closeImporter() {
     setImportNode(null);
@@ -742,6 +765,18 @@ export function MaterialsExplorer({
                 >
                   Вставить правило
                 </button>
+                {hasContent(n) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearPages([n]);
+                      close();
+                    }}
+                    className={menuItemClass}
+                  >
+                    Очистить содержимое
+                  </button>
+                )}
               </>
             )}
 
@@ -1122,6 +1157,16 @@ export function MaterialsExplorer({
                 >
                   <IconPlus className="h-4 w-4" /> Вставить правило
                 </button>
+                {hasContent(selected) && (
+                  <button
+                    type="button"
+                    onClick={() => clearPages([selected])}
+                    title="Страница останется, содержимое пропадёт"
+                    className="flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 text-sm font-semibold text-muted transition hover:border-rose-400 hover:text-rose-500"
+                  >
+                    <IconX className="h-4 w-4" /> Очистить
+                  </button>
+                )}
               </div>
             )}
             {selected.blocks.length > 0 ? (
@@ -1387,6 +1432,16 @@ export function MaterialsExplorer({
           >
             Наполнить ({fillablePages.length})
           </button>
+          {selectedNodes.some(hasContent) && (
+            <button
+              type="button"
+              onClick={() => clearPages(selectedNodes)}
+              title="Страницы останутся, содержимое пропадёт"
+              className="h-9 rounded-xl border border-line px-3.5 text-sm font-semibold text-content transition hover:bg-surface-2"
+            >
+              Очистить ({selectedNodes.filter(hasContent).length})
+            </button>
+          )}
           <button
             type="button"
             onClick={() => deleteNodes(selectedNodes)}
