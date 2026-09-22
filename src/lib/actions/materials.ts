@@ -157,6 +157,82 @@ export async function deleteNodeAction(formData: FormData) {
   revalidateMaterials();
 }
 
+export type MoveState = { ok?: boolean; error?: string };
+
+/**
+ * Перенести папку или страницу в другую папку либо в корень.
+ * Ученику выдаётся корневая ветка целиком, поэтому назначения
+ * пересобираем при каждом переносе — иначе узел покажется дважды.
+ */
+export async function moveNodeAction(
+  nodeId: string,
+  parentId: string | null,
+): Promise<MoveState> {
+  await requireTeacher();
+
+  if (!nodeId) return { error: "Не выбран элемент" };
+  if (nodeId === parentId) return { error: "Нельзя вложить элемент в самого себя" };
+
+  const rows = await db
+    .select({
+      id: materialNodes.id,
+      parentId: materialNodes.parentId,
+      type: materialNodes.type,
+      scope: materialNodes.scope,
+      ownerId: materialNodes.ownerId,
+    })
+    .from(materialNodes);
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const node = byId.get(nodeId);
+  if (!node) return { error: "Элемент не найден" };
+  if ((node.parentId ?? null) === parentId) return { ok: true };
+
+  if (parentId) {
+    const target = byId.get(parentId);
+    if (!target) return { error: "Папка не найдена" };
+    if (target.type !== "FOLDER") return { error: "Вложить можно только в папку" };
+    if (target.scope !== node.scope || target.ownerId !== node.ownerId) {
+      return { error: "Нельзя переносить между разделами" };
+    }
+    // Поднимаемся от цели вверх: встретили сам узел — получилось бы кольцо.
+    for (let cur: string | null = target.parentId; cur; cur = byId.get(cur)?.parentId ?? null) {
+      if (cur === nodeId) return { error: "Нельзя вложить папку в собственную подпапку" };
+    }
+  }
+
+  const [{ value: lastOrder } = { value: 0 }] = await db
+    .select({ value: max(materialNodes.sortOrder) })
+    .from(materialNodes)
+    .where(
+      parentId
+        ? eq(materialNodes.parentId, parentId)
+        : and(
+            isNull(materialNodes.parentId),
+            eq(materialNodes.scope, node.scope),
+            node.ownerId
+              ? eq(materialNodes.ownerId, node.ownerId)
+              : isNull(materialNodes.ownerId),
+          ),
+    );
+
+  await db
+    .update(materialNodes)
+    .set({ parentId, sortOrder: (lastOrder ?? 0) + 1 })
+    .where(eq(materialNodes.id, nodeId));
+
+  if (node.scope === "MATERIAL") {
+    if (parentId) {
+      await db.delete(studentMaterials).where(eq(studentMaterials.materialNodeId, nodeId));
+    } else {
+      await assignToAllStudents(nodeId);
+    }
+  }
+
+  revalidateMaterials();
+  return { ok: true };
+}
+
 export type ParseState = {
   ok?: boolean;
   error?: string;

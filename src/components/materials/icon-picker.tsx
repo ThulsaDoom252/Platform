@@ -34,7 +34,7 @@ export function IconPicker({
         />
       </label>
 
-      <div className="max-h-56 overflow-y-auto pr-1">
+      <div className="max-h-72 overflow-y-auto pr-1">
         {groups.length === 0 && (
           <p className="py-6 text-center text-sm text-faint">Ничего не найдено.</p>
         )}

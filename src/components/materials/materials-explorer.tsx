@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ import {
   IconFile,
   IconSprout,
   IconPlus,
+  IconGrip,
 } from "@/components/icons";
 
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
@@ -22,7 +23,10 @@ import type { RuleBlock } from "@/lib/rule-parser";
 import { NodeEditor, type EditorTarget } from "./node-editor";
 import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
-import { deleteNodeAction } from "@/lib/actions/materials";
+import { deleteNodeAction, moveNodeAction } from "@/lib/actions/materials";
+
+/** Цель «в корень» у перетаскивания — папки с таким id не бывает. */
+const ROOT_DROP = "__root__";
 
 export type MaterialNode = {
   id: string;
@@ -105,20 +109,40 @@ export function MaterialsExplorer({
   );
   const [selectedId, setSelectedId] = useState<string | null>(tree[0]?.id ?? null);
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [pathOpen, setPathOpen] = useState(true);
+
+  /** Контекстное меню: открывается у курсора, поэтому хранит координаты. */
+  const [menu, setMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropId, setDropId] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [moving, startMove] = useTransition();
+
   useEffect(() => {
-    if (!menuFor) return;
+    if (!menu) return;
     const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuFor(null);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
     };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [menuFor]);
+    document.addEventListener("keydown", onKey);
+    // Меню висит в фиксированных координатах, при прокрутке оно «уедет».
+    window.addEventListener("scroll", () => setMenu(null), { once: true, capture: true });
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  useEffect(() => {
+    if (!moveError) return;
+    const t = setTimeout(() => setMoveError(null), 4000);
+    return () => clearTimeout(t);
+  }, [moveError]);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -133,6 +157,110 @@ export function MaterialsExplorer({
     setSelectedId(node.id);
     if (node.type === "FOLDER") setExpanded((prev) => new Set(prev).add(node.id));
   }
+
+  /** Открывает меню у курсора, не давая ему вылезти за край окна. */
+  function openMenu(nodeId: string, clientX: number, clientY: number) {
+    const x = Math.max(8, Math.min(clientX, window.innerWidth - 236));
+    const y = Math.max(8, Math.min(clientY, window.innerHeight - 320));
+    setMenu({ nodeId, x, y });
+  }
+
+  /**
+   * Правая кнопка и двойной клик открывают меню конструктора.
+   * У ученика меню редактирования нет, поэтому системное меню браузера
+   * мы у него не перехватываем.
+   */
+  const menuHandlers = (n: MaterialNode) => (!editable ? {} : {
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu(n.id, e.clientX, e.clientY);
+    },
+    onDoubleClick: (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMenu(n.id, e.clientX, e.clientY);
+    },
+  });
+
+
+  /**
+   * Папка принимает перетаскиваемый узел, если это не он сам
+   * и не его собственный потомок (иначе ветка оторвалась бы от дерева).
+   */
+  function canDropInto(targetId: string): boolean {
+    if (!dragId || targetId === dragId) return false;
+    const target = byId.get(targetId);
+    if (!target || target.type !== "FOLDER") return false;
+    return !(pathById.get(targetId) ?? []).some((p) => p.id === dragId);
+  }
+
+  const canDropRoot = !!dragId && !tree.some((n) => n.id === dragId);
+
+  function performMove(nodeId: string, parentId: string | null) {
+    setDragId(null);
+    setDropId(null);
+    startMove(async () => {
+      const res = await moveNodeAction(nodeId, parentId);
+      if (res.error) setMoveError(res.error);
+    });
+  }
+
+  /** Свойства перетаскивания для строки дерева или плитки. */
+  const dragProps = (n: MaterialNode) => {
+    if (!editable) return {};
+    const accepts = canDropInto(n.id);
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", n.id);
+        setDragId(n.id);
+        setMenu(null);
+      },
+      onDragEnd: () => {
+        setDragId(null);
+        setDropId(null);
+      },
+      onDragOver: (e: React.DragEvent) => {
+        if (!accepts) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        if (dropId !== n.id) setDropId(n.id);
+      },
+      onDragLeave: () => {
+        if (dropId === n.id) setDropId(null);
+      },
+      onDrop: (e: React.DragEvent) => {
+        if (!accepts) return;
+        e.preventDefault();
+        e.stopPropagation();
+        performMove(dragId!, n.id);
+      },
+    };
+  };
+
+  /** Подсветка строки, над которой сейчас держат перетаскиваемый узел. */
+  const dropRing = (id: string) =>
+    dropId === id && canDropInto(id) ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : "";
+
+  /**
+   * Ручка захвата. Строка дерева состоит из кнопок, а с кнопки браузер
+   * перетаскивание начинает неохотно — за ручку оно работает всегда.
+   * Событие всплывает до строки, там и стоит обработчик.
+   */
+  const gripHandle = () =>
+    editable ? (
+      <span
+        draggable
+        title="Перетащить"
+        className="flex h-7 w-3.5 shrink-0 cursor-grab items-center justify-center text-faint opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
+      >
+        <IconGrip className="h-3.5 w-3.5" />
+      </span>
+    ) : null;
 
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const breadcrumb = selectedId ? pathById.get(selectedId) ?? [] : [];
@@ -175,166 +303,210 @@ export function MaterialsExplorer({
     );
   }
 
-  /** Меню «три точки». */
-  const dotsMenu = (n: MaterialNode, isOpen: boolean, hasChildren: boolean) => (
-    <>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setMenuFor(menuFor === n.id ? null : n.id);
-        }}
-        aria-label="..."
-        className={cn(
-          "flex h-7 w-6 shrink-0 items-center justify-center rounded text-faint transition hover:text-content",
-          menuFor === n.id ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-        )}
-      >
-        <IconDots className="h-4 w-4" />
-      </button>
+  /** Кнопка «три точки» — открывает то же меню, что правая кнопка мыши. */
+  const dotsButton = (n: MaterialNode) => (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (menu?.nodeId === n.id) {
+          setMenu(null);
+          return;
+        }
+        const r = e.currentTarget.getBoundingClientRect();
+        openMenu(n.id, r.right, r.bottom + 4);
+      }}
+      aria-label="..."
+      className={cn(
+        "flex h-7 w-6 shrink-0 items-center justify-center rounded text-faint transition hover:text-content",
+        menu?.nodeId === n.id ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+      )}
+    >
+      <IconDots className="h-4 w-4" />
+    </button>
+  );
 
-      {menuFor === n.id && (
-        <div
-          ref={menuRef}
-          className="absolute right-1 top-9 z-20 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
+  const menuNode = menu ? byId.get(menu.nodeId) ?? null : null;
+  const menuItemClass =
+    "block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2";
+
+  const contextMenu = (() => {
+    if (!menu || !menuNode) return null;
+    const n = menuNode;
+    const isOpen = expanded.has(n.id);
+    const hasChildren = n.children.length > 0;
+    const path = pathById.get(n.id) ?? [];
+    const parentId = path[path.length - 2]?.id ?? null;
+    // Для папки добавляем внутрь неё, для файла — рядом с ним.
+    const addInto = n.type === "FOLDER" ? n.id : parentId;
+    const isPage = n.type === "FILE" && !n.fileKind;
+    const close = () => setMenu(null);
+
+    return (
+      <div
+        ref={menuRef}
+        style={{ left: menu.x, top: menu.y }}
+        className="fixed z-50 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl"
+      >
+        <p className="truncate px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
+          {n.icon} {n.name}
+        </p>
+        <div className="mb-1 border-t border-line" />
+
+        <button
+          type="button"
+          onClick={() => {
+            openNode(n);
+            close();
+          }}
+          className={menuItemClass}
         >
+          {t.materials.open}
+        </button>
+
+        {hasChildren && (
           <button
             type="button"
             onClick={() => {
-              openNode(n);
-              setMenuFor(null);
+              const ids = collectIds([n]);
+              setExpanded((prev) => {
+                const next = new Set(prev);
+                if (isOpen) ids.forEach((id) => next.delete(id));
+                else ids.forEach((id) => next.add(id));
+                return next;
+              });
+              close();
             }}
-            className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
+            className={menuItemClass}
           >
-            {t.materials.open}
+            {isOpen ? t.materials.collapseAll : t.materials.expandAll}
           </button>
-          {hasChildren && (
+        )}
+
+        {editable && (
+          <>
+            <div className="my-1 border-t border-line" />
+
             <button
               type="button"
               onClick={() => {
-                const ids = collectIds([n]);
-                setExpanded((prev) => {
-                  const next = new Set(prev);
-                  if (isOpen) ids.forEach((id) => next.delete(id));
-                  else ids.forEach((id) => next.add(id));
-                  return next;
+                setEditorTarget({
+                  mode: "create",
+                  parentId: addInto,
+                  kind: "FOLDER",
+                  scope,
+                  ownerId,
                 });
-                setMenuFor(null);
+                close();
               }}
-              className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
+              className={menuItemClass}
             >
-              {isOpen ? t.materials.collapseAll : t.materials.expandAll}
+              Добавить папку
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                setEditorTarget({
+                  mode: "create",
+                  parentId: addInto,
+                  kind: "PAGE",
+                  scope,
+                  ownerId,
+                });
+                close();
+              }}
+              className={menuItemClass}
+            >
+              Добавить файл
+            </button>
 
-          {editable && (
-            <>
-              <div className="my-1 border-t border-line" />
-              {n.type === "FILE" && !n.fileKind && (
+            <div className="my-1 border-t border-line" />
+
+            <button
+              type="button"
+              onClick={() => {
+                setEditorTarget({
+                  mode: "edit",
+                  nodeId: n.id,
+                  name: n.name,
+                  icon: n.icon,
+                  description: n.description,
+                  isPage,
+                });
+                close();
+              }}
+              className={menuItemClass}
+            >
+              Переименовать / иконка
+            </button>
+
+            {isPage && (
+              <>
                 <button
                   type="button"
                   onClick={() => {
                     setImportNode({ id: n.id, name: n.name });
-                    setMenuFor(null);
+                    close();
                   }}
-                  className="block w-full px-3.5 py-2 text-left text-sm font-medium text-accent transition hover:bg-surface-2"
+                  className={cn(menuItemClass, "font-medium text-accent")}
                 >
                   Словник из текста
                 </button>
-              )}
-              {n.type === "FILE" && !n.fileKind && (
                 <button
                   type="button"
                   onClick={() => {
                     setRuleNode({ id: n.id, name: n.name, icon: n.icon });
-                    setMenuFor(null);
+                    close();
                   }}
-                  className="block w-full px-3.5 py-2 text-left text-sm font-medium text-accent transition hover:bg-surface-2"
+                  className={cn(menuItemClass, "font-medium text-accent")}
                 >
                   Вставить правило
                 </button>
-              )}
+              </>
+            )}
+
+            {parentId && (
               <button
                 type="button"
                 onClick={() => {
-                  setEditorTarget({
-                    mode: "edit",
-                    nodeId: n.id,
-                    name: n.name,
-                    icon: n.icon,
-                    description: n.description,
-                    isPage: n.type === "FILE" && !n.fileKind,
-                  });
-                  setMenuFor(null);
+                  performMove(n.id, null);
+                  close();
                 }}
-                className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
+                className={menuItemClass}
               >
-                Переименовать / иконка
+                Перенести в корень
               </button>
-              {n.type === "FOLDER" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditorTarget({
-                        mode: "create",
-                        parentId: n.id,
-                        kind: "FOLDER",
-                        scope,
-                        ownerId,
-                      });
-                      setMenuFor(null);
-                    }}
-                    className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
-                  >
-                    + Подпапка
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditorTarget({
-                        mode: "create",
-                        parentId: n.id,
-                        kind: "PAGE",
-                        scope,
-                        ownerId,
-                      });
-                      setMenuFor(null);
-                    }}
-                    className="block w-full px-3.5 py-2 text-left text-sm text-content transition hover:bg-surface-2"
-                  >
-                    + Страница
-                  </button>
-                </>
-              )}
-              <form
-                action={deleteNodeAction}
-                onSubmit={(e) => {
-                  if (
-                    !confirm(
-                      `Удалить «${n.name}»${hasChildren ? " вместе со всем содержимым" : ""}? Это необратимо.`,
-                    )
-                  ) {
-                    e.preventDefault();
-                    return;
-                  }
-                  setMenuFor(null);
-                }}
+            )}
+
+            <div className="my-1 border-t border-line" />
+
+            <form
+              action={deleteNodeAction}
+              onSubmit={(e) => {
+                if (
+                  !confirm(
+                    `Удалить «${n.name}»${hasChildren ? " вместе со всем содержимым" : ""}? Это необратимо.`,
+                  )
+                ) {
+                  e.preventDefault();
+                  return;
+                }
+                close();
+              }}
+            >
+              <input type="hidden" name="nodeId" value={n.id} />
+              <button
+                type="submit"
+                className="block w-full px-3.5 py-2 text-left text-sm text-rose-500 transition hover:bg-surface-2"
               >
-                <input type="hidden" name="nodeId" value={n.id} />
-                <button
-                  type="submit"
-                  className="block w-full px-3.5 py-2 text-left text-sm text-rose-500 transition hover:bg-surface-2"
-                >
-                  Удалить
-                </button>
-              </form>
-            </>
-          )}
-        </div>
-      )}
-    </>
-  );
+                Удалить
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    );
+  })();
 
   /** Подкатегории: точка-маркер + линия-связка. */
   const renderSub = (n: MaterialNode) => {
@@ -345,15 +517,20 @@ export function MaterialsExplorer({
     return (
       <div key={n.id}>
         <div
+          {...menuHandlers(n)}
+          {...dragProps(n)}
           className={cn(
             "group relative flex items-center gap-1 rounded-lg pr-1 transition",
             isSelected ? "bg-accent-soft" : "hover:bg-surface-2",
+            dragId === n.id && "opacity-40",
+            dropRing(n.id),
           )}
         >
+          {gripHandle()}
           <button
             type="button"
             onClick={() => openNode(n)}
-            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-1 text-left"
           >
             <span
               className={cn(
@@ -387,7 +564,7 @@ export function MaterialsExplorer({
             </button>
           )}
 
-          {dotsMenu(n, isOpen, hasChildren)}
+          {dotsButton(n)}
         </div>
 
         {hasChildren && isOpen && (
@@ -408,13 +585,18 @@ export function MaterialsExplorer({
     return (
       <div key={n.id} className="mb-1.5">
         <div
+          {...menuHandlers(n)}
+          {...dragProps(n)}
           className={cn(
             "group relative flex items-center gap-2 rounded-xl px-2 py-2 transition",
             isSelected
               ? "bg-accent-soft ring-1 ring-accent/25"
               : "hover:bg-surface-2",
+            dragId === n.id && "opacity-40",
+            dropRing(n.id),
           )}
         >
+          {gripHandle()}
           <button
             type="button"
             onClick={() => {
@@ -454,7 +636,7 @@ export function MaterialsExplorer({
             </button>
           )}
 
-          {dotsMenu(n, isOpen, hasChildren)}
+          {dotsButton(n)}
         </div>
 
         {hasChildren && isOpen && (
@@ -490,6 +672,33 @@ export function MaterialsExplorer({
         {pathOpen && (
           <div className="max-h-[60vh] overflow-y-auto pr-0.5">
             {tree.map(renderCategory)}
+          </div>
+        )}
+
+        {/* Зона появляется только во время перетаскивания — иначе она
+            занимала бы место впустую. */}
+        {editable && canDropRoot && (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dropId !== ROOT_DROP) setDropId(ROOT_DROP);
+            }}
+            onDragLeave={() => {
+              if (dropId === ROOT_DROP) setDropId(null);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              performMove(dragId!, null);
+            }}
+            className={cn(
+              "flex h-11 items-center justify-center rounded-xl border-2 border-dashed text-xs font-semibold transition",
+              dropId === ROOT_DROP
+                ? "border-accent bg-accent-soft text-accent"
+                : "border-line text-faint",
+            )}
+          >
+            Перетащить в корень
           </div>
         )}
 
@@ -646,11 +855,15 @@ export function MaterialsExplorer({
                 key={n.id}
                 type="button"
                 onClick={() => openNode(n)}
+                {...menuHandlers(n)}
+                {...dragProps(n)}
                 className={cn(
                   "flex flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-md",
                   selectedId === n.id
                     ? "border-accent bg-accent-soft"
                     : "border-line hover:bg-surface-2",
+                  dragId === n.id && "opacity-40",
+                  dropRing(n.id),
                 )}
               >
                 <span className="text-2xl leading-none">
@@ -684,7 +897,13 @@ export function MaterialsExplorer({
                 key={n.id}
                 type="button"
                 onClick={() => openNode(n)}
-                className="flex items-center gap-3 py-2.5 text-left transition hover:bg-surface-2"
+                {...menuHandlers(n)}
+                {...dragProps(n)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg py-2.5 text-left transition hover:bg-surface-2",
+                  dragId === n.id && "opacity-40",
+                  dropRing(n.id),
+                )}
               >
                 <span className="w-7 shrink-0 text-center text-lg leading-none">
                   {n.icon ?? (n.type === "FOLDER" ? "📁" : "📄")}
@@ -740,6 +959,19 @@ export function MaterialsExplorer({
             onClose={() => setRuleNode(null)}
           />
         </>
+      )}
+
+      {contextMenu}
+
+      {(moving || moveError) && (
+        <div
+          className={cn(
+            "fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-xl",
+            moveError ? "bg-rose-500 text-white" : "bg-surface text-content ring-1 ring-line",
+          )}
+        >
+          {moveError ?? "Переношу…"}
+        </div>
       )}
     </div>
   );

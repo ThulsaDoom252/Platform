@@ -135,6 +135,18 @@ export const IconDots = (p: IconProps) => (
   </Svg>
 );
 
+/** Ручка захвата: за неё элемент перетаскивают. */
+export const IconGrip = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="9" cy="6" r="1.3" />
+    <circle cx="15" cy="6" r="1.3" />
+    <circle cx="9" cy="12" r="1.3" />
+    <circle cx="15" cy="12" r="1.3" />
+    <circle cx="9" cy="18" r="1.3" />
+    <circle cx="15" cy="18" r="1.3" />
+  </Svg>
+);
+
 export const IconGlobe = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="9" />
