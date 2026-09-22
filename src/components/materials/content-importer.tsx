@@ -2,7 +2,11 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/modal";
-import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
+import {
+  parseMaterial,
+  flattenClipboardHtml,
+  type ParserMode,
+} from "@/lib/materials-parser";
 import { savePageContentAction, type ParseState } from "@/lib/actions/materials";
 import { IconMaterials, IconCheck } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -50,6 +54,18 @@ export function ContentImporter({
   }, [state, onClose]);
 
   if (!node) return null;
+
+  /**
+   * Если в буфере таблица — раскладываем её по колонкам сами.
+   * Обычный текст вставляется как обычно, без вмешательства.
+   */
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const flat = flattenClipboardHtml(e.clipboardData.getData("text/html"));
+    if (!flat) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    setRaw(raw.slice(0, el.selectionStart) + flat + raw.slice(el.selectionEnd));
+  }
 
   const phraseCount = preview?.phrases.filter((p) => p.kind === "PHRASE").length ?? 0;
   const noteCount = preview?.phrases.filter((p) => p.kind === "NOTE").length ?? 0;
@@ -100,13 +116,20 @@ export function ContentImporter({
           <label className="text-sm font-medium text-content">
             Вставь текст из Google Docs
           </label>
+          {mode === "vocabulary" && (
+            <p className="mt-0.5 text-[11px] text-faint">
+              Таблицу можно копировать целиком — колонки Word / IPA / Translation
+              разложатся сами, а заголовки вроде «Nouns — Іменники» станут разделами.
+            </p>
+          )}
           <textarea
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
+            onPaste={handlePaste}
             rows={8}
             placeholder={
               mode === "vocabulary"
-                ? "SPORTS & COMPETITION — СПОРТ І ЗМАГАННЯ\nЛЕКСИКА ПРО РЕЗУЛЬТАТИ…\n\nSingle-word Verbs & Participles\ndropped /drɒpt/ — виключений зі складу\n• The striker was dropped from the team. — Нападника виключили зі складу."
+                ? "Строками:\ndropped /drɒpt/ — виключений зі складу\n• The striker was dropped. — Нападника виключили.\n\nИли таблицей:\n📖 Nouns — Іменники\nWord / Phrase\tIPA\tTranslation\nan election\t/ɪˈlekʃən/\tвибори"
                 : mode === "mistake"
                   ? "Past Simple\nI go to school yesterday → I went to school yesterday\n• Прошедшее время, а не настоящее\n\nArticles\nI am student → I am a student"
                   : "Present Simple\nВживаємо для регулярних дій.\n• I go to school every day. — Я ходжу до школи щодня."

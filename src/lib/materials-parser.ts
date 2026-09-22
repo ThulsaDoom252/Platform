@@ -100,6 +100,53 @@ function isSectionHeading(left: string, right: string): boolean {
 const ICON_CYCLE = ["💬", "📘", "🔤", "🧩", "✨", "📗", "🗣️", "📙"];
 
 /**
+ * Словник часто оформлен таблицей: колонки «Word / Phrase», «IPA»,
+ * «Translation» плюс колонка со значком динамика. При копировании ячейки
+ * разделяются табуляцией, поэтому такие строки разбираем отдельно.
+ */
+const COLUMN = {
+  word: /\b(word|phrase|term)\b|слов|фраз|вираз|выражен/i,
+  ipa: /\bipa\b|transcri|транскрип|вимов|произнош/i,
+  translation: /translat|перевод|переклад|значенн/i,
+};
+
+type ColumnMap = { word: number; ipa: number | null; translation: number };
+
+/** Шапка таблицы: по ней запоминаем, в какой колонке что лежит. */
+function detectHeader(cells: string[]): ColumnMap | null {
+  let word = -1;
+  let ipa = -1;
+  let translation = -1;
+
+  cells.forEach((cell, i) => {
+    const t = cell.trim();
+    if (!t || t.length > 30) return;
+    if (word < 0 && COLUMN.word.test(t)) word = i;
+    else if (ipa < 0 && COLUMN.ipa.test(t)) ipa = i;
+    else if (translation < 0 && COLUMN.translation.test(t)) translation = i;
+  });
+
+  if (word < 0 || translation < 0) return null;
+  return { word, ipa: ipa < 0 ? null : ipa, translation };
+}
+
+/**
+ * Шапки нет — раскладываем по содержимому: транскрипция узнаётся по слешам,
+ * слово стоит до неё, перевод — после.
+ */
+function guessColumns(cells: string[]): { word: string; ipa: string; translation: string } {
+  const at = cells.findIndex((c) => IPA.test(c));
+  if (at > 0) {
+    return {
+      word: cells.slice(0, at).join(" ").trim(),
+      ipa: cells[at],
+      translation: cells.slice(at + 1).join(" ").trim(),
+    };
+  }
+  return { word: cells[0] ?? "", ipa: "", translation: cells.slice(1).join(" ").trim() };
+}
+
+/**
  * Шапка документа набрана капсом («SPORTS & COMPETITION — СПОРТ І ЗМАГАННЯ»).
  * По этому признаку отличаем её от обычных записей, в которых тоже есть тире.
  */
@@ -114,18 +161,23 @@ function isMostlyUpper(s: string): boolean {
 
 function parseVocabulary(raw: string): ParseResult {
   const warnings: string[] = [];
+  // У строк таблицы табуляция значима: пустая первая ячейка (колонка с
+  // динамиком) держит нумерацию колонок. Поэтому у них срезаем только пробелы.
   const lines = raw
     .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
+    .map((l) => (l.includes("\t") ? l.replace(/^ +| +$/g, "") : l.trim()))
+    .filter((l) => l.trim());
 
   let title: string | null = null;
   let description: string | null = null;
   const phrases: ParsedPhrase[] = [];
 
   let currentSection: string | null = null;
+  /** Эмодзи раздела («📖 Nouns») достаётся всем записям этого раздела. */
+  let sectionIcon: string | null = null;
   let current: ParsedPhrase | null = null;
   let iconIndex = 0;
+  let columns: ColumnMap | null = null;
 
   const flush = () => {
     if (current) phrases.push(current);
@@ -144,15 +196,68 @@ function parseVocabulary(raw: string): ParseResult {
   }
 
   for (let i = start; i < lines.length; i++) {
-    const original = lines[i];
+    let original = lines[i];
+
+    // ---- строка таблицы ----
+    if (original.includes("\t")) {
+      const raw = original.split("\t").map((c) => c.trim());
+      // В ячейках записи ведущий значок динамика не нужен, а в заголовке
+      // раздела эмодзи как раз пригодится — поэтому храним оба варианта.
+      const cells = raw.map((c) => takeLeadingIcon(c).rest.trim());
+      const filled = cells.filter(Boolean);
+
+      const header = detectHeader(cells);
+      if (header) {
+        columns = header;
+        flush();
+        continue;
+      }
+
+      if (filled.length >= 2) {
+        const cell = columns
+          ? {
+              word: cells[columns.word] ?? "",
+              ipa: columns.ipa === null ? "" : cells[columns.ipa] ?? "",
+              translation: cells[columns.translation] ?? "",
+            }
+          : guessColumns(filled);
+
+        if (!cell.word || !cell.translation) {
+          warnings.push(`Строка ${i + 1}: пустое слово или перевод — «${original.slice(0, 60)}»`);
+          continue;
+        }
+
+        flush();
+        phrases.push({
+          icon: sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
+          section: currentSection,
+          kind: "PHRASE",
+          phrase: cell.word,
+          transcription: cell.ipa && IPA.test(cell.ipa) ? cell.ipa : null,
+          translation: cell.translation,
+          examples: [],
+        });
+        continue;
+      }
+
+      // Объединённая ячейка — это заголовок раздела, разбираем как обычную строку.
+      original = raw.find((c) => takeLeadingIcon(c).rest.trim()) ?? "";
+      if (!original) continue;
+    }
+
     const hadBullet = BULLET.test(original);
     const withoutBullet = stripBullet(original);
     const { icon, rest } = takeLeadingIcon(withoutBullet);
     const line = rest.trim();
     if (!line) continue;
 
+    const dashParts = splitByDash(line);
+    // 💡 бывает и меткой заметки, и просто украшением заголовка раздела
+    // («💡 Adverbs — Прислівники») — заголовок важнее.
+    const isDecoratedHeading = !!dashParts && isSectionHeading(dashParts[0], dashParts[1]);
+
     // Заметка 💡
-    if (icon === "💡" || /^💡/.test(withoutBullet)) {
+    if (!isDecoratedHeading && (icon === "💡" || /^💡/.test(withoutBullet))) {
       flush();
       const body = line.replace(/^💡\s*/, "");
       const dot = body.indexOf(".");
@@ -169,12 +274,13 @@ function parseVocabulary(raw: string): ParseResult {
       continue;
     }
 
-    const parts = splitByDash(line);
+    const parts = dashParts;
 
     if (!parts) {
       if (looksLikeSection(line)) {
         flush();
         currentSection = line;
+        sectionIcon = icon;
       } else {
         warnings.push(`Строка ${i + 1}: не удалось разобрать — «${line.slice(0, 60)}»`);
       }
@@ -196,6 +302,7 @@ function parseVocabulary(raw: string): ParseResult {
     if (isSectionHeading(left, right)) {
       flush();
       currentSection = line;
+      sectionIcon = icon;
       continue;
     }
 
@@ -208,7 +315,7 @@ function parseVocabulary(raw: string): ParseResult {
       .trim();
 
     current = {
-      icon: icon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
+      icon: icon ?? sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
       section: currentSection,
       kind: "PHRASE",
       phrase,
@@ -221,7 +328,10 @@ function parseVocabulary(raw: string): ParseResult {
   flush();
 
   if (phrases.length === 0) {
-    warnings.push("Не найдено ни одной записи. Проверь, что строки вида «слово — перевод».");
+    warnings.push(
+      "Не найдено ни одной записи. Подойдут строки вида «слово — перевод» " +
+        "или таблица с колонками Word / IPA / Translation.",
+    );
   }
 
   return { title, description, phrases, warnings };
@@ -376,6 +486,43 @@ function parseMistakes(raw: string): ParseResult {
   }
 
   return { title: null, description: null, phrases, warnings };
+}
+
+/**
+ * Разворачивает таблицы из HTML буфера обмена в текст с табуляцией.
+ * Обычный текст из таблицы приходит по-разному: где-то колонки разделены
+ * табуляцией, где-то просто переносом строки. Из разметки видно наверняка.
+ * Работает только в браузере — сервер разбирает уже готовый текст.
+ */
+export function flattenClipboardHtml(html: string): string | null {
+  if (typeof DOMParser === "undefined") return null;
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  if (!doc.querySelector("table")) return null;
+
+  const clean = (el: Element) => (el.textContent ?? "").replace(/\s+/g, " ").trim();
+  const out: string[] = [];
+
+  const walk = (node: Element) => {
+    for (const el of Array.from(node.children)) {
+      if (el.tagName.toLowerCase() === "table") {
+        for (const tr of Array.from(el.querySelectorAll("tr"))) {
+          const cells = Array.from(tr.querySelectorAll("th,td")).map(clean);
+          if (cells.some(Boolean)) out.push(cells.join("\t"));
+        }
+        continue;
+      }
+      if (el.querySelector("table")) {
+        walk(el);
+        continue;
+      }
+      const text = clean(el);
+      if (text) out.push(text);
+    }
+  };
+
+  walk(doc.body);
+  return out.length ? out.join("\n") : null;
 }
 
 export function parseMaterial(raw: string, mode: ParserMode): ParseResult {
