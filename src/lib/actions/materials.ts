@@ -29,24 +29,13 @@ function revalidateMaterials() {
   revalidatePath("/teacher/students", "layout");
 }
 
-/** Назначает ветку всем ученикам — материалы по умолчанию доступны всем. */
-async function assignToAllStudents(nodeId: string) {
-  const students = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.role, "STUDENT"));
-  if (students.length === 0) return;
-
-  const existing = await db
-    .select({ studentId: studentMaterials.studentId })
-    .from(studentMaterials)
-    .where(eq(studentMaterials.materialNodeId, nodeId));
-  const have = new Set(existing.map((e) => e.studentId));
-
-  const rows = students
-    .filter((s) => !have.has(s.id))
-    .map((s) => ({ studentId: s.id, materialNodeId: nodeId }));
-  if (rows.length) await db.insert(studentMaterials).values(rows);
+/**
+ * Снимает выдачу узла ученикам.
+ * Ученику открывается корневой раздел целиком, поэтому уехавший внутрь
+ * папки узел не должен оставаться выданным отдельно.
+ */
+async function dropAssignments(nodeId: string) {
+  await db.delete(studentMaterials).where(eq(studentMaterials.materialNodeId, nodeId));
 }
 
 export type NodeState = { ok?: boolean; error?: string; nodeId?: string };
@@ -54,16 +43,23 @@ export type NodeState = { ok?: boolean; error?: string; nodeId?: string };
 export type NewNode = { name: string; icon: string | null; description?: string | null };
 
 /**
- * MATERIAL — общая библиотека, MISTAKE — ошибки ученика,
- * PERSONAL — личные материалы учителя, которых ученики не видят.
+ * MATERIAL  — общая база, её разделы выдаются выбранным ученикам.
+ * PERSONAL  — база учителя, ученики её не видят вовсе.
+ * STUDENT   — личные материалы конкретного ученика, своя структура.
+ * MISTAKE   — его же дерево ошибок.
+ *
+ * Деревья независимы: перестановки в одном не задевают остальные,
+ * материалы переносятся между ними копированием.
  */
-export type NodeScope = "MATERIAL" | "MISTAKE" | "PERSONAL";
+export type NodeScope = "MATERIAL" | "PERSONAL" | "STUDENT" | "MISTAKE";
 
-/** У личных деревьев есть владелец, у общей библиотеки — нет. */
+/** У личных деревьев есть владелец, у общей базы — нет. */
 const isOwned = (scope: NodeScope) => scope !== "MATERIAL";
 
+const OWNED_SCOPES = ["MISTAKE", "PERSONAL", "STUDENT"];
+
 function asScope(value: unknown): NodeScope {
-  return value === "MISTAKE" || value === "PERSONAL" ? value : "MATERIAL";
+  return OWNED_SCOPES.includes(String(value)) ? (value as NodeScope) : "MATERIAL";
 }
 
 export type CreateOptions = {
@@ -129,9 +125,7 @@ export async function createNodesAction(
     )
     .returning({ id: materialNodes.id });
 
-  if (!parentId && scope === "MATERIAL") {
-    for (const r of rows) await assignToAllStudents(r.id);
-  }
+  // Разделы общей базы никому не раздаются сами — доступ выдаёт учитель.
 
   revalidateMaterials();
   return { ok: true, message: `Создано: ${rows.length}` };
@@ -397,12 +391,7 @@ async function syncRootAssignment(
   parentId: string | null,
   scope: string,
 ) {
-  if (scope !== "MATERIAL") return;
-  if (parentId) {
-    await db.delete(studentMaterials).where(eq(studentMaterials.materialNodeId, nodeId));
-  } else {
-    await assignToAllStudents(nodeId);
-  }
+  if (scope === "MATERIAL" && parentId) await dropAssignments(nodeId);
 }
 
 /**
@@ -846,13 +835,22 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
       ownerId: session.userId,
       nodes: pick("PERSONAL", session.userId),
     },
-    ...students.map((s) => ({
-      key: `mistake-${s.id}`,
-      label: `Ошибки — ${s.name}`,
-      scope: "MISTAKE" as const,
-      ownerId: s.id,
-      nodes: pick("MISTAKE", s.id),
-    })),
+    ...students.flatMap((s) => [
+      {
+        key: `student-${s.id}`,
+        label: `Материалы — ${s.name}`,
+        scope: "STUDENT" as const,
+        ownerId: s.id,
+        nodes: pick("STUDENT", s.id),
+      },
+      {
+        key: `mistake-${s.id}`,
+        label: `Ошибки — ${s.name}`,
+        scope: "MISTAKE" as const,
+        ownerId: s.id,
+        nodes: pick("MISTAKE", s.id),
+      },
+    ]),
   ];
 }
 
@@ -944,7 +942,6 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
       .returning();
     all.push(row);
     byId.set(row.id, row);
-    if (!parentId && scope === "MATERIAL") await assignToAllStudents(row.id);
     return row.id;
   }
 
@@ -977,7 +974,6 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
       .returning();
 
     pairs.push({ srcId, newId: row.id });
-    if (!parentId && scope === "MATERIAL") await assignToAllStudents(row.id);
 
     for (const child of all.filter((n) => n.parentId === srcId)) {
       if (include.has(child.id)) await copyNode(child.id, row.id);
@@ -1042,38 +1038,57 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
   return { ok: true, message: `Скопировано элементов: ${pairs.length}` };
 }
 
-/** Выдать ветку конкретному ученику (или снять доступ). */
-export async function toggleAssignmentAction(formData: FormData) {
+/**
+ * Задать, какие разделы общей базы видит ученик.
+ * Список приходит целиком: чего в нём нет — то у ученика снимается.
+ */
+export async function setAssignmentsAction(
+  studentId: string,
+  nodeIds: string[],
+): Promise<BulkState> {
   await requireTeacher();
-  const studentId = String(formData.get("studentId") || "");
-  const nodeId = String(formData.get("nodeId") || "");
-  const assign = formData.get("assign") === "on";
-  if (!studentId || !nodeId) return;
+  if (!studentId) return { error: "Не выбран ученик" };
 
-  if (assign) {
-    const [existing] = await db
-      .select({ id: studentMaterials.id })
-      .from(studentMaterials)
-      .where(
-        and(
-          eq(studentMaterials.studentId, studentId),
-          eq(studentMaterials.materialNodeId, nodeId),
-        ),
-      )
-      .limit(1);
-    if (!existing) {
-      await db.insert(studentMaterials).values({ studentId, materialNodeId: nodeId });
-    }
-  } else {
+  const wanted = new Set((nodeIds ?? []).filter(Boolean));
+
+  // Выдавать можно только корневые разделы общей базы.
+  const roots = await db
+    .select({ id: materialNodes.id })
+    .from(materialNodes)
+    .where(
+      and(
+        eq(materialNodes.scope, "MATERIAL"),
+        isNull(materialNodes.parentId),
+        isNull(materialNodes.ownerId),
+      ),
+    );
+  const allowed = new Set(roots.map((r) => r.id));
+
+  const current = await db
+    .select({ nodeId: studentMaterials.materialNodeId })
+    .from(studentMaterials)
+    .where(eq(studentMaterials.studentId, studentId));
+  const have = new Set(current.map((c) => c.nodeId));
+
+  const toAdd = [...wanted].filter((id) => allowed.has(id) && !have.has(id));
+  const toDrop = [...have].filter((id) => allowed.has(id) && !wanted.has(id));
+
+  if (toAdd.length) {
+    await db
+      .insert(studentMaterials)
+      .values(toAdd.map((materialNodeId) => ({ studentId, materialNodeId })));
+  }
+  if (toDrop.length) {
     await db
       .delete(studentMaterials)
       .where(
         and(
           eq(studentMaterials.studentId, studentId),
-          eq(studentMaterials.materialNodeId, nodeId),
+          inArray(studentMaterials.materialNodeId, toDrop),
         ),
       );
   }
 
   revalidateMaterials();
+  return { ok: true, message: `Открыто разделов: ${wanted.size}` };
 }

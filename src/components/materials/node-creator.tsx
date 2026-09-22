@@ -5,6 +5,7 @@ import { Modal } from "@/components/modal";
 import { IconPicker } from "./icon-picker";
 import { createNodesAction } from "@/lib/actions/materials";
 import { IconPlus, IconX } from "@/components/icons";
+import type { TreeScope } from "./node-editor";
 import { cn } from "@/lib/utils";
 
 const inputCls =
@@ -13,7 +14,7 @@ const inputCls =
 export type CreateTarget = {
   parentId: string | null;
   kind: "FOLDER" | "PAGE";
-  scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
+  scope?: TreeScope;
   ownerId?: string;
 };
 

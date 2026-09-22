@@ -24,7 +24,7 @@ import { Modal } from "@/components/modal";
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
 import { RuleReader } from "./rule-reader";
 import type { RuleBlock } from "@/lib/rule-parser";
-import { NodeEditor, type EditorTarget } from "./node-editor";
+import { NodeEditor, type EditorTarget, type TreeScope } from "./node-editor";
 import { NodeCreator } from "./node-creator";
 import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
@@ -128,11 +128,8 @@ export function MaterialsExplorer({
   emptyText?: string;
   /** Конструктор доступен только учителю. */
   editable?: boolean;
-  /**
-   * MATERIAL — общая библиотека, MISTAKE — ошибки ученика,
-   * PERSONAL — личные материалы учителя.
-   */
-  scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
+  /** Какому дереву принадлежит то, что здесь создаётся. */
+  scope?: TreeScope;
   /** Владелец личного дерева (для scope MISTAKE). */
   ownerId?: string;
 }) {

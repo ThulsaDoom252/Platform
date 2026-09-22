@@ -9,12 +9,15 @@ import { IconPencil } from "@/components/icons";
 const inputCls =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
+/** Дерево, которому принадлежит узел. Один список на весь конструктор. */
+export type TreeScope = "MATERIAL" | "PERSONAL" | "STUDENT" | "MISTAKE";
+
 export type EditorTarget =
   | {
       mode: "create";
       parentId: string | null;
       kind: "FOLDER" | "PAGE";
-      scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
+      scope?: TreeScope;
       ownerId?: string;
     }
   | {

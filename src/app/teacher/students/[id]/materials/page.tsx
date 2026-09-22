@@ -4,8 +4,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getDict } from "@/lib/i18n/server";
-import { getMaterialsTree } from "@/lib/materials";
+import { getOwnedTree, getSharedSections } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
+import { SharedAccess } from "@/components/materials/shared-access";
 import { Avatar } from "@/components/avatar";
 import { IconChevronLeft } from "@/components/icons";
 
@@ -31,7 +32,8 @@ export default async function StudentMaterialsForTeacherPage({
 
   if (!student || student.role !== "STUDENT") notFound();
 
-  const tree = await getMaterialsTree(student.id);
+  const tree = await getOwnedTree("STUDENT", student.id);
+  const { sections, granted } = await getSharedSections(student.id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -53,10 +55,19 @@ export default async function StudentMaterialsForTeacherPage({
         </div>
       </div>
 
-      <MaterialsExplorer tree={tree} editable progress={undefined} />
+      <MaterialsExplorer
+        tree={tree}
+        editable
+        scope="STUDENT"
+        ownerId={student.id}
+        emptyText="Личных материалов пока нет. Создай раздел или скопируй сюда из своей базы через «Поделиться»."
+      />
+
+      <SharedAccess studentId={student.id} sections={sections} granted={granted} />
 
       <p className="text-[11px] text-faint">
-        Показаны разделы, назначенные этому ученику. Новые разделы получают все ученики.
+        Это личное дерево ученика — его структуру можно менять как угодно, на
+        других учеников и на твою базу это не влияет.
       </p>
     </div>
   );

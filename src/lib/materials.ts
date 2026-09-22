@@ -143,7 +143,7 @@ export async function getMaterialsTree(studentId?: string): Promise<MaterialNode
 
 /** Дерево, принадлежащее одному человеку: ошибки ученика или личные материалы. */
 export async function getOwnedTree(
-  scope: "MISTAKE" | "PERSONAL",
+  scope: "MISTAKE" | "PERSONAL" | "STUDENT",
   ownerId: string,
 ): Promise<MaterialNode[]> {
   const rows = await db
@@ -159,6 +159,47 @@ export async function getOwnedTree(
 /** Личное дерево ошибок ученика. */
 export const getMistakesTree = (studentId: string) =>
   getOwnedTree("MISTAKE", studentId);
+
+/** Корневые разделы общей базы и те из них, что открыты ученику. */
+export async function getSharedSections(studentId: string): Promise<{
+  sections: { id: string; name: string; icon: string | null }[];
+  granted: string[];
+}> {
+  const sections = await db
+    .select({
+      id: materialNodes.id,
+      name: materialNodes.name,
+      icon: materialNodes.icon,
+    })
+    .from(materialNodes)
+    .where(
+      and(
+        eq(materialNodes.scope, "MATERIAL"),
+        isNull(materialNodes.parentId),
+        isNull(materialNodes.ownerId),
+      ),
+    )
+    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+
+  const rows = await db
+    .select({ nodeId: studentMaterials.materialNodeId })
+    .from(studentMaterials)
+    .where(eq(studentMaterials.studentId, studentId));
+
+  return { sections, granted: rows.map((r) => r.nodeId) };
+}
+
+/**
+ * Всё, что видит ученик: своё личное дерево плюс открытые ему
+ * разделы общей базы. Деревья независимы, поэтому просто ставим их рядом.
+ */
+export async function getStudentLibrary(studentId: string): Promise<MaterialNode[]> {
+  const [own, shared] = await Promise.all([
+    getOwnedTree("STUDENT", studentId),
+    getMaterialsTree(studentId),
+  ]);
+  return [...own, ...shared];
+}
 
 /** Плоский подсчёт файлов в ветке — для подписи «N материалов». */
 export function countFiles(node: MaterialNode): number {

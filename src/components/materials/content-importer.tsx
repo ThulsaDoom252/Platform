@@ -9,6 +9,7 @@ import {
 } from "@/lib/materials-parser";
 import { savePageContentAction, type ParseState } from "@/lib/actions/materials";
 import { IconMaterials, IconCheck } from "@/components/icons";
+import type { TreeScope } from "./node-editor";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,7 +30,7 @@ export function ContentImporter({
 }: {
   node: { id: string; name: string } | null;
   onClose: () => void;
-  scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
+  scope?: TreeScope;
 }) {
   const modes: ParserMode[] =
     scope === "MISTAKE" ? ["mistake", "rule"] : ["vocabulary", "rule"];

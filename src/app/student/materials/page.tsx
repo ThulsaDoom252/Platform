@@ -3,13 +3,14 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { getDict } from "@/lib/i18n/server";
-import { getMaterialsTree } from "@/lib/materials";
+import { getStudentLibrary } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 
 export default async function StudentMaterialsPage() {
   const session = await getSession();
   const { t } = await getDict();
-  const tree = await getMaterialsTree(session!.userId);
+  // Своё личное дерево плюс открытые разделы общей базы.
+  const tree = await getStudentLibrary(session!.userId);
 
   const [me] = await db
     .select({ progress: users.progressPercent })
