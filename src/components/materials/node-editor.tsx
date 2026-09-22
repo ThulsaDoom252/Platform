@@ -3,12 +3,8 @@
 import { useActionState, useEffect, useState } from "react";
 import { Modal } from "@/components/modal";
 import { IconPicker } from "./icon-picker";
-import {
-  createNodeAction,
-  updateNodeAction,
-  type NodeState,
-} from "@/lib/actions/materials";
-import { IconPencil, IconPlus } from "@/components/icons";
+import { updateNodeAction, type NodeState } from "@/lib/actions/materials";
+import { IconPencil } from "@/components/icons";
 
 const inputCls =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
@@ -30,16 +26,18 @@ export type EditorTarget =
       isPage: boolean;
     };
 
+/** Переименование и смена иконки. Создание живёт в NodeCreator. */
 export function NodeEditor({
   target,
   onClose,
 }: {
-  target: EditorTarget | null;
+  target: Extract<EditorTarget, { mode: "edit" }> | null;
   onClose: () => void;
 }) {
-  const isEdit = target?.mode === "edit";
-  const action = isEdit ? updateNodeAction : createNodeAction;
-  const [state, formAction, pending] = useActionState<NodeState, FormData>(action, {});
+  const [state, formAction, pending] = useActionState<NodeState, FormData>(
+    updateNodeAction,
+    {},
+  );
 
   const [icon, setIcon] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -47,15 +45,9 @@ export function NodeEditor({
 
   useEffect(() => {
     if (!target) return;
-    if (target.mode === "edit") {
-      setIcon(target.icon);
-      setName(target.name);
-      setDescription(target.description ?? "");
-    } else {
-      setIcon(target.kind === "PAGE" ? "📄" : "📁");
-      setName("");
-      setDescription("");
-    }
+    setIcon(target.icon);
+    setName(target.name);
+    setDescription(target.description ?? "");
   }, [target]);
 
   // Закрываем окно, когда действие отработало успешно.
@@ -65,31 +57,17 @@ export function NodeEditor({
 
   if (!target) return null;
 
-  const isPage = target.mode === "edit" ? target.isPage : target.kind === "PAGE";
-  const title = isEdit
-    ? "Переименовать"
-    : isPage
-      ? "Новая страница"
-      : "Новая папка";
+  const isPage = target.isPage;
 
   return (
     <Modal
       open
       onClose={onClose}
-      title={title}
-      icon={isEdit ? <IconPencil className="h-5 w-5" /> : <IconPlus className="h-5 w-5" />}
+      title="Переименовать"
+      icon={<IconPencil className="h-5 w-5" />}
     >
       <form action={formAction} className="flex flex-col gap-4">
-        {target.mode === "edit" ? (
-          <input type="hidden" name="nodeId" value={target.nodeId} />
-        ) : (
-          <>
-            <input type="hidden" name="parentId" value={target.parentId ?? ""} />
-            <input type="hidden" name="kind" value={target.kind} />
-            <input type="hidden" name="scope" value={target.scope ?? "MATERIAL"} />
-            <input type="hidden" name="ownerId" value={target.ownerId ?? ""} />
-          </>
-        )}
+        <input type="hidden" name="nodeId" value={target.nodeId} />
         <input type="hidden" name="icon" value={icon ?? ""} />
 
         <div>
@@ -100,7 +78,7 @@ export function NodeEditor({
             onChange={(e) => setName(e.target.value)}
             required
             autoFocus
-            placeholder={isPage ? "Например: Sport" : "Например: Vocabulary"}
+            placeholder="Название"
             className={`${inputCls} mt-1.5`}
           />
         </div>

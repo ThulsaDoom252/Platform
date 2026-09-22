@@ -51,24 +51,40 @@ async function assignToAllStudents(nodeId: string) {
 
 export type NodeState = { ok?: boolean; error?: string; nodeId?: string };
 
-/** Создать папку или страницу. Корневые разделы сразу видят все ученики. */
-export async function createNodeAction(
-  _prev: NodeState,
-  formData: FormData,
-): Promise<NodeState> {
+export type NewNode = { name: string; icon: string | null; description?: string | null };
+
+export type CreateOptions = {
+  parentId: string | null;
+  kind: "FOLDER" | "PAGE";
+  scope?: "MATERIAL" | "MISTAKE";
+  ownerId?: string | null;
+};
+
+/**
+ * Создать сразу несколько папок или страниц в одном месте.
+ * Корневые разделы общей библиотеки сразу получают все ученики;
+ * личное дерево ошибок никому не раздаётся — оно и так принадлежит ученику.
+ */
+export async function createNodesAction(
+  items: NewNode[],
+  opts: CreateOptions,
+): Promise<BulkState> {
   await requireTeacher();
 
-  const parentId = String(formData.get("parentId") || "") || null;
-  const name = String(formData.get("name") || "").trim();
-  const icon = String(formData.get("icon") || "").trim() || null;
-  const kind = String(formData.get("kind") || "FOLDER");
-  // MATERIAL — общая библиотека, MISTAKE — личное дерево ошибок ученика.
-  const scope = String(formData.get("scope") || "MATERIAL") === "MISTAKE"
-    ? "MISTAKE"
-    : "MATERIAL";
-  const ownerId = String(formData.get("ownerId") || "") || null;
+  const parentId = opts.parentId || null;
+  const scope: "MATERIAL" | "MISTAKE" = opts.scope === "MISTAKE" ? "MISTAKE" : "MATERIAL";
+  const ownerId = scope === "MISTAKE" ? opts.ownerId || null : null;
+  const type: "FOLDER" | "FILE" = opts.kind === "PAGE" ? "FILE" : "FOLDER";
 
-  if (!name) return { error: "Введи название" };
+  const clean = (items ?? [])
+    .map((i) => ({
+      name: String(i?.name ?? "").trim().slice(0, 200),
+      icon: i?.icon ? String(i.icon).slice(0, 16) : null,
+      description: i?.description ? String(i.description).trim().slice(0, 500) : null,
+    }))
+    .filter((i) => i.name);
+
+  if (clean.length === 0) return { error: "Введи название" };
 
   const [{ value: lastOrder } = { value: 0 }] = await db
     .select({ value: max(materialNodes.sortOrder) })
@@ -79,31 +95,33 @@ export async function createNodeAction(
         : and(
             isNull(materialNodes.parentId),
             eq(materialNodes.scope, scope),
-            ownerId && scope === "MISTAKE"
-              ? eq(materialNodes.ownerId, ownerId)
-              : isNull(materialNodes.ownerId),
+            ownerId ? eq(materialNodes.ownerId, ownerId) : isNull(materialNodes.ownerId),
           ),
     );
 
-  const [row] = await db
+  const rows = await db
     .insert(materialNodes)
-    .values({
-      parentId,
-      name,
-      icon,
-      scope,
-      ownerId: scope === "MISTAKE" ? ownerId : null,
-      // «Страница» — это FILE без fileKind: её открывает читалка фраз.
-      type: kind === "PAGE" ? "FILE" : "FOLDER",
-      sortOrder: (lastOrder ?? 0) + 1,
-    })
-    .returning();
+    .values(
+      clean.map((i, idx) => ({
+        parentId,
+        name: i.name,
+        icon: i.icon,
+        description: i.description,
+        scope,
+        ownerId,
+        // «Страница» — это FILE без fileKind: её открывает читалка.
+        type,
+        sortOrder: (lastOrder ?? 0) + idx + 1,
+      })),
+    )
+    .returning({ id: materialNodes.id });
 
-  // Личное дерево ошибок никому не раздаётся — оно и так принадлежит ученику.
-  if (!parentId && scope === "MATERIAL") await assignToAllStudents(row.id);
+  if (!parentId && scope === "MATERIAL") {
+    for (const r of rows) await assignToAllStudents(r.id);
+  }
 
   revalidateMaterials();
-  return { ok: true, nodeId: row.id };
+  return { ok: true, message: `Создано: ${rows.length}` };
 }
 
 /** Переименовать узел, сменить иконку и подзаголовок. */

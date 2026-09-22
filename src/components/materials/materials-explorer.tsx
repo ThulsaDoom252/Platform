@@ -24,6 +24,7 @@ import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
 import { RuleReader } from "./rule-reader";
 import type { RuleBlock } from "@/lib/rule-parser";
 import { NodeEditor, type EditorTarget } from "./node-editor";
+import { NodeCreator } from "./node-creator";
 import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
@@ -521,9 +522,9 @@ export function MaterialsExplorer({
             </button>
           )}
         </div>
-        <NodeEditor
-          key={editorTarget ? "create-root" : "editor-idle"}
-          target={editorTarget}
+        <NodeCreator
+          key={editorTarget ? "create-root" : "creator-idle"}
+          target={editorTarget?.mode === "create" ? editorTarget : null}
           onClose={() => setEditorTarget(null)}
         />
       </>
@@ -1197,13 +1198,18 @@ export function MaterialsExplorer({
               прошлого успешного действия закрыло бы его сразу. */}
           <NodeEditor
             key={
-              editorTarget
-                ? editorTarget.mode === "edit"
-                  ? `edit-${editorTarget.nodeId}`
-                  : `create-${editorTarget.parentId ?? "root"}-${editorTarget.kind}`
-                : "editor-idle"
+              editorTarget?.mode === "edit" ? `edit-${editorTarget.nodeId}` : "editor-idle"
             }
-            target={editorTarget}
+            target={editorTarget?.mode === "edit" ? editorTarget : null}
+            onClose={() => setEditorTarget(null)}
+          />
+          <NodeCreator
+            key={
+              editorTarget?.mode === "create"
+                ? `create-${editorTarget.parentId ?? "root"}-${editorTarget.kind}`
+                : "creator-idle"
+            }
+            target={editorTarget?.mode === "create" ? editorTarget : null}
             onClose={() => setEditorTarget(null)}
           />
           <ContentImporter
