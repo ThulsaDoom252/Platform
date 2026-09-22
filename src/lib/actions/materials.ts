@@ -130,31 +130,81 @@ export async function updateNodeAction(
   return { ok: true, nodeId };
 }
 
+/**
+ * Дополняет список узлов всеми их потомками.
+ * `parentId` не имеет внешнего ключа, поэтому каскада нет — считаем вручную.
+ */
+async function withDescendants(ids: string[]): Promise<string[]> {
+  const all = await db
+    .select({ id: materialNodes.id, parentId: materialNodes.parentId })
+    .from(materialNodes);
+
+  const found = new Set(ids);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of all) {
+      if (n.parentId && found.has(n.parentId) && !found.has(n.id)) {
+        found.add(n.id);
+        grew = true;
+      }
+    }
+  }
+  return [...found];
+}
+
 /** Удалить узел вместе со всем содержимым. */
 export async function deleteNodeAction(formData: FormData) {
   await requireTeacher();
   const nodeId = String(formData.get("nodeId") || "");
   if (!nodeId) return;
 
-  // parentId не имеет внешнего ключа, поэтому потомков собираем вручную.
-  const all = await db
-    .select({ id: materialNodes.id, parentId: materialNodes.parentId })
-    .from(materialNodes);
+  await db
+    .delete(materialNodes)
+    .where(inArray(materialNodes.id, await withDescendants([nodeId])));
+  revalidateMaterials();
+}
 
-  const toDelete = new Set<string>([nodeId]);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const n of all) {
-      if (n.parentId && toDelete.has(n.parentId) && !toDelete.has(n.id)) {
-        toDelete.add(n.id);
-        grew = true;
-      }
-    }
+export type BulkState = { ok?: boolean; error?: string; message?: string };
+
+/** Удалить несколько выбранных узлов разом, каждый со своим содержимым. */
+export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
+  await requireTeacher();
+
+  const clean = [...new Set((ids ?? []).filter((id) => typeof id === "string" && id))];
+  if (clean.length === 0) return { error: "Ничего не выбрано" };
+
+  const all = await withDescendants(clean);
+  await db.delete(materialNodes).where(inArray(materialNodes.id, all));
+
+  revalidateMaterials();
+  return { ok: true, message: `Удалено: ${clean.length}` };
+}
+
+/**
+ * Сменить иконки сразу нескольким узлам.
+ * Одна иконка на всех и «каждому своя» — это один и тот же вызов,
+ * клиент просто присылает разный список пар.
+ */
+export async function updateNodeIconsAction(
+  entries: { id: string; icon: string }[],
+): Promise<BulkState> {
+  await requireTeacher();
+
+  const clean = (entries ?? []).filter(
+    (e) => e && typeof e.id === "string" && e.id && typeof e.icon === "string",
+  );
+  if (clean.length === 0) return { error: "Иконка не выбрана" };
+
+  for (const e of clean) {
+    await db
+      .update(materialNodes)
+      .set({ icon: e.icon.slice(0, 16) || null })
+      .where(eq(materialNodes.id, e.id));
   }
 
-  await db.delete(materialNodes).where(inArray(materialNodes.id, [...toDelete]));
   revalidateMaterials();
+  return { ok: true, message: `Иконок обновлено: ${clean.length}` };
 }
 
 export type MoveState = { ok?: boolean; error?: string };

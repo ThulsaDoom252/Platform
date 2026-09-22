@@ -15,7 +15,9 @@ import {
   IconSprout,
   IconPlus,
   IconGrip,
+  IconMaterials,
 } from "@/components/icons";
+import { Modal } from "@/components/modal";
 
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
 import { RuleReader } from "./rule-reader";
@@ -23,7 +25,12 @@ import type { RuleBlock } from "@/lib/rule-parser";
 import { NodeEditor, type EditorTarget } from "./node-editor";
 import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
-import { deleteNodeAction, moveNodeAction } from "@/lib/actions/materials";
+import { BulkIconEditor } from "./bulk-icon-editor";
+import {
+  deleteNodeAction,
+  deleteNodesAction,
+  moveNodeAction,
+} from "@/lib/actions/materials";
 
 /** Цель «в корень» у перетаскивания — папки с таким id не бывает. */
 const ROOT_DROP = "__root__";
@@ -119,6 +126,20 @@ export function MaterialsExplorer({
   const [dropId, setDropId] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, startMove] = useTransition();
+
+  /** Групповые операции: выбор галочками или Ctrl+клик. */
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [bulkIcons, setBulkIcons] = useState(false);
+  /** Очередь наполнения: по выбранным страницам идём одна за другой. */
+  const [fillQueue, setFillQueue] = useState<{ ids: string[]; index: number } | null>(null);
+
+  // Дерево могло перестроиться (перенос, удаление) — чистим выбор от призраков.
+  useEffect(() => {
+    setSelection((prev) => {
+      const next = new Set([...prev].filter((id) => byId.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [byId]);
 
   useEffect(() => {
     if (!menu) return;
@@ -261,6 +282,82 @@ export function MaterialsExplorer({
         <IconGrip className="h-3.5 w-3.5" />
       </span>
     ) : null;
+
+  // ------------------------------------------------ групповой выбор
+
+  function toggleSelect(id: string) {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /** Ctrl/Cmd+клик по элементу добавляет его к выбору, обычный — открывает. */
+  function handleOpenClick(e: React.MouseEvent, n: MaterialNode) {
+    if (editable && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      toggleSelect(n.id);
+      return;
+    }
+    openNode(n);
+  }
+
+  const selectBox = (n: MaterialNode) =>
+    editable ? (
+      <input
+        type="checkbox"
+        checked={selection.has(n.id)}
+        onChange={() => toggleSelect(n.id)}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        title="Выбрать"
+        className={cn(
+          "h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent)] transition",
+          selection.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+        )}
+      />
+    ) : null;
+
+  const selectedNodes = [...selection]
+    .map((id) => byId.get(id))
+    .filter((n): n is MaterialNode => !!n);
+
+  /** Наполнять можно только страницы: папка и файл с типом сюда не годятся. */
+  const fillablePages = selectedNodes.filter((n) => n.type === "FILE" && !n.fileKind);
+
+  function deleteSelected() {
+    const names = selectedNodes.map((n) => n.name).join(", ");
+    if (
+      !confirm(
+        `Удалить ${selectedNodes.length} элементов вместе со всем содержимым?\n\n${names}\n\nЭто необратимо.`,
+      )
+    ) {
+      return;
+    }
+    const ids = [...selection];
+    setSelection(new Set());
+    startMove(async () => {
+      const res = await deleteNodesAction(ids);
+      if (res.error) setMoveError(res.error);
+    });
+  }
+
+  /** Закрывает окно наполнения и, если идёт очередь, переходит к следующей странице. */
+  function closeImporter() {
+    setImportNode(null);
+    setRuleNode(null);
+    setFillQueue((q) => {
+      if (!q) return null;
+      const next = q.index + 1;
+      return next >= q.ids.length ? null : { ...q, index: next };
+    });
+  }
+
+  const queueNode = fillQueue ? byId.get(fillQueue.ids[fillQueue.index]) ?? null : null;
+  /** Окно выбора типа показываем, пока для текущей страницы не открыт импортёр. */
+  const askFillKind = !!queueNode && !importNode && !ruleNode;
 
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const breadcrumb = selectedId ? pathById.get(selectedId) ?? [] : [];
@@ -526,10 +623,11 @@ export function MaterialsExplorer({
             dropRing(n.id),
           )}
         >
+          {selectBox(n)}
           {gripHandle()}
           <button
             type="button"
-            onClick={() => openNode(n)}
+            onClick={(e) => handleOpenClick(e, n)}
             className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-1 text-left"
           >
             <span
@@ -596,10 +694,16 @@ export function MaterialsExplorer({
             dropRing(n.id),
           )}
         >
+          {selectBox(n)}
           {gripHandle()}
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              if (editable && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                toggleSelect(n.id);
+                return;
+              }
               openNode(n);
               if (hasChildren && !isOpen) toggle(n.id);
             }}
@@ -851,17 +955,31 @@ export function MaterialsExplorer({
         {!isPhrasePage && view === "grid" && items.length > 0 && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {items.map((n) => (
+              <div key={n.id} className="group relative">
+                {editable && (
+                  <input
+                    type="checkbox"
+                    checked={selection.has(n.id)}
+                    onChange={() => toggleSelect(n.id)}
+                    title="Выбрать"
+                    className={cn(
+                      "absolute right-2.5 top-2.5 z-10 h-4 w-4 cursor-pointer accent-[var(--accent)] transition",
+                      selection.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                    )}
+                  />
+                )}
               <button
-                key={n.id}
                 type="button"
-                onClick={() => openNode(n)}
+                onClick={(e) => handleOpenClick(e, n)}
                 {...menuHandlers(n)}
                 {...dragProps(n)}
                 className={cn(
-                  "flex flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-md",
-                  selectedId === n.id
-                    ? "border-accent bg-accent-soft"
-                    : "border-line hover:bg-surface-2",
+                  "flex w-full flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-md",
+                  selection.has(n.id)
+                    ? "border-accent bg-accent-soft ring-2 ring-accent"
+                    : selectedId === n.id
+                      ? "border-accent bg-accent-soft"
+                      : "border-line hover:bg-surface-2",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
                 )}
@@ -886,6 +1004,7 @@ export function MaterialsExplorer({
                   )}
                 </span>
               </button>
+              </div>
             ))}
           </div>
         )}
@@ -893,14 +1012,16 @@ export function MaterialsExplorer({
         {!isPhrasePage && view === "list" && items.length > 0 && (
           <div className="flex flex-col divide-y divide-line">
             {items.map((n) => (
+              <div key={n.id} className="group flex items-center gap-2">
+                {selectBox(n)}
               <button
-                key={n.id}
                 type="button"
-                onClick={() => openNode(n)}
+                onClick={(e) => handleOpenClick(e, n)}
                 {...menuHandlers(n)}
                 {...dragProps(n)}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg py-2.5 text-left transition hover:bg-surface-2",
+                  "flex min-w-0 flex-1 items-center gap-3 rounded-lg py-2.5 text-left transition hover:bg-surface-2",
+                  selection.has(n.id) && "bg-accent-soft",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
                 )}
@@ -927,6 +1048,7 @@ export function MaterialsExplorer({
                     : n.sizeLabel}
                 </span>
               </button>
+              </div>
             ))}
           </div>
         )}
@@ -950,15 +1072,131 @@ export function MaterialsExplorer({
           <ContentImporter
             key={importNode ? `import-${importNode.id}` : "import-idle"}
             node={importNode}
-            onClose={() => setImportNode(null)}
+            onClose={closeImporter}
             scope={scope}
           />
           <RuleImporter
             key={ruleNode ? `rule-${ruleNode.id}` : "rule-idle"}
             node={ruleNode}
-            onClose={() => setRuleNode(null)}
+            onClose={closeImporter}
           />
+
+          {bulkIcons && (
+            <BulkIconEditor
+              nodes={selectedNodes.map((n) => ({ id: n.id, name: n.name, icon: n.icon }))}
+              onClose={() => setBulkIcons(false)}
+            />
+          )}
+
+          {/* Очередь наполнения: тип выбираем для каждой страницы отдельно —
+              в одной партии бывают и словники, и правила. */}
+          {askFillKind && queueNode && (
+            <Modal
+              open
+              onClose={() => setFillQueue(null)}
+              title={`Наполнить ${fillQueue!.index + 1} из ${fillQueue!.ids.length}`}
+              icon={<IconMaterials className="h-5 w-5" />}
+            >
+              <div className="flex flex-col gap-4">
+                <p className="rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm text-content">
+                  {queueNode.icon} <span className="font-semibold">{queueNode.name}</span>
+                </p>
+                <p className="text-sm text-muted">Чем заполнить эту страницу?</p>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setImportNode({ id: queueNode.id, name: queueNode.name })}
+                    className="rounded-xl border border-line p-3 text-left transition hover:border-accent hover:bg-surface-2"
+                  >
+                    <span className="block text-sm font-semibold text-content">
+                      {scope === "MISTAKE" ? "Ошибка" : "Словник"}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-muted">
+                      разбор текста из Google Docs
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRuleNode({
+                        id: queueNode.id,
+                        name: queueNode.name,
+                        icon: queueNode.icon,
+                      })
+                    }
+                    className="rounded-xl border border-line p-3 text-left transition hover:border-accent hover:bg-surface-2"
+                  >
+                    <span className="block text-sm font-semibold text-content">Правило</span>
+                    <span className="mt-0.5 block text-[11px] text-muted">
+                      вставка с разметкой — таблицы и врезки сохранятся
+                    </span>
+                  </button>
+                </div>
+
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setFillQueue(null)}
+                    className="h-11 flex-1 rounded-xl border border-line text-sm font-semibold text-muted transition hover:bg-surface-2"
+                  >
+                    Прервать
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeImporter}
+                    className="h-11 flex-1 rounded-xl bg-surface-2 text-sm font-semibold text-content transition hover:opacity-90"
+                  >
+                    Пропустить
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
         </>
+      )}
+
+      {/* ---------- Панель группового выбора ---------- */}
+      {editable && selection.size > 0 && (
+        <div className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-2xl bg-surface px-3 py-2.5 shadow-xl ring-1 ring-line">
+          <span className="px-1.5 text-sm font-semibold text-content">
+            Выбрано: {selection.size}
+          </span>
+          <button
+            type="button"
+            onClick={() => setBulkIcons(true)}
+            className="h-9 rounded-xl bg-accent px-3.5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Иконки
+          </button>
+          <button
+            type="button"
+            disabled={fillablePages.length === 0}
+            title={
+              fillablePages.length === 0
+                ? "Наполнять можно только страницы, не папки"
+                : undefined
+            }
+            onClick={() => setFillQueue({ ids: fillablePages.map((n) => n.id), index: 0 })}
+            className="h-9 rounded-xl border border-line px-3.5 text-sm font-semibold text-content transition hover:bg-surface-2 disabled:opacity-40"
+          >
+            Наполнить ({fillablePages.length})
+          </button>
+          <button
+            type="button"
+            onClick={deleteSelected}
+            className="h-9 rounded-xl px-3.5 text-sm font-semibold text-rose-500 transition hover:bg-surface-2"
+          >
+            Удалить
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelection(new Set())}
+            className="h-9 rounded-xl px-3 text-sm font-medium text-muted transition hover:bg-surface-2"
+          >
+            Снять
+          </button>
+        </div>
       )}
 
       {contextMenu}
@@ -966,7 +1204,9 @@ export function MaterialsExplorer({
       {(moving || moveError) && (
         <div
           className={cn(
-            "fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-xl",
+            "fixed left-1/2 z-50 -translate-x-1/2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-xl",
+            // Не наезжаем на панель группового выбора.
+            selection.size > 0 ? "bottom-20" : "bottom-5",
             moveError ? "bg-rose-500 text-white" : "bg-surface text-content ring-1 ring-line",
           )}
         >
