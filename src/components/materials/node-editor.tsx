@@ -14,7 +14,7 @@ export type EditorTarget =
       mode: "create";
       parentId: string | null;
       kind: "FOLDER" | "PAGE";
-      scope?: "MATERIAL" | "MISTAKE";
+      scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
       ownerId?: string;
     }
   | {

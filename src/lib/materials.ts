@@ -141,19 +141,24 @@ export async function getMaterialsTree(studentId?: string): Promise<MaterialNode
   return result;
 }
 
-/** Личное дерево ошибок ученика. */
-export async function getMistakesTree(studentId: string): Promise<MaterialNode[]> {
+/** Дерево, принадлежащее одному человеку: ошибки ученика или личные материалы. */
+export async function getOwnedTree(
+  scope: "MISTAKE" | "PERSONAL",
+  ownerId: string,
+): Promise<MaterialNode[]> {
   const rows = await db
     .select()
     .from(materialNodes)
-    .where(
-      and(eq(materialNodes.scope, "MISTAKE"), eq(materialNodes.ownerId, studentId)),
-    )
+    .where(and(eq(materialNodes.scope, scope), eq(materialNodes.ownerId, ownerId)))
     .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
 
   const { roots } = await buildTree(rows);
   return roots;
 }
+
+/** Личное дерево ошибок ученика. */
+export const getMistakesTree = (studentId: string) =>
+  getOwnedTree("MISTAKE", studentId);
 
 /** Плоский подсчёт файлов в ветке — для подписи «N материалов». */
 export function countFiles(node: MaterialNode): number {

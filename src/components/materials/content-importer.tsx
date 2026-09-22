@@ -29,7 +29,7 @@ export function ContentImporter({
 }: {
   node: { id: string; name: string } | null;
   onClose: () => void;
-  scope?: "MATERIAL" | "MISTAKE";
+  scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
 }) {
   const modes: ParserMode[] =
     scope === "MISTAKE" ? ["mistake", "rule"] : ["vocabulary", "rule"];

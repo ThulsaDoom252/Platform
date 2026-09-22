@@ -128,8 +128,11 @@ export function MaterialsExplorer({
   emptyText?: string;
   /** Конструктор доступен только учителю. */
   editable?: boolean;
-  /** MATERIAL — общая библиотека, MISTAKE — личное дерево ошибок ученика. */
-  scope?: "MATERIAL" | "MISTAKE";
+  /**
+   * MATERIAL — общая библиотека, MISTAKE — ошибки ученика,
+   * PERSONAL — личные материалы учителя.
+   */
+  scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
   /** Владелец личного дерева (для scope MISTAKE). */
   ownerId?: string;
 }) {

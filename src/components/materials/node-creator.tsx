@@ -13,7 +13,7 @@ const inputCls =
 export type CreateTarget = {
   parentId: string | null;
   kind: "FOLDER" | "PAGE";
-  scope?: "MATERIAL" | "MISTAKE";
+  scope?: "MATERIAL" | "MISTAKE" | "PERSONAL";
   ownerId?: string;
 };
 

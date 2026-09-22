@@ -53,10 +53,23 @@ export type NodeState = { ok?: boolean; error?: string; nodeId?: string };
 
 export type NewNode = { name: string; icon: string | null; description?: string | null };
 
+/**
+ * MATERIAL — общая библиотека, MISTAKE — ошибки ученика,
+ * PERSONAL — личные материалы учителя, которых ученики не видят.
+ */
+export type NodeScope = "MATERIAL" | "MISTAKE" | "PERSONAL";
+
+/** У личных деревьев есть владелец, у общей библиотеки — нет. */
+const isOwned = (scope: NodeScope) => scope !== "MATERIAL";
+
+function asScope(value: unknown): NodeScope {
+  return value === "MISTAKE" || value === "PERSONAL" ? value : "MATERIAL";
+}
+
 export type CreateOptions = {
   parentId: string | null;
   kind: "FOLDER" | "PAGE";
-  scope?: "MATERIAL" | "MISTAKE";
+  scope?: NodeScope;
   ownerId?: string | null;
 };
 
@@ -72,8 +85,8 @@ export async function createNodesAction(
   await requireTeacher();
 
   const parentId = opts.parentId || null;
-  const scope: "MATERIAL" | "MISTAKE" = opts.scope === "MISTAKE" ? "MISTAKE" : "MATERIAL";
-  const ownerId = scope === "MISTAKE" ? opts.ownerId || null : null;
+  const scope = asScope(opts.scope);
+  const ownerId = isOwned(scope) ? opts.ownerId || null : null;
   const type: "FOLDER" | "FILE" = opts.kind === "PAGE" ? "FILE" : "FOLDER";
 
   const clean = (items ?? [])
@@ -773,14 +786,14 @@ export type CopyNode = {
 export type CopyTree = {
   key: string;
   label: string;
-  scope: "MATERIAL" | "MISTAKE";
+  scope: NodeScope;
   ownerId: string | null;
   nodes: CopyNode[];
 };
 
 /** Все деревья, доступные как место назначения. */
 export async function listCopyTargetsAction(): Promise<CopyTree[]> {
-  await requireTeacher();
+  const session = await requireTeacher();
 
   const rows = await db
     .select({
@@ -812,6 +825,12 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
         type: type as "FOLDER" | "FILE",
       }));
 
+  const [teacher] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+
   return [
     {
       key: "material",
@@ -819,6 +838,13 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
       scope: "MATERIAL" as const,
       ownerId: null,
       nodes: pick("MATERIAL", null),
+    },
+    {
+      key: "personal",
+      label: `Мои материалы — ${teacher?.name ?? "учитель"}`,
+      scope: "PERSONAL" as const,
+      ownerId: session.userId,
+      nodes: pick("PERSONAL", session.userId),
     },
     ...students.map((s) => ({
       key: `mistake-${s.id}`,
@@ -836,7 +862,7 @@ export type CopyInput = {
   /** Какие вложенные узлы взять с собой. Пусто — только сами выбранные. */
   includeIds: string[];
   targetParentId: string | null;
-  targetScope: "MATERIAL" | "MISTAKE";
+  targetScope: NodeScope;
   targetOwnerId: string | null;
   /** Повторить в месте назначения цепочку родительских папок. */
   keepPath: boolean;
@@ -852,9 +878,8 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
   const roots = [...new Set((input?.ids ?? []).filter(Boolean))];
   if (roots.length === 0) return { error: "Нечего копировать" };
 
-  const scope: "MATERIAL" | "MISTAKE" =
-    input.targetScope === "MISTAKE" ? "MISTAKE" : "MATERIAL";
-  const ownerId = scope === "MISTAKE" ? input.targetOwnerId || null : null;
+  const scope = asScope(input.targetScope);
+  const ownerId = isOwned(scope) ? input.targetOwnerId || null : null;
   const targetParentId = input.targetParentId || null;
 
   const all = await db.select().from(materialNodes);
