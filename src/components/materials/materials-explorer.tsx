@@ -16,6 +16,7 @@ import {
   IconPlus,
   IconGrip,
   IconMaterials,
+  IconX,
 } from "@/components/icons";
 import { Modal } from "@/components/modal";
 
@@ -127,8 +128,10 @@ export function MaterialsExplorer({
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, startMove] = useTransition();
 
-  /** Групповые операции: выбор галочками или Ctrl+клик. */
+  /** Групповые операции: выбор галочками, Ctrl+клик выделяет диапазон. */
   const [selection, setSelection] = useState<Set<string>>(new Set());
+  /** Точка отсчёта диапазона — последний элемент, тронутый без Ctrl. */
+  const [anchorId, setAnchorId] = useState<string | null>(null);
   const [bulkIcons, setBulkIcons] = useState(false);
   /** Очередь наполнения: по выбранным страницам идём одна за другой. */
   const [fillQueue, setFillQueue] = useState<{ ids: string[]; index: number } | null>(null);
@@ -286,6 +289,7 @@ export function MaterialsExplorer({
   // ------------------------------------------------ групповой выбор
 
   function toggleSelect(id: string) {
+    setAnchorId(id);
     setSelection((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -294,15 +298,68 @@ export function MaterialsExplorer({
     });
   }
 
-  /** Ctrl/Cmd+клик по элементу добавляет его к выбору, обычный — открывает. */
-  function handleOpenClick(e: React.MouseEvent, n: MaterialNode) {
-    if (editable && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      toggleSelect(n.id);
+  /**
+   * Выделяет всё от точки отсчёта до указанного элемента.
+   * Порядок передаёт тот список, в котором кликнули: дерево и правая
+   * панель расположены по-разному, диапазон считается внутри своего.
+   */
+  function selectRange(order: string[], toId: string) {
+    const a = anchorId ? order.indexOf(anchorId) : -1;
+    const b = order.indexOf(toId);
+    if (a < 0 || b < 0) {
+      toggleSelect(toId);
       return;
     }
+    const [lo, hi] = a <= b ? [a, b] : [b, a];
+    setSelection(new Set(order.slice(lo, hi + 1)));
+  }
+
+  /** Ctrl/Shift+клик выделяет диапазон, обычный клик открывает элемент. */
+  function handleOpenClick(e: React.MouseEvent, n: MaterialNode, order: string[]) {
+    if (editable && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+      e.preventDefault();
+      selectRange(order, n.id);
+      return;
+    }
+    setAnchorId(n.id);
     openNode(n);
   }
+
+  /** Окно переименования и смены иконки. */
+  function openEditor(n: MaterialNode) {
+    setEditorTarget({
+      mode: "edit",
+      nodeId: n.id,
+      name: n.name,
+      icon: n.icon,
+      description: n.description,
+      isPage: n.type === "FILE" && !n.fileKind,
+    });
+  }
+
+  /**
+   * Иконка сама по себе — кнопка: один клик открывает редактирование.
+   * Внутри строки это <span>, потому что кнопка в кнопке недопустима.
+   */
+  const iconSlot = (n: MaterialNode, className: string, fallback = "") => {
+    const content = n.icon ?? fallback;
+    if (!editable) return <span className={className}>{content}</span>;
+    return (
+      <span
+        role="button"
+        tabIndex={-1}
+        title="Изменить иконку и название"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openEditor(n);
+        }}
+        className={cn(className, "cursor-pointer transition hover:opacity-50")}
+      >
+        {content}
+      </span>
+    );
+  };
 
   const selectBox = (n: MaterialNode) =>
     editable ? (
@@ -327,16 +384,16 @@ export function MaterialsExplorer({
   /** Наполнять можно только страницы: папка и файл с типом сюда не годятся. */
   const fillablePages = selectedNodes.filter((n) => n.type === "FILE" && !n.fileKind);
 
-  function deleteSelected() {
-    const names = selectedNodes.map((n) => n.name).join(", ");
-    if (
-      !confirm(
-        `Удалить ${selectedNodes.length} элементов вместе со всем содержимым?\n\n${names}\n\nЭто необратимо.`,
-      )
-    ) {
-      return;
-    }
-    const ids = [...selection];
+  function deleteNodes(nodes: MaterialNode[]) {
+    if (nodes.length === 0) return;
+    const names = nodes.map((n) => n.name).join(", ");
+    const question =
+      nodes.length === 1
+        ? `Удалить «${names}» вместе со всем содержимым? Это необратимо.`
+        : `Удалить ${nodes.length} элементов вместе со всем содержимым?\n\n${names}\n\nЭто необратимо.`;
+    if (!confirm(question)) return;
+
+    const ids = nodes.map((n) => n.id);
     setSelection(new Set());
     startMove(async () => {
       const res = await deleteNodesAction(ids);
@@ -358,6 +415,79 @@ export function MaterialsExplorer({
   const queueNode = fillQueue ? byId.get(fillQueue.ids[fillQueue.index]) ?? null : null;
   /** Окно выбора типа показываем, пока для текущей страницы не открыт импортёр. */
   const askFillKind = !!queueNode && !importNode && !ruleNode;
+
+  // ------------------------------------------------ горячие клавиши
+
+  /** Порядок строк дерева на экране — по нему считается диапазон. */
+  const treeOrder = useMemo(() => {
+    const out: string[] = [];
+    const walk = (nodes: MaterialNode[]) => {
+      for (const n of nodes) {
+        out.push(n.id);
+        if (n.children.length && expanded.has(n.id)) walk(n.children);
+      }
+    };
+    walk(tree);
+    return out;
+  }, [tree, expanded]);
+
+  const modalOpen = !!(
+    editorTarget ||
+    importNode ||
+    ruleNode ||
+    bulkIcons ||
+    fillQueue ||
+    menu
+  );
+
+  // Обработчик пересобирается на каждый рендер, поэтому держим его в ref —
+  // так подписка ставится один раз, но всегда видит свежее состояние.
+  const hotkeys = useRef<(e: KeyboardEvent) => void>(undefined);
+  hotkeys.current = (e: KeyboardEvent) => {
+    const el = document.activeElement as HTMLElement | null;
+    // В полях ввода Delete и Backspace означают ровно то, что означают.
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+      return;
+    }
+    if (modalOpen) return;
+
+    if (e.key === "Escape" && selection.size > 0) {
+      e.preventDefault();
+      setSelection(new Set());
+      return;
+    }
+
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      const path = selectedId ? pathById.get(selectedId) ?? [] : [];
+      const parent = path[path.length - 2];
+      if (parent) {
+        setAnchorId(parent.id);
+        openNode(parent);
+      }
+      return;
+    }
+
+    if (!editable) return;
+
+    if (e.key === "Delete") {
+      e.preventDefault();
+      deleteNodes(selectedNodes.length > 0 ? selectedNodes : selected ? [selected] : []);
+      return;
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const target = selectedNodes.length === 1 ? selectedNodes[0] : selected;
+      if (target) openEditor(target);
+    }
+  };
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => hotkeys.current?.(e);
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, []);
 
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const breadcrumb = selectedId ? pathById.get(selectedId) ?? [] : [];
@@ -522,19 +652,13 @@ export function MaterialsExplorer({
             <button
               type="button"
               onClick={() => {
-                setEditorTarget({
-                  mode: "edit",
-                  nodeId: n.id,
-                  name: n.name,
-                  icon: n.icon,
-                  description: n.description,
-                  isPage,
-                });
+                openEditor(n);
                 close();
               }}
-              className={menuItemClass}
+              className={cn(menuItemClass, "flex items-center justify-between")}
             >
               Переименовать / иконка
+              <span className="text-[10px] text-faint">Enter</span>
             </button>
 
             {isPage && (
@@ -594,9 +718,10 @@ export function MaterialsExplorer({
               <input type="hidden" name="nodeId" value={n.id} />
               <button
                 type="submit"
-                className="block w-full px-3.5 py-2 text-left text-sm text-rose-500 transition hover:bg-surface-2"
+                className="flex w-full items-center justify-between px-3.5 py-2 text-left text-sm text-rose-500 transition hover:bg-surface-2"
               >
                 Удалить
+                <span className="text-[10px] text-faint">Delete</span>
               </button>
             </form>
           </>
@@ -627,7 +752,7 @@ export function MaterialsExplorer({
           {gripHandle()}
           <button
             type="button"
-            onClick={(e) => handleOpenClick(e, n)}
+            onClick={(e) => handleOpenClick(e, n, treeOrder)}
             className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-1 text-left"
           >
             <span
@@ -638,7 +763,7 @@ export function MaterialsExplorer({
                   : "border-line bg-surface group-hover:border-faint",
               )}
             />
-            {n.icon && <span className="shrink-0 text-sm leading-none">{n.icon}</span>}
+            {n.icon && iconSlot(n, "shrink-0 text-sm leading-none")}
             <span
               className={cn(
                 "truncate text-[13px] transition",
@@ -699,24 +824,26 @@ export function MaterialsExplorer({
           <button
             type="button"
             onClick={(e) => {
-              if (editable && (e.ctrlKey || e.metaKey)) {
+              if (editable && (e.ctrlKey || e.metaKey || e.shiftKey)) {
                 e.preventDefault();
-                toggleSelect(n.id);
+                selectRange(treeOrder, n.id);
                 return;
               }
+              setAnchorId(n.id);
+              // openNode сам раскрывает папку; вызывать здесь ещё и toggle
+              // нельзя — второе обновление отменяло первое.
               openNode(n);
-              if (hasChildren && !isOpen) toggle(n.id);
             }}
             className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
           >
-            <span
-              className={cn(
+            {iconSlot(
+              n,
+              cn(
                 "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg transition",
                 isSelected ? "bg-surface shadow-sm" : "bg-surface-2",
-              )}
-            >
-              {n.icon ?? "📁"}
-            </span>
+              ),
+              "📁",
+            )}
             <span
               className={cn(
                 "truncate text-sm font-semibold transition",
@@ -777,6 +904,16 @@ export function MaterialsExplorer({
           <div className="max-h-[60vh] overflow-y-auto pr-0.5">
             {tree.map(renderCategory)}
           </div>
+        )}
+
+        {editable && selection.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelection(new Set())}
+            className="flex h-10 items-center justify-center gap-2 rounded-xl border border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
+          >
+            <IconX className="h-4 w-4" /> Снять выделение ({selection.size})
+          </button>
         )}
 
         {/* Зона появляется только во время перетаскивания — иначе она
@@ -970,7 +1107,7 @@ export function MaterialsExplorer({
                 )}
               <button
                 type="button"
-                onClick={(e) => handleOpenClick(e, n)}
+                onClick={(e) => handleOpenClick(e, n, items.map((x) => x.id))}
                 {...menuHandlers(n)}
                 {...dragProps(n)}
                 className={cn(
@@ -984,9 +1121,7 @@ export function MaterialsExplorer({
                   dropRing(n.id),
                 )}
               >
-                <span className="text-2xl leading-none">
-                  {n.icon ?? (n.type === "FOLDER" ? "📁" : "📄")}
-                </span>
+                {iconSlot(n, "text-2xl leading-none", n.type === "FOLDER" ? "📁" : "📄")}
                 <span className="w-full truncate text-sm font-semibold text-content">
                   {n.name}
                 </span>
@@ -1016,7 +1151,7 @@ export function MaterialsExplorer({
                 {selectBox(n)}
               <button
                 type="button"
-                onClick={(e) => handleOpenClick(e, n)}
+                onClick={(e) => handleOpenClick(e, n, items.map((x) => x.id))}
                 {...menuHandlers(n)}
                 {...dragProps(n)}
                 className={cn(
@@ -1026,9 +1161,11 @@ export function MaterialsExplorer({
                   dropRing(n.id),
                 )}
               >
-                <span className="w-7 shrink-0 text-center text-lg leading-none">
-                  {n.icon ?? (n.type === "FOLDER" ? "📁" : "📄")}
-                </span>
+                {iconSlot(
+                  n,
+                  "w-7 shrink-0 text-center text-lg leading-none",
+                  n.type === "FOLDER" ? "📁" : "📄",
+                )}
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-content">
                   {n.name}
                 </span>
@@ -1184,7 +1321,8 @@ export function MaterialsExplorer({
           </button>
           <button
             type="button"
-            onClick={deleteSelected}
+            onClick={() => deleteNodes(selectedNodes)}
+            title="Delete"
             className="h-9 rounded-xl px-3.5 text-sm font-semibold text-rose-500 transition hover:bg-surface-2"
           >
             Удалить
@@ -1192,10 +1330,16 @@ export function MaterialsExplorer({
           <button
             type="button"
             onClick={() => setSelection(new Set())}
-            className="h-9 rounded-xl px-3 text-sm font-medium text-muted transition hover:bg-surface-2"
+            title="Escape"
+            className="h-9 rounded-xl border border-line px-3.5 text-sm font-semibold text-muted transition hover:bg-surface-2"
           >
-            Снять
+            Снять выделение
           </button>
+          <span className="hidden px-1 text-[10px] leading-tight text-faint sm:block">
+            Del — удалить
+            <br />
+            Ctrl+клик — диапазон
+          </span>
         </div>
       )}
 
