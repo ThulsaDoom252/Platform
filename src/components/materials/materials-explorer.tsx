@@ -17,8 +17,11 @@ import {
 } from "@/components/icons";
 
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
+import { RuleReader } from "./rule-reader";
+import type { RuleBlock } from "@/lib/rule-parser";
 import { NodeEditor, type EditorTarget } from "./node-editor";
 import { ContentImporter } from "./content-importer";
+import { RuleImporter } from "./rule-importer";
 import { deleteNodeAction } from "@/lib/actions/materials";
 
 export type MaterialNode = {
@@ -31,6 +34,7 @@ export type MaterialNode = {
   category: string | null;
   sizeLabel: string | null;
   phrases: MaterialPhrase[];
+  blocks: RuleBlock[];
   children: MaterialNode[];
 };
 
@@ -76,6 +80,11 @@ export function MaterialsExplorer({
   const { t } = useT();
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
   const [importNode, setImportNode] = useState<{ id: string; name: string } | null>(null);
+  const [ruleNode, setRuleNode] = useState<{
+    id: string;
+    name: string;
+    icon: string | null;
+  } | null>(null);
 
   const { byId, pathById } = useMemo(() => {
     const byId = new Map<string, MaterialNode>();
@@ -158,7 +167,7 @@ export function MaterialsExplorer({
           )}
         </div>
         <NodeEditor
-          key={editorTarget ? "create-root" : "none"}
+          key={editorTarget ? "create-root" : "editor-idle"}
           target={editorTarget}
           onClose={() => setEditorTarget(null)}
         />
@@ -230,7 +239,19 @@ export function MaterialsExplorer({
                   }}
                   className="block w-full px-3.5 py-2 text-left text-sm font-medium text-accent transition hover:bg-surface-2"
                 >
-                  Наполнить из текста
+                  Словник из текста
+                </button>
+              )}
+              {n.type === "FILE" && !n.fileKind && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRuleNode({ id: n.id, name: n.name, icon: n.icon });
+                    setMenuFor(null);
+                  }}
+                  className="block w-full px-3.5 py-2 text-left text-sm font-medium text-accent transition hover:bg-surface-2"
+                >
+                  Вставить правило
                 </button>
               )}
               <button
@@ -569,21 +590,44 @@ export function MaterialsExplorer({
         {isPhrasePage && selected && (
           <>
             {editable && (
-              <button
-                type="button"
-                onClick={() => setImportNode({ id: selected.id, name: selected.name })}
-                className="mb-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
-              >
-                <IconPlus className="h-4 w-4" />
-                {selected.phrases.length ? "Заменить содержимое" : "Наполнить из текста"}
-              </button>
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setImportNode({ id: selected.id, name: selected.name })}
+                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
+                >
+                  <IconPlus className="h-4 w-4" /> Словник из текста
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRuleNode({
+                      id: selected.id,
+                      name: selected.name,
+                      icon: selected.icon,
+                    })
+                  }
+                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
+                >
+                  <IconPlus className="h-4 w-4" /> Вставить правило
+                </button>
+              </div>
             )}
-            <PhraseReader
-              title={selected.name}
-              icon={selected.icon}
-              description={selected.description}
-              phrases={selected.phrases}
-            />
+            {selected.blocks.length > 0 ? (
+              <RuleReader
+                title={selected.name}
+                icon={selected.icon}
+                description={selected.description}
+                blocks={selected.blocks}
+              />
+            ) : (
+              <PhraseReader
+                title={selected.name}
+                icon={selected.icon}
+                description={selected.description}
+                phrases={selected.phrases}
+              />
+            )}
           </>
         )}
 
@@ -679,16 +723,21 @@ export function MaterialsExplorer({
                 ? editorTarget.mode === "edit"
                   ? `edit-${editorTarget.nodeId}`
                   : `create-${editorTarget.parentId ?? "root"}-${editorTarget.kind}`
-                : "none"
+                : "editor-idle"
             }
             target={editorTarget}
             onClose={() => setEditorTarget(null)}
           />
           <ContentImporter
-            key={importNode ? `import-${importNode.id}` : "none"}
+            key={importNode ? `import-${importNode.id}` : "import-idle"}
             node={importNode}
             onClose={() => setImportNode(null)}
             scope={scope}
+          />
+          <RuleImporter
+            key={ruleNode ? `rule-${ruleNode.id}` : "rule-idle"}
+            node={ruleNode}
+            onClose={() => setRuleNode(null)}
           />
         </>
       )}

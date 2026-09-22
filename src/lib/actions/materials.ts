@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, isNull, max } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { materialNodes, materialPhrases, studentMaterials, users } from "@/lib/db/schema";
+import {
+  materialNodes,
+  materialPhrases,
+  materialBlocks,
+  studentMaterials,
+  users,
+  type RuleBlock,
+} from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 
@@ -213,6 +220,127 @@ export async function savePageContentAction(
     ok: true,
     message: `Сохранено: ${count} записей${notes ? `, ${notes} заметок` : ""}`,
     warnings: result.warnings,
+  };
+}
+
+const MAX_TEXT = 4000;
+const MAX_BLOCKS = 400;
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v.slice(0, MAX_TEXT) : "";
+}
+
+/**
+ * Блоки приходят из браузера (там разбирается HTML буфера обмена),
+ * поэтому форму данных проверяем на сервере, а не доверяем клиенту.
+ */
+function sanitizeBlocks(input: unknown): RuleBlock[] {
+  if (!Array.isArray(input)) return [];
+  const out: RuleBlock[] = [];
+
+  for (const raw of input.slice(0, MAX_BLOCKS)) {
+    if (!raw || typeof raw !== "object") continue;
+    const b = raw as Record<string, unknown>;
+
+    switch (b.type) {
+      case "heading":
+      case "formula":
+      case "text": {
+        const text = str(b.text);
+        if (text) out.push({ type: b.type, text });
+        break;
+      }
+      case "callout": {
+        const text = str(b.text);
+        if (!text) break;
+        const tone = ["key", "warn", "tip", "info"].includes(String(b.tone))
+          ? (b.tone as "key" | "warn" | "tip" | "info")
+          : "info";
+        const label = str(b.label);
+        out.push({ type: "callout", text, tone, ...(label ? { label } : {}) });
+        break;
+      }
+      case "example": {
+        const en = str(b.en);
+        if (!en) break;
+        const tr = str(b.tr);
+        out.push({ type: "example", en, ...(tr ? { tr } : {}) });
+        break;
+      }
+      case "list": {
+        const items = Array.isArray(b.items)
+          ? b.items.map(str).filter(Boolean).slice(0, 100)
+          : [];
+        if (items.length) out.push({ type: "list", items });
+        break;
+      }
+      case "table": {
+        const headers = Array.isArray(b.headers)
+          ? b.headers.map(str).slice(0, 10)
+          : [];
+        const rows = Array.isArray(b.rows)
+          ? b.rows
+              .filter(Array.isArray)
+              .map((r) => (r as unknown[]).map(str).slice(0, 10))
+              .slice(0, 200)
+          : [];
+        if (headers.length || rows.length) out.push({ type: "table", headers, rows });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+export type BlocksState = { ok?: boolean; error?: string; message?: string };
+
+/** Сохранить правило: блоки полностью заменяют прежнее содержимое страницы. */
+export async function saveRuleBlocksAction(
+  _prev: BlocksState,
+  formData: FormData,
+): Promise<BlocksState> {
+  await requireTeacher();
+
+  const nodeId = String(formData.get("nodeId") || "");
+  const applyTitle = formData.get("applyTitle") === "on";
+  const title = String(formData.get("title") || "").trim();
+  const subtitle = String(formData.get("subtitle") || "").trim();
+
+  if (!nodeId) return { error: "Не выбрана страница" };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(formData.get("blocks") || "[]"));
+  } catch {
+    return { error: "Не удалось прочитать разобранное содержимое" };
+  }
+
+  const blocks = sanitizeBlocks(parsed);
+  if (blocks.length === 0) return { error: "Пустое правило — нечего сохранять" };
+
+  // Страница может быть либо правилом, либо словником — чистим оба хранилища.
+  await db.delete(materialBlocks).where(eq(materialBlocks.nodeId, nodeId));
+  await db.delete(materialPhrases).where(eq(materialPhrases.nodeId, nodeId));
+
+  await db.insert(materialBlocks).values(
+    blocks.map((b, i) => ({ nodeId, sortOrder: i + 1, type: b.type, data: b })),
+  );
+
+  if (applyTitle && (title || subtitle)) {
+    await db
+      .update(materialNodes)
+      .set({
+        ...(title ? { name: title } : {}),
+        ...(subtitle ? { description: subtitle } : {}),
+      })
+      .where(eq(materialNodes.id, nodeId));
+  }
+
+  const tables = blocks.filter((b) => b.type === "table").length;
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: `Сохранено: ${blocks.length} блоков${tables ? `, таблиц: ${tables}` : ""}`,
   };
 }
 

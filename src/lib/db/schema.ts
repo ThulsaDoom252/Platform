@@ -190,6 +190,38 @@ export const materialPhrasesRelations = relations(materialPhrases, ({ one }) => 
   }),
 }));
 
+// ---------- Блоки страницы-правила ----------
+// Правило — это документ: заголовки, врезки, формулы, таблицы, примеры.
+// Список фраз (materialPhrases) такую структуру не вмещает.
+export type RuleBlock =
+  | { type: "heading"; text: string }
+  | { type: "callout"; label?: string; text: string; tone?: "key" | "warn" | "tip" | "info" }
+  | { type: "formula"; text: string }
+  | { type: "text"; text: string }
+  | { type: "example"; en: string; tr?: string }
+  | { type: "list"; items: string[] }
+  | { type: "table"; headers: string[]; rows: string[][] };
+
+export const materialBlocks = pgTable("material_blocks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nodeId: uuid("node_id")
+    .notNull()
+    .references(() => materialNodes.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  /** heading | callout | formula | text | example | list | table */
+  type: text("type").notNull(),
+  /** Содержимое блока — форма зависит от типа (см. RuleBlock). */
+  data: jsonb("data").$type<RuleBlock>().notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const materialBlocksRelations = relations(materialBlocks, ({ one }) => ({
+  node: one(materialNodes, {
+    fields: [materialBlocks.nodeId],
+    references: [materialNodes.id],
+  }),
+}));
+
 export const studentMaterials = pgTable("student_materials", {
   id: uuid("id").primaryKey().defaultRandom(),
   studentId: uuid("student_id")

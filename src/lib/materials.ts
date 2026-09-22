@@ -1,7 +1,15 @@
 import "server-only";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { materialNodes, studentMaterials, materialPhrases } from "@/lib/db/schema";
+import {
+  materialNodes,
+  studentMaterials,
+  materialPhrases,
+  materialBlocks,
+  type RuleBlock,
+} from "@/lib/db/schema";
+
+export type { RuleBlock };
 
 export type PhraseExample = { en: string; tr: string };
 
@@ -27,6 +35,8 @@ export type MaterialNode = {
   category: string | null;
   sizeLabel: string | null;
   phrases: MaterialPhrase[];
+  /** Блоки правила. Страница — либо словник (phrases), либо правило (blocks). */
+  blocks: RuleBlock[];
   children: MaterialNode[];
 };
 
@@ -59,6 +69,18 @@ async function buildTree(rows: NodeRow[]): Promise<{
     phrasesByNode.set(p.nodeId, list);
   }
 
+  const blockRows = await db
+    .select()
+    .from(materialBlocks)
+    .orderBy(asc(materialBlocks.sortOrder));
+
+  const blocksByNode = new Map<string, RuleBlock[]>();
+  for (const b of blockRows) {
+    const list = blocksByNode.get(b.nodeId) ?? [];
+    list.push(b.data as RuleBlock);
+    blocksByNode.set(b.nodeId, list);
+  }
+
   const byId = new Map<string, MaterialNode>();
   for (const r of rows) {
     byId.set(r.id, {
@@ -71,6 +93,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       category: r.category,
       sizeLabel: r.sizeLabel,
       phrases: phrasesByNode.get(r.id) ?? [],
+      blocks: blocksByNode.get(r.id) ?? [],
       children: [],
     });
   }
