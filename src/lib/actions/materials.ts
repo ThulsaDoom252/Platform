@@ -759,6 +759,264 @@ export async function saveRuleEditAction(
   return { ok: true, message: `Сохранено блоков: ${clean.length}` };
 }
 
+// ---------------------------------------------------------------- копирование
+
+export type CopyNode = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  icon: string | null;
+  type: "FOLDER" | "FILE";
+};
+
+/** Дерево, в которое можно скопировать: общая библиотека или ошибки ученика. */
+export type CopyTree = {
+  key: string;
+  label: string;
+  scope: "MATERIAL" | "MISTAKE";
+  ownerId: string | null;
+  nodes: CopyNode[];
+};
+
+/** Все деревья, доступные как место назначения. */
+export async function listCopyTargetsAction(): Promise<CopyTree[]> {
+  await requireTeacher();
+
+  const rows = await db
+    .select({
+      id: materialNodes.id,
+      parentId: materialNodes.parentId,
+      name: materialNodes.name,
+      icon: materialNodes.icon,
+      type: materialNodes.type,
+      scope: materialNodes.scope,
+      ownerId: materialNodes.ownerId,
+      sortOrder: materialNodes.sortOrder,
+    })
+    .from(materialNodes)
+    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+
+  const students = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.role, "STUDENT"));
+
+  const pick = (scope: string, ownerId: string | null) =>
+    rows
+      .filter((r) => r.scope === scope && (r.ownerId ?? null) === ownerId)
+      .map(({ id, parentId, name, icon, type }) => ({
+        id,
+        parentId,
+        name,
+        icon,
+        type: type as "FOLDER" | "FILE",
+      }));
+
+  return [
+    {
+      key: "material",
+      label: "Общая библиотека",
+      scope: "MATERIAL" as const,
+      ownerId: null,
+      nodes: pick("MATERIAL", null),
+    },
+    ...students.map((s) => ({
+      key: `mistake-${s.id}`,
+      label: `Ошибки — ${s.name}`,
+      scope: "MISTAKE" as const,
+      ownerId: s.id,
+      nodes: pick("MISTAKE", s.id),
+    })),
+  ];
+}
+
+export type CopyInput = {
+  /** Что копируем — выбранные узлы верхнего уровня. */
+  ids: string[];
+  /** Какие вложенные узлы взять с собой. Пусто — только сами выбранные. */
+  includeIds: string[];
+  targetParentId: string | null;
+  targetScope: "MATERIAL" | "MISTAKE";
+  targetOwnerId: string | null;
+  /** Повторить в месте назначения цепочку родительских папок. */
+  keepPath: boolean;
+};
+
+/**
+ * Копирует узлы вместе с содержимым в другое место — хоть в дерево
+ * другого ученика. Оригиналы не трогаются, у копий новые id.
+ */
+export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
+  await requireTeacher();
+
+  const roots = [...new Set((input?.ids ?? []).filter(Boolean))];
+  if (roots.length === 0) return { error: "Нечего копировать" };
+
+  const scope: "MATERIAL" | "MISTAKE" =
+    input.targetScope === "MISTAKE" ? "MISTAKE" : "MATERIAL";
+  const ownerId = scope === "MISTAKE" ? input.targetOwnerId || null : null;
+  const targetParentId = input.targetParentId || null;
+
+  const all = await db.select().from(materialNodes);
+  const byId = new Map(all.map((n) => [n.id, n]));
+  const include = new Set(input.includeIds ?? []);
+
+  if (targetParentId) {
+    const target = byId.get(targetParentId);
+    if (!target) return { error: "Папка назначения не найдена" };
+    if (target.type !== "FOLDER") return { error: "Копировать можно только в папку" };
+    if (target.scope !== scope || (target.ownerId ?? null) !== ownerId) {
+      return { error: "Папка назначения из другого дерева" };
+    }
+    // Внутрь самого себя копировать нельзя — получилось бы бесконечно.
+    for (let cur: string | null = targetParentId; cur; cur = byId.get(cur)?.parentId ?? null) {
+      if (roots.includes(cur)) {
+        return { error: "Нельзя копировать ветку внутрь себя самой" };
+      }
+    }
+  }
+
+  /** Следующий свободный номер в папке назначения. */
+  async function nextOrder(parentId: string | null): Promise<number> {
+    const [{ value } = { value: 0 }] = await db
+      .select({ value: max(materialNodes.sortOrder) })
+      .from(materialNodes)
+      .where(
+        parentId
+          ? eq(materialNodes.parentId, parentId)
+          : and(
+              isNull(materialNodes.parentId),
+              eq(materialNodes.scope, scope),
+              ownerId ? eq(materialNodes.ownerId, ownerId) : isNull(materialNodes.ownerId),
+            ),
+      );
+    return (value ?? 0) + 1;
+  }
+
+  /** Папка с таким именем в месте назначения — иначе заводим новую. */
+  async function ensureFolder(name: string, icon: string | null, parentId: string | null) {
+    const existing = all.find(
+      (n) =>
+        n.type === "FOLDER" &&
+        n.name === name &&
+        (n.parentId ?? null) === parentId &&
+        n.scope === scope &&
+        (n.ownerId ?? null) === ownerId,
+    );
+    if (existing) return existing.id;
+
+    const [row] = await db
+      .insert(materialNodes)
+      .values({
+        parentId,
+        name,
+        icon,
+        scope,
+        ownerId,
+        type: "FOLDER",
+        sortOrder: await nextOrder(parentId),
+      })
+      .returning();
+    all.push(row);
+    byId.set(row.id, row);
+    if (!parentId && scope === "MATERIAL") await assignToAllStudents(row.id);
+    return row.id;
+  }
+
+  /** src → копия: по этой паре потом переносим содержимое страниц. */
+  const pairs: { srcId: string; newId: string }[] = [];
+
+  async function copyNode(srcId: string, parentId: string | null) {
+    const src = byId.get(srcId);
+    if (!src) return;
+
+    const [row] = await db
+      .insert(materialNodes)
+      .values({
+        parentId,
+        name: src.name,
+        icon: src.icon,
+        description: src.description,
+        imageUrl: src.imageUrl,
+        scope,
+        ownerId,
+        type: src.type,
+        fileUrl: src.fileUrl,
+        fileKind: src.fileKind,
+        category: src.category,
+        sizeLabel: src.sizeLabel,
+        pageKind: src.pageKind,
+        sourceText: src.sourceText,
+        sortOrder: await nextOrder(parentId),
+      })
+      .returning();
+
+    pairs.push({ srcId, newId: row.id });
+    if (!parentId && scope === "MATERIAL") await assignToAllStudents(row.id);
+
+    for (const child of all.filter((n) => n.parentId === srcId)) {
+      if (include.has(child.id)) await copyNode(child.id, row.id);
+    }
+  }
+
+  for (const rootId of roots) {
+    let parentId = targetParentId;
+
+    if (input.keepPath) {
+      // Цепочка родителей оригинала, сверху вниз.
+      const chain: typeof all = [];
+      for (
+        let cur: string | null = byId.get(rootId)?.parentId ?? null;
+        cur;
+        cur = byId.get(cur)?.parentId ?? null
+      ) {
+        const node = byId.get(cur);
+        if (node) chain.unshift(node);
+      }
+      for (const folder of chain) {
+        parentId = await ensureFolder(folder.name, folder.icon, parentId);
+      }
+    }
+
+    await copyNode(rootId, parentId);
+  }
+
+  // Содержимое страниц переносим одним заходом.
+  const srcIds = pairs.map((p) => p.srcId);
+  if (srcIds.length) {
+    const idOf = new Map(pairs.map((p) => [p.srcId, p.newId]));
+
+    const phrases = await db
+      .select()
+      .from(materialPhrases)
+      .where(inArray(materialPhrases.nodeId, srcIds));
+    if (phrases.length) {
+      await db.insert(materialPhrases).values(
+        phrases.map(({ id: _id, createdAt: _c, nodeId, ...rest }) => ({
+          ...rest,
+          nodeId: idOf.get(nodeId)!,
+        })),
+      );
+    }
+
+    const blocks = await db
+      .select()
+      .from(materialBlocks)
+      .where(inArray(materialBlocks.nodeId, srcIds));
+    if (blocks.length) {
+      await db.insert(materialBlocks).values(
+        blocks.map(({ id: _id, createdAt: _c, nodeId, ...rest }) => ({
+          ...rest,
+          nodeId: idOf.get(nodeId)!,
+        })),
+      );
+    }
+  }
+
+  revalidateMaterials();
+  return { ok: true, message: `Скопировано элементов: ${pairs.length}` };
+}
+
 /** Выдать ветку конкретному ученику (или снять доступ). */
 export async function toggleAssignmentAction(formData: FormData) {
   await requireTeacher();

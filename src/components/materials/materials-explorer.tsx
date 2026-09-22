@@ -31,6 +31,16 @@ import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
 import { WordAdder, PhraseEditor } from "./phrase-form";
 import { RuleEditor } from "./rule-editor";
+import { CopyDialog, type CopySource } from "./copy-dialog";
+
+/** Дерево для окна копирования — только то, что ему нужно показать. */
+const toCopySource = (n: MaterialNode): CopySource => ({
+  id: n.id,
+  name: n.name,
+  icon: n.icon,
+  type: n.type,
+  children: n.children.map(toCopySource),
+});
 import {
   clearPagesAction,
   deleteNodeAction,
@@ -129,6 +139,7 @@ export function MaterialsExplorer({
   } | null>(null);
   const [addWordsTo, setAddWordsTo] = useState<{ id: string; name: string } | null>(null);
   const [ruleEditNode, setRuleEditNode] = useState<MaterialNode | null>(null);
+  const [copyNodes, setCopyNodes] = useState<MaterialNode[] | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
 
   const { byId, pathById } = useMemo(() => {
@@ -160,6 +171,7 @@ export function MaterialsExplorer({
   /** Куда ляжет перетаскиваемый узел: внутрь элемента либо рядом с ним. */
   const [dropAt, setDropAt] = useState<{ id: string; where: DropWhere } | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [moving, startMove] = useTransition();
 
   /** Групповые операции: выбор галочками, Ctrl+клик выделяет диапазон. */
@@ -197,10 +209,13 @@ export function MaterialsExplorer({
   }, [menu]);
 
   useEffect(() => {
-    if (!moveError) return;
-    const t = setTimeout(() => setMoveError(null), 4000);
+    if (!moveError && !notice) return;
+    const t = setTimeout(() => {
+      setMoveError(null);
+      setNotice(null);
+    }, 4000);
     return () => clearTimeout(t);
-  }, [moveError]);
+  }, [moveError, notice]);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -813,6 +828,17 @@ export function MaterialsExplorer({
                 )}
               </>
             )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setCopyNodes([n]);
+                close();
+              }}
+              className={menuItemClass}
+            >
+              Копировать в…
+            </button>
 
             {parentId && (
               <button
@@ -1433,6 +1459,17 @@ export function MaterialsExplorer({
             onClose={() => setRuleEditNode(null)}
           />
 
+          {copyNodes && copyNodes.length > 0 && (
+            <CopyDialog
+              sources={copyNodes.map(toCopySource)}
+              onClose={() => setCopyNodes(null)}
+              onDone={(message) => {
+                setSelection(new Set());
+                setNotice(message);
+              }}
+            />
+          )}
+
           {bulkIcons && (
             <BulkIconEditor
               nodes={selectedNodes.map((n) => ({ id: n.id, name: n.name, icon: n.icon }))}
@@ -1516,8 +1553,15 @@ export function MaterialsExplorer({
           </span>
           <button
             type="button"
-            onClick={() => setBulkIcons(true)}
+            onClick={() => setCopyNodes(selectedNodes)}
             className="h-9 rounded-xl bg-accent px-3.5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Копировать в…
+          </button>
+          <button
+            type="button"
+            onClick={() => setBulkIcons(true)}
+            className="h-9 rounded-xl border border-line px-3.5 text-sm font-semibold text-content transition hover:bg-surface-2"
           >
             Иконки
           </button>
@@ -1570,7 +1614,7 @@ export function MaterialsExplorer({
 
       {contextMenu}
 
-      {(moving || moveError) && (
+      {(moving || moveError || notice) && (
         <div
           className={cn(
             "fixed left-1/2 z-50 -translate-x-1/2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-xl",
@@ -1579,7 +1623,7 @@ export function MaterialsExplorer({
             moveError ? "bg-rose-500 text-white" : "bg-surface text-content ring-1 ring-line",
           )}
         >
-          {moveError ?? "Переношу…"}
+          {moveError ?? notice ?? "Переношу…"}
         </div>
       )}
     </div>
