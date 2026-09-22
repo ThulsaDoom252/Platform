@@ -68,6 +68,10 @@ const pageKind = (n: MaterialNode): "VOCAB" | "RULE" | null =>
 const pageBtn =
   "flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 text-sm font-semibold text-muted transition hover:border-accent hover:text-accent";
 
+/** Кнопка панели действий над открытой папкой. */
+const toolBtn =
+  "flex h-9 items-center justify-center gap-1.5 rounded-xl border border-line px-3.5 text-sm font-semibold text-muted transition hover:border-accent hover:text-accent";
+
 /** Цель «в корень» у перетаскивания — папки с таким id не бывает. */
 const ROOT_DROP = "__root__";
 
@@ -1192,6 +1196,66 @@ export function MaterialsExplorer({
             </button>
           </div>
         </div>
+
+        {/* Действия над открытой папкой — те же, что в контекстном меню,
+            но на виду. */}
+        {editable && !isPhrasePage && contentNode && (
+          <div className="mb-4 flex flex-wrap gap-2 border-b border-line pb-4">
+            <button
+              type="button"
+              onClick={() => setCopyNodes([contentNode])}
+              className={toolBtn}
+              title="Скопировать в другое дерево или папку"
+            >
+              Поделиться
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setEditorTarget({
+                  mode: "create",
+                  parentId: contentNode.id,
+                  kind: "FOLDER",
+                  scope,
+                  ownerId,
+                })
+              }
+              className={toolBtn}
+            >
+              <IconPlus className="h-4 w-4" /> Папка
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setEditorTarget({
+                  mode: "create",
+                  parentId: contentNode.id,
+                  kind: "PAGE",
+                  scope,
+                  ownerId,
+                })
+              }
+              className={toolBtn}
+            >
+              <IconPlus className="h-4 w-4" /> Файл
+            </button>
+            <button
+              type="button"
+              onClick={() => openEditor(contentNode)}
+              className={toolBtn}
+            >
+              <IconPencil className="h-4 w-4" /> Переименовать
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteNodes([contentNode])}
+              className={cn(toolBtn, "hover:border-rose-400 hover:text-rose-500")}
+              title={`Удалить «${contentNode.name}» со всем содержимым`}
+            >
+              Удалить
+            </button>
+          </div>
+        )}
 
         {isPhrasePage && selected && (
           <>
