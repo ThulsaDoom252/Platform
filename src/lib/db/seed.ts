@@ -45,7 +45,44 @@ function at(day: number, hour: number, minute = 0) {
   return d;
 }
 
+/**
+ * Сид стирает базу целиком и восстановлению не подлежит.
+ * Поэтому на непустой базе он останавливается: материалы, созданные
+ * в платформе руками, дороже любого демо-набора.
+ */
+async function guardNonEmpty() {
+  if (process.argv.includes("--force")) {
+    console.log("Флаг --force: стираю базу, как просили.");
+    return;
+  }
+
+  const [{ count: userCount }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(users);
+  const [{ count: nodeCount }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(materialNodes);
+
+  if (userCount === 0 && nodeCount === 0) return;
+
+  throw new Error(
+    [
+      "",
+      "База не пустая — сид остановлен.",
+      `Сейчас в ней: пользователей ${userCount}, узлов материалов ${nodeCount}.`,
+      "Сид стирает ВСЁ: материалы, правила, словники, ошибки, уроки, домашку.",
+      "",
+      "Если нужен именно чистый старт:",
+      "  1. npm run db:backup     — сохранить копию",
+      "  2. npm run db:seed -- --force",
+      "",
+    ].join("\n"),
+  );
+}
+
 async function main() {
+  await guardNonEmpty();
+
   console.log("Очищаю таблицы...");
   await db.execute(sql`TRUNCATE TABLE
     material_phrases,

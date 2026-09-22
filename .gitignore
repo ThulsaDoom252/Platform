@@ -41,6 +41,9 @@ yarn-error.log*
 # архив исходников, оставшийся от переноса проекта
 *.tar.gz
 
+# копии базы, снятые npm run db:backup
+/backups
+
 # vercel
 .vercel
 
