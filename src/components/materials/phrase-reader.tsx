@@ -9,6 +9,7 @@ import {
   IconChevronDown,
   IconEye,
   IconEyeOff,
+  IconPencil,
 } from "@/components/icons";
 
 export type PhraseExample = { en: string; tr: string };
@@ -113,16 +114,33 @@ function SpeakButton({
   );
 }
 
+/** Карандаш в углу карточки — правка и удаление записи. */
+function EditBadge({ onEdit }: { onEdit?: () => void }) {
+  if (!onEdit) return null;
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      title="Изменить или удалить запись"
+      className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-surface-2 text-faint opacity-0 transition hover:text-accent group-hover:opacity-100"
+    >
+      <IconPencil className="h-4 w-4" />
+    </button>
+  );
+}
+
 function PhraseCard({
   p,
   index,
   showTranslation,
   speech,
+  onEdit,
 }: {
   p: MaterialPhrase;
   index: number;
   showTranslation: boolean;
   speech: ReturnType<typeof useSpeech>;
+  onEdit?: () => void;
 }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
@@ -131,7 +149,8 @@ function PhraseCard({
   const visible = showTranslation || revealed;
 
   return (
-    <article className="overflow-hidden rounded-2xl bg-surface ring-1 ring-line transition hover:ring-accent/40">
+    <article className="group relative overflow-hidden rounded-2xl bg-surface ring-1 ring-line transition hover:ring-accent/40">
+      <EditBadge onEdit={onEdit} />
       <div className="flex gap-3.5 p-4 sm:gap-4 sm:p-5">
         {/* Картинка-образ */}
         {p.imageUrl ? (
@@ -252,9 +271,10 @@ function PhraseCard({
 }
 
 /** Пояснительная заметка 💡 между группами фраз. */
-function NoteCard({ p }: { p: MaterialPhrase }) {
+function NoteCard({ p, onEdit }: { p: MaterialPhrase; onEdit?: () => void }) {
   return (
-    <div className="tint-amber rounded-2xl px-4 py-3.5 text-sm">
+    <div className="tint-amber group relative rounded-2xl px-4 py-3.5 text-sm">
+      <EditBadge onEdit={onEdit} />
       <p className="font-semibold">💡 {p.phrase}</p>
       {p.translation && (
         <p className="mt-1 leading-snug opacity-90">{p.translation}</p>
@@ -268,11 +288,14 @@ export function PhraseReader({
   icon,
   description,
   phrases,
+  onEditPhrase,
 }: {
   title: string;
   icon: string | null;
   description: string | null;
   phrases: MaterialPhrase[];
+  /** Передаётся только учителю — у ученика правки нет. */
+  onEditPhrase?: (p: MaterialPhrase) => void;
 }) {
   const { t } = useT();
   const [showTranslation, setShowTranslation] = useState(true);
@@ -344,7 +367,11 @@ export function PhraseReader({
             )}
             {g.items.map((p, i) =>
               p.kind === "NOTE" ? (
-                <NoteCard key={p.id} p={p} />
+                <NoteCard
+                  key={p.id}
+                  p={p}
+                  onEdit={onEditPhrase && (() => onEditPhrase(p))}
+                />
               ) : (
                 <PhraseCard
                   key={p.id}
@@ -352,6 +379,7 @@ export function PhraseReader({
                   index={gi + i}
                   showTranslation={showTranslation}
                   speech={speech}
+                  onEdit={onEditPhrase && (() => onEditPhrase(p))}
                 />
               ),
             )}

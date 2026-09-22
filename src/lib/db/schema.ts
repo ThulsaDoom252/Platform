@@ -142,6 +142,17 @@ export const materialNodes = pgTable("material_nodes", {
   fileKind: text("file_kind"), // PDF | PPT | DOC | ...
   category: text("category"), // Vocabulary | Grammar | Business | ...
   sizeLabel: text("size_label"), // "2.4 MB"
+  /**
+   * Чем страница заполнена: VOCAB — словник, RULE — правило.
+   * Запоминается при сохранении, чтобы после очистки страница помнила,
+   * чем она была, и предлагала соответствующие действия.
+   */
+  pageKind: text("page_kind"),
+  /**
+   * Исходный текст правила, как его вставили. Нужен, чтобы «Редактировать»
+   * показывало не только разобранные блоки, но и то, что вводили.
+   */
+  sourceText: text("source_text"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

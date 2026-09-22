@@ -34,6 +34,10 @@ export type MaterialNode = {
   fileKind: string | null;
   category: string | null;
   sizeLabel: string | null;
+  /** VOCAB | RULE | MISTAKE — чем страницу заполняли в прошлый раз. */
+  pageKind: string | null;
+  /** Исходный текст правила, как его вставили. */
+  sourceText: string | null;
   phrases: MaterialPhrase[];
   /** Блоки правила. Страница — либо словник (phrases), либо правило (blocks). */
   blocks: RuleBlock[];
@@ -92,6 +96,8 @@ async function buildTree(rows: NodeRow[]): Promise<{
       fileKind: r.fileKind,
       category: r.category,
       sizeLabel: r.sizeLabel,
+      pageKind: r.pageKind,
+      sourceText: r.sourceText,
       phrases: phrasesByNode.get(r.id) ?? [],
       blocks: blocksByNode.get(r.id) ?? [],
       children: [],

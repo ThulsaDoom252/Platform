@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray, isNull, max } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, max } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
@@ -197,6 +197,134 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
 
   revalidateMaterials();
   return { ok: true, message: `Удалено: ${clean.length}` };
+}
+
+export type PhraseInput = {
+  section: string | null;
+  icon: string | null;
+  phrase: string;
+  transcription: string | null;
+  translation: string;
+  examples: { en: string; tr: string }[];
+};
+
+function cleanPhrase(p: PhraseInput): PhraseInput | null {
+  const phrase = String(p?.phrase ?? "").trim().slice(0, 300);
+  if (!phrase) return null;
+  return {
+    section: p.section ? String(p.section).trim().slice(0, 200) || null : null,
+    icon: p.icon ? String(p.icon).slice(0, 16) : null,
+    phrase,
+    transcription: p.transcription ? String(p.transcription).trim().slice(0, 120) : null,
+    translation: String(p?.translation ?? "").trim().slice(0, 600),
+    examples: (Array.isArray(p?.examples) ? p.examples : [])
+      .map((e) => ({
+        en: String(e?.en ?? "").trim().slice(0, 600),
+        tr: String(e?.tr ?? "").trim().slice(0, 600),
+      }))
+      .filter((e) => e.en)
+      .slice(0, 10),
+  };
+}
+
+/**
+ * Расставляет записи указанных разделов по алфавиту и переписывает порядок.
+ * Заметки 💡 алфавиту не подчиняются — они уходят в конец своего раздела.
+ */
+async function resortSections(nodeId: string, sections: Set<string | null>) {
+  const rows = await db
+    .select()
+    .from(materialPhrases)
+    .where(eq(materialPhrases.nodeId, nodeId))
+    .orderBy(asc(materialPhrases.sortOrder));
+
+  const groups: { section: string | null; items: typeof rows }[] = [];
+  for (const r of rows) {
+    const key = r.section ?? null;
+    const last = groups[groups.length - 1];
+    if (last && last.section === key) last.items.push(r);
+    else groups.push({ section: key, items: [r] });
+  }
+
+  const ordered = groups.flatMap((g) => {
+    if (!sections.has(g.section)) return g.items;
+    const words = g.items.filter((i) => i.kind !== "NOTE");
+    const notes = g.items.filter((i) => i.kind === "NOTE");
+    words.sort((a, b) => a.phrase.localeCompare(b.phrase, "en", { sensitivity: "base" }));
+    return [...words, ...notes];
+  });
+
+  for (let i = 0; i < ordered.length; i++) {
+    if (ordered[i].sortOrder === i + 1) continue;
+    await db
+      .update(materialPhrases)
+      .set({ sortOrder: i + 1 })
+      .where(eq(materialPhrases.id, ordered[i].id));
+  }
+}
+
+/** Добавить слова на страницу, не трогая уже существующие. */
+export async function addPhrasesAction(
+  nodeId: string,
+  items: PhraseInput[],
+): Promise<BulkState> {
+  await requireTeacher();
+  if (!nodeId) return { error: "Не выбрана страница" };
+
+  const clean = (items ?? []).map(cleanPhrase).filter((p): p is PhraseInput => !!p);
+  if (clean.length === 0) return { error: "Нечего добавлять: пустое слово" };
+
+  const [{ value: last } = { value: 0 }] = await db
+    .select({ value: max(materialPhrases.sortOrder) })
+    .from(materialPhrases)
+    .where(eq(materialPhrases.nodeId, nodeId));
+
+  await db.insert(materialPhrases).values(
+    clean.map((p, i) => ({ nodeId, sortOrder: (last ?? 0) + i + 1, ...p })),
+  );
+
+  await resortSections(nodeId, new Set(clean.map((p) => p.section)));
+  await db
+    .update(materialNodes)
+    .set({ pageKind: "VOCAB" })
+    .where(eq(materialNodes.id, nodeId));
+
+  revalidateMaterials();
+  return { ok: true, message: `Добавлено: ${clean.length}` };
+}
+
+/** Изменить одно слово. */
+export async function updatePhraseAction(
+  phraseId: string,
+  data: PhraseInput,
+): Promise<BulkState> {
+  await requireTeacher();
+  if (!phraseId) return { error: "Не выбрана запись" };
+
+  const clean = cleanPhrase(data);
+  if (!clean) return { error: "Слово не может быть пустым" };
+
+  const [row] = await db
+    .update(materialPhrases)
+    .set(clean)
+    .where(eq(materialPhrases.id, phraseId))
+    .returning({ nodeId: materialPhrases.nodeId });
+
+  if (row) await resortSections(row.nodeId, new Set([clean.section]));
+
+  revalidateMaterials();
+  return { ok: true, message: "Сохранено" };
+}
+
+/** Удалить одно слово. */
+export async function deletePhraseAction(phraseId: string): Promise<BulkState> {
+  await requireTeacher();
+  if (!phraseId) return { error: "Не выбрана запись" };
+
+  await db.delete(materialPhrases).where(eq(materialPhrases.id, phraseId));
+
+  revalidateMaterials();
+  return { ok: true, message: "Удалено" };
 }
 
 /**
@@ -456,15 +584,16 @@ export async function savePageContentAction(
     })),
   );
 
-  if (applyTitle && (result.title || result.description)) {
-    await db
-      .update(materialNodes)
-      .set({
-        ...(result.title ? { name: result.title } : {}),
-        ...(result.description ? { description: result.description } : {}),
-      })
-      .where(eq(materialNodes.id, nodeId));
-  }
+  await db
+    .update(materialNodes)
+    .set({
+      // Страница запоминает, чем её наполнили, и исходник для «Редактировать».
+      pageKind: mode === "mistake" ? "MISTAKE" : mode === "rule" ? "RULE" : "VOCAB",
+      sourceText: raw.slice(0, 200_000),
+      ...(applyTitle && result.title ? { name: result.title } : {}),
+      ...(applyTitle && result.description ? { description: result.description } : {}),
+    })
+    .where(eq(materialNodes.id, nodeId));
 
   const count = result.phrases.filter((p) => p.kind === "PHRASE").length;
   const notes = result.phrases.filter((p) => p.kind === "NOTE").length;
@@ -580,15 +709,15 @@ export async function saveRuleBlocksAction(
     blocks.map((b, i) => ({ nodeId, sortOrder: i + 1, type: b.type, data: b })),
   );
 
-  if (applyTitle && (title || subtitle)) {
-    await db
-      .update(materialNodes)
-      .set({
-        ...(title ? { name: title } : {}),
-        ...(subtitle ? { description: subtitle } : {}),
-      })
-      .where(eq(materialNodes.id, nodeId));
-  }
+  await db
+    .update(materialNodes)
+    .set({
+      pageKind: "RULE",
+      sourceText: String(formData.get("sourceText") || "").slice(0, 200_000),
+      ...(applyTitle && title ? { name: title } : {}),
+      ...(applyTitle && subtitle ? { description: subtitle } : {}),
+    })
+    .where(eq(materialNodes.id, nodeId));
 
   const tables = blocks.filter((b) => b.type === "table").length;
   revalidateMaterials();

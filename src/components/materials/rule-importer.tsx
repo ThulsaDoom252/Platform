@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { Modal } from "@/components/modal";
 import { RuleReader } from "./rule-reader";
 import { parseRuleHtml, parseRuleText, type RuleBlock } from "@/lib/rule-parser";
+import { flattenClipboardHtml } from "@/lib/materials-parser";
 import { saveRuleBlocksAction, type BlocksState } from "@/lib/actions/materials";
 import { IconMaterials, IconCheck, IconX } from "@/components/icons";
 
@@ -13,6 +14,8 @@ type Parsed = {
   blocks: RuleBlock[];
   warnings: string[];
   source: "html" | "text";
+  /** Исходник в виде текста — его показывает «Редактировать». */
+  sourceText: string;
 };
 
 /**
@@ -48,7 +51,14 @@ export function RuleImporter({
     const text = e.clipboardData.getData("text/plain");
 
     const res = html ? parseRuleHtml(html) : parseRuleText(text);
-    setParsed({ ...res, source: html ? "html" : "text" });
+    // Таблицы в обычном тексте разъезжаются, поэтому исходник храним
+    // в виде колонок через табуляцию — так правило можно разобрать заново.
+    const flat = html ? flattenClipboardHtml(html) : null;
+    setParsed({
+      ...res,
+      source: html ? "html" : "text",
+      sourceText: flat ?? text ?? "",
+    });
   }
 
   const tables = parsed?.blocks.filter((b) => b.type === "table").length ?? 0;
@@ -74,6 +84,7 @@ export function RuleImporter({
         <input type="hidden" name="blocks" value={JSON.stringify(parsed?.blocks ?? [])} />
         <input type="hidden" name="title" value={parsed?.title ?? ""} />
         <input type="hidden" name="subtitle" value={parsed?.subtitle ?? ""} />
+        <input type="hidden" name="sourceText" value={parsed?.sourceText ?? ""} />
         {applyTitle && <input type="hidden" name="applyTitle" value="on" />}
 
         {/* Область вставки */}

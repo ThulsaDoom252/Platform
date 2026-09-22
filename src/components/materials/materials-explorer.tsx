@@ -28,6 +28,7 @@ import { NodeCreator } from "./node-creator";
 import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
+import { WordAdder, PhraseEditor } from "./phrase-form";
 import {
   clearPagesAction,
   deleteNodeAction,
@@ -38,6 +39,22 @@ import {
 
 /** Есть ли на странице что чистить: словник или разобранное правило. */
 const hasContent = (n: MaterialNode) => n.phrases.length > 0 || n.blocks.length > 0;
+
+/**
+ * Чем страница была заполнена. У страниц, созданных до появления поля,
+ * тип выводим из содержимого — переносить данные ради этого не нужно.
+ */
+const pageKind = (n: MaterialNode): "VOCAB" | "RULE" | null =>
+  n.pageKind === "RULE" || n.pageKind === "VOCAB"
+    ? n.pageKind
+    : n.blocks.length > 0
+      ? "RULE"
+      : n.phrases.length > 0
+        ? "VOCAB"
+        : null;
+
+const pageBtn =
+  "flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 text-sm font-semibold text-muted transition hover:border-accent hover:text-accent";
 
 /** Цель «в корень» у перетаскивания — папки с таким id не бывает. */
 const ROOT_DROP = "__root__";
@@ -54,6 +71,8 @@ export type MaterialNode = {
   fileKind: string | null;
   category: string | null;
   sizeLabel: string | null;
+  pageKind: string | null;
+  sourceText: string | null;
   phrases: MaterialPhrase[];
   blocks: RuleBlock[];
   children: MaterialNode[];
@@ -106,6 +125,8 @@ export function MaterialsExplorer({
     name: string;
     icon: string | null;
   } | null>(null);
+  const [addWordsTo, setAddWordsTo] = useState<{ id: string; name: string } | null>(null);
+  const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
 
   const { byId, pathById } = useMemo(() => {
     const byId = new Map<string, MaterialNode>();
@@ -493,6 +514,16 @@ export function MaterialsExplorer({
       return next >= q.ids.length ? null : { ...q, index: next };
     });
   }
+
+  /** Разделы открытой страницы — подсказка при вводе «типа речи». */
+  const pageSections = useMemo(() => {
+    const node = selectedId ? byId.get(selectedId) : null;
+    const seen = new Map<string, string | null>();
+    for (const p of node?.phrases ?? []) {
+      if (p.section && !seen.has(p.section)) seen.set(p.section, p.icon);
+    }
+    return [...seen].map(([name, icon]) => ({ name, icon }));
+  }, [selectedId, byId]);
 
   const queueNode = fillQueue ? byId.get(fillQueue.ids[fillQueue.index]) ?? null : null;
   /** Окно выбора типа показываем, пока для текущей страницы не открыт импортёр. */
@@ -1136,37 +1167,76 @@ export function MaterialsExplorer({
         {isPhrasePage && selected && (
           <>
             {editable && (
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => setImportNode({ id: selected.id, name: selected.name })}
-                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
-                >
-                  <IconPlus className="h-4 w-4" /> Словник из текста
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setRuleNode({
-                      id: selected.id,
-                      name: selected.name,
-                      icon: selected.icon,
-                    })
-                  }
-                  className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
-                >
-                  <IconPlus className="h-4 w-4" /> Вставить правило
-                </button>
+              <div className="mb-4 flex flex-wrap gap-2">
+                {/* Пока страница пустая — предлагаем оба способа наполнения.
+                    Дальше она помнит, чем стала, и показывает своё. */}
+                {pageKind(selected) === "VOCAB" && (
+                  <button
+                    type="button"
+                    onClick={() => setAddWordsTo({ id: selected.id, name: selected.name })}
+                    className={pageBtn}
+                  >
+                    <IconPlus className="h-4 w-4" /> Дополнить
+                  </button>
+                )}
+
+                {pageKind(selected) !== "RULE" && (
+                  <button
+                    type="button"
+                    onClick={() => setImportNode({ id: selected.id, name: selected.name })}
+                    className={pageBtn}
+                    title={
+                      pageKind(selected) === "VOCAB"
+                        ? "Разобрать текст заново, заменив содержимое"
+                        : undefined
+                    }
+                  >
+                    {pageKind(selected) === "VOCAB" ? (
+                      "Заменить текстом"
+                    ) : (
+                      <>
+                        <IconPlus className="h-4 w-4" /> Словник из текста
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {pageKind(selected) !== "VOCAB" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRuleNode({
+                        id: selected.id,
+                        name: selected.name,
+                        icon: selected.icon,
+                      })
+                    }
+                    className={pageBtn}
+                  >
+                    <IconPlus className="h-4 w-4" />
+                    {pageKind(selected) === "RULE" ? "Вставить заново" : "Вставить правило"}
+                  </button>
+                )}
+
                 {hasContent(selected) && (
                   <button
                     type="button"
                     onClick={() => clearPages([selected])}
                     title="Страница останется, содержимое пропадёт"
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 text-sm font-semibold text-muted transition hover:border-rose-400 hover:text-rose-500"
+                    className={cn(pageBtn, "hover:border-rose-400 hover:text-rose-500")}
                   >
                     <IconX className="h-4 w-4" /> Очистить
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => deleteNodes([selected])}
+                  title="Удалить страницу целиком"
+                  className={cn(pageBtn, "hover:border-rose-400 hover:text-rose-500")}
+                >
+                  Удалить
+                </button>
               </div>
             )}
             {selected.blocks.length > 0 ? (
@@ -1182,6 +1252,7 @@ export function MaterialsExplorer({
                 icon={selected.icon}
                 description={selected.description}
                 phrases={selected.phrases}
+                onEditPhrase={editable ? setEditPhrase : undefined}
               />
             )}
           </>
@@ -1329,6 +1400,19 @@ export function MaterialsExplorer({
             key={ruleNode ? `rule-${ruleNode.id}` : "rule-idle"}
             node={ruleNode}
             onClose={closeImporter}
+          />
+
+          <WordAdder
+            key={addWordsTo ? `add-${addWordsTo.id}` : "add-idle"}
+            node={addWordsTo}
+            sections={pageSections}
+            onClose={() => setAddWordsTo(null)}
+          />
+          <PhraseEditor
+            key={editPhrase ? `phrase-${editPhrase.id}` : "phrase-idle"}
+            phrase={editPhrase}
+            sections={pageSections}
+            onClose={() => setEditPhrase(null)}
           />
 
           {bulkIcons && (
