@@ -37,7 +37,33 @@ const BULLET = /^\s*[•●▪‣·*\-–]\s+/;
 const LEADING_ICONS =
   /^\s*(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{20E3}]+\s*)+/u;
 
-const IPA = /\/[^/]{1,60}\//;
+/**
+ * Транскрипция в слешах. Пробел сразу после открывающего слеша или перед
+ * закрывающим означает, что это не транскрипция, а разделитель вариантов:
+ * «fortunately / unfortunately /ˈfɔː.tʃənətli/» — тут нужен только последний.
+ */
+const IPA = /\/(?:[^/\s]|[^/\s][^/]{0,58}[^/\s])\//;
+
+/** Значок озвучки в начале строки и подпись рядом с ним. */
+const SPEAKER = /^\s*[\u{1F50A}\u{1F508}\u{1F509}\u{1F3A7}\u{25B6}\u{23F5}]️?\s*/u;
+const SPEAKER_LABEL =
+  /^(?:слухати|прослухати|слушать|прослушать|послушать|listen|play|audio)\b[\s:–—-]*/iu;
+
+/**
+ * Убирает значок озвучки и подпись к нему: «🔊 слухати  accidentally …».
+ * Подпись бывает разной, поэтому после известных слов отбрасываем и любые
+ * кириллические слова перед латинским термином.
+ */
+function stripSpeaker(line: string): string {
+  const m = line.match(SPEAKER);
+  if (!m) return line;
+
+  let rest = line.slice(m[0].length).replace(SPEAKER_LABEL, "");
+  if (/^[\p{Script=Cyrillic}]/u.test(rest) && /[A-Za-z]/.test(rest)) {
+    rest = rest.replace(/^(?:[\p{Script=Cyrillic}’'-]+[ \t]+)+/u, "");
+  }
+  return rest;
+}
 
 function stripBullet(line: string) {
   return line.replace(BULLET, "");
@@ -185,12 +211,14 @@ function parseVocabulary(raw: string): ParseResult {
   };
 
   // Шапка документа: одна-две строки капсом в самом начале.
+  // Эмодзи перед названием в заголовок не тащим.
   let start = 0;
-  if (lines[0] && isMostlyUpper(lines[0])) {
-    title = lines[0];
+  const head = (i: number) => takeLeadingIcon(lines[i] ?? "").rest.trim();
+  if (lines[0] && isMostlyUpper(head(0))) {
+    title = head(0);
     start = 1;
-    if (lines[1] && isMostlyUpper(lines[1])) {
-      description = lines[1];
+    if (lines[1] && isMostlyUpper(head(1))) {
+      description = head(1);
       start = 2;
     }
   }
@@ -246,7 +274,7 @@ function parseVocabulary(raw: string): ParseResult {
     }
 
     const hadBullet = BULLET.test(original);
-    const withoutBullet = stripBullet(original);
+    const withoutBullet = stripSpeaker(stripBullet(original));
     const { icon, rest } = takeLeadingIcon(withoutBullet);
     const line = rest.trim();
     if (!line) continue;
