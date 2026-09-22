@@ -1,9 +1,11 @@
 import { en, type Dict } from "./en";
 import { ru } from "./ru";
 import { uk } from "./uk";
+import { plural, type Plural } from "./plural";
 
 export type Locale = "en" | "ru" | "uk";
-export type { Dict };
+export type { Dict, Plural };
+export { plural };
 
 export const dictionaries: Record<Locale, Dict> = { en, ru, uk };
 
@@ -15,12 +17,18 @@ export const locales: { id: Locale; label: string; code: string }[] = [
 
 export const DEFAULT_LOCALE: Locale = "en";
 
-/** Подстановка {placeholder} в строку словаря. */
+/**
+ * Подстановка {placeholder} в строку словаря.
+ * Если строка счётная, форма выбирается по переданному {n}.
+ */
 export function fmt(
-  template: string,
+  template: string | Plural,
   vars: Record<string, string | number> = {},
 ): string {
-  return template.replace(/\{(\w+)\}/g, (m, key) =>
+  const text =
+    typeof template === "string" ? template : plural(template, Number(vars.n ?? 0));
+
+  return text.replace(/\{(\w+)\}/g, (m, key) =>
     key in vars ? String(vars[key]) : m,
   );
 }

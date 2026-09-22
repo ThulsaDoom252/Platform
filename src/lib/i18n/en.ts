@@ -1,3 +1,5 @@
+import type { Plural } from "./plural";
+
 /** Эталонный словарь. Остальные языки повторяют эту структуру. */
 export const en = {
   brand: {
@@ -108,7 +110,7 @@ export const en = {
     keepGoingHint: "You're building an amazing future.",
     viewGrid: "Grid",
     viewList: "List",
-    itemsCount: "{n} materials",
+    itemsCount: { one: "{n} material", other: "{n} materials" } as Plural,
     emptyFolder: "This folder is empty.",
     selectFolder: "Pick a folder on the left to see what's inside.",
     expandAll: "Expand all",
@@ -188,7 +190,10 @@ export const en = {
     markRead: "Mark read",
     empty: "No notifications yet.",
     lessonIn: "Lesson with {name} in {mins} min",
-    lowBalance: "{name} has {n} lesson(s) left",
+    lowBalance: {
+      one: "{name} has {n} lesson left",
+      other: "{name} has {n} lessons left",
+    } as Plural,
     lowBalanceHint: "Low balance — time to top up",
     justNow: "just now",
     minsAgo: "{n} min ago",
@@ -269,14 +274,14 @@ export const en = {
   phrases: {
     hideTranslations: "Hide translations",
     showTranslations: "Show translations",
-    examples: "{n} examples",
+    examples: { one: "{n} example", other: "{n} examples" } as Plural,
     hideExamples: "Hide examples",
     listenUS: "American pronunciation",
     listenUK: "British pronunciation",
     tapToReveal: "Tap to reveal",
     playAll: "Listen to all",
     empty: "This page has no phrases yet.",
-    count: "{n} phrases",
+    count: { one: "{n} phrase", other: "{n} phrases" } as Plural,
   },
 
   studentDash: {
