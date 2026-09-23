@@ -28,7 +28,10 @@ const DASH = /\s+[—–]\s+/;
 
 /** Метки врезок, встречающиеся в документах. */
 const CALLOUT_LABELS: { re: RegExp; tone: "key" | "warn" | "tip" | "info" }[] = [
-  { re: /^(важливо|увага|важно|внимание)\b/i, tone: "warn" },
+  {
+    re: /^(важливо|увага|важно|внимание|виняток|исключение|exception|не плутай|не путай)\b/i,
+    tone: "warn",
+  },
   {
     re: /^(просто запам'?ятай|шпаргалка|порада|підказка|запам'?ятай|швидка перевірка)\b/i,
     tone: "tip",
@@ -39,6 +42,28 @@ const CALLOUT_LABELS: { re: RegExp; tone: "key" | "warn" | "tip" | "info" }[] = 
   },
   { re: /^(примітка|зверни увагу|нотатка)\b/i, tone: "info" },
 ];
+
+/** Эмодзи в начале строки: для проверки «похоже на заголовок» оно лишнее. */
+function stripLeadEmoji(s: string): string {
+  return s
+    .replace(
+      /^(?:[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{FE0F}\u{200D}\u{20E3}]+\s*)+/u,
+      "",
+    )
+    .trim();
+}
+
+/**
+ * Оттенок врезки по значку в начале: «✗ так нельзя» и «✓ так можно»
+ * встречаются парами, и разный цвет делает разницу видимой сразу.
+ */
+function markerTone(s: string): "key" | "warn" | "tip" | "info" {
+  if (/^[✗✘❌🚫⛔]/u.test(s)) return "warn";
+  if (/^[✓✔✅]/u.test(s)) return "key";
+  if (/^[⚠🚨❗]/u.test(s)) return "warn";
+  if (/^[💡⭐🌟]/u.test(s)) return "tip";
+  return "info";
+}
 
 function cleanText(s: string): string {
   return s
@@ -107,14 +132,17 @@ function detectCallout(s: string): RuleBlock | null {
       return { type: "callout", label: cleanText(head), text: cleanText(s.slice(colon + 1)), tone };
     }
     // Метка без двоеточия — «Коли використовуємо? ...»
-    if (!colon && re.test(s.replace(/^[^\p{L}]+/u, ""))) {
+    if (colon === -1 && re.test(s.replace(/^[^\p{L}]+/u, ""))) {
       return { type: "callout", text: cleanText(s), tone };
     }
   }
-  if (/^[⚠️🚨❗]/.test(s)) {
+
+  // Флаг u обязателен: без него эмодзи из двух половинок разваливается,
+  // и в набор попадает «половинка», совпадающая почти с любым значком.
+  if (/^[⚠🚨❗]️?/u.test(s)) {
     return { type: "callout", text: cleanText(s), tone: "warn" };
   }
-  if (/^[💡⭐🌟]/.test(s)) {
+  if (/^[💡⭐🌟]️?/u.test(s)) {
     return { type: "callout", text: cleanText(s), tone: "tip" };
   }
   return null;
@@ -302,10 +330,22 @@ export function parseRuleHtml(html: string): RuleParseResult {
 
       if (!ownText) continue;
 
-      // Цветная врезка из документа.
+      // Цветная плашка из документа: это либо врезка, либо заголовок раздела.
       if (hasBackground(el)) {
         const c = detectCallout(ownText);
-        blocks.push(c ?? { type: "callout", text: ownText, tone: "info" });
+        if (c) {
+          blocks.push(c);
+          continue;
+        }
+
+        // Короткая строка без точки в конце — заголовок раздела,
+        // просто нарисованный полосой («🕐 Конкретний час»).
+        if (looksLikeHeading(stripLeadEmoji(ownText))) {
+          blocks.push({ type: "heading", text: ownText });
+          continue;
+        }
+
+        blocks.push({ type: "callout", text: ownText, tone: markerTone(ownText) });
         continue;
       }
 
