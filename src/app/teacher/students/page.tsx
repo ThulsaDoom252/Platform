@@ -166,7 +166,7 @@ export default async function TeacherStudentsPage() {
                   type="number"
                   min={0}
                   step={1}
-                  placeholder="0"
+                  defaultValue={0}
                   className={inputCls}
                 />
               </label>
@@ -178,7 +178,7 @@ export default async function TeacherStudentsPage() {
                   type="number"
                   min={0}
                   step={1}
-                  placeholder="0"
+                  defaultValue={0}
                   className={inputCls}
                 />
               </label>
