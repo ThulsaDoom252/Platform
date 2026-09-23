@@ -8,7 +8,9 @@
  * Формат записи: [эмодзи, ключевые слова для поиска]
  * Один и тот же эмодзи встречается ровно в одной группе.
  */
-export type IconGroup = { label: string; icons: [string, string][] };
+import { EXTRA_GROUPS, type IconGroup } from "./icons-extra";
+
+export type { IconGroup };
 
 export const ICON_GROUPS: IconGroup[] = [
   {
@@ -740,8 +742,18 @@ export const ICON_GROUPS: IconGroup[] = [
   },
 ];
 
-/** Плоский список для поиска. */
-export const ALL_ICONS: [string, string][] = ICON_GROUPS.flatMap((g) => g.icons);
+/**
+ * Плоский список для поиска. Один и тот же значок может встречаться
+ * в нескольких группах — для подбора это плюс: складываются все
+ * ключевые слова, с которыми его ищут.
+ */
+export const ALL_ICONS: [string, string][] = [
+  ...ICON_GROUPS,
+  ...EXTRA_GROUPS,
+].flatMap((g) => g.icons);
+
+/** Всё, что показывает окно выбора. */
+export const PICKER_GROUPS: IconGroup[] = [...ICON_GROUPS, ...EXTRA_GROUPS];
 
 export function searchIcons(query: string): [string, string][] {
   const q = query.trim().toLowerCase();

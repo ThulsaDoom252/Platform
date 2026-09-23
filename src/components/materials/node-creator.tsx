@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Modal } from "@/components/modal";
 import { IconPicker } from "./icon-picker";
 import { createNodesAction } from "@/lib/actions/materials";
-import { IconPlus, IconX } from "@/components/icons";
+import { IconPlus, IconX, IconSearch } from "@/components/icons";
 import type { TreeScope } from "./node-editor";
 import { suggestIcon } from "@/lib/icon-suggest";
+import { SpellHint } from "./spell-hint";
 import { cn } from "@/lib/utils";
 
 const inputCls =
@@ -53,6 +54,7 @@ export function NodeCreator({
   const [activeKey, setActiveKey] = useState<string>(() => rows[0]?.key ?? "");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
 
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -174,7 +176,8 @@ export function NodeCreator({
             const shown = tab === "all" ? oneIcon : r.icon;
             const isActive = tab === "each" && r.key === activeKey;
             return (
-              <div key={r.key} className="flex items-center gap-2">
+              <div key={r.key}>
+                <div className="flex items-center gap-2">
                 <button
                   type="button"
                   disabled={tab === "all"}
@@ -212,6 +215,31 @@ export function NodeCreator({
 
                 <button
                   type="button"
+                  onClick={() => {
+                    const found = suggestIcon(r.name);
+                    if (!found) {
+                      setHint("По этому названию иконка не нашлась — выбери вручную.");
+                      return;
+                    }
+                    setHint(null);
+                    if (tab === "all") {
+                      setOneIcon(found);
+                      setOneAuto(true);
+                    } else {
+                      setRows((p) =>
+                        p.map((x) => (x.key === r.key ? { ...x, icon: found, auto: true } : x)),
+                      );
+                    }
+                  }}
+                  disabled={!r.name.trim()}
+                  title="Подобрать иконку по названию"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-semibold text-muted transition hover:bg-accent-soft hover:text-accent disabled:opacity-30"
+                >
+                  <IconSearch className="h-3.5 w-3.5" /> Подобрать
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => removeRow(r.key)}
                   disabled={rows.length === 1}
                   title="Убрать строку"
@@ -219,6 +247,14 @@ export function NodeCreator({
                 >
                   <IconX className="h-4 w-4" />
                 </button>
+                </div>
+
+                <SpellHint
+                  text={r.name}
+                  onFix={(start, end, word) =>
+                    setName(r.key, r.name.slice(0, start) + word + r.name.slice(end))
+                  }
+                />
               </div>
             );
           })}
@@ -254,6 +290,7 @@ export function NodeCreator({
           />
         </div>
 
+        {hint && <p className="text-[12px] text-faint">{hint}</p>}
         {error && <p className="text-sm text-rose-500">{error}</p>}
 
         <div className="flex gap-2.5">

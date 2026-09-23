@@ -21,6 +21,9 @@ import {
 import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { transcribe } from "@/lib/transcription";
+import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
+
+export type { Misspelling };
 
 async function requireTeacher() {
   const session = await getSession();
@@ -212,6 +215,12 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
 
   revalidateMaterials();
   return { ok: true, message: `Удалено: ${clean.length}` };
+}
+
+/** Орфография названия. Словари лежат на сервере, в браузер не уезжают. */
+export async function checkSpellingAction(text: string): Promise<Misspelling[]> {
+  await requireTeacher();
+  return checkSpelling(String(text ?? ""));
 }
 
 /** Транскрипция слова. Словарь лежит на сервере, в браузер не уезжает. */

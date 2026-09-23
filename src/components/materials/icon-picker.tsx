@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ICON_GROUPS, searchIcons } from "@/lib/icons-data";
+import { PICKER_GROUPS, searchIcons } from "@/lib/icons-data";
 import { IconSearch } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,7 @@ export function IconPicker({
 
   const groups = useMemo(() => {
     const q = query.trim();
-    if (!q) return ICON_GROUPS;
+    if (!q) return PICKER_GROUPS;
     const found = searchIcons(q);
     return found.length ? [{ label: `Найдено: ${found.length}`, icons: found }] : [];
   }, [query]);
