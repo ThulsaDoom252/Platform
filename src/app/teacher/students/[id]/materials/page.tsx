@@ -7,6 +7,7 @@ import { getDict } from "@/lib/i18n/server";
 import { getOwnedTree, getSharedSections } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 import { SharedAccess } from "@/components/materials/shared-access";
+import { ReportButton } from "@/components/materials/report-button";
 import { Avatar } from "@/components/avatar";
 import { IconChevronLeft } from "@/components/icons";
 
@@ -46,13 +47,14 @@ export default async function StudentMaterialsForTeacherPage({
           <IconChevronLeft className="h-4 w-4" />
         </Link>
         <Avatar name={student.name} src={student.avatarUrl} className="h-11 w-11 text-sm" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-content">{t.materials.title}</h1>
           <p className="text-sm text-muted">
             {student.name}
             {student.level ? ` · ${student.level}` : ""}
           </p>
         </div>
+        <ReportButton studentId={student.id} studentName={student.name} />
       </div>
 
       <MaterialsExplorer

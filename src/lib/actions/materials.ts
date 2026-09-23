@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, inArray, isNull, max } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
@@ -9,8 +9,15 @@ import {
   materialBlocks,
   studentMaterials,
   users,
+  lessons,
   type RuleBlock,
 } from "@/lib/db/schema";
+import {
+  getOwnedTree,
+  getMaterialsTree,
+  type MaterialNode,
+  type MaterialPhrase,
+} from "@/lib/materials";
 import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 
@@ -759,6 +766,99 @@ export async function saveRuleEditAction(
 
   revalidateMaterials();
   return { ok: true, message: `Сохранено блоков: ${clean.length}` };
+}
+
+// ---------------------------------------------------------------- отчёт
+
+export type ReportPayload = {
+  studentName: string;
+  meta: string[];
+  entries: {
+    path: string[];
+    page: {
+      title: string;
+      description: string | null;
+      phrases: MaterialPhrase[];
+      blocks: RuleBlock[];
+    };
+  }[];
+};
+
+/**
+ * Всё пройденное учеником одним куском: личные материалы, открытые
+ * разделы общей базы и разбор ошибок. Нужен и как отчёт человеку,
+ * и как выжимка для модели — отсюда шапка с уровнем и числом уроков.
+ */
+export async function buildStudentReportAction(
+  studentId: string,
+): Promise<ReportPayload> {
+  await requireTeacher();
+
+  const [student] = await db
+    .select({
+      name: users.name,
+      level: users.level,
+      lessonsBefore: users.lessonsBefore,
+      startedAt: users.startedAt,
+      approximate: users.statsApproximate,
+    })
+    .from(users)
+    .where(eq(users.id, studentId))
+    .limit(1);
+  if (!student) return { studentName: "", meta: [], entries: [] };
+
+  const [own, shared, mistakes] = await Promise.all([
+    getOwnedTree("STUDENT", studentId),
+    getMaterialsTree(studentId),
+    getOwnedTree("MISTAKE", studentId),
+  ]);
+
+  const [{ done } = { done: 0 }] = await db
+    .select({ done: sql<number>`count(*)::int` })
+    .from(lessons)
+    .where(and(eq(lessons.studentId, studentId), eq(lessons.status, "COMPLETED")));
+
+  const [{ firstAt } = { firstAt: null }] = await db
+    .select({ firstAt: sql<Date | null>`min(${lessons.startTime})` })
+    .from(lessons)
+    .where(and(eq(lessons.studentId, studentId), eq(lessons.status, "COMPLETED")));
+
+  const total = done + student.lessonsBefore;
+  const since = student.startedAt ?? firstAt;
+  const about = student.approximate ? "≈ " : "";
+
+  const meta = [
+    student.level ? `Уровень: ${student.level}` : null,
+    `Проведено уроков: ${about}${Math.max(0, total)}`,
+    since ? `Занимаемся с: ${since.toLocaleDateString("ru-RU")}` : null,
+    `Отчёт составлен: ${new Date().toLocaleDateString("ru-RU")}`,
+  ].filter((s): s is string => !!s);
+
+  // Обходим дерево вглубь, запоминая путь — он идёт заголовком в отчёте.
+  const entries: ReportPayload["entries"] = [];
+  const walk = (nodes: MaterialNode[], path: string[]) => {
+    for (const n of nodes) {
+      const here = [...path, n.name];
+      if (n.phrases.length > 0 || n.blocks.length > 0) {
+        entries.push({
+          path: here,
+          page: {
+            title: n.name,
+            description: n.description,
+            phrases: n.phrases,
+            blocks: n.blocks,
+          },
+        });
+      }
+      if (n.children.length) walk(n.children, here);
+    }
+  };
+
+  walk(own, ["Личные материалы"]);
+  walk(shared, ["Общая база"]);
+  walk(mistakes, ["Ошибки"]);
+
+  return { studentName: student.name, meta, entries };
 }
 
 // ---------------------------------------------------------------- копирование

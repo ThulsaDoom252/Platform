@@ -99,6 +99,37 @@ export function pageToText(page: ExportPage): string {
     .trim();
 }
 
+/** Одна страница внутри отчёта, вместе с путём до неё. */
+export type ReportEntry = { path: string[]; page: ExportPage };
+
+export type Report = {
+  studentName: string;
+  /** Строки шапки: уровень, сколько уроков, с какого времени занимаемся. */
+  meta: string[];
+  entries: ReportEntry[];
+};
+
+/**
+ * Весь пройденный материал одним текстом.
+ * Шапка нужна не только человеку: по ней модель понимает, с кем работает,
+ * а путь до страницы показывает, к какой теме относится блок.
+ */
+export function reportToText(report: Report): string {
+  const lines = [
+    `Ученик: ${report.studentName}`,
+    ...report.meta,
+    `Разделов и страниц: ${report.entries.length}`,
+    "",
+    "=".repeat(48),
+  ];
+
+  for (const { path, page } of report.entries) {
+    lines.push("", path.join(" / "), "-".repeat(40), pageToText(page), "");
+  }
+
+  return lines.join("\n").replace(/\n{4,}/g, "\n\n\n").trim();
+}
+
 /** Имя файла без символов, которые не любит файловая система. */
 export function safeFileName(title: string): string {
   const clean = title.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
@@ -109,16 +140,24 @@ export function safeFileName(title: string): string {
  * Сборка .docx. Библиотека тяжёлая, поэтому подгружается только в момент
  * выгрузки — на остальных страницах она в бандл не попадает.
  */
-export async function pageToDocxBlob(page: ExportPage): Promise<Blob> {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType } =
+async function pageToDocxChildren(
+  page: ExportPage,
+  titleLevel: "h1" | "h2" | "none" = "h1",
+) {
+  const { Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType } =
     await import("docx");
 
   type Block = InstanceType<typeof Paragraph> | InstanceType<typeof Table>;
   const children: Block[] = [];
 
-  children.push(
-    new Paragraph({ text: page.title, heading: HeadingLevel.HEADING_1 }),
-  );
+  if (titleLevel !== "none") {
+    children.push(
+      new Paragraph({
+        text: page.title,
+        heading: titleLevel === "h1" ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2,
+      }),
+    );
+  }
   if (page.description) {
     children.push(
       new Paragraph({ children: [new TextRun({ text: page.description, italics: true })] }),
@@ -204,6 +243,39 @@ export async function pageToDocxBlob(page: ExportPage): Promise<Blob> {
     }
   }
 
-  const doc = new Document({ sections: [{ children }] });
-  return Packer.toBlob(doc);
+  return children;
+}
+
+/** Одна страница отдельным файлом. */
+export async function pageToDocxBlob(page: ExportPage): Promise<Blob> {
+  const { Document, Packer } = await import("docx");
+  const children = await pageToDocxChildren(page);
+  return Packer.toBlob(new Document({ sections: [{ children }] }));
+}
+
+/**
+ * Отчёт по ученику одним файлом: шапка и все пройденные страницы подряд.
+ * Путь до страницы идёт заголовком — по нему видно, к какой теме материал.
+ */
+export async function reportToDocxBlob(report: Report): Promise<Blob> {
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+
+  type Child = Awaited<ReturnType<typeof pageToDocxChildren>>[number];
+  const children: Child[] = [
+    new Paragraph({ text: `Отчёт: ${report.studentName}`, heading: HeadingLevel.TITLE }),
+    ...report.meta.map(
+      (m) => new Paragraph({ children: [new TextRun({ text: m, italics: true })] }),
+    ),
+    new Paragraph({ text: "" }),
+  ];
+
+  for (const { path, page } of report.entries) {
+    children.push(
+      new Paragraph({ text: path.join(" / "), heading: HeadingLevel.HEADING_1 }),
+    );
+    children.push(...(await pageToDocxChildren(page, "h2")));
+    children.push(new Paragraph({ text: "" }));
+  }
+
+  return Packer.toBlob(new Document({ sections: [{ children }] }));
 }
