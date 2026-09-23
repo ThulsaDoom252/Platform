@@ -33,6 +33,13 @@ const DASH = /\s+[—–]\s+|\s+-{1,2}\s+/;
 /** Маркеры списка в начале строки. */
 const BULLET = /^\s*[•●▪‣·*\-–]\s+/;
 
+/** Значки, которыми в документах помечают пояснения и предупреждения. */
+const NOTE_ICONS = ["💡", "⚠️", "⚠", "📌", "📍", "❗"];
+const NOTE_LEAD = /^\s*(?:💡|⚠️?|📌|📍|❗)\s*/u;
+
+/** Стрелка «значит / получается»: отделяет пояснение от примера. */
+const TO = /\s*[→⟶➜➔]\s*/;
+
 /** Ведущие эмодзи и значок динамика, которые копируются вместе с текстом. */
 const LEADING_ICONS =
   /^\s*(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{20E3}]+\s*)+/u;
@@ -280,23 +287,43 @@ function parseVocabulary(raw: string): ParseResult {
     if (!line) continue;
 
     const dashParts = splitByDash(line);
-    // 💡 бывает и меткой заметки, и просто украшением заголовка раздела
+    // Значок заметки бывает и украшением заголовка раздела
     // («💡 Adverbs — Прислівники») — заголовок важнее.
     const isDecoratedHeading = !!dashParts && isSectionHeading(dashParts[0], dashParts[1]);
 
-    // Заметка 💡
-    if (!isDecoratedHeading && (icon === "💡" || /^💡/.test(withoutBullet))) {
+    // Подпись к значку озвучки в шапке документа: только пояснение, не запись.
+    if (SPEAKER.test(original) && !/[A-Za-z]/.test(line) && !dashParts) continue;
+
+    // Строки со сравнением «✗ так нельзя / ✓ так можно» — часть пояснения.
+    // Проверяем до снятия иконки: галочка сама попадает в её диапазон.
+    if (/^\s*[✗✘❌✓✔✅]/u.test(withoutBullet)) {
       flush();
-      const body = line.replace(/^💡\s*/, "");
-      const dot = body.indexOf(".");
-      const head = dot > 0 && dot < 60 ? body.slice(0, dot) : body.slice(0, 60);
       phrases.push({
         icon: "💡",
         section: currentSection,
         kind: "NOTE",
-        phrase: head.trim(),
+        phrase: withoutBullet.trim(),
         transcription: null,
-        translation: dot > 0 && dot < 60 ? body.slice(dot + 1).trim() : body,
+        translation: "",
+        examples: [],
+      });
+      continue;
+    }
+
+    // Заметка: 💡 подсказка, ⚠️ предупреждение, 📌 важное замечание
+    if (!isDecoratedHeading && (NOTE_ICONS.includes(icon ?? "") || NOTE_LEAD.test(withoutBullet))) {
+      flush();
+      const body = line.replace(NOTE_LEAD, "").trim();
+      // Первое предложение — заголовок заметки, остальное — пояснение.
+      const dot = body.indexOf(".");
+      const split = dot > 0 && dot < 60;
+      phrases.push({
+        icon: icon && NOTE_ICONS.includes(icon) ? icon : "💡",
+        section: currentSection,
+        kind: "NOTE",
+        phrase: (split ? body.slice(0, dot) : body).trim(),
+        transcription: null,
+        translation: split ? body.slice(dot + 1).trim() : "",
         examples: [],
       });
       continue;
@@ -342,14 +369,22 @@ function parseVocabulary(raw: string): ParseResult {
       .replace(/\s{2,}/g, " ")
       .trim();
 
+    // «надягати (дія) → She PUT ON her coat.» — после стрелки идёт пример.
+    const arrow = right.search(TO);
+    const translation = arrow === -1 ? right : right.slice(0, arrow).trim();
+    const inlineExample =
+      arrow === -1
+        ? null
+        : right.slice(arrow + right.match(TO)![0].length).trim();
+
     current = {
       icon: icon ?? sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
       section: currentSection,
       kind: "PHRASE",
       phrase,
       transcription,
-      translation: right,
-      examples: [],
+      translation,
+      examples: inlineExample ? [{ en: inlineExample, tr: "" }] : [],
     };
   }
 
