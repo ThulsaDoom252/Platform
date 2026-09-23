@@ -146,6 +146,68 @@ export default async function TeacherStudentsPage() {
             required
             className={inputCls}
           />
+
+          {/* Остальное — по желанию, поэтому свёрнуто: быстрый ввод остаётся в три поля. */}
+          <details className="group sm:col-span-3">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-muted transition hover:text-accent">
+              <span className="inline-block transition group-open:rotate-90">›</span>{" "}
+              {t.studentsPage.extraToggle}
+            </summary>
+
+            <p className="mt-2 text-xs text-faint">{t.studentsPage.extraHint}</p>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted">
+                  {t.studentsPage.fBalance}
+                </span>
+                <input
+                  name="balance"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="0"
+                  className={inputCls}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted">{t.studentsPage.fUsed}</span>
+                <input
+                  name="used"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="0"
+                  className={inputCls}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted">
+                  {t.studentsPage.fStartedAt}
+                </span>
+                <input name="startedAt" type="date" className={inputCls} />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted">
+                  {t.studentsPage.fLessonsBefore}
+                </span>
+                <input
+                  name="lessonsBefore"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="—"
+                  className={inputCls}
+                />
+              </label>
+            </div>
+
+            <p className="mt-2 text-xs text-faint">{t.studentsPage.fHint}</p>
+          </details>
+
           <button
             type="submit"
             className="h-10 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90 sm:col-span-3 sm:w-fit"
