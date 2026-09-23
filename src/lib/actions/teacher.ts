@@ -22,6 +22,11 @@ async function requireTeacher() {
   return session;
 }
 
+/**
+ * Завести ученика. Кроме имени и входа всё необязательно:
+ * баланс, израсходованное из пакета, дата первого занятия и сколько
+ * уроков уже прошло до платформы.
+ */
 export async function createStudentAction(formData: FormData) {
   await requireTeacher();
   const name = String(formData.get("name") || "").trim();
@@ -30,16 +35,41 @@ export async function createStudentAction(formData: FormData) {
 
   if (!name || !login || !password) return;
 
+  const num = (key: string) =>
+    Math.min(100_000, Math.max(0, Math.round(Number(formData.get(key)) || 0)));
+
+  const balance = num("balance");
+  const used = num("used");
+  const lessonsBefore = num("lessonsBefore");
+
+  const startedRaw = String(formData.get("startedAt") || "");
+  const started = startedRaw ? new Date(startedRaw) : null;
+  const startedAt = started && !Number.isNaN(started.getTime()) ? started : null;
+
+  // Пакет заводим, только если есть о чём говорить: остаток или расход.
+  let packageId: string | null = null;
+  if (balance > 0 || used > 0) {
+    const [pkg] = await db
+      .insert(lessonPackages)
+      .values({ totalLessons: balance + used, remainingLessons: balance })
+      .returning({ id: lessonPackages.id });
+    packageId = pkg.id;
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
   await db.insert(users).values({
     name,
     login,
     passwordHash,
     role: "STUDENT",
-    lessonBalance: 0,
+    lessonBalance: balance,
+    packageId,
+    lessonsBefore,
+    startedAt,
   });
 
   revalidatePath("/teacher");
+  revalidatePath("/teacher/students");
 }
 
 export async function resetStudentPasswordAction(formData: FormData) {
