@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, lessonPackages } from "@/lib/db/schema";
 import { createStudentAction } from "@/lib/actions/teacher";
@@ -25,14 +25,13 @@ export default async function TeacherStudentsPage() {
       name: users.name,
       login: users.login,
       level: users.level,
-      progress: users.progressPercent,
       balance: users.lessonBalance,
       avatarUrl: users.avatarUrl,
       packageId: users.packageId,
     })
     .from(users)
     .where(eq(users.role, "STUDENT"))
-    .orderBy(desc(users.progressPercent));
+    .orderBy(asc(users.name));
 
   const packages = await db.select().from(lessonPackages);
   const pkgOf = new Map(packages.map((p) => [p.id, p]));
@@ -121,17 +120,6 @@ export default async function TeacherStudentsPage() {
                     {s.login}
                     {s.level ? ` · ${s.level}` : ""}
                   </p>
-                </div>
-                <div className="hidden w-40 items-center gap-2 sm:flex">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-                    <div
-                      className="grad-accent h-full rounded-full"
-                      style={{ width: `${s.progress}%` }}
-                    />
-                  </div>
-                  <span className="w-9 shrink-0 text-right text-xs font-semibold text-muted">
-                    {s.progress}%
-                  </span>
                 </div>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${s.balance > 3 ? "tint-green" : s.balance > 0 ? "tint-amber" : "tint-rose"}`}

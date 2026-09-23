@@ -186,22 +186,6 @@ export default async function StudentHomePage() {
             </div>
           </div>
 
-          {/* Прогресс */}
-          <div className="mt-6">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-content">
-                {t.studentDash.learningProgress}
-              </p>
-              <span className="text-sm font-bold text-accent">{me.progressPercent}%</span>
-            </div>
-            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-surface-2">
-              <div
-                className="grad-accent h-full rounded-full"
-                style={{ width: `${me.progressPercent}%` }}
-              />
-            </div>
-          </div>
-
           {/* Статистика */}
           <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {stats.map((s) => (

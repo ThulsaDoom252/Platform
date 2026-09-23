@@ -73,11 +73,11 @@ export default async function TeacherOverviewPage() {
       id: users.id,
       name: users.name,
       level: users.level,
-      progress: users.progressPercent,
+      balance: users.lessonBalance,
     })
     .from(users)
     .where(eq(users.role, "STUDENT"))
-    .orderBy(desc(users.progressPercent));
+    .orderBy(asc(users.name));
 
   const upcoming = await db
     .select({
@@ -126,10 +126,6 @@ export default async function TeacherOverviewPage() {
   const lessonsThisWeek = weekRow?.c ?? 0;
   const completedThisMonth = completedRow?.c ?? 0;
   const earnings = completedThisMonth * LESSON_RATE;
-  const avgProgress =
-    students.length > 0
-      ? Math.round(students.reduce((a, s) => a + s.progress, 0) / students.length)
-      : 0;
 
   const stats = [
     {
@@ -149,9 +145,9 @@ export default async function TeacherOverviewPage() {
       href: "/teacher/schedule",
     },
     {
-      value: `${avgProgress}%`,
-      label: "Средний прогресс",
-      hint: "+5% за месяц",
+      value: String(completedThisMonth),
+      label: "Уроков за месяц",
+      hint: "проведено",
       Icon: IconTrendUp,
       grad: "grad-c3",
     },
@@ -244,7 +240,6 @@ export default async function TeacherOverviewPage() {
           </div>
           <div className="flex flex-col gap-4">
             {students.slice(0, 5).map((s, i) => {
-              const st = progressStatus(s.progress);
               return (
                 <Link
                   key={s.id}
@@ -261,21 +256,10 @@ export default async function TeacherOverviewPage() {
                       <p className="truncate text-sm font-semibold text-content group-hover:text-accent">
                         {s.name}
                       </p>
-                      <span className="shrink-0 text-xs font-semibold text-muted">
-                        {s.progress}%
-                      </span>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-                        <div
-                          className="grad-accent h-full rounded-full"
-                          style={{ width: `${s.progress}%` }}
-                        />
-                      </div>
                       <span
-                        className={`${st.cls} shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold`}
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${s.balance > 3 ? "tint-green" : s.balance > 0 ? "tint-amber" : "tint-rose"}`}
                       >
-                        {st.label}
+                        {s.balance} ур.
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11px] text-faint">{s.level}</p>
