@@ -8,9 +8,11 @@ import {
   addPhrasesAction,
   updatePhraseAction,
   deletePhraseAction,
+  transcribeAction,
   type PhraseInput,
 } from "@/lib/actions/materials";
 import { IconPlus, IconPencil, IconX, IconCheck } from "@/components/icons";
+import { suggestIcon } from "@/lib/icon-suggest";
 import { cn } from "@/lib/utils";
 
 const inputCls =
@@ -58,9 +60,12 @@ function DraftFields({
   onChange,
   onPickIcon,
   iconActive,
+  onWordEntered,
 }: {
   draft: Draft;
   sections: SectionHint[];
+  /** Слово введено — можно подтянуть транскрипцию и иконку. */
+  onWordEntered?: (draft: Draft) => void;
   onChange: (next: Draft) => void;
   onPickIcon: () => void;
   iconActive: boolean;
@@ -98,6 +103,7 @@ function DraftFields({
         <input
           value={draft.phrase}
           onChange={(e) => set({ phrase: e.target.value })}
+          onBlur={() => onWordEntered?.(draft)}
           placeholder="Слово или фраза"
           className={cn(inputCls, "sm:flex-[2]")}
         />
@@ -200,6 +206,28 @@ export function WordAdder({
       ? drafts.filter((d) => d.phrase.trim()).length
       : parsed?.phrases.length ?? 0;
 
+  /**
+   * Дополняем запись после ввода слова: транскрипция из словаря,
+   * иконка по смыслу. Уже заполненное не трогаем.
+   */
+  async function fillFromWord(d: Draft) {
+    const word = d.phrase.trim();
+    if (!word) return;
+
+    const patch: Partial<Draft> = {};
+    if (!d.icon || d.icon === "💬") {
+      const icon = suggestIcon(word);
+      if (icon) patch.icon = icon;
+    }
+    if (!d.transcription.trim()) {
+      const ipa = await transcribeAction(word);
+      if (ipa) patch.transcription = ipa;
+    }
+    if (Object.keys(patch).length === 0) return;
+
+    setDrafts((p) => p.map((x) => (x.key === d.key ? { ...x, ...patch } : x)));
+  }
+
   function save() {
     setError(null);
     const items: PhraseInput[] =
@@ -269,6 +297,7 @@ export function WordAdder({
                     draft={d}
                     sections={sections}
                     iconActive={iconFor === d.key}
+                    onWordEntered={fillFromWord}
                     onPickIcon={() => setIconFor(iconFor === d.key ? null : d.key)}
                     onChange={(next) =>
                       setDrafts((p) =>

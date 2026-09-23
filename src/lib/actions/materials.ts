@@ -20,6 +20,7 @@ import {
 } from "@/lib/materials";
 import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
+import { transcribe } from "@/lib/transcription";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -211,6 +212,12 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
 
   revalidateMaterials();
   return { ok: true, message: `Удалено: ${clean.length}` };
+}
+
+/** Транскрипция слова. Словарь лежит на сервере, в браузер не уезжает. */
+export async function transcribeAction(phrase: string): Promise<string | null> {
+  await requireTeacher();
+  return transcribe(String(phrase ?? "").slice(0, 120));
 }
 
 export type PhraseInput = {

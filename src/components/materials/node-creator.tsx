@@ -6,6 +6,7 @@ import { IconPicker } from "./icon-picker";
 import { createNodesAction } from "@/lib/actions/materials";
 import { IconPlus, IconX } from "@/components/icons";
 import type { TreeScope } from "./node-editor";
+import { suggestIcon } from "@/lib/icon-suggest";
 import { cn } from "@/lib/utils";
 
 const inputCls =
@@ -18,7 +19,8 @@ export type CreateTarget = {
   ownerId?: string;
 };
 
-type Row = { key: string; name: string; icon: string | null };
+/** `auto` — иконку подставили по названию, её можно молча заменить. */
+type Row = { key: string; name: string; icon: string | null; auto: boolean };
 
 /**
  * Создание папок и страниц списком: сколько угодно за раз.
@@ -36,11 +38,18 @@ export function NodeCreator({
   const defaultIcon = isPage ? "📄" : "📁";
 
   const nextKey = useRef(1);
-  const makeRow = (): Row => ({ key: `r${nextKey.current++}`, name: "", icon: defaultIcon });
+  const makeRow = (): Row => ({
+    key: `r${nextKey.current++}`,
+    name: "",
+    icon: defaultIcon,
+    auto: true,
+  });
 
   const [rows, setRows] = useState<Row[]>(() => [makeRow()]);
   const [tab, setTab] = useState<"all" | "each">("all");
   const [oneIcon, setOneIcon] = useState<string | null>(defaultIcon);
+  /** Общую иконку тоже подбираем, пока её не выбрали руками. */
+  const [oneAuto, setOneAuto] = useState(true);
   const [activeKey, setActiveKey] = useState<string>(() => rows[0]?.key ?? "");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -78,15 +87,27 @@ export function NodeCreator({
   }
 
   function setName(key: string, name: string) {
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, name } : r)));
+    if (oneAuto) setOneIcon(suggestIcon(name) ?? defaultIcon);
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.key !== key) return r;
+        // Пока иконку не выбрали руками, подбираем её по названию.
+        if (!r.auto) return { ...r, name };
+        return { ...r, name, icon: suggestIcon(name) ?? defaultIcon };
+      }),
+    );
   }
 
   function pickIcon(icon: string) {
     if (tab === "all") {
       setOneIcon(icon);
+      setOneAuto(false);
       return;
     }
-    setRows((prev) => prev.map((r) => (r.key === activeKey ? { ...r, icon } : r)));
+    // Выбрали руками — автоподбор для этой строки больше не вмешивается.
+    setRows((prev) =>
+      prev.map((r) => (r.key === activeKey ? { ...r, icon, auto: false } : r)),
+    );
     const i = rows.findIndex((r) => r.key === activeKey);
     const next = rows[i + 1];
     if (next) setActiveKey(next.key);
