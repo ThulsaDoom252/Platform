@@ -248,40 +248,59 @@ function cleanPhrase(p: PhraseInput): PhraseInput | null {
   };
 }
 
-/**
- * Расставляет записи указанных разделов по алфавиту и переписывает порядок.
- * Заметки 💡 алфавиту не подчиняются — они уходят в конец своего раздела.
- */
-async function resortSections(nodeId: string, sections: Set<string | null>) {
-  const rows = await db
+type PhraseRow = typeof materialPhrases.$inferSelect;
+
+/** Записи страницы по порядку. */
+async function loadPhrases(nodeId: string): Promise<PhraseRow[]> {
+  return db
     .select()
     .from(materialPhrases)
     .where(eq(materialPhrases.nodeId, nodeId))
     .orderBy(asc(materialPhrases.sortOrder));
+}
 
-  const groups: { section: string | null; items: typeof rows }[] = [];
-  for (const r of rows) {
-    const key = r.section ?? null;
-    const last = groups[groups.length - 1];
-    if (last && last.section === key) last.items.push(r);
-    else groups.push({ section: key, items: [r] });
-  }
-
-  const ordered = groups.flatMap((g) => {
-    if (!sections.has(g.section)) return g.items;
-    const words = g.items.filter((i) => i.kind !== "NOTE");
-    const notes = g.items.filter((i) => i.kind === "NOTE");
-    words.sort((a, b) => a.phrase.localeCompare(b.phrase, "en", { sensitivity: "base" }));
-    return [...words, ...notes];
-  });
-
-  for (let i = 0; i < ordered.length; i++) {
-    if (ordered[i].sortOrder === i + 1) continue;
+/** Проставляет порядок подряд, трогая только то, что сдвинулось. */
+async function renumber(rows: PhraseRow[]) {
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].sortOrder === i + 1) continue;
     await db
       .update(materialPhrases)
       .set({ sortOrder: i + 1 })
-      .where(eq(materialPhrases.id, ordered[i].id));
+      .where(eq(materialPhrases.id, rows[i].id));
   }
+}
+
+const byWord = (a: string, b: string) =>
+  a.localeCompare(b, "en", { sensitivity: "base" });
+
+/**
+ * Ставит новые записи на своё место по алфавиту, не пересобирая раздел.
+ * Порядок, выставленный вручную перетаскиванием, так не ломается:
+ * новое слово встаёт перед первым, которое идёт после него.
+ */
+async function placeNewPhrases(nodeId: string, newIds: Set<string>) {
+  const rows = await loadPhrases(nodeId);
+  const fresh = rows.filter((r) => newIds.has(r.id));
+  const rest = rows.filter((r) => !newIds.has(r.id));
+
+  for (const item of fresh) {
+    const section = item.section ?? null;
+    let at = rest.findIndex(
+      (r) =>
+        (r.section ?? null) === section &&
+        r.kind !== "NOTE" &&
+        byWord(r.phrase, item.phrase) > 0,
+    );
+
+    if (at === -1) {
+      // Раздела ещё нет или слово последнее по алфавиту — в конец раздела.
+      const last = rest.map((r) => (r.section ?? null) === section).lastIndexOf(true);
+      at = last === -1 ? rest.length : last + 1;
+    }
+    rest.splice(at, 0, item);
+  }
+
+  await renumber(rest);
 }
 
 /** Добавить слова на страницу, не трогая уже существующие. */
@@ -300,11 +319,12 @@ export async function addPhrasesAction(
     .from(materialPhrases)
     .where(eq(materialPhrases.nodeId, nodeId));
 
-  await db.insert(materialPhrases).values(
-    clean.map((p, i) => ({ nodeId, sortOrder: (last ?? 0) + i + 1, ...p })),
-  );
+  const added = await db
+    .insert(materialPhrases)
+    .values(clean.map((p, i) => ({ nodeId, sortOrder: (last ?? 0) + i + 1, ...p })))
+    .returning({ id: materialPhrases.id });
 
-  await resortSections(nodeId, new Set(clean.map((p) => p.section)));
+  await placeNewPhrases(nodeId, new Set(added.map((a) => a.id)));
   await db
     .update(materialNodes)
     .set({ pageKind: "VOCAB" })
@@ -325,16 +345,126 @@ export async function updatePhraseAction(
   const clean = cleanPhrase(data);
   if (!clean) return { error: "Слово не может быть пустым" };
 
+  const [before] = await db
+    .select({ section: materialPhrases.section })
+    .from(materialPhrases)
+    .where(eq(materialPhrases.id, phraseId))
+    .limit(1);
+
   const [row] = await db
     .update(materialPhrases)
     .set(clean)
     .where(eq(materialPhrases.id, phraseId))
     .returning({ nodeId: materialPhrases.nodeId });
 
-  if (row) await resortSections(row.nodeId, new Set([clean.section]));
+  // Раздел сменился — слово переезжает и встаёт по алфавиту на новом месте.
+  if (row && (before?.section ?? null) !== clean.section) {
+    await placeNewPhrases(row.nodeId, new Set([phraseId]));
+  }
 
   revalidateMaterials();
   return { ok: true, message: "Сохранено" };
+}
+
+/**
+ * Переставить слово: рядом с другим словом или в конец раздела.
+ * Раздел берётся у цели, поэтому одним действием и меняем порядок,
+ * и переносим слово в другую категорию.
+ */
+export async function movePhraseAction(
+  phraseId: string,
+  target: { phraseId?: string; section?: string | null; where?: "before" | "after" },
+): Promise<BulkState> {
+  await requireTeacher();
+  if (!phraseId) return { error: "Не выбрана запись" };
+
+  const [moved] = await db
+    .select()
+    .from(materialPhrases)
+    .where(eq(materialPhrases.id, phraseId))
+    .limit(1);
+  if (!moved) return { error: "Запись не найдена" };
+
+  const rows = await loadPhrases(moved.nodeId);
+  const rest = rows.filter((r) => r.id !== phraseId);
+
+  let section: string | null;
+  let at: number;
+
+  if (target.phraseId) {
+    const anchor = rest.find((r) => r.id === target.phraseId);
+    if (!anchor) return { error: "Не нашлось, куда ставить" };
+    section = anchor.section ?? null;
+    at = rest.indexOf(anchor) + (target.where === "after" ? 1 : 0);
+  } else {
+    // Бросили на заголовок раздела — в конец этого раздела.
+    section = target.section ?? null;
+    const last = rest.map((r) => (r.section ?? null) === section).lastIndexOf(true);
+    at = last === -1 ? rest.length : last + 1;
+  }
+
+  if ((moved.section ?? null) !== section) {
+    await db
+      .update(materialPhrases)
+      .set({ section })
+      .where(eq(materialPhrases.id, phraseId));
+  }
+
+  rest.splice(at, 0, { ...moved, section });
+  await renumber(rest);
+
+  revalidateMaterials();
+  return { ok: true };
+}
+
+/** Переименовать категорию: меняется у всех её слов сразу. */
+export async function renameSectionAction(
+  nodeId: string,
+  from: string | null,
+  to: string,
+): Promise<BulkState> {
+  await requireTeacher();
+  const name = String(to ?? "").trim().slice(0, 200);
+  if (!nodeId || !name) return { error: "Введи название категории" };
+
+  await db
+    .update(materialPhrases)
+    .set({ section: name })
+    .where(
+      and(
+        eq(materialPhrases.nodeId, nodeId),
+        from === null ? isNull(materialPhrases.section) : eq(materialPhrases.section, from),
+      ),
+    );
+
+  revalidateMaterials();
+  return { ok: true, message: "Категория переименована" };
+}
+
+/**
+ * Убрать категорию. Слова по умолчанию остаются на странице без категории —
+ * удалять их вместе с заголовком надо просить отдельно.
+ */
+export async function deleteSectionAction(
+  nodeId: string,
+  section: string | null,
+  withWords = false,
+): Promise<BulkState> {
+  await requireTeacher();
+  if (!nodeId) return { error: "Не выбрана страница" };
+
+  const where = and(
+    eq(materialPhrases.nodeId, nodeId),
+    section === null ? isNull(materialPhrases.section) : eq(materialPhrases.section, section),
+  );
+
+  if (withWords) await db.delete(materialPhrases).where(where);
+  else await db.update(materialPhrases).set({ section: null }).where(where);
+
+  await renumber(await loadPhrases(nodeId));
+
+  revalidateMaterials();
+  return { ok: true, message: withWords ? "Категория и слова удалены" : "Категория убрана" };
 }
 
 /** Удалить одно слово. */

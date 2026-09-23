@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import {
+  movePhraseAction,
+  renameSectionAction,
+  deleteSectionAction,
+} from "@/lib/actions/materials";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -10,6 +15,7 @@ import {
   IconEye,
   IconEyeOff,
   IconPencil,
+  IconTrash,
 } from "@/components/icons";
 
 export type PhraseExample = { en: string; tr: string };
@@ -289,6 +295,7 @@ export function PhraseReader({
   description,
   phrases,
   onEditPhrase,
+  nodeId,
 }: {
   title: string;
   icon: string | null;
@@ -296,10 +303,25 @@ export function PhraseReader({
   phrases: MaterialPhrase[];
   /** Передаётся только учителю — у ученика правки нет. */
   onEditPhrase?: (p: MaterialPhrase) => void;
+  /** Страница, которой принадлежат записи: нужна для правки категорий. */
+  nodeId?: string;
 }) {
   const { t } = useT();
   const [showTranslation, setShowTranslation] = useState(true);
   const speech = useSpeech();
+
+  const editable = !!onEditPhrase && !!nodeId;
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; where: "before" | "after" } | null>(null);
+  const [dropSection, setDropSection] = useState<string | null | undefined>(undefined);
+  const [busy, startMove] = useTransition();
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 3000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   if (phrases.length === 0) {
     return <p className="py-16 text-center text-sm text-faint">{t.phrases.empty}</p>;
@@ -314,6 +336,72 @@ export function PhraseReader({
   }
 
   const phraseCount = phrases.filter((p) => p.kind !== "NOTE").length;
+
+  const run = (fn: () => Promise<{ error?: string; message?: string }>) =>
+    startMove(async () => {
+      const res = await fn();
+      setNotice(res.error ?? res.message ?? null);
+    });
+
+  function finishDrag() {
+    setDragId(null);
+    setDropAt(null);
+    setDropSection(undefined);
+  }
+
+  /** Край карточки — встать рядом, середина — тоже рядом: слова плоские. */
+  const cardDrag = (p: MaterialPhrase) => {
+    if (!editable) return {};
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", p.id);
+        setDragId(p.id);
+      },
+      onDragEnd: finishDrag,
+      onDragOver: (e: React.DragEvent) => {
+        if (!dragId || dragId === p.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const r = e.currentTarget.getBoundingClientRect();
+        const where = e.clientY - r.top < r.height / 2 ? "before" : "after";
+        if (dropAt?.id !== p.id || dropAt.where !== where) setDropAt({ id: p.id, where });
+      },
+      onDragLeave: () => {
+        if (dropAt?.id === p.id) setDropAt(null);
+      },
+      onDrop: (e: React.DragEvent) => {
+        if (!dragId || dragId === p.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const id = dragId;
+        const where = dropAt?.where ?? "before";
+        finishDrag();
+        run(() => movePhraseAction(id, { phraseId: p.id, where }));
+      },
+    };
+  };
+
+  /** Заголовок принимает слово — оно уходит в конец этой категории. */
+  const headerDrop = (section: string | null) => {
+    if (!editable) return {};
+    return {
+      onDragOver: (e: React.DragEvent) => {
+        if (!dragId) return;
+        e.preventDefault();
+        setDropSection(section);
+      },
+      onDragLeave: () => setDropSection(undefined),
+      onDrop: (e: React.DragEvent) => {
+        if (!dragId) return;
+        e.preventDefault();
+        const id = dragId;
+        finishDrag();
+        run(() => movePhraseAction(id, { section }));
+      },
+    };
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -359,33 +447,115 @@ export function PhraseReader({
       <div className="flex flex-col gap-5">
         {groups.map((g, gi) => (
           <section key={gi} className="flex flex-col gap-3">
-            {g.section && (
-              <h3 className="flex items-center gap-2 px-1 text-sm font-bold text-content">
-                <span className="h-4 w-1 rounded-full bg-accent" />
-                {g.section}
+            <div
+              {...headerDrop(g.section)}
+              className={cn(
+                "group flex items-center gap-2 rounded-lg px-1 py-1 transition",
+                dropSection === g.section && "bg-accent-soft ring-1 ring-accent",
+              )}
+            >
+              <span className="h-4 w-1 shrink-0 rounded-full bg-accent" />
+              <h3 className="flex-1 text-sm font-bold text-content">
+                {g.section ?? (editable ? "Без категории" : "")}
               </h3>
-            )}
-            {g.items.map((p, i) =>
-              p.kind === "NOTE" ? (
-                <NoteCard
-                  key={p.id}
-                  p={p}
-                  onEdit={onEditPhrase && (() => onEditPhrase(p))}
-                />
-              ) : (
-                <PhraseCard
-                  key={p.id}
-                  p={p}
-                  index={gi + i}
-                  showTranslation={showTranslation}
-                  speech={speech}
-                  onEdit={onEditPhrase && (() => onEditPhrase(p))}
-                />
-              ),
-            )}
+
+              {editable && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = prompt("Название категории", g.section ?? "");
+                      if (next && next.trim() && next !== g.section) {
+                        run(() => renameSectionAction(nodeId!, g.section, next));
+                      }
+                    }}
+                    title="Переименовать категорию"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-faint opacity-0 transition hover:text-accent group-hover:opacity-100"
+                  >
+                    <IconPencil className="h-3.5 w-3.5" />
+                  </button>
+                  {g.section && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const purge = confirm(
+                          `Категория «${g.section}» — ${g.items.length} записей.\n\n` +
+                            "OK — удалить вместе со словами.\n" +
+                            "Отмена — убрать только заголовок, слова останутся.",
+                        );
+                        run(() => deleteSectionAction(nodeId!, g.section, purge));
+                      }}
+                      title="Убрать категорию"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-faint opacity-0 transition hover:text-rose-500 group-hover:opacity-100"
+                    >
+                      <IconTrash className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {g.items.map((p, i) => (
+              <div
+                key={p.id}
+                {...cardDrag(p)}
+                className={cn(
+                  "relative transition",
+                  dragId === p.id && "opacity-40",
+                  editable && "cursor-grab active:cursor-grabbing",
+                )}
+              >
+                {dropAt?.id === p.id && (
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute left-0 right-0 z-10 h-0.5 rounded-full bg-accent",
+                      dropAt.where === "before" ? "-top-1.5" : "-bottom-1.5",
+                    )}
+                  />
+                )}
+                {p.kind === "NOTE" ? (
+                  <NoteCard p={p} onEdit={onEditPhrase && (() => onEditPhrase(p))} />
+                ) : (
+                  <PhraseCard
+                    p={p}
+                    index={gi + i}
+                    showTranslation={showTranslation}
+                    speech={speech}
+                    onEdit={onEditPhrase && (() => onEditPhrase(p))}
+                  />
+                )}
+              </div>
+            ))}
           </section>
         ))}
       </div>
+
+      {editable && (
+        <button
+          type="button"
+          onClick={() => {
+            const name = prompt("Название новой категории");
+            if (!name || !name.trim()) return;
+            // Пустая категория нигде не хранится: заводим её на первом слове,
+            // которое пока ни к какой не относится.
+            const orphan = phrases.find((p) => !p.section);
+            if (!orphan) {
+              setNotice("Сначала перетащи сюда слово — пустая категория не хранится.");
+              return;
+            }
+            run(() => movePhraseAction(orphan.id, { section: name.trim() }));
+          }}
+          className="flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-semibold text-muted transition hover:border-accent hover:text-accent"
+        >
+          + Категория
+        </button>
+      )}
+
+      {(busy || notice) && (
+        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-surface px-4 py-2.5 text-sm font-semibold text-content shadow-xl ring-1 ring-line">
+          {notice ?? "Переношу…"}
+        </div>
+      )}
     </div>
   );
 }

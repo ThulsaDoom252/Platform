@@ -1373,6 +1373,7 @@ export function MaterialsExplorer({
                 icon={selected.icon}
                 description={selected.description}
                 phrases={selected.phrases}
+                nodeId={selected.id}
                 onEditPhrase={editable ? setEditPhrase : undefined}
               />
             )}
