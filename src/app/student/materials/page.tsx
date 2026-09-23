@@ -13,7 +13,7 @@ export default async function StudentMaterialsPage() {
   const tree = await getStudentLibrary(session!.userId);
 
   const [me] = await db
-    .select({ progress: users.progressPercent })
+    .select({ progress: users.progressPercent, allowExport: users.allowExport })
     .from(users)
     .where(eq(users.id, session!.userId))
     .limit(1);
@@ -24,7 +24,11 @@ export default async function StudentMaterialsPage() {
         <h1 className="text-2xl font-bold text-content">{t.materials.title}</h1>
         <p className="mt-1 text-sm text-muted">{t.materials.subtitle}</p>
       </div>
-      <MaterialsExplorer tree={tree} progress={me?.progress ?? 0} />
+      <MaterialsExplorer
+        tree={tree}
+        progress={me?.progress ?? 0}
+        canExport={me?.allowExport ?? false}
+      />
     </div>
   );
 }

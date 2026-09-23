@@ -85,6 +85,8 @@ export type BalanceSettings = {
   showPackageSize: boolean;
   showTotalLessons: boolean;
   showExpiry: boolean;
+  /** Может ли ученик выгружать материалы в текст и docx. */
+  allowExport: boolean;
 };
 
 /** Баланс, пакет, история занятий и видимость — одним сохранением. */
@@ -128,6 +130,7 @@ export async function saveBalanceSettingsAction(
       showPackageSize: !!s.showPackageSize,
       showTotalLessons: !!s.showTotalLessons,
       showExpiry: !!s.showExpiry,
+      allowExport: !!s.allowExport,
       updatedAt: new Date(),
     })
     .where(eq(users.id, studentId));

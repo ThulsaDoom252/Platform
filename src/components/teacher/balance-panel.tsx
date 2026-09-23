@@ -67,7 +67,12 @@ export function BalancePanel({
   const approx = form.statsApproximate ? "≈ " : "";
 
   const flag = (
-    key: "showBalance" | "showPackageSize" | "showTotalLessons" | "showExpiry",
+    key:
+      | "showBalance"
+      | "showPackageSize"
+      | "showTotalLessons"
+      | "showExpiry"
+      | "allowExport",
     text: string,
   ) => (
     <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
@@ -203,6 +208,11 @@ export function BalancePanel({
         {flag("showPackageSize", "Размер последнего пакета")}
         {flag("showTotalLessons", "Всего уроков за весь период")}
         {flag("showExpiry", "До какого числа действует пакет")}
+      </div>
+
+      <p className="mt-4 text-[12px] font-semibold text-muted">Что {studentName} может</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {flag("allowExport", "Выгружать материалы в текст и .docx")}
       </div>
 
       {error && <p className="mt-3 text-sm text-rose-500">{error}</p>}

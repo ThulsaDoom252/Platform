@@ -94,6 +94,7 @@ export default async function StudentDetailPage({
           showPackageSize: student.showPackageSize,
           showTotalLessons: student.showTotalLessons,
           showExpiry: student.showExpiry,
+          allowExport: student.allowExport,
         }}
       />
 

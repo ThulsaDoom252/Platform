@@ -31,6 +31,7 @@ import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
 import { WordAdder, PhraseEditor } from "./phrase-form";
 import { RuleEditor } from "./rule-editor";
+import { ExportDialog } from "./export-dialog";
 import { CopyDialog, type CopySource } from "./copy-dialog";
 
 /** Дерево для окна копирования — только то, что ему нужно показать. */
@@ -121,6 +122,7 @@ export function MaterialsExplorer({
   scope = "MATERIAL",
   ownerId,
   emptyText,
+  canExport = false,
 }: {
   tree: MaterialNode[];
   progress?: number;
@@ -132,6 +134,8 @@ export function MaterialsExplorer({
   scope?: TreeScope;
   /** Владелец личного дерева (для scope MISTAKE). */
   ownerId?: string;
+  /** Выгрузка страницы в текст и docx. Учитель может её отключить ученику. */
+  canExport?: boolean;
 }) {
   const { t } = useT();
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
@@ -144,6 +148,7 @@ export function MaterialsExplorer({
   const [addWordsTo, setAddWordsTo] = useState<{ id: string; name: string } | null>(null);
   const [ruleEditNode, setRuleEditNode] = useState<MaterialNode | null>(null);
   const [copyNodes, setCopyNodes] = useState<MaterialNode[] | null>(null);
+  const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
 
   const { byId, pathById } = useMemo(() => {
@@ -1259,6 +1264,19 @@ export function MaterialsExplorer({
 
         {isPhrasePage && selected && (
           <>
+            {/* Выгрузка доступна и учителю, и ученику — если она ему открыта. */}
+            {(editable || canExport) && hasContent(selected) && (
+              <div className="mb-4 flex">
+                <button
+                  type="button"
+                  onClick={() => setExportPage(selected)}
+                  className={toolBtn}
+                  title="Текстовая версия страницы: скопировать или скачать .docx"
+                >
+                  <IconFile className="h-4 w-4" /> Выгрузить в текст / .docx
+                </button>
+              </div>
+            )}
             {editable && (
               <div className="mb-4 flex flex-wrap gap-2">
                 {/* Пока страница пустая — предлагаем оба способа наполнения.
@@ -1675,6 +1693,19 @@ export function MaterialsExplorer({
           </span>
         </div>
       )}
+
+      <ExportDialog
+        key={exportPage ? `export-${exportPage.id}` : "export-idle"}
+        page={
+          exportPage && {
+            title: exportPage.name,
+            description: exportPage.description,
+            phrases: exportPage.phrases,
+            blocks: exportPage.blocks,
+          }
+        }
+        onClose={() => setExportPage(null)}
+      />
 
       {contextMenu}
 

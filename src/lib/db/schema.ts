@@ -72,6 +72,8 @@ export const users = pgTable("users", {
   showPackageSize: boolean("show_package_size").notNull().default(true),
   showTotalLessons: boolean("show_total_lessons").notNull().default(true),
   showExpiry: boolean("show_expiry").notNull().default(true),
+  /** Может ли ученик выгружать материалы в текст и docx. */
+  allowExport: boolean("allow_export").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
