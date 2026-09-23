@@ -4,9 +4,15 @@ import { revalidatePath } from "next/cache";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { users, lessons, homework, notifications } from "@/lib/db/schema";
+import {
+  users,
+  lessons,
+  homework,
+  notifications,
+  lessonPackages,
+} from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
-import { adjustStudentLessons } from "@/lib/packages";
+import { adjustStudentLessons, setStudentLessons } from "@/lib/packages";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -61,6 +67,75 @@ export async function adjustBalanceAction(formData: FormData) {
 
   revalidatePath(`/teacher/students/${studentId}`);
   revalidatePath("/teacher");
+}
+
+export type BalanceSettings = {
+  /** Остаток уроков — ставится ровно, без прибавления. */
+  remaining: number;
+  /** Размер пакета, который ученик сейчас тратит. */
+  packageTotal: number;
+  /** До какого числа действителен пакет. Пусто — без срока. */
+  expiresAt: string | null;
+  /** Уроки, проведённые до платформы. */
+  lessonsBefore: number;
+  /** Начало занятий. Пусто — берётся дата первого урока. */
+  startedAt: string | null;
+  statsApproximate: boolean;
+  showBalance: boolean;
+  showPackageSize: boolean;
+  showTotalLessons: boolean;
+  showExpiry: boolean;
+};
+
+/** Баланс, пакет, история занятий и видимость — одним сохранением. */
+export async function saveBalanceSettingsAction(
+  studentId: string,
+  s: BalanceSettings,
+): Promise<{ ok?: boolean; error?: string }> {
+  await requireTeacher();
+  if (!studentId) return { error: "Не выбран ученик" };
+
+  const num = (v: unknown, max = 100_000) =>
+    Math.min(max, Math.max(0, Math.round(Number(v) || 0)));
+  const date = (v: string | null) => {
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  await setStudentLessons(studentId, num(s.remaining));
+
+  const [student] = await db
+    .select({ packageId: users.packageId })
+    .from(users)
+    .where(eq(users.id, studentId))
+    .limit(1);
+
+  if (student?.packageId) {
+    await db
+      .update(lessonPackages)
+      .set({ totalLessons: num(s.packageTotal), expiresAt: date(s.expiresAt) })
+      .where(eq(lessonPackages.id, student.packageId));
+  }
+
+  await db
+    .update(users)
+    .set({
+      lessonsBefore: num(s.lessonsBefore),
+      startedAt: date(s.startedAt),
+      statsApproximate: !!s.statsApproximate,
+      showBalance: !!s.showBalance,
+      showPackageSize: !!s.showPackageSize,
+      showTotalLessons: !!s.showTotalLessons,
+      showExpiry: !!s.showExpiry,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, studentId));
+
+  revalidatePath(`/teacher/students/${studentId}`);
+  revalidatePath("/teacher");
+  revalidatePath("/student");
+  return { ok: true };
 }
 
 export async function createLessonAction(formData: FormData) {

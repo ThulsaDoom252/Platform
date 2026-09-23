@@ -67,7 +67,8 @@ export default async function StudentSchedulePage() {
         <p className="mt-1 text-sm text-muted">{t.studentArea.scheduleSubtitle}</p>
       </div>
 
-      {/* Баланс */}
+      {/* Баланс — показываем, только если учитель его открыл */}
+      {(me.showBalance || me.showPackageSize || me.showExpiry) && (
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center gap-4">
           <span className="grad-accent flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm">
@@ -78,12 +79,19 @@ export default async function StudentSchedulePage() {
             <p className="mt-0.5 text-sm text-muted">{t.studentArea.balanceHint}</p>
           </div>
           <div className="flex flex-col items-start gap-1 sm:items-end">
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${balance > 0 ? "tint-green" : "tint-rose"}`}
-            >
-              {fmt(t.studentArea.balanceLeft, { n: balance })}
-            </span>
-            {pkg?.expiresAt && (
+            {me.showBalance && (
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${balance > 0 ? "tint-green" : "tint-rose"}`}
+              >
+                {fmt(t.studentArea.balanceLeft, { n: balance })}
+              </span>
+            )}
+            {me.showPackageSize && !!pkg?.totalLessons && (
+              <span className="text-[11px] text-faint">
+                Пакет: {pkg.totalLessons}
+              </span>
+            )}
+            {me.showExpiry && pkg?.expiresAt && (
               <span className="text-[11px] text-faint">
                 {fmt(t.studentDash.packageUntil, { date: dateFmt.format(pkg.expiresAt) })}
               </span>
@@ -91,6 +99,7 @@ export default async function StudentSchedulePage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Предстоящие */}
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">

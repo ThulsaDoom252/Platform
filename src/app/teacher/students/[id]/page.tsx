@@ -22,6 +22,8 @@ import {
   updateHomeworkStatusAction,
   resetStudentPasswordAction,
 } from "@/lib/actions/teacher";
+import { getStudentStats, getStudentPackage } from "@/lib/packages";
+import { BalancePanel } from "@/components/teacher/balance-panel";
 
 export default async function StudentDetailPage({
   params,
@@ -45,6 +47,23 @@ export default async function StudentDetailPage({
     .where(eq(homework.studentId, id))
     .orderBy(asc(homework.createdAt));
 
+  const [stats, pkg] = await Promise.all([
+    getStudentStats(id),
+    getStudentPackage(id),
+  ]);
+
+  // Остаток у общего пакета один на всех — предупредим, с кем он делится.
+  const sharedWith = student.packageId
+    ? (
+        await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.packageId, student.packageId))
+      )
+        .map((u) => u.name)
+        .filter((n) => n !== student.name)
+    : [];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -59,37 +78,26 @@ export default async function StudentDetailPage({
         </Badge>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Баланс уроков</CardTitle>
-            <CardDescription>Начисляется вручную, списывается автоматически за проведённый урок</CardDescription>
-          </CardHeader>
-          <CardContent className="flex gap-2">
-            <form action={adjustBalanceAction}>
-              <input type="hidden" name="studentId" value={student.id} />
-              <input type="hidden" name="delta" value="1" />
-              <Button type="submit" variant="outline" size="sm">
-                + 1 урок
-              </Button>
-            </form>
-            <form action={adjustBalanceAction}>
-              <input type="hidden" name="studentId" value={student.id} />
-              <input type="hidden" name="delta" value="4" />
-              <Button type="submit" variant="outline" size="sm">
-                + 4 урока
-              </Button>
-            </form>
-            <form action={adjustBalanceAction}>
-              <input type="hidden" name="studentId" value={student.id} />
-              <input type="hidden" name="delta" value="-1" />
-              <Button type="submit" variant="outline" size="sm">
-                − 1 урок
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+      <BalancePanel
+        studentId={student.id}
+        studentName={student.name}
+        sharedWith={sharedWith}
+        stats={{ onPlatform: stats.onPlatform, firstLessonAt: stats.firstLessonAt }}
+        initial={{
+          remaining: student.lessonBalance,
+          packageTotal: pkg?.totalLessons ?? 0,
+          expiresAt: pkg?.expiresAt ? pkg.expiresAt.toISOString() : null,
+          lessonsBefore: student.lessonsBefore,
+          startedAt: student.startedAt ? student.startedAt.toISOString() : null,
+          statsApproximate: student.statsApproximate,
+          showBalance: student.showBalance,
+          showPackageSize: student.showPackageSize,
+          showTotalLessons: student.showTotalLessons,
+          showExpiry: student.showExpiry,
+        }}
+      />
 
+      <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Сброс пароля</CardTitle>

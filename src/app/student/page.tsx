@@ -105,15 +105,18 @@ export default async function StudentHomePage() {
     .limit(3);
 
   const lessonsLeft = pkg ? pkg.remainingLessons : me.lessonBalance;
+  // Учитель решает, что из баланса и статистики показывать ученику.
+  const approx = me.statsApproximate ? "≈ " : "";
+  const lessonsDone = (doneRow?.c ?? 0) + me.lessonsBefore;
 
   const stats = [
-    {
-      value: String(doneRow?.c ?? 0),
+    me.showTotalLessons && {
+      value: `${approx}${lessonsDone}`,
       label: t.studentDash.lessonsCompleted,
       Icon: IconCheckCircle,
       grad: "grad-c1",
     },
-    {
+    me.showBalance && {
       value: String(lessonsLeft),
       label: t.studentDash.lessonsLeft,
       Icon: IconLayers,
@@ -126,7 +129,7 @@ export default async function StudentHomePage() {
       grad: "grad-c3",
     },
     { value: "4.9", label: t.studentDash.avgRating, Icon: IconStar, grad: "grad-c4" },
-  ];
+  ].filter((s): s is { value: string; label: string; Icon: typeof IconStar; grad: string } => !!s);
 
   // «через N дней» для ближайшего урока
   let whenLabel = "";

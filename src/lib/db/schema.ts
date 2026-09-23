@@ -58,6 +58,20 @@ export const users = pgTable("users", {
   // Student-only: CEFR level (e.g. "B1 · Upper Intermediate") and overall progress 0..100
   level: text("level"),
   progressPercent: integer("progress_percent").notNull().default(0),
+  /**
+   * Уроки, проведённые до платформы. Прибавляются к посчитанным,
+   * чтобы «всего за весь период» отражало реальную историю занятий.
+   */
+  lessonsBefore: integer("lessons_before").notNull().default(0),
+  /** Начало занятий. Пусто — берём дату первого урока на платформе. */
+  startedAt: timestamp("started_at"),
+  /** Цифры за весь период показывать как приблизительные. */
+  statsApproximate: boolean("stats_approximate").notNull().default(false),
+  /** Что из баланса и статистики видит сам ученик. */
+  showBalance: boolean("show_balance").notNull().default(true),
+  showPackageSize: boolean("show_package_size").notNull().default(true),
+  showTotalLessons: boolean("show_total_lessons").notNull().default(true),
+  showExpiry: boolean("show_expiry").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
