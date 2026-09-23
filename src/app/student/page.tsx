@@ -107,7 +107,8 @@ export default async function StudentHomePage() {
   const lessonsLeft = pkg ? pkg.remainingLessons : me.lessonBalance;
   // Учитель решает, что из баланса и статистики показывать ученику.
   const approx = me.statsApproximate ? "≈ " : "";
-  const lessonsDone = (doneRow?.c ?? 0) + me.lessonsBefore;
+  // lessonsBefore — поправка учителя, она бывает и отрицательной.
+  const lessonsDone = Math.max(0, (doneRow?.c ?? 0) + me.lessonsBefore);
 
   const stats = [
     me.showTotalLessons && {

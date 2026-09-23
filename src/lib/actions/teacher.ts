@@ -123,7 +123,9 @@ export async function saveBalanceSettingsAction(
   await db
     .update(users)
     .set({
-      lessonsBefore: num(s.lessonsBefore),
+      // Поправка к посчитанным урокам: учитель правит видимую сумму,
+      // поэтому она бывает и отрицательной.
+      lessonsBefore: Math.max(-100_000, Math.min(100_000, Math.round(Number(s.lessonsBefore) || 0))),
       startedAt: date(s.startedAt),
       statsApproximate: !!s.statsApproximate,
       showBalance: !!s.showBalance,

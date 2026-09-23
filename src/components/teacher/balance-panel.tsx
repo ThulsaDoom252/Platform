@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils";
 /** Привычные размеры пакетов — чтобы не набирать руками каждый раз. */
 const PRESETS = [12, 20, 30, 60];
 
+/** Быстрое пополнение баланса. */
+const TOP_UPS = [1, 12, 20, 30, 60];
+
 const inputCls =
   "h-10 w-full rounded-xl border border-line bg-surface-2 px-3 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
@@ -97,6 +100,23 @@ export function BalancePanel({
         </p>
       )}
 
+      {/* Короткая сводка — то, на что смотришь чаще всего. */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <span className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
+          Последний пакет:{" "}
+          <span className="font-bold text-content">
+            {form.remaining} из {form.packageTotal || "—"}
+          </span>
+        </span>
+        <span className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
+          Пройдено за всё время:{" "}
+          <span className="font-bold text-content">
+            {approx}
+            {total}
+          </span>
+        </span>
+      </div>
+
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
           <p className={label}>Осталось уроков</p>
@@ -107,6 +127,18 @@ export function BalancePanel({
             onChange={(e) => set("remaining", Number(e.target.value))}
             className={cn(inputCls, "mt-1.5")}
           />
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {TOP_UPS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => set("remaining", (Number(form.remaining) || 0) + n)}
+                className="h-7 rounded-lg bg-surface-2 px-2.5 text-[12px] font-semibold text-muted transition hover:bg-accent-soft hover:text-accent"
+              >
+                +{n}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div>
@@ -166,23 +198,24 @@ export function BalancePanel({
       <div className="mt-4 rounded-xl bg-surface-2 p-3.5">
         <div className="flex flex-wrap items-end gap-4">
           <div>
-            <p className={label}>Уроков до платформы</p>
+            <p className={label}>Всего уроков за весь период</p>
             <input
               type="number"
               min={0}
-              value={form.lessonsBefore}
-              onChange={(e) => set("lessonsBefore", Number(e.target.value))}
-              className={cn(inputCls, "mt-1.5 w-28")}
+              value={total}
+              onChange={(e) =>
+                // Храним поправку к посчитанным, а правим видимую сумму.
+                set("lessonsBefore", (Number(e.target.value) || 0) - stats.onPlatform)
+              }
+              className={cn(inputCls, "mt-1.5 w-32")}
             />
           </div>
           <p className="pb-2.5 text-[13px] text-muted">
-            Всего за весь период:{" "}
-            <span className="font-bold text-content">
-              {approx}
-              {total}
-            </span>{" "}
+            {approx}
+            <span className="font-bold text-content">{total}</span>{" "}
             <span className="text-faint">
-              ({stats.onPlatform} на платформе + {Number(form.lessonsBefore) || 0} до неё)
+              ({stats.onPlatform} посчитано на платформе
+              {form.lessonsBefore ? `, ${form.lessonsBefore > 0 ? "+" : "−"}${Math.abs(form.lessonsBefore)} вручную` : ""})
             </span>
           </p>
         </div>
