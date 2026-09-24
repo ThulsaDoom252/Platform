@@ -6,7 +6,13 @@
  * ругается на повторяющиеся ключи) и что названия разделов находятся
  * на всех трёх языках.
  */
-import { PICKER_GROUPS, ALL_ICONS } from "../src/lib/icons-data";
+import {
+  PICKER_GROUPS,
+  PICKER_ICON_COUNT,
+  UNICODE_ICON_COUNT,
+  ALL_ICONS,
+  searchIcons,
+} from "../src/lib/icons-data";
 import { suggestIcon } from "../src/lib/icon-suggest";
 
 const dup: string[] = [];
@@ -43,3 +49,24 @@ for (const n of names) {
 }
 
 console.log(`\nНе подобрано (кроме бессмыслицы): ${misses}. Ожидается 0.`);
+
+const catalogCases: [string, string][] = [
+  ["армия", "🪖"],
+  ["жесты", "👋"],
+  ["емоции", "😀"],
+  ["продукты", "🍎"],
+  ["планеты", "🪐"],
+];
+
+for (const [query, expected] of catalogCases) {
+  const found = searchIcons(query).some(([icon]) => icon === expected);
+  if (!found) throw new Error(`Поиск «${query}» не нашёл ${expected}`);
+}
+
+if (UNICODE_ICON_COUNT < 1_900 || PICKER_ICON_COUNT < UNICODE_ICON_COUNT) {
+  throw new Error("Полный Unicode-каталог иконок не подключён");
+}
+
+console.log(
+  `Полный каталог: ${UNICODE_ICON_COUNT} Unicode-записей, ${PICKER_ICON_COUNT} уникальных иконок.`,
+);

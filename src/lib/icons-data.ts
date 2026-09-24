@@ -1,14 +1,15 @@
 /**
  * База иконок для материалов.
  *
- * Только эмодзи, которые надёжно рисуются в Segoe UI Emoji на Windows 10:
- * всё не новее Emoji 11.0 (2018). Символы 12.0 и свежее (🥸, 🦤, 🪑, 🟠)
- * на этой системе дают «тофу», флаги не рисуются вовсе — их здесь нет.
+ * Вручную подобранная часть содержит максимально совместимые иконки и
+ * поисковые слова на трёх языках. Полный актуальный каталог Unicode Emoji
+ * подключён отдельно в icons-unicode.ts и доступен в том же окне выбора.
  *
  * Формат записи: [эмодзи, ключевые слова для поиска]
  * Один и тот же эмодзи встречается ровно в одной группе.
  */
 import { EXTRA_GROUPS, type IconGroup } from "./icons-extra";
+import { UNICODE_GROUPS, UNICODE_ICON_COUNT } from "./icons-unicode";
 
 export type { IconGroup };
 
@@ -753,7 +754,19 @@ export const ALL_ICONS: [string, string][] = [
 ].flatMap((g) => g.icons);
 
 /** Всё, что показывает окно выбора. */
-export const PICKER_GROUPS: IconGroup[] = [...ICON_GROUPS, ...EXTRA_GROUPS];
+export const CURATED_PICKER_GROUPS: IconGroup[] = [...ICON_GROUPS, ...EXTRA_GROUPS];
+
+/** Полный каталог для окна выбора: старые подборки остаются первыми. */
+export const PICKER_GROUPS: IconGroup[] = [
+  ...CURATED_PICKER_GROUPS,
+  ...UNICODE_GROUPS,
+];
+
+export { UNICODE_GROUPS, UNICODE_ICON_COUNT };
+
+export const PICKER_ICON_COUNT = new Set(
+  PICKER_GROUPS.flatMap((group) => group.icons.map(([icon]) => icon)),
+).size;
 
 export function searchIcons(query: string): [string, string][] {
   const q = query.trim().toLowerCase();
@@ -761,7 +774,7 @@ export function searchIcons(query: string): [string, string][] {
 
   const seen = new Set<string>();
   const out: [string, string][] = [];
-  for (const entry of ALL_ICONS) {
+  for (const entry of PICKER_GROUPS.flatMap((group) => group.icons)) {
     const [icon, kw] = entry;
     if (seen.has(icon)) continue;
     if (kw.includes(q) || icon === q) {
