@@ -58,6 +58,7 @@ export function BalancePanel({
   initial: BalanceSettings;
 }) {
   const [form, setForm] = useState<BalanceSettings>(initial);
+  const [remainingInput, setRemainingInput] = useState(String(initial.remaining));
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
@@ -69,8 +70,20 @@ export function BalancePanel({
 
   function save() {
     setError(null);
+    const remaining = Number(remainingInput);
+    if (remainingInput.trim() === "") {
+      setSaved(false);
+      setError("Укажите количество оставшихся уроков");
+      return;
+    }
+    if (!Number.isInteger(remaining) || remaining < 0 || remaining > 100_000) {
+      setSaved(false);
+      setError("Остаток уроков должен быть целым числом от 0 до 100000");
+      return;
+    }
+
     startSave(async () => {
-      const res = await saveBalanceSettingsAction(studentId, form);
+      const res = await saveBalanceSettingsAction(studentId, { ...form, remaining });
       if (res.error) setError(res.error);
       else setSaved(true);
     });
@@ -115,7 +128,7 @@ export function BalancePanel({
         <span className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
           Последний пакет:{" "}
           <span className="font-bold text-content">
-            {form.remaining} из {form.packageTotal || "—"}
+            {remainingInput.trim() || "—"} из {form.packageTotal || "—"}
           </span>
         </span>
         <span className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
@@ -133,8 +146,14 @@ export function BalancePanel({
           <input
             type="number"
             min={0}
-            value={form.remaining}
-            onChange={(e) => set("remaining", Number(e.target.value))}
+            max={100_000}
+            step={1}
+            value={remainingInput}
+            onChange={(e) => {
+              setSaved(false);
+              setError(null);
+              setRemainingInput(e.target.value);
+            }}
             className={cn(inputCls, "mt-1.5")}
           />
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -142,7 +161,11 @@ export function BalancePanel({
               <button
                 key={n}
                 type="button"
-                onClick={() => set("remaining", (Number(form.remaining) || 0) + n)}
+                onClick={() => {
+                  const next = (Number(remainingInput) || 0) + n;
+                  setRemainingInput(String(next));
+                  set("remaining", next);
+                }}
                 className="h-7 rounded-lg bg-surface-2 px-2.5 text-[12px] font-semibold text-muted transition hover:bg-accent-soft hover:text-accent"
               >
                 +{n}

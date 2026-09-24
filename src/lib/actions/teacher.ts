@@ -133,6 +133,15 @@ export async function saveBalanceSettingsAction(
   await requireTeacher();
   if (!studentId) return { error: "Не выбран ученик" };
 
+  const remainingRaw: unknown = s?.remaining;
+  if (remainingRaw === null || remainingRaw === undefined || remainingRaw === "") {
+    return { error: "Укажите количество оставшихся уроков" };
+  }
+  const remaining = Number(remainingRaw);
+  if (!Number.isInteger(remaining) || remaining < 0 || remaining > 100_000) {
+    return { error: "Остаток уроков должен быть целым числом от 0 до 100000" };
+  }
+
   const num = (v: unknown, max = 100_000) =>
     Math.min(max, Math.max(0, Math.round(Number(v) || 0)));
   const date = (v: string | null) => {
@@ -143,7 +152,7 @@ export async function saveBalanceSettingsAction(
     return d.getFullYear() >= 1900 && d.getFullYear() <= 2100 ? d : null;
   };
 
-  await setStudentLessons(studentId, num(s.remaining));
+  await setStudentLessons(studentId, remaining);
 
   const [student] = await db
     .select({ packageId: users.packageId })
