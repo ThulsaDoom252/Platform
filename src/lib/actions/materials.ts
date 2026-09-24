@@ -22,6 +22,7 @@ import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
+import { splitIcon, type ImportNode } from "@/lib/tree-import";
 
 export type { Misspelling };
 
@@ -140,6 +141,134 @@ export async function createNodesAction(
 
   revalidateMaterials();
   return { ok: true, message: `Создано: ${rows.length}` };
+}
+
+export type ImportSummary = { created: number; reused: number; error?: string };
+
+/** Сколько узлов разрешаем завести за один раз и как глубоко лезем. */
+const IMPORT_LIMIT = 500;
+const IMPORT_DEPTH = 8;
+
+/** Имя для сравнения: без значка, без лишних пробелов, без регистра. */
+function matchKey(name: string, icon?: string | null) {
+  const bare = icon ? name : splitIcon(name).name;
+  return bare.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * Завести дерево целиком, дополняя то, что уже есть.
+ *
+ * Совпадение ищем по названию среди соседей: нашлось — идём внутрь
+ * этой папки и ничего в ней не трогаем, не нашлось — создаём. Поэтому
+ * второй и третий скриншот той же структуры её дополняют, а не двоят.
+ */
+export async function importTreeAction(
+  nodes: ImportNode[],
+  opts: { parentId: string | null; scope?: NodeScope; ownerId?: string | null },
+): Promise<ImportSummary> {
+  await requireTeacher();
+
+  const scope = asScope(opts.scope);
+  const ownerId = isOwned(scope) ? opts.ownerId || null : null;
+
+  let created = 0;
+  let reused = 0;
+
+  async function level(items: ImportNode[], parentId: string | null, depth: number) {
+    if (depth > IMPORT_DEPTH || items.length === 0) return;
+
+    const existing = await db
+      .select({
+        id: materialNodes.id,
+        name: materialNodes.name,
+        icon: materialNodes.icon,
+        type: materialNodes.type,
+      })
+      .from(materialNodes)
+      .where(
+        parentId
+          ? eq(materialNodes.parentId, parentId)
+          : and(
+              isNull(materialNodes.parentId),
+              eq(materialNodes.scope, scope),
+              ownerId ? eq(materialNodes.ownerId, ownerId) : isNull(materialNodes.ownerId),
+            ),
+      );
+
+    const byName = new Map(existing.map((e) => [matchKey(e.name, e.icon), e]));
+
+    const [{ value: lastOrder } = { value: 0 }] = await db
+      .select({ value: max(materialNodes.sortOrder) })
+      .from(materialNodes)
+      .where(
+        parentId
+          ? eq(materialNodes.parentId, parentId)
+          : and(
+              isNull(materialNodes.parentId),
+              eq(materialNodes.scope, scope),
+              ownerId ? eq(materialNodes.ownerId, ownerId) : isNull(materialNodes.ownerId),
+            ),
+      );
+
+    let order = lastOrder ?? 0;
+
+    for (const item of items) {
+      const name = String(item?.name ?? "").trim().slice(0, 200);
+      if (!name) continue;
+      if (created >= IMPORT_LIMIT) return;
+
+      const children = Array.isArray(item.children) ? item.children : [];
+      // Дети есть — значит папка, что бы ни стояло в разметке.
+      const type: "FOLDER" | "FILE" =
+        children.length > 0 || item.kind === "FOLDER" ? "FOLDER" : "FILE";
+
+      const hit = byName.get(matchKey(name));
+      let id: string;
+
+      if (hit) {
+        reused++;
+        id = hit.id;
+        // Прошлый раз это был лист, а теперь к нему приехали дети —
+        // значит на деле это папка. Иначе они повисли бы внутри файла.
+        if (children.length > 0 && hit.type !== "FOLDER") {
+          await db
+            .update(materialNodes)
+            .set({ type: "FOLDER" })
+            .where(eq(materialNodes.id, hit.id));
+        }
+      } else {
+        order++;
+        const [row] = await db
+          .insert(materialNodes)
+          .values({
+            parentId,
+            name,
+            icon: item.icon ? String(item.icon).slice(0, 16) : null,
+            scope,
+            ownerId,
+            type,
+            sortOrder: order,
+          })
+          .returning({ id: materialNodes.id });
+
+        created++;
+        id = row.id;
+        byName.set(matchKey(name), { id, name, icon: item.icon ?? null, type });
+      }
+
+      // В файл вкладывать нечего: дети идут только в папку.
+      if (children.length > 0 && type === "FOLDER") {
+        await level(children, id, depth + 1);
+      }
+    }
+  }
+
+  await level(Array.isArray(nodes) ? nodes : [], opts.parentId || null, 0);
+
+  if (created === 0 && reused === 0) return { created: 0, reused: 0, error: "Нечего создавать" };
+
+  revalidateMaterials();
+  return { created, reused };
 }
 
 /** Переименовать узел, сменить иконку и подзаголовок. */

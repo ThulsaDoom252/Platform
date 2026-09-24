@@ -26,6 +26,7 @@ import { RuleReader } from "./rule-reader";
 import type { RuleBlock } from "@/lib/rule-parser";
 import { NodeEditor, type EditorTarget, type TreeScope } from "./node-editor";
 import { NodeCreator } from "./node-creator";
+import { TreeImporter, type ImportTarget } from "./tree-importer";
 import { ContentImporter } from "./content-importer";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
@@ -148,6 +149,7 @@ export function MaterialsExplorer({
   const [addWordsTo, setAddWordsTo] = useState<{ id: string; name: string } | null>(null);
   const [ruleEditNode, setRuleEditNode] = useState<MaterialNode | null>(null);
   const [copyNodes, setCopyNodes] = useState<MaterialNode[] | null>(null);
+  const [importTree, setImportTree] = useState<ImportTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
 
@@ -660,7 +662,28 @@ export function MaterialsExplorer({
               <IconPlus className="h-4 w-4" /> Создать раздел
             </button>
           )}
+          {editable && (
+            <button
+              type="button"
+              onClick={() =>
+                setImportTree({
+                  parentId: null,
+                  parentName: "корень",
+                  scope,
+                  ownerId: ownerId ?? null,
+                })
+              }
+              className="text-sm text-faint transition hover:text-accent"
+            >
+              …или перенести готовую структуру
+            </button>
+          )}
         </div>
+        <TreeImporter
+          key={importTree ? "tree-root" : "tree-root-idle"}
+          target={importTree}
+          onClose={() => setImportTree(null)}
+        />
         <NodeCreator
           key={editorTarget ? "create-root" : "creator-idle"}
           target={editorTarget?.mode === "create" ? editorTarget : null}
@@ -1246,6 +1269,21 @@ export function MaterialsExplorer({
             </button>
             <button
               type="button"
+              onClick={() =>
+                setImportTree({
+                  parentId: contentNode.id,
+                  parentName: contentNode.name,
+                  scope,
+                  ownerId: ownerId ?? null,
+                })
+              }
+              className={toolBtn}
+              title="Вставить готовое дерево из Google Docs или со скриншота"
+            >
+              <IconPlus className="h-4 w-4" /> Структура
+            </button>
+            <button
+              type="button"
               onClick={() => openEditor(contentNode)}
               className={toolBtn}
             >
@@ -1511,6 +1549,13 @@ export function MaterialsExplorer({
             }
             target={editorTarget?.mode === "create" ? editorTarget : null}
             onClose={() => setEditorTarget(null)}
+          />
+          <TreeImporter
+            key={
+              importTree ? `tree-${importTree.parentId ?? "root"}` : "tree-idle"
+            }
+            target={importTree}
+            onClose={() => setImportTree(null)}
           />
           <ContentImporter
             key={importNode ? `import-${importNode.id}` : "import-idle"}
