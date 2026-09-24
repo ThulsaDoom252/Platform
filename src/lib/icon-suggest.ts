@@ -155,6 +155,19 @@ const CONCEPT_ALIASES: [string, string][] = [
   ["🤬", "twat insult rude idiot дурак мудак дурень образа грубо"],
   ["⚠️", "retard slur offensive insult оскорбление образливо уникати"],
   ["👴", "oldie old man elderly старик старый старе батько"],
+  ["🤢", "stench stink stinkiness odor odour foul smell вонь зловоние смрад смердючий сморід"],
+  ["🧭", "guidance guide direction mentorship наставление руководство настанова керівництво"],
+  ["🍬", "indulgence indulge pamper spoil permissiveness потакание потворство потурання балувати"],
+  ["🎯", "prey quarry target victim добыча жертва здобич жертва ціль"],
+  ["✅", "allow permit permission authorize разрешать позволять разрешить дозволяти дозволити"],
+  ["👑", "be in charge in charge boss lead responsible главный ответственный головний відповідальний керувати"],
+  ["🕯️", "in remembrance of remembrance memorial memory of в память о в память на згадку памʼять"],
+  ["🚫", "have no business here no business here not belong leave нечего делать здесь тебе здесь не место тобі тут нічого робити"],
+  ["🧠", "ptsd post traumatic stress disorder posttraumatic птср посттравматический посттравматичний стресовий розлад"],
+  ["😐", "sober sobriety serious clear headed трезвый серьезный тверезий серйозний"],
+  ["💎", "genuine authentic sincere real настоящий искренний справжній щирий справжнє"],
+  ["🧠", "internalize internalise absorb assimilate усвоить принять внутри засвоїти прийняти всередині себе"],
+  ["📊", "evaluate evaluation assess assessment analyze analyse оценивать анализировать оцінювати аналізувати"],
 ];
 
 /** Очень короткие междометия теряются при отсечении служебных слов. */
