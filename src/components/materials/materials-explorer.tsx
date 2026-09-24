@@ -663,20 +663,25 @@ export function MaterialsExplorer({
             </button>
           )}
           {editable && (
-            <button
-              type="button"
-              onClick={() =>
-                setImportTree({
-                  parentId: null,
-                  parentName: "корень",
-                  scope,
-                  ownerId: ownerId ?? null,
-                })
-              }
-              className="text-sm text-faint transition hover:text-accent"
-            >
-              …или перенести готовую структуру
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setImportTree({
+                    parentId: null,
+                    parentName: "корень",
+                    scope,
+                    ownerId: ownerId ?? null,
+                  })
+                }
+                className="flex h-11 items-center gap-2 rounded-xl border border-accent/40 bg-accent-soft px-5 text-sm font-semibold text-accent transition hover:border-accent hover:bg-accent/15"
+              >
+                <IconMaterials className="h-4 w-4" /> Перенести из Google Docs
+              </button>
+              <p className="text-xs text-faint">
+                Вкладки, вложенность, названия и emoji
+              </p>
+            </div>
           )}
         </div>
         <TreeImporter
