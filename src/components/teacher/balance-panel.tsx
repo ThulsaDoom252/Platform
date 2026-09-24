@@ -19,13 +19,23 @@ const inputCls =
 
 const label = "text-[12px] font-semibold text-muted";
 
-/** Дата в формате поля ввода. */
+/**
+ * Дата в формате поля ввода.
+ *
+ * Строку отдаём как есть: пока набираешь год, поле само присылает
+ * промежуточные вроде «0002-03-17», и любая переделка их через Date
+ * ломает набор — браузер сбрасывает и день с месяцем.
+ */
 function toInput(d: Date | string | null): string {
   if (!d) return "";
+
+  // Из самого поля приходит уже готовое «гггг-мм-дд» — отдаём как есть.
+  if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+
   const date = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const pad = (n: number, len = 2) => String(n).padStart(len, "0");
+  return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export type BalanceStats = {

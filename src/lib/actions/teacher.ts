@@ -44,7 +44,13 @@ export async function createStudentAction(formData: FormData) {
 
   const startedRaw = String(formData.get("startedAt") || "");
   const started = startedRaw ? new Date(startedRaw) : null;
-  const startedAt = started && !Number.isNaN(started.getTime()) ? started : null;
+  const startedAt =
+    started &&
+    !Number.isNaN(started.getTime()) &&
+    started.getFullYear() >= 1900 &&
+    started.getFullYear() <= 2100
+      ? started
+      : null;
 
   // Пакет заводим, только если есть о чём говорить: остаток или расход.
   let packageId: string | null = null;
@@ -132,7 +138,9 @@ export async function saveBalanceSettingsAction(
   const date = (v: string | null) => {
     if (!v) return null;
     const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d;
+    if (Number.isNaN(d.getTime())) return null;
+    // Недобранный год (поле отдаёт «0002-…», пока набираешь) — не дата.
+    return d.getFullYear() >= 1900 && d.getFullYear() <= 2100 ? d : null;
   };
 
   await setStudentLessons(studentId, num(s.remaining));
