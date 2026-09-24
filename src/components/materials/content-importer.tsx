@@ -36,7 +36,7 @@ export function ContentImporter({
     scope === "MISTAKE" ? ["mistake", "rule"] : ["vocabulary", "rule"];
   const [raw, setRaw] = useState("");
   const [mode, setMode] = useState<ParserMode>(modes[0]);
-  const [applyTitle, setApplyTitle] = useState(true);
+  const [applyTitle, setApplyTitle] = useState(false);
   const [state, formAction, pending] = useActionState<ParseState, FormData>(
     savePageContentAction,
     {},
