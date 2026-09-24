@@ -168,10 +168,50 @@ const CONCEPT_ALIASES: [string, string][] = [
   ["💎", "genuine authentic sincere real настоящий искренний справжній щирий справжнє"],
   ["🧠", "internalize internalise absorb assimilate усвоить принять внутри засвоїти прийняти всередині себе"],
   ["📊", "evaluate evaluation assess assessment analyze analyse оценивать анализировать оцінювати аналізувати"],
+  ["🔄", "something is going on something is happening going on happen happening occur occurring происходит происходить щось відбувається відбуватися"],
+  ["🥵", "work my ass off working my ass off work extremely hard overwork toil пахать как проклятый пахати як проклятий важко працювати"],
+  ["3️⃣", "a few few several small number несколько немного кілька декілька мала кількість"],
+  ["⚖️", "accountability accountable answerability responsibility подотчетность ответственность підзвітність відповідальність"],
+  ["🦠", "plague pestilence epidemic pandemic disease outbreak чума мор эпидемия лихо чума пошесть епідемія"],
+  ["🙏", "the almighty almighty god divine deity всевышний всемогущий всевишній всемогутній бог"],
+  ["🗣️", "throat larynx voice гортань горло голос"],
+  ["⏳", "it caught up with me caught up with consequences finally reached наздогнало догнало последствия настигли наслідки наздогнали"],
+  ["🙏", "for somebodys sake for your sake for gods sake for heavens sake ради кого то заради когось заради тебе та годі вже"],
+  ["🛡️", "just in case precaution preventive safeguard про всяк случай на всякий случай про всяк випадок запобіжний захід"],
+  ["📋", "duty obligation responsibility task обязанность долг обовязок борг обовʼязок"],
+  ["🎯", "relevant pertinent applicable on topic to the point актуальный уместный относящийся доречний актуальний стосується справи"],
+  ["💥", "tear apart rip apart tear to pieces rip to pieces destroy разорвать разнести на куски розривати рознести на шматки"],
+  ["👀", "it seems to be seems to be appear appears apparently похоже кажется схоже здається"],
+  ["1️⃣", "at least minimum no less than как минимум хотя бы принаймні хоча б щонайменше"],
+  ["👄", "esophagus oesophagus gullet swallowing tube alimentary canal пищевод стравохід ковтання"],
+  ["📦", "store storage stockpile save keep запасать хранить складировать зберігати запасати складувати"],
+  ["🔌", "power up switch on turn on energize charge device включить запустить зарядить увімкнути запустити зарядити"],
 ];
 
 /** Очень короткие междометия теряются при отсечении служебных слов. */
 const EXACT_PHRASE_OVERRIDES = new Map<string, string>([["oi", "👋"]]);
+
+/**
+ * Идиомы и фразовые глаголы нельзя надёжно понимать как мешок отдельных слов.
+ * Правила охватывают варианты местоимений и слова внутри конструкции.
+ */
+const PHRASE_ICON_RULES: [RegExp, string][] = [
+  [/\b(?:something|somethings|what) (?:is )?going on\b/u, "🔄"],
+  [/\bwork(?:ed|ing)? (?:my|your|his|her|our|their) ass off\b/u, "🥵"],
+  [
+    /\b(?:it|this|that|stress|work|past|consequences)(?: \w+){0,3} caught up with (?:me|you|him|her|us|them)\b/u,
+    "⏳",
+  ],
+  [
+    /\bfor (?:somebody|someone|anybody|anyone|my|your|his|her|our|their|gods|heavens) sake\b/u,
+    "🙏",
+  ],
+  [/\bjust in case\b/u, "🛡️"],
+  [/\btear(?: \w+){0,4} apart\b/u, "💥"],
+  [/\bseems? to be\b/u, "👀"],
+  [/\bat least\b/u, "1️⃣"],
+  [/\bpower(?: \w+){0,4} up\b/u, "🔌"],
+];
 
 const COMPATIBLE_CONCEPT_ICONS = new Set(CONCEPT_ALIASES.map(([icon]) => icon));
 const CURATED_ICONS = new Set(ALL_ICONS.map(([icon]) => icon));
@@ -224,6 +264,36 @@ function words(text: string): string[] {
     .filter((word) => word.length > 1 && !STOP.has(word));
 }
 
+/**
+ * Не считаем слово похожим на его отрицание только из-за общей основы:
+ * relevant ≠ irrelevant, appropriate ≠ inappropriate, доречний ≠ недоречний.
+ */
+function isNegatedFormPair(left: string, right: string): boolean {
+  if (left === right) return false;
+  const [longer, shorter] = left.length > right.length ? [left, right] : [right, left];
+  if (shorter.length < 5) return false;
+  return ["un", "in", "im", "ir", "il", "non", "dis", "не"].some(
+    (prefix) => longer === `${prefix}${shorter}`,
+  );
+}
+
+function termMatchScore(wanted: string, key: string): number {
+  if (key === wanted) return 10;
+  if (isNegatedFormPair(wanted, key)) return 0;
+  if (
+    wanted.length >= 4 &&
+    key.length >= 4 &&
+    (key.startsWith(wanted) || wanted.startsWith(key))
+  ) {
+    return 4;
+  }
+  return 0;
+}
+
+function containsWholePhrase(keywords: string, phrase: string): boolean {
+  return ` ${keywords} `.includes(` ${phrase} `);
+}
+
 function expandedWords(text: string): string[] {
   return words(text).flatMap((word) => {
     const hint = Object.entries(UK_HINTS).find(([prefix]) => word.startsWith(prefix));
@@ -243,19 +313,28 @@ for (const [icon, keywords] of [
   merged.set(icon, list);
 }
 
+const conceptKeywordsByIcon = new Map<string, string[]>();
+for (const [icon, keywords] of CONCEPT_ALIASES) {
+  const list = conceptKeywordsByIcon.get(icon) ?? [];
+  list.push(keywords);
+  conceptKeywordsByIcon.set(icon, list);
+}
+
 const SUGGESTION_INDEX = [...merged].map(([icon, keywordLists]) => {
   const keywords = normalize(keywordLists.join(" "));
   const keyWords = words(keywords);
+  const conceptKeywords = normalize((conceptKeywordsByIcon.get(icon) ?? []).join(" "));
   return {
     icon,
     keywords,
     keyStems: [...new Set(keyWords.map(stem).filter((key) => key.length >= 2))],
+    conceptKeywords,
   };
 });
 
 type WeightedField = { text: string | null | undefined; weight: number };
 
-function bestIcon(fields: WeightedField[]): string | null {
+function bestIcon(fields: WeightedField[], preferLearnedConcepts = false): string | null {
   const prepared = fields
     .map((field) => ({
       ...field,
@@ -278,14 +357,7 @@ function bestIcon(fields: WeightedField[]): string | null {
       for (const wanted of field.stems) {
         let tokenScore = 0;
         for (const key of candidate.keyStems) {
-          if (key === wanted) tokenScore = Math.max(tokenScore, 10);
-          else if (
-            wanted.length >= 4 &&
-            key.length >= 4 &&
-            (key.startsWith(wanted) || wanted.startsWith(key))
-          ) {
-            tokenScore = Math.max(tokenScore, 4);
-          }
+          tokenScore = Math.max(tokenScore, termMatchScore(wanted, key));
         }
         if (tokenScore > 0) {
           const specificity = wanted.length >= 7 ? 1.25 : wanted.length <= 3 ? 0.8 : 1;
@@ -297,9 +369,16 @@ function bestIcon(fields: WeightedField[]): string | null {
       // Полное словосочетание заметно сильнее случайного совпадения одного слова.
       if (
         field.normalized.length >= 4 &&
-        candidate.keywords.includes(field.normalized)
+        containsWholePhrase(candidate.keywords, field.normalized)
       ) {
         score += 16 * field.weight;
+        if (
+          preferLearnedConcepts &&
+          field.normalized.includes(" ") &&
+          containsWholePhrase(candidate.conceptKeywords, field.normalized)
+        ) {
+          score += 8 * field.weight;
+        }
       }
 
       coverage += matched.size;
@@ -337,8 +416,11 @@ export function suggestVocabularyIcon(
   section?: string | null,
   examples: { en?: string; tr?: string }[] = [],
 ): string | null {
-  const exact = EXACT_PHRASE_OVERRIDES.get(normalize(phrase));
+  const normalizedPhrase = normalize(phrase);
+  const exact = EXACT_PHRASE_OVERRIDES.get(normalizedPhrase);
   if (exact) return exact;
+  const learnedPhrase = PHRASE_ICON_RULES.find(([pattern]) => pattern.test(normalizedPhrase));
+  if (learnedPhrase) return learnedPhrase[1];
 
   return bestIcon([
     { text: phrase, weight: 5 },
@@ -346,5 +428,5 @@ export function suggestVocabularyIcon(
     { text: section, weight: 0.35 },
     { text: examples.map((example) => example.en).filter(Boolean).join(" "), weight: 0.2 },
     { text: examples.map((example) => example.tr).filter(Boolean).join(" "), weight: 0.2 },
-  ]);
+  ], true);
 }

@@ -52,6 +52,10 @@ for (const n of names) {
   console.log((icon ?? "—").padEnd(4), n);
 }
 
+if (suggestIcon("Food") !== "🍎") {
+  throw new Error("Словарные смысловые подсказки не должны менять иконку папки Food");
+}
+
 console.log(`\nНе подобрано (кроме бессмыслицы): ${misses}. Ожидается 0.`);
 
 const catalogCases: [string, string][] = [
@@ -130,6 +134,41 @@ const semanticCases: [string, string, string][] = [
   ["genuine", "справжній / щирий", "💎"],
   ["to internalize", "засвоїти / прийняти всередині себе", "🧠"],
   ["to evaluate", "оцінювати / аналізувати", "📊"],
+  ["something is going on", "щось відбувається", "🔄"],
+  ["I've been working my ass off", "я пахав як проклятий", "🥵"],
+  ["a few", "кілька", "3️⃣"],
+  ["accountability", "відповідальність / підзвітність", "⚖️"],
+  ["plague", "чума / лихо", "🦠"],
+  ["the Almighty", "Всевишній", "🙏"],
+  ["throat", "горло", "🗣️"],
+  ["it caught up with me", "це мене наздогнало / догнало", "⏳"],
+  ["For somebody's sake", "заради когось / та годі вже", "🙏"],
+  ["just in case", "про всяк випадок", "🛡️"],
+  ["duty", "обов’язок / борг", "📋"],
+  ["relevant", "актуальний / доречний / що стосується справи", "🎯"],
+  ["to tear apart", "розривати / рознести на шматки", "💥"],
+  ["it seems to be", "схоже що / здається це", "👀"],
+  ["at least", "принаймні / хоча б", "1️⃣"],
+  ["esophagus", "стравохід", "👄"],
+  ["to store", "зберігати / запасати", "📦"],
+  ["to power smth up", "запустити / увімкнути / зарядити щось", "🔌"],
+];
+
+const generalizationCases: [string, string, string][] = [
+  ["pertinent", "доречний", "🎯"],
+  ["to stockpile", "запасать", "📦"],
+  ["to switch the device on", "увімкнути пристрій", "🔌"],
+  ["precaution", "запобіжний захід", "🛡️"],
+  ["disease outbreak", "спалах хвороби", "🦠"],
+  ["responsibility", "підзвітність", "⚖️"],
+  ["to rip to pieces", "разорвать на части", "💥"],
+  ["minimum", "щонайменше", "1️⃣"],
+  ["to work extremely hard", "важко працювати", "🥵"],
+  ["She's working her ass off", "вона дуже тяжко працює", "🥵"],
+  ["for your sake", "заради тебе", "🙏"],
+  ["the consequences caught up with him", "наслідки його наздогнали", "⏳"],
+  ["to tear the document apart", "розірвати документ на шматки", "💥"],
+  ["to power the computer up", "увімкнути комп’ютер", "🔌"],
 ];
 
 for (const [phrase, translation, expected] of semanticCases) {
@@ -140,6 +179,22 @@ for (const [phrase, translation, expected] of semanticCases) {
   if (!isSafeAutomaticIcon(actual)) {
     throw new Error(`Для «${phrase}» выбрана неподдерживаемая иконка ${actual}`);
   }
+}
+
+for (const [phrase, translation, expected] of generalizationCases) {
+  const actual = suggestVocabularyIcon(phrase, translation);
+  if (actual !== expected) {
+    throw new Error(
+      `Обобщение для «${phrase}»: ожидалась ${expected}, получена ${actual ?? "—"}`,
+    );
+  }
+}
+
+if (suggestVocabularyIcon("irrelevant", "недоречний") !== "🚫") {
+  throw new Error("Отрицательная форма irrelevant должна сохранять отдельный смысл");
+}
+if (suggestVocabularyIcon("appropriate", "доречний") === "🚫") {
+  throw new Error("Положительная форма appropriate не должна совпадать с inappropriate");
 }
 
 if (suggestIcon("Phrases with make") !== "🔨") {
