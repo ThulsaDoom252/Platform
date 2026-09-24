@@ -236,11 +236,16 @@ function parseVocabulary(raw: string): ParseResult {
   /** Эмодзи раздела («📖 Nouns») достаётся всем записям этого раздела. */
   let sectionIcon: string | null = null;
   let current: ParsedPhrase | null = null;
+  /** Последняя словарная запись: к ней относятся примеры после строки 💡. */
+  let lastPhrase: ParsedPhrase | null = null;
   let iconIndex = 0;
   let columns: ColumnMap | null = null;
 
   const flush = () => {
-    if (current) phrases.push(current);
+    if (current) {
+      phrases.push(current);
+      lastPhrase = current;
+    }
     current = null;
   };
 
@@ -290,7 +295,7 @@ function parseVocabulary(raw: string): ParseResult {
         }
 
         flush();
-        phrases.push({
+        const phrase: ParsedPhrase = {
           icon: sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
           section: currentSection,
           kind: "PHRASE",
@@ -298,7 +303,9 @@ function parseVocabulary(raw: string): ParseResult {
           transcription: cell.ipa && IPA.test(cell.ipa) ? cell.ipa : null,
           translation: cell.translation,
           examples: [],
-        });
+        };
+        phrases.push(phrase);
+        lastPhrase = phrase;
         continue;
       }
 
@@ -366,6 +373,7 @@ function parseVocabulary(raw: string): ParseResult {
         flush();
         currentSection = line;
         sectionIcon = icon;
+        lastPhrase = null;
       } else {
         warnings.push(`Строка ${i + 1}: не удалось разобрать — «${line.slice(0, 60)}»`);
       }
@@ -375,12 +383,13 @@ function parseVocabulary(raw: string): ParseResult {
     const [left, right] = parts;
 
     if (looksLikeExample(left, hadBullet)) {
-      if (!current) {
+      const owner = current ?? lastPhrase;
+      if (!owner) {
         warnings.push(`Строка ${i + 1}: пример без записи — «${left.slice(0, 50)}»`);
         continue;
       }
       const example = splitExampleByLanguage(line) ?? parts;
-      current.examples.push({ en: example[0], tr: example[1] });
+      owner.examples.push({ en: example[0], tr: example[1] });
       continue;
     }
 
@@ -389,6 +398,7 @@ function parseVocabulary(raw: string): ParseResult {
       flush();
       currentSection = line;
       sectionIcon = icon;
+      lastPhrase = null;
       continue;
     }
 
@@ -417,6 +427,7 @@ function parseVocabulary(raw: string): ParseResult {
       translation,
       examples: inlineExample ? [{ en: inlineExample, tr: "" }] : [],
     };
+    lastPhrase = current;
   }
 
   flush();
