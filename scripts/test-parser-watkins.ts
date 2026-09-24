@@ -56,3 +56,41 @@ assert.equal(tiedTo.section, "Phrases & Other — Фрази та інше");
 assert.equal(tiedTo.translation, "прив’язаний до / пов’язаний з");
 
 console.log("Watkins word/examples table parser: ok");
+
+const clericalSample = [
+  "⚖️ CLERICAL ERROR",
+  "📦 Nouns — Существительные",
+  "Word / Phrase\tExamples",
+  "an agreement /əˈɡriː.mənt/ соглашение\t• They signed an agreement after long negotiations. После долгих переговоров они подписали соглашение. • We need an agreement before we proceed. Нам нужно соглашение, прежде чем продолжить.",
+  "clerical error /ˈkler.ɪ.kəl ˈer.ər/ опечатка / канцелярская ошибка\t• It was just a clerical error in the report. Это была просто опечатка в отчёте. • The clerical error caused a lot of confusion. Канцелярская ошибка вызвала большую путаницу.",
+  "🎨 Adjectives — Прилагательные",
+  "Word / Phrase\tExamples",
+  "innocent /ˈɪn.ə.sənt/ невиновный / невинный\t• He was proven innocent in court. Его признали невиновным в суде. • She gave him an innocent smile. Она подарила ему невинную улыбку.",
+  "⚡ Verbs — Глаголы",
+  "Word / Phrase\tExamples",
+  "to be in charge /biː ɪn tʃɑːdʒ/ быть главным / быть ответственным\t• Who is in charge of this department? Кто отвечает за этот отдел? • She was in charge while the boss was away. Она была главной, пока начальник отсутствовал.",
+  "🔗 Phrasal Verbs — Фразовые глаголы",
+  "Word / Phrase\tExamples",
+  "to go after smbd /ɡəʊ ˈɑːf.tər/ идти за кем-то / преследовать\t• The detective decided to go after him. Детектив решил пойти за ним. • Don’t go after someone without evidence. Не преследуй кого-то без доказательств.",
+  "💬 Phrases — Фразы",
+  "Word / Phrase\tExamples",
+  "Can I have a moment of your time? /kæn aɪ hæv ə ˈməʊ.mənt/ можно минутку вашего времени?\t• Can I have a moment of your time, please? Можно минутку вашего времени? • She asked for just a moment of his time. Она попросила всего минутку его времени.",
+  "you have no business here /juː hæv nəʊ ˈbɪz.nəs hɪər/ тебе здесь нечего делать\t• You have no business here — leave now. Тебе здесь нечего делать — уходи. • She told him he had no business there. Она сказала ему, что ему там нечего делать.",
+].join("\n");
+
+const clerical = parseMaterial(clericalSample, "vocabulary");
+
+assert.equal(clerical.vocabularyFormat, "word-examples-table");
+assert.equal(clerical.title, "CLERICAL ERROR");
+assert.equal(clerical.phrases.length, 7);
+assert.deepEqual(clerical.warnings, []);
+assert.equal(clerical.phrases[0].icon, "📦");
+assert.equal(clerical.phrases[0].translation, "соглашение");
+assert.equal(clerical.phrases[3].phrase, "to be in charge");
+assert.equal(clerical.phrases[5].phrase, "Can I have a moment of your time?");
+assert.deepEqual(clerical.phrases[6].examples[0], {
+  en: "You have no business here — leave now.",
+  tr: "Тебе здесь нечего делать — уходи.",
+});
+
+console.log("Clerical Error word/examples table variant: ok");

@@ -726,7 +726,29 @@ export function flattenClipboardHtml(html: string): string | null {
   const doc = new DOMParser().parseFromString(html, "text/html");
   if (!doc.querySelector("table")) return null;
 
-  const clean = (el: Element) => (el.textContent ?? "").replace(/\s+/g, " ").trim();
+  const clean = (el: Element) => {
+    const copy = el.cloneNode(true) as Element;
+
+    // Маркер списка в Google Docs обычно нарисован браузером и не входит в
+    // textContent. Добавляем его явно, иначе два примера сольются в один.
+    for (const item of Array.from(copy.querySelectorAll("li"))) {
+      const text = (item.textContent ?? "").trim();
+      if (!/^[•●▪‣·*]/u.test(text)) {
+        item.insertBefore(copy.ownerDocument.createTextNode(" • "), item.firstChild);
+      }
+      item.appendChild(copy.ownerDocument.createTextNode(" "));
+    }
+
+    // Соседние абзацы Google Docs могут не иметь пробела между textContent.
+    for (const block of Array.from(copy.querySelectorAll("p,div"))) {
+      block.appendChild(copy.ownerDocument.createTextNode(" "));
+    }
+    for (const br of Array.from(copy.querySelectorAll("br"))) {
+      br.replaceWith(copy.ownerDocument.createTextNode(" "));
+    }
+
+    return (copy.textContent ?? "").replace(/\s+/g, " ").trim();
+  };
   const out: string[] = [];
 
   const walk = (node: Element) => {
