@@ -960,11 +960,32 @@ async function storeVocabularyCover(file: File, nodeId: string) {
   return { imageUrl: `/uploads/materials/${fileName}` } as const;
 }
 
+/** Удаляем только файлы, которые сами создали в своей папке обложек. */
+async function removeLocalVocabularyCover(imageUrl: string | null) {
+  const prefix = "/uploads/materials/";
+  if (!imageUrl?.startsWith(prefix)) return;
+
+  const fileName = imageUrl.slice(prefix.length);
+  if (!fileName || fileName !== path.basename(fileName)) return;
+
+  const dir = path.resolve(process.cwd(), "public", "uploads", "materials");
+  const target = path.resolve(dir, fileName);
+  if (path.dirname(target) !== dir) return;
+
+  try {
+    await fs.unlink(target);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("Не удалось удалить старую обложку словаря", error);
+    }
+  }
+}
+
 export type CoverState = {
   ok?: boolean;
   error?: string;
   message?: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
 };
 
 /** Поставить или заменить обложку уже готового словаря. */
@@ -980,6 +1001,7 @@ export async function updateVocabularyCoverAction(
       id: materialNodes.id,
       type: materialNodes.type,
       pageKind: materialNodes.pageKind,
+      imageUrl: materialNodes.imageUrl,
     })
     .from(materialNodes)
     .where(eq(materialNodes.id, nodeId))
@@ -988,6 +1010,16 @@ export async function updateVocabularyCoverAction(
   if (!node || node.type !== "FILE") return { error: "Страница словаря не найдена" };
   if (node.pageKind && node.pageKind !== "VOCAB") {
     return { error: "Обложку словаря нельзя поставить на другой тип материала" };
+  }
+
+  if (formData.get("removeCover") === "on") {
+    await db
+      .update(materialNodes)
+      .set({ imageUrl: null })
+      .where(eq(materialNodes.id, nodeId));
+    await removeLocalVocabularyCover(node.imageUrl);
+    revalidateMaterials();
+    return { ok: true, message: "Картинка удалена", imageUrl: null };
   }
 
   const file = formData.get("coverImage");
@@ -1000,11 +1032,14 @@ export async function updateVocabularyCoverAction(
     .update(materialNodes)
     .set({ imageUrl: stored.imageUrl })
     .where(eq(materialNodes.id, nodeId));
+  if (node.imageUrl !== stored.imageUrl) {
+    await removeLocalVocabularyCover(node.imageUrl);
+  }
 
   revalidateMaterials();
   return {
     ok: true,
-    message: "Обложка сохранена и уже видна в оглавлении",
+    message: "Картинка сохранена в шапке словаря",
     imageUrl: stored.imageUrl,
   };
 }

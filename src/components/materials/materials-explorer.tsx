@@ -28,6 +28,7 @@ import { NodeEditor, type EditorTarget, type TreeScope } from "./node-editor";
 import { NodeCreator } from "./node-creator";
 import { TreeImporter, type ImportTarget } from "./tree-importer";
 import { ContentImporter } from "./content-importer";
+import { VocabularyCoverActions } from "./vocabulary-cover";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
 import { WordAdder, PhraseEditor } from "./phrase-form";
@@ -1389,6 +1390,13 @@ export function MaterialsExplorer({
                   </button>
                 )}
 
+                {pageKind(selected) === "VOCAB" && (
+                  <VocabularyCoverActions
+                    nodeId={selected.id}
+                    currentUrl={selected.imageUrl}
+                  />
+                )}
+
                 {pageKind(selected) === "RULE" && (
                   <button
                     type="button"
@@ -1453,7 +1461,6 @@ export function MaterialsExplorer({
                 phrases={selected.phrases}
                 nodeId={selected.id}
                 onEditPhrase={editable ? setEditPhrase : undefined}
-                canEditCover={editable && pageKind(selected) === "VOCAB"}
               />
             )}
           </>

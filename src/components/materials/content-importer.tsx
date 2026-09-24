@@ -145,7 +145,7 @@ export function ContentImporter({
             <p className="mb-2 text-sm font-medium text-content">Обложка словаря</p>
             <VocabularyCoverField />
             <p className="mt-1.5 text-[11px] text-faint">
-              Необязательно. Обложка появится в оглавлении материалов и в шапке
+              Необязательно. Обложка появится только внутри файла — в шапке
               словаря.
             </p>
           </div>

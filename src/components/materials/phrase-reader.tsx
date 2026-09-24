@@ -9,7 +9,6 @@ import {
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { VocabularyCoverEditor } from "./vocabulary-cover";
 import {
   IconVolume,
   IconChevronDown,
@@ -298,7 +297,6 @@ export function PhraseReader({
   phrases,
   onEditPhrase,
   nodeId,
-  canEditCover = false,
 }: {
   title: string;
   icon: string | null;
@@ -309,8 +307,6 @@ export function PhraseReader({
   onEditPhrase?: (p: MaterialPhrase) => void;
   /** Страница, которой принадлежат записи: нужна для правки категорий. */
   nodeId?: string;
-  /** Учитель может поставить или заменить обложку уже готового словаря. */
-  canEditCover?: boolean;
 }) {
   const { t } = useT();
   const [showTranslation, setShowTranslation] = useState(true);
@@ -453,10 +449,6 @@ export function PhraseReader({
           </>
         )}
       </header>
-
-      {canEditCover && nodeId && (
-        <VocabularyCoverEditor nodeId={nodeId} currentUrl={coverImageUrl} />
-      )}
 
       {/* Управление */}
       <div className="flex flex-wrap items-center gap-2">

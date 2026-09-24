@@ -5,7 +5,7 @@ import {
   updateVocabularyCoverAction,
   type CoverState,
 } from "@/lib/actions/materials";
-import { IconCamera, IconCheck } from "@/components/icons";
+import { IconCamera, IconTrash } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -199,8 +199,8 @@ export function VocabularyCoverField({
   );
 }
 
-/** Редактор уже сохранённой обложки на странице словаря. */
-export function VocabularyCoverEditor({
+/** Компактные действия над обложкой в общей панели учителя. */
+export function VocabularyCoverActions({
   nodeId,
   currentUrl,
 }: {
@@ -209,43 +209,98 @@ export function VocabularyCoverEditor({
 }) {
   const action = updateVocabularyCoverAction.bind(null, nodeId);
   const [state, formAction, pending] = useActionState<CoverState, FormData>(action, {});
-  const [hasFile, setHasFile] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const effectiveUrl = state.ok ? state.imageUrl : currentUrl;
+
+  function upload(file: File | null) {
+    setClientError(null);
+    if (!file) return;
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setClientError("Нужна картинка PNG, JPEG или WebP");
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      setClientError("Картинка больше 5 МБ");
+      return;
+    }
+
+    if (inputRef.current) {
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      inputRef.current.files = transfer.files;
+    }
+    formRef.current?.requestSubmit();
+  }
+
+  const actionButton =
+    "flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 text-sm font-semibold text-muted transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
     <form
+      ref={formRef}
       action={formAction}
-      onSubmit={() => setHasFile(false)}
-      className="rounded-2xl border border-line bg-surface p-3 sm:p-4"
+      className="flex flex-wrap items-center gap-2"
     >
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="text-sm font-bold text-content">Обложка словаря</p>
-          <p className="mt-0.5 text-[11px] text-muted">
-            Она появится в оглавлении и в шапке этого словаря.
-          </p>
-        </div>
+      <input
+        ref={inputRef}
+        type="file"
+        name="coverImage"
+        accept={ACCEPTED_TYPES.join(",")}
+        className="sr-only"
+        onChange={(event) => upload(event.target.files?.[0] ?? null)}
+      />
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          if (inputRef.current) inputRef.current.value = "";
+          inputRef.current?.click();
+        }}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          upload(event.dataTransfer.files?.[0] ?? null);
+        }}
+        className={cn(
+          actionButton,
+          dragging && "border-accent bg-accent-soft text-accent ring-2 ring-accent/15",
+        )}
+        title="Выбрать файл или перетащить картинку прямо на кнопку"
+      >
+        <IconCamera className="h-4 w-4" />
+        {pending ? "Загружаю…" : effectiveUrl ? "Заменить картинку" : "Добавить картинку"}
+      </button>
+
+      {effectiveUrl && (
         <button
           type="submit"
-          disabled={pending || !hasFile}
-          className="h-9 rounded-xl bg-accent px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          name="removeCover"
+          value="on"
+          disabled={pending}
+          className={cn(actionButton, "hover:border-rose-400 hover:text-rose-500")}
         >
-          {pending ? "Загружаю…" : currentUrl ? "Заменить" : "Сохранить"}
+          <IconTrash className="h-4 w-4" />
+          Удалить картинку
         </button>
-      </div>
-      <VocabularyCoverField
-        key={state.imageUrl ?? currentUrl ?? "empty-cover"}
-        currentUrl={state.imageUrl ?? currentUrl}
-        compact
-        onFileChange={(file) => setHasFile(!!file)}
-      />
-      {state.error && (
-        <p className="mt-2 text-xs font-medium text-rose-500">{state.error}</p>
       )}
-      {state.ok && (
-        <p className="tint-green mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold">
-          <IconCheck className="h-4 w-4" />
-          {state.message}
-        </p>
+
+      {(clientError || state.error) && (
+        <span className="text-xs font-medium text-rose-500" role="alert">
+          {clientError ?? state.error}
+        </span>
       )}
     </form>
   );
