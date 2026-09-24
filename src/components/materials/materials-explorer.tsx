@@ -1502,27 +1502,14 @@ export function MaterialsExplorer({
                 )}
               >
                 <span className="material-card-visual relative flex w-full items-center justify-between overflow-hidden">
-                  {n.imageUrl ? (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={n.imageUrl}
-                        alt=""
-                        className="material-card-cover"
-                      />
-                      <span className="material-card-cover-shade" />
-                    </>
-                  ) : n.type === "FOLDER" ? (
+                  {n.type === "FOLDER" ? (
                     <IconFolder className="material-folder-watermark" />
                   ) : (
                     <IconFile className="material-file-watermark" />
                   )}
                   {iconSlot(
                     n,
-                    cn(
-                      "material-card-emoji relative z-[1] flex h-12 w-12 items-center justify-center rounded-2xl text-2xl leading-none",
-                      n.imageUrl && "material-card-cover-emoji",
-                    ),
+                    "material-card-emoji relative z-[1] flex h-12 w-12 items-center justify-center rounded-2xl text-2xl leading-none",
                     n.type === "FOLDER" ? "📁" : "📄",
                   )}
                   {n.type === "FOLDER" && (
@@ -1570,14 +1557,6 @@ export function MaterialsExplorer({
                   dropRing(n.id),
                 )}
               >
-                {n.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={n.imageUrl}
-                    alt=""
-                    className="h-9 w-12 shrink-0 rounded-lg object-cover ring-1 ring-line"
-                  />
-                )}
                 {n.icon &&
                   iconSlot(
                     n,
