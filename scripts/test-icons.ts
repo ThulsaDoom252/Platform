@@ -13,7 +13,11 @@ import {
   ALL_ICONS,
   searchIcons,
 } from "../src/lib/icons-data";
-import { suggestIcon, suggestVocabularyIcon } from "../src/lib/icon-suggest";
+import {
+  isSafeAutomaticIcon,
+  suggestIcon,
+  suggestVocabularyIcon,
+} from "../src/lib/icon-suggest";
 
 const dup: string[] = [];
 for (const g of PICKER_GROUPS) {
@@ -80,12 +84,48 @@ const semanticCases: [string, string, string][] = [
   ["ark-builders", "строители ковчега", "👷"],
   ["doorman", "привратник / охранник на входе", "🚪"],
   ["obsolete", "застарілий", "🗑️"],
+  ["buddy", "товариш / приятель", "👥"],
+  ["mate", "товариш / приятель", "👥"],
+  ["Oi!", "Гей! / Ей! (вигук)", "👋"],
+  ["oldie but a goodie", "старе, але добре", "👴"],
+  ["a vial", "флакон / ампула", "🧪"],
+  ["a guinea pig", "морська свинка / піддослідна тварина", "🐹"],
+  ["crew", "екіпаж / команда", "👥"],
+  ["alias", "псевдонім / вигадане ім’я", "🎭"],
+  ["shoelaces", "шнурки", "👟"],
+  ["intestines", "кишківник / нутрощі", "🧬"],
+  ["dumb", "тупий / нерозумний", "🤪"],
+  ["sacrificial", "жертовний", "🐑"],
+  ["to be worth smth", "коштувати чогось / бути вартим", "💎"],
+  ["to be supposed to", "мати бути / передбачатися / повинен бути", "📋"],
+  ["to mention", "згадувати / зазначати", "💬"],
+  ["to rent", "орендувати", "🔑"],
+  ["to fancy", "подобатися / симпатизувати", "❤️"],
+  ["to sacrifice", "жертвувати", "🐑"],
+  ["to tie smth", "зав’язувати щось", "🔗"],
+  ["to hold up to something", "відповідати / витримувати перевірку", "🛡️"],
+  ["to sell out", "продати / зрадити принципи", "💰"],
+  ["to go at/in/around/up/over", "іти / рухатися", "🧭"],
+  ["them → em", "їх / їм (розмовне скорочення)", "✂️"],
+  ["because → cause", "тому що (скорочення)", "🔗"],
+  ["going to → gonna", "збираюся (розмовне скорочення)", "🔮"],
+  ["in what way?", "яким чином? / у який спосіб?", "🤔"],
+  ["double the smth", "вдвічі більше / подвоїти щось", "2️⃣"],
+  ["he needs doing more than ever", "з ним потрібно розібратися як ніколи", "🛠️"],
+  ["brat", "пустун / зіпсована дитина", "👶"],
+  ["ass", "задниця (груба)", "🍑"],
+  ["bullshit", "дурниця / нісенітниця", "💩"],
+  ["twat", "дурень / мудак", "🤬"],
+  ["retard", "дегенерат (образливо, уникати)", "⚠️"],
 ];
 
 for (const [phrase, translation, expected] of semanticCases) {
   const actual = suggestVocabularyIcon(phrase, translation);
   if (actual !== expected) {
     throw new Error(`Для «${phrase}» ожидалась ${expected}, получена ${actual ?? "—"}`);
+  }
+  if (!isSafeAutomaticIcon(actual)) {
+    throw new Error(`Для «${phrase}» выбрана неподдерживаемая иконка ${actual}`);
   }
 }
 

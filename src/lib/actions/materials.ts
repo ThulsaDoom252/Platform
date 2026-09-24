@@ -27,7 +27,11 @@ import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
 import { mergeImportTrees, splitIcon, type ImportNode } from "@/lib/tree-import";
-import { suggestVocabularyIcon } from "@/lib/icon-suggest";
+import {
+  isSafeAutomaticIcon,
+  suggestVocabularyIcon,
+  vocabularyFallbackIcon,
+} from "@/lib/icon-suggest";
 
 export type { Misspelling };
 
@@ -624,9 +628,17 @@ export async function repairPhraseIconsAction(nodeId: string): Promise<BulkState
       row.section,
       row.examples ?? [],
     );
-    if (!icon) continue;
-    recognized++;
-    if (icon !== row.icon) proposals.push({ id: row.id, icon });
+    if (icon) {
+      recognized++;
+      if (icon !== row.icon) proposals.push({ id: row.id, icon });
+      continue;
+    }
+
+    // Старое массовое исправление могло сохранить новый emoji, которого нет
+    // в системном шрифте. Если точного образа нет, хотя бы убираем квадрат.
+    if (!isSafeAutomaticIcon(row.icon)) {
+      proposals.push({ id: row.id, icon: vocabularyFallbackIcon(row.section) });
+    }
   }
 
   if (proposals.length > 0) {
