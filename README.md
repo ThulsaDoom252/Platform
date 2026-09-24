@@ -16,6 +16,22 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Точный импорт вкладок Google Docs
+
+Импортёр материалов умеет переносить дерево вкладок Google Docs вместе с
+вложенностью, полными названиями и emoji. Для локальной настройки:
+
+1. В Google Cloud включите **Google Docs API**.
+2. Настройте OAuth consent screen и создайте OAuth Client ID типа
+   **Web application**.
+3. Добавьте `http://localhost:3000` в **Authorized JavaScript origins**.
+4. Запишите Client ID в `.env` как `NEXT_PUBLIC_GOOGLE_CLIENT_ID` и
+   перезапустите dev-сервер.
+
+Client secret и API key для этой функции не нужны. Платформа запрашивает только
+`documents.readonly`; короткоживущий токен используется в браузере для одного
+импорта и не сохраняется в базе.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

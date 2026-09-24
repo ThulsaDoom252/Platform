@@ -9,7 +9,9 @@
  * её дополняет — совпавшие по названию папки переиспользуются.
  */
 import { useRef, useState, useTransition } from "react";
+import Script from "next/script";
 import { parseTree, countNodes, type ImportNode } from "@/lib/tree-import";
+import { readGoogleDocumentTabs } from "@/lib/google-docs-tabs";
 import { importTreeAction } from "@/lib/actions/materials";
 import { readTreeImageAction } from "@/lib/actions/tree-image";
 import { readTreeLinkAction } from "@/lib/actions/tree-link";
@@ -26,6 +28,35 @@ export type ImportTarget = {
 };
 
 type Path = number[];
+
+type GoogleTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type GoogleTokenClient = {
+  requestAccessToken: (config?: { prompt?: string }) => void;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        oauth2: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: GoogleTokenResponse) => void;
+            error_callback?: (error: { type?: string }) => void;
+          }) => GoogleTokenClient;
+        };
+      };
+    };
+  }
+}
+
+const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
 /** Меняет узел по его пути, не трогая остальное дерево. */
 function editAt(
@@ -64,6 +95,8 @@ export function TreeImporter({
   const [text, setText] = useState("");
   const [link, setLink] = useState("");
   const [over, setOver] = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [busy, startBusy] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -117,6 +150,61 @@ export function TreeImporter({
       const parsed = parseTree({ html: res.html });
       show(parsed.nodes, parsed.flat, "По ссылке");
     });
+  }
+
+  /** Точный путь: Google отдаёт дерево childTabs и iconEmoji через Docs API. */
+  function fromGoogleTabs() {
+    if (!link.trim()) return;
+    if (!googleClientId) {
+      setError("Импорт вкладок ещё не подключён: добавь NEXT_PUBLIC_GOOGLE_CLIENT_ID в .env.");
+      return;
+    }
+
+    const oauth = window.google?.accounts.oauth2;
+    if (!oauth || !googleReady) {
+      setError("Подключение Google ещё загружается. Попробуй через пару секунд.");
+      return;
+    }
+
+    setError(null);
+    setNote("Подключаю Google…");
+    setGoogleBusy(true);
+
+    const client = oauth.initTokenClient({
+      client_id: googleClientId,
+      scope: "https://www.googleapis.com/auth/documents.readonly",
+      callback: async (response) => {
+        if (response.error || !response.access_token) {
+          setNodes(null);
+          setNote(null);
+          setError(response.error_description ?? "Google не дал доступ к документу.");
+          setGoogleBusy(false);
+          return;
+        }
+
+        setNote("Читаю вкладки…");
+        const result = await readGoogleDocumentTabs(link.trim(), response.access_token);
+        if (result.error || !result.nodes) {
+          setNodes(null);
+          setNote(null);
+          setError(result.error ?? "Не получилось прочитать вкладки.");
+        } else {
+          show(result.nodes, false, "Из вкладок Google");
+        }
+        setGoogleBusy(false);
+      },
+      error_callback: (oauthError) => {
+        setNote(null);
+        setError(
+          oauthError.type === "popup_closed"
+            ? "Окно Google закрыто — импорт не начался."
+            : "Не получилось открыть вход Google.",
+        );
+        setGoogleBusy(false);
+      },
+    });
+
+    client.requestAccessToken();
   }
 
   function fromImage(file: File | null | undefined) {
@@ -232,9 +320,21 @@ export function TreeImporter({
   };
 
   const total = nodes ? countNodes(nodes) : 0;
+  const anyBusy = busy || googleBusy;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8">
+      {googleClientId && (
+        <Script
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+          onReady={() => setGoogleReady(true)}
+          onError={() => {
+            setGoogleReady(false);
+            setError("Не загрузилась авторизация Google.");
+          }}
+        />
+      )}
       <div className="w-full max-w-3xl rounded-2xl bg-surface p-5 shadow-xl ring-1 ring-line sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -257,36 +357,49 @@ export function TreeImporter({
           <p className="text-[12px] font-semibold text-muted">
             Ссылка на документ Google Docs
           </p>
-          <div className="mt-1.5 flex gap-2">
+          <div className="mt-1.5 flex flex-wrap gap-2">
             <input
               value={link}
               onChange={(e) => setLink(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  fromLink();
+                  fromGoogleTabs();
                 }
               }}
               placeholder="https://docs.google.com/document/d/…"
-              className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
+              className="h-10 min-w-[220px] flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
             />
             <button
               type="button"
+              onClick={fromGoogleTabs}
+              disabled={!link.trim() || anyBusy || (!!googleClientId && !googleReady)}
+              className="h-10 shrink-0 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              {googleBusy ? "Читаю вкладки…" : "Импортировать вкладки"}
+            </button>
+            <button
+              type="button"
               onClick={fromLink}
-              disabled={!link.trim() || busy}
+              disabled={!link.trim() || anyBusy}
               className="h-10 shrink-0 rounded-xl border border-line px-4 text-sm font-semibold text-content transition hover:border-accent hover:text-accent disabled:opacity-40"
             >
-              Загрузить
+              Только заголовки
             </button>
           </div>
           <p className="mt-1.5 text-[11px] text-faint">
-            Читает <b>заголовки внутри документа</b> (стили «Заголовок 1/2/3»).
-            Документ должен быть открыт по ссылке хотя бы на чтение.
+            <b>Вкладки:</b> точное дерево боковой панели, полные названия и emoji.
+            Google запросит доступ только на чтение и ничего не изменит.
           </p>
-          <p className="mt-1 text-[11px] text-amber-500/90">
-            Список вкладок из боковой панели так не переносится — Google не
-            отдаёт его по ссылке. Для вкладок нужен скриншот.
+          <p className="mt-1 text-[11px] text-faint">
+            <b>Только заголовки:</b> запасной вариант без входа в Google; документ
+            должен быть открыт по ссылке, а разделы размечены стилями заголовков.
           </p>
+          {!googleClientId && (
+            <p className="mt-1 text-[11px] text-amber-500/90">
+              Точный импорт станет доступен после настройки Google Client ID в .env.
+            </p>
+          )}
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -369,10 +482,10 @@ export function TreeImporter({
               <button
                 type="button"
                 onClick={create}
-                disabled={busy}
+                disabled={anyBusy}
                 className="h-10 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
               >
-                {busy ? "Создаю…" : `Создать (${total})`}
+                {anyBusy ? "Создаю…" : `Создать (${total})`}
               </button>
               <button
                 type="button"
