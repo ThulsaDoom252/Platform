@@ -10,6 +10,7 @@ import {
 import { savePageContentAction, type ParseState } from "@/lib/actions/materials";
 import { IconMaterials, IconCheck } from "@/components/icons";
 import type { TreeScope } from "./node-editor";
+import { VocabularyCoverField } from "./vocabulary-cover";
 import { cn } from "@/lib/utils";
 
 /**
@@ -138,6 +139,17 @@ export function ContentImporter({
             className="mt-1.5 w-full resize-y rounded-xl border border-line bg-surface-2 px-3.5 py-3 font-mono text-[13px] leading-relaxed text-content outline-none transition placeholder:text-faint focus:border-accent"
           />
         </div>
+
+        {mode === "vocabulary" && (
+          <div>
+            <p className="mb-2 text-sm font-medium text-content">Обложка словаря</p>
+            <VocabularyCoverField />
+            <p className="mt-1.5 text-[11px] text-faint">
+              Необязательно. Обложка появится в оглавлении материалов и в шапке
+              словаря.
+            </p>
+          </div>
+        )}
 
         {/* Предпросмотр */}
         {preview && (

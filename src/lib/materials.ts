@@ -29,6 +29,7 @@ export type MaterialNode = {
   id: string;
   name: string;
   icon: string | null;
+  imageUrl: string | null;
   description: string | null;
   type: "FOLDER" | "FILE";
   fileKind: string | null;
@@ -91,6 +92,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       id: r.id,
       name: r.name,
       icon: r.icon,
+      imageUrl: r.imageUrl,
       description: r.description,
       type: r.type as "FOLDER" | "FILE",
       fileKind: r.fileKind,

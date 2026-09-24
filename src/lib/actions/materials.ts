@@ -1,5 +1,8 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { and, asc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -913,6 +916,99 @@ export type ParseState = {
   warnings?: string[];
 };
 
+const MAX_COVER_BYTES = 5 * 1024 * 1024;
+const COVER_EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
+
+function hasValidImageSignature(bytes: Buffer, mime: string) {
+  if (mime === "image/png") {
+    return (
+      bytes.length >= 8 &&
+      bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    );
+  }
+  if (mime === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mime === "image/webp") {
+    return (
+      bytes.length >= 12 &&
+      bytes.toString("ascii", 0, 4) === "RIFF" &&
+      bytes.toString("ascii", 8, 12) === "WEBP"
+    );
+  }
+  return false;
+}
+
+async function storeVocabularyCover(file: File, nodeId: string) {
+  const ext = COVER_EXTENSIONS[file.type];
+  if (!ext) return { error: "Поддерживаются только PNG, JPEG и WebP" } as const;
+  if (file.size > MAX_COVER_BYTES) return { error: "Картинка больше 5 МБ" } as const;
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  if (!hasValidImageSignature(bytes, file.type)) {
+    return { error: "Файл не похож на настоящую картинку" } as const;
+  }
+
+  const dir = path.join(process.cwd(), "public", "uploads", "materials");
+  await fs.mkdir(dir, { recursive: true });
+  const fileName = `${nodeId}-${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
+  await fs.writeFile(path.join(dir, fileName), bytes);
+  return { imageUrl: `/uploads/materials/${fileName}` } as const;
+}
+
+export type CoverState = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  imageUrl?: string;
+};
+
+/** Поставить или заменить обложку уже готового словаря. */
+export async function updateVocabularyCoverAction(
+  nodeId: string,
+  _prev: CoverState,
+  formData: FormData,
+): Promise<CoverState> {
+  await requireTeacher();
+
+  const [node] = await db
+    .select({
+      id: materialNodes.id,
+      type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
+    })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, nodeId))
+    .limit(1);
+
+  if (!node || node.type !== "FILE") return { error: "Страница словаря не найдена" };
+  if (node.pageKind && node.pageKind !== "VOCAB") {
+    return { error: "Обложку словаря нельзя поставить на другой тип материала" };
+  }
+
+  const file = formData.get("coverImage");
+  if (!(file instanceof File) || file.size === 0) return { error: "Выбери картинку" };
+
+  const stored = await storeVocabularyCover(file, nodeId);
+  if ("error" in stored) return { error: stored.error };
+
+  await db
+    .update(materialNodes)
+    .set({ imageUrl: stored.imageUrl })
+    .where(eq(materialNodes.id, nodeId));
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: "Обложка сохранена и уже видна в оглавлении",
+    imageUrl: stored.imageUrl,
+  };
+}
+
 /**
  * Разобрать вставленный текст и заменить им содержимое страницы.
  * Старые фразы страницы удаляются — это осознанная замена, а не дополнение.
@@ -933,6 +1029,14 @@ export async function savePageContentAction(
   const result = parseMaterial(raw, mode);
   if (result.phrases.length === 0) {
     return { error: result.warnings[0] ?? "Не удалось разобрать текст" };
+  }
+
+  let coverImageUrl: string | undefined;
+  const coverFile = formData.get("coverImage");
+  if (mode === "vocabulary" && coverFile instanceof File && coverFile.size > 0) {
+    const stored = await storeVocabularyCover(coverFile, nodeId);
+    if ("error" in stored) return { error: stored.error };
+    coverImageUrl = stored.imageUrl;
   }
 
   await db.delete(materialPhrases).where(eq(materialPhrases.nodeId, nodeId));
@@ -957,6 +1061,7 @@ export async function savePageContentAction(
       // Страница запоминает, чем её наполнили, и исходник для «Редактировать».
       pageKind: mode === "mistake" ? "MISTAKE" : mode === "rule" ? "RULE" : "VOCAB",
       sourceText: raw.slice(0, 200_000),
+      ...(coverImageUrl ? { imageUrl: coverImageUrl } : {}),
       ...(applyTitle && result.title ? { name: result.title } : {}),
       ...(applyTitle && result.description ? { description: result.description } : {}),
     })

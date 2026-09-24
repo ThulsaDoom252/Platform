@@ -9,6 +9,7 @@ import {
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { VocabularyCoverEditor } from "./vocabulary-cover";
 import {
   IconVolume,
   IconChevronDown,
@@ -293,18 +294,23 @@ export function PhraseReader({
   title,
   icon,
   description,
+  coverImageUrl,
   phrases,
   onEditPhrase,
   nodeId,
+  canEditCover = false,
 }: {
   title: string;
   icon: string | null;
   description: string | null;
+  coverImageUrl?: string | null;
   phrases: MaterialPhrase[];
   /** Передаётся только учителю — у ученика правки нет. */
   onEditPhrase?: (p: MaterialPhrase) => void;
   /** Страница, которой принадлежат записи: нужна для правки категорий. */
   nodeId?: string;
+  /** Учитель может поставить или заменить обложку уже готового словаря. */
+  canEditCover?: boolean;
 }) {
   const { t } = useT();
   const [showTranslation, setShowTranslation] = useState(true);
@@ -406,7 +412,24 @@ export function PhraseReader({
   return (
     <div className="flex flex-col gap-4">
       {/* Шапка страницы */}
-      <header className="grad-accent relative overflow-hidden rounded-2xl p-5 text-white shadow-md sm:p-6">
+      <header
+        className={cn(
+          "relative overflow-hidden rounded-2xl p-5 text-white shadow-md sm:min-h-56 sm:p-6",
+          coverImageUrl ? "bg-slate-950" : "grad-accent",
+        )}
+      >
+        {coverImageUrl && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={coverImageUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/10" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/10" />
+          </>
+        )}
         <div className="relative z-10">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-2xl backdrop-blur">
@@ -423,9 +446,17 @@ export function PhraseReader({
             {fmt(t.phrases.count, { n: phraseCount })}
           </p>
         </div>
-        <div className="pointer-events-none absolute -right-8 -bottom-10 h-36 w-36 rounded-full bg-white/10" />
-        <div className="pointer-events-none absolute right-16 -top-10 h-24 w-24 rounded-full bg-white/10" />
+        {!coverImageUrl && (
+          <>
+            <div className="pointer-events-none absolute -right-8 -bottom-10 h-36 w-36 rounded-full bg-white/10" />
+            <div className="pointer-events-none absolute right-16 -top-10 h-24 w-24 rounded-full bg-white/10" />
+          </>
+        )}
       </header>
+
+      {canEditCover && nodeId && (
+        <VocabularyCoverEditor nodeId={nodeId} currentUrl={coverImageUrl} />
+      )}
 
       {/* Управление */}
       <div className="flex flex-wrap items-center gap-2">

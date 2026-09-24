@@ -84,6 +84,7 @@ export type MaterialNode = {
   id: string;
   name: string;
   icon: string | null;
+  imageUrl: string | null;
   description: string | null;
   type: "FOLDER" | "FILE";
   fileKind: string | null;
@@ -1448,9 +1449,11 @@ export function MaterialsExplorer({
                 title={selected.name}
                 icon={selected.icon}
                 description={selected.description}
+                coverImageUrl={selected.imageUrl}
                 phrases={selected.phrases}
                 nodeId={selected.id}
                 onEditPhrase={editable ? setEditPhrase : undefined}
+                canEditCover={editable && pageKind(selected) === "VOCAB"}
               />
             )}
           </>
@@ -1499,14 +1502,27 @@ export function MaterialsExplorer({
                 )}
               >
                 <span className="material-card-visual relative flex w-full items-center justify-between overflow-hidden">
-                  {n.type === "FOLDER" ? (
+                  {n.imageUrl ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={n.imageUrl}
+                        alt=""
+                        className="material-card-cover"
+                      />
+                      <span className="material-card-cover-shade" />
+                    </>
+                  ) : n.type === "FOLDER" ? (
                     <IconFolder className="material-folder-watermark" />
                   ) : (
                     <IconFile className="material-file-watermark" />
                   )}
                   {iconSlot(
                     n,
-                    "material-card-emoji relative z-[1] flex h-12 w-12 items-center justify-center rounded-2xl text-2xl leading-none",
+                    cn(
+                      "material-card-emoji relative z-[1] flex h-12 w-12 items-center justify-center rounded-2xl text-2xl leading-none",
+                      n.imageUrl && "material-card-cover-emoji",
+                    ),
                     n.type === "FOLDER" ? "📁" : "📄",
                   )}
                   {n.type === "FOLDER" && (
@@ -1554,6 +1570,14 @@ export function MaterialsExplorer({
                   dropRing(n.id),
                 )}
               >
+                {n.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={n.imageUrl}
+                    alt=""
+                    className="h-9 w-12 shrink-0 rounded-lg object-cover ring-1 ring-line"
+                  />
+                )}
                 {n.icon &&
                   iconSlot(
                     n,
