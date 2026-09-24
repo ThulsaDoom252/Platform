@@ -56,6 +56,9 @@ const SPEAKER = /^\s*[\u{1F50A}\u{1F508}\u{1F509}\u{1F3A7}\u{25B6}\u{23F5}]️?\
 const SPEAKER_LABEL =
   /^(?:слухати|прослухати|слушать|прослушать|послушать|listen|play|audio)\b[\s:–—-]*/iu;
 
+/** Галочка / крестик перед словом или заголовком смысловой группы. */
+const VERDICT_ICON = /^\s*[✗✘❌✓✔✅]\uFE0F?\s*/u;
+
 /**
  * Убирает значок озвучки и подпись к нему: «🔊 слухати  accidentally …».
  * Подпись бывает разной, поэтому после известных слов отбрасываем и любые
@@ -94,6 +97,30 @@ function splitByDash(text: string): [string, string] | null {
   const right = text.slice(idx + match[0].length).trim();
   if (!left || !right) return null;
   return [left, right];
+}
+
+/**
+ * В диалоговых примерах встречаются четыре части:
+ * «Do you like it? — Absolutely! — Тобі подобається? — Абсолютно!».
+ * Границу перевода надёжнее искать по первому кириллическому фрагменту,
+ * сохраняя вопрос и ответ вместе по обе стороны.
+ */
+function splitExampleByLanguage(text: string): [string, string] | null {
+  const parts = text
+    .split(/\s+(?:—|–|-{1,2})\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+
+  const translationAt = parts.findIndex((part) => /\p{Script=Cyrillic}/u.test(part));
+  if (translationAt > 0) {
+    return [
+      parts.slice(0, translationAt).join(" — "),
+      parts.slice(translationAt).join(" — "),
+    ];
+  }
+
+  return [parts[0], parts.slice(1).join(" — ")];
 }
 
 /** Похоже ли, что левая часть строки — пример, а не термин. */
@@ -282,6 +309,9 @@ function parseVocabulary(raw: string): ParseResult {
 
     const hadBullet = BULLET.test(original);
     const withoutBullet = stripSpeaker(stripBullet(original));
+    // В новых словниках статус стоит перед динамиком: «✅ 🔊 Exactly! — Саме так!».
+    // Обычный stripSpeaker его не видит, поэтому запоминаем комбинацию до снятия emoji.
+    const hasEntrySpeaker = SPEAKER.test(withoutBullet.replace(VERDICT_ICON, ""));
     const { icon, rest } = takeLeadingIcon(withoutBullet);
     const line = rest.trim();
     if (!line) continue;
@@ -296,7 +326,7 @@ function parseVocabulary(raw: string): ParseResult {
 
     // Строки со сравнением «✗ так нельзя / ✓ так можно» — часть пояснения.
     // Проверяем до снятия иконки: галочка сама попадает в её диапазон.
-    if (/^\s*[✗✘❌✓✔✅]/u.test(withoutBullet)) {
+    if (VERDICT_ICON.test(withoutBullet) && !isDecoratedHeading && !hasEntrySpeaker) {
       flush();
       phrases.push({
         icon: "💡",
@@ -349,12 +379,13 @@ function parseVocabulary(raw: string): ParseResult {
         warnings.push(`Строка ${i + 1}: пример без записи — «${left.slice(0, 50)}»`);
         continue;
       }
-      current.examples.push({ en: left, tr: right });
+      const example = splitExampleByLanguage(line) ?? parts;
+      current.examples.push({ en: example[0], tr: example[1] });
       continue;
     }
 
     // Заголовок секции, в котором тоже есть тире
-    if (isSectionHeading(left, right)) {
+    if (!hasEntrySpeaker && isSectionHeading(left, right)) {
       flush();
       currentSection = line;
       sectionIcon = icon;
