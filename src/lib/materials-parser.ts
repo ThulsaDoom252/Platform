@@ -23,9 +23,12 @@ export type ParseResult = {
   description: string | null;
   phrases: ParsedPhrase[];
   warnings: string[];
+  /** Внутренний тип словарной разметки, выбранный автоматически. */
+  vocabularyFormat?: VocabularyParserFormat;
 };
 
 export type ParserMode = "vocabulary" | "rule" | "mistake";
+export type VocabularyParserFormat = "standard" | "word-examples-table";
 
 /** Тире, которыми в документе разделены термин и перевод. */
 const DASH = /\s+[—–]\s+|\s+-{1,2}\s+/;
@@ -168,9 +171,11 @@ const COLUMN = {
   word: /\b(word|phrase|term)\b|слов|фраз|вираз|выражен/i,
   ipa: /\bipa\b|transcri|транскрип|вимов|произнош/i,
   translation: /translat|перевод|переклад|значенн/i,
+  examples: /\bexamples?\b|приклад|пример/i,
 };
 
 type ColumnMap = { word: number; ipa: number | null; translation: number };
+type WordExamplesColumnMap = { word: number; examples: number };
 
 /** Шапка таблицы: по ней запоминаем, в какой колонке что лежит. */
 function detectHeader(cells: string[]): ColumnMap | null {
@@ -188,6 +193,82 @@ function detectHeader(cells: string[]): ColumnMap | null {
 
   if (word < 0 || translation < 0) return null;
   return { word, ipa: ipa < 0 ? null : ipa, translation };
+}
+
+/**
+ * Отдельный тип словарной таблицы: слева слово, IPA и перевод, справа пары
+ * «пример / перевод примера». В интерфейсе это всё ещё один парсер «Словник» —
+ * нужный вариант выбирается по шапке Word / Phrase | Examples.
+ */
+function detectWordExamplesHeader(cells: string[]): WordExamplesColumnMap | null {
+  let word = -1;
+  let examples = -1;
+
+  cells.forEach((cell, i) => {
+    const text = cell.trim();
+    if (!text || text.length > 30) return;
+    if (word < 0 && COLUMN.word.test(text)) word = i;
+    if (examples < 0 && COLUMN.examples.test(text)) examples = i;
+  });
+
+  if (word < 0 || examples < 0 || word === examples) return null;
+  return { word, examples };
+}
+
+/** Левая ячейка: «🚫 obsolete /ˌɒb.səˈliːt/ застарілий / застарілий». */
+function parseWordExamplesEntry(cell: string): {
+  icon: string | null;
+  phrase: string;
+  transcription: string | null;
+  translation: string;
+} | null {
+  const withoutSpeaker = stripSpeaker(cell).trim();
+  const { icon, rest } = takeLeadingIcon(withoutSpeaker);
+  const text = rest.trim();
+  const ipaMatch = text.match(IPA);
+
+  if (ipaMatch?.index !== undefined) {
+    const phrase = text.slice(0, ipaMatch.index).trim();
+    const translation = text
+      .slice(ipaMatch.index + ipaMatch[0].length)
+      .replace(/^\s*[—–-]\s*/, "")
+      .trim();
+    if (phrase && translation) {
+      return { icon, phrase, transcription: ipaMatch[0], translation };
+    }
+  }
+
+  // Запасной вариант для строк без IPA: граница проходит перед кириллицей.
+  const translationAt = text.search(/\p{Script=Cyrillic}/u);
+  if (translationAt <= 0) return null;
+  const phrase = text.slice(0, translationAt).replace(/\s*[—–-]\s*$/, "").trim();
+  const translation = text.slice(translationAt).trim();
+  return phrase && translation
+    ? { icon, phrase, transcription: null, translation }
+    : null;
+}
+
+/**
+ * Правая ячейка после копирования из Google Docs приходит одной строкой:
+ * «• English sentence. Український переклад. • Next sentence. Переклад.».
+ */
+function parsePairedExamples(cell: string): ParsedExample[] {
+  const chunks = cell
+    .split(/\s*[•●▪‣]\s*/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return chunks.flatMap((chunk) => {
+    const translationAt = chunk.search(/\p{Script=Cyrillic}/u);
+    if (translationAt > 0) {
+      const en = chunk.slice(0, translationAt).trim();
+      const tr = chunk.slice(translationAt).trim();
+      return en && tr ? [{ en, tr }] : [];
+    }
+
+    const split = splitExampleByLanguage(chunk);
+    return split ? [{ en: split[0], tr: split[1] }] : [];
+  });
 }
 
 /**
@@ -240,6 +321,8 @@ function parseVocabulary(raw: string): ParseResult {
   let lastPhrase: ParsedPhrase | null = null;
   let iconIndex = 0;
   let columns: ColumnMap | null = null;
+  let wordExamplesColumns: WordExamplesColumnMap | null = null;
+  let vocabularyFormat: VocabularyParserFormat = "standard";
 
   const flush = () => {
     if (current) {
@@ -273,10 +356,48 @@ function parseVocabulary(raw: string): ParseResult {
       const cells = raw.map((c) => takeLeadingIcon(c).rest.trim());
       const filled = cells.filter(Boolean);
 
+      const wordExamplesHeader = detectWordExamplesHeader(cells);
+      if (wordExamplesHeader) {
+        wordExamplesColumns = wordExamplesHeader;
+        columns = null;
+        vocabularyFormat = "word-examples-table";
+        flush();
+        continue;
+      }
+
       const header = detectHeader(cells);
       if (header) {
         columns = header;
+        wordExamplesColumns = null;
         flush();
+        continue;
+      }
+
+      if (wordExamplesColumns && filled.length >= 2) {
+        const entry = parseWordExamplesEntry(raw[wordExamplesColumns.word] ?? "");
+        if (!entry) {
+          warnings.push(
+            `Строка ${i + 1}: не удалось разделить слово, транскрипцию и перевод — «${original.slice(0, 60)}»`,
+          );
+          continue;
+        }
+
+        const examples = parsePairedExamples(raw[wordExamplesColumns.examples] ?? "");
+        flush();
+        const phrase: ParsedPhrase = {
+          icon: entry.icon ?? sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
+          section: currentSection,
+          kind: "PHRASE",
+          phrase: entry.phrase,
+          transcription: entry.transcription,
+          translation: entry.translation,
+          examples,
+        };
+        phrases.push(phrase);
+        lastPhrase = phrase;
+        if (examples.length === 0) {
+          warnings.push(`Строка ${i + 1}: у «${entry.phrase}» не удалось разобрать примеры`);
+        }
         continue;
       }
 
@@ -439,7 +560,7 @@ function parseVocabulary(raw: string): ParseResult {
     );
   }
 
-  return { title, description, phrases, warnings };
+  return { title, description, phrases, warnings, vocabularyFormat };
 }
 
 /**

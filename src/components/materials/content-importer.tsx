@@ -120,8 +120,9 @@ export function ContentImporter({
           </label>
           {mode === "vocabulary" && (
             <p className="mt-0.5 text-[11px] text-faint">
-              Таблицу можно копировать целиком — колонки Word / IPA / Translation
-              разложатся сами, а заголовки вроде «Nouns — Іменники» станут разделами.
+              Таблицу можно копировать целиком — форматы Word / IPA / Translation и
+              Word / Phrase / Examples распознаются сами, а заголовки вроде «Nouns —
+              Іменники» станут разделами.
             </p>
           )}
           <textarea
@@ -159,6 +160,12 @@ export function ContentImporter({
                 Предпросмотр — {phraseCount} записей
                 {noteCount ? `, ${noteCount} заметок` : ""}
               </p>
+              {mode === "vocabulary" &&
+                preview.vocabularyFormat === "word-examples-table" && (
+                  <span className="tint-green rounded-md px-2 py-0.5 text-[10px] font-bold">
+                    авто: слова + примеры
+                  </span>
+                )}
               {preview.title && (
                 <label className="flex cursor-pointer items-center gap-2 text-[11px] text-muted">
                   <input
