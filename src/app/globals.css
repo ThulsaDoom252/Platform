@@ -174,6 +174,388 @@
   background-image: linear-gradient(135deg, var(--c4), var(--c4b));
 }
 
+/* ---------- Structured rule sheets ----------
+   Google Docs worksheets keep their visual hierarchy, but become responsive
+   cards instead of a rigid A4 page. Two copied pages always flow vertically. */
+.rule-sheet {
+  --sheet-violet: #673abf;
+  --sheet-violet-2: #8557dc;
+  --sheet-violet-soft: #f0eaff;
+  --sheet-pink: #ec407a;
+  --sheet-blue: #1976d2;
+  --sheet-green: #079669;
+  --sheet-red: #e83e62;
+  gap: 0.72rem;
+}
+
+:root[data-mode="dark"] .rule-sheet {
+  --sheet-violet: #7c4dde;
+  --sheet-violet-2: #9d72ef;
+  --sheet-violet-soft: #28213d;
+  --sheet-pink: #fb6f9f;
+  --sheet-blue: #66aef5;
+  --sheet-green: #45d6a4;
+  --sheet-red: #ff7691;
+}
+
+.rule-sheet-hero {
+  border: 1px solid color-mix(in srgb, var(--sheet-violet-2) 60%, white 22%);
+  background:
+    radial-gradient(circle at 86% 12%, rgba(255, 224, 102, 0.22), transparent 22%),
+    radial-gradient(circle at 12% 110%, rgba(236, 64, 122, 0.2), transparent 34%),
+    linear-gradient(135deg, #4d239c, var(--sheet-violet) 48%, #7e4bd5);
+  box-shadow:
+    0 18px 38px color-mix(in srgb, var(--sheet-violet) 24%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.rule-sheet-hero::before {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 26px 26px;
+  content: "";
+  mask-image: linear-gradient(90deg, black, transparent 72%);
+}
+
+.rule-sheet-hero-icon {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1));
+  box-shadow: 0 9px 22px rgba(25, 8, 68, 0.22);
+}
+
+.rule-sheet-eyebrow {
+  margin-bottom: 0.15rem;
+  color: rgba(255, 255, 255, 0.67);
+  font-size: 0.61rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.rule-sheet-title {
+  color: #ffe25d;
+  letter-spacing: 0.035em;
+  text-shadow: 0 2px 14px rgba(22, 5, 60, 0.28);
+}
+
+.rule-sheet-subtitle {
+  font-weight: 600;
+}
+
+.rule-sheet-section {
+  display: flex;
+  min-height: 2.55rem;
+  align-items: center;
+  gap: 0.65rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sheet-violet-2) 64%, white 12%);
+  border-radius: 0.85rem;
+  padding: 0.42rem 0.72rem;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.09), transparent 28%),
+    linear-gradient(135deg, var(--sheet-violet), var(--sheet-violet-2));
+  color: white;
+  box-shadow:
+    0 8px 18px color-mix(in srgb, var(--sheet-violet) 16%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.rule-sheet-section-number {
+  display: inline-flex;
+  height: 1.7rem;
+  min-width: 1.7rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.55rem;
+  background: #ffe25d;
+  color: #4b258e;
+  font-size: 0.77rem;
+  font-weight: 900;
+  box-shadow: 0 4px 11px rgba(31, 8, 75, 0.2);
+}
+
+.rule-sheet-section h3 {
+  font-size: 0.83rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.rule-sheet-lead {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sheet-violet) 24%, var(--line));
+  border-radius: 1rem;
+  padding: 0.9rem 1rem 0.9rem 1.15rem;
+  background:
+    radial-gradient(circle at 0 50%, color-mix(in srgb, var(--sheet-violet) 14%, transparent), transparent 32%),
+    color-mix(in srgb, var(--sheet-violet-soft) 62%, var(--surface));
+  color: var(--content);
+  box-shadow: inset 3px 0 0 var(--sheet-violet);
+}
+
+.rule-sheet-kicker {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: var(--sheet-violet-2);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.rule-sheet-lead p,
+.rule-sheet-copy {
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.65;
+}
+
+.rule-sheet-formula-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--sheet-violet) 22%, var(--line));
+  border-radius: 1rem;
+  padding: 0.65rem;
+  background: color-mix(in srgb, var(--sheet-violet-soft) 58%, var(--surface));
+}
+
+.rule-sheet-formula-grid > div {
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface);
+  text-align: center;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--sheet-violet) 8%, transparent);
+}
+
+.rule-sheet-formula-grid strong {
+  color: var(--sheet-blue);
+  font-size: 0.82rem;
+}
+
+.rule-sheet-formula-grid > div:nth-child(even) strong {
+  color: var(--sheet-pink);
+}
+
+.rule-sheet-formula-grid p {
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.rule-sheet-formula {
+  display: grid;
+  grid-template-columns: minmax(9.5rem, auto) auto 1fr;
+  align-items: center;
+  gap: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--sheet-pink) 22%, var(--line));
+  border-radius: 0.9rem;
+  padding: 0.65rem 0.8rem;
+  background: color-mix(in srgb, var(--sheet-pink) 7%, var(--surface));
+}
+
+.rule-sheet-formula strong {
+  color: var(--sheet-pink);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.rule-sheet-formula > span {
+  color: var(--sheet-violet-2);
+  font-weight: 900;
+}
+
+.rule-sheet-formula p {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.rule-sheet-table-wrap {
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--sheet-violet) 22%, var(--line));
+  border-radius: 0.9rem;
+  background: var(--surface);
+  box-shadow: 0 7px 20px color-mix(in srgb, var(--sheet-violet) 7%, transparent);
+}
+
+.rule-sheet-table {
+  width: 100%;
+  min-width: 32rem;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.rule-sheet-table thead {
+  background: linear-gradient(135deg, var(--sheet-violet), var(--sheet-violet-2));
+  color: white;
+}
+
+.rule-sheet-table th {
+  padding: 0.58rem 0.7rem;
+  text-align: left;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.rule-sheet-table td {
+  border-top: 1px solid color-mix(in srgb, var(--sheet-violet) 12%, var(--line));
+  padding: 0.6rem 0.7rem;
+  color: var(--muted);
+  line-height: 1.4;
+  vertical-align: top;
+}
+
+.rule-sheet-table tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--sheet-violet-soft) 47%, var(--surface));
+}
+
+.rule-sheet-table td:first-child {
+  color: var(--sheet-blue);
+  font-weight: 750;
+}
+
+.rule-sheet-table tr:nth-child(even) td:first-child {
+  color: var(--sheet-pink);
+}
+
+.rule-sheet-mistake {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, var(--sheet-red));
+  border-radius: 0.85rem;
+  background: var(--surface);
+}
+
+.rule-sheet-mistake > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.48rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.rule-sheet-mistake > div > span {
+  display: inline-flex;
+  height: 1.15rem;
+  width: 1.15rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.rule-sheet-mistake-wrong {
+  background: color-mix(in srgb, var(--sheet-red) 8%, var(--surface));
+  color: var(--sheet-red);
+}
+
+.rule-sheet-mistake-wrong > span {
+  background: var(--sheet-red);
+}
+
+.rule-sheet-mistake-right {
+  border-left: 1px solid var(--line);
+  background: color-mix(in srgb, var(--sheet-green) 8%, var(--surface));
+  color: var(--sheet-green);
+}
+
+.rule-sheet-mistake-right > span {
+  background: var(--sheet-green);
+}
+
+.rule-sheet-quiz {
+  display: grid;
+  gap: 0.48rem;
+  border: 1px solid color-mix(in srgb, var(--sheet-violet) 20%, var(--line));
+  border-radius: 1rem;
+  padding: 0.75rem;
+  background: color-mix(in srgb, var(--sheet-violet-soft) 38%, var(--surface));
+}
+
+.rule-sheet-quiz li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.62rem;
+  border-radius: 0.75rem;
+  padding: 0.56rem 0.65rem;
+  background: var(--surface);
+  color: var(--content);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--content) 4%, transparent);
+}
+
+.rule-sheet-quiz li > span {
+  display: inline-flex;
+  height: 1.35rem;
+  min-width: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.42rem;
+  background: var(--sheet-violet);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.rule-sheet-answers {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--sheet-violet) 22%, var(--line));
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.8rem;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sheet-violet) 15%, var(--surface)), var(--surface));
+}
+
+.rule-sheet-answers > span {
+  color: var(--sheet-violet-2);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.rule-sheet-answers p {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 640px) {
+  .rule-sheet-formula-grid,
+  .rule-sheet-mistake {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-sheet-formula {
+    grid-template-columns: 1fr;
+    gap: 0.28rem;
+  }
+
+  .rule-sheet-formula > span {
+    display: none;
+  }
+
+  .rule-sheet-mistake-right {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
 /* ---------- Materials tree ----------
    The same components use semantic tokens, so the premium depth survives
    both day/night mode and every per-student accent palette. */

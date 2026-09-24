@@ -13,6 +13,30 @@ const TONE: Record<string, string> = {
   info: "tint-sky",
 };
 
+const isSheetVariant = (variant?: string) => variant?.startsWith("sheet-") ?? false;
+
+function sectionParts(text: string): { number: string | null; title: string } {
+  const match = text.match(/^\s*(\d{1,2})[.)]?\s*(.+)$/);
+  return match ? { number: match[1], title: match[2] } : { number: null, title: text };
+}
+
+function formulaParts(text: string): { formula: string; meaning: string } {
+  const at = text.indexOf("=");
+  return at < 0
+    ? { formula: text, meaning: "" }
+    : { formula: text.slice(0, at).trim(), meaning: text.slice(at + 1).trim() };
+}
+
+function mistakeParts(text: string): { wrong: string; right: string | null } {
+  const at = text.search(/[✓✔✅]/u);
+  return at < 0
+    ? { wrong: text.replace(/^[✗✘❌]\s*/u, ""), right: null }
+    : {
+        wrong: text.slice(0, at).replace(/^[✗✘❌]\s*/u, "").trim(),
+        right: text.slice(at).replace(/^[✓✔✅]\s*/u, "").trim(),
+      };
+}
+
 function useSpeak() {
   const [active, setActive] = useState<string | null>(null);
 
@@ -52,18 +76,43 @@ export function RuleReader({
   blocks: RuleBlock[];
 }) {
   const s = useSpeak();
+  const isStudySheet = blocks.some((block) => isSheetVariant(block.variant));
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", isStudySheet && "rule-sheet")}>
       {/* Шапка правила */}
-      <header className="grad-accent relative overflow-hidden rounded-2xl p-5 text-white shadow-md sm:p-6">
+      <header
+        className={cn(
+          "relative overflow-hidden rounded-2xl p-5 text-white shadow-md sm:p-6",
+          isStudySheet ? "rule-sheet-hero" : "grad-accent",
+        )}
+      >
         <div className="relative z-10 flex items-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-2xl backdrop-blur">
+          <span
+            className={cn(
+              "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-2xl backdrop-blur",
+              isStudySheet && "rule-sheet-hero-icon",
+            )}
+          >
             {icon ?? "📘"}
           </span>
           <div className="min-w-0">
-            <h2 className="text-xl font-bold leading-tight sm:text-2xl">{title}</h2>
-            {description && <p className="mt-0.5 text-sm text-white/80">{description}</p>}
+            {isStudySheet && (
+              <p className="rule-sheet-eyebrow">Grammar · Visual guide</p>
+            )}
+            <h2
+              className={cn(
+                "text-xl font-bold leading-tight sm:text-2xl",
+                isStudySheet && "rule-sheet-title",
+              )}
+            >
+              {title}
+            </h2>
+            {description && (
+              <p className={cn("mt-0.5 text-sm text-white/80", isStudySheet && "rule-sheet-subtitle")}>
+                {description}
+              </p>
+            )}
           </div>
         </div>
         <div className="pointer-events-none absolute -right-8 -bottom-10 h-36 w-36 rounded-full bg-white/10" />
@@ -71,7 +120,18 @@ export function RuleReader({
 
       {blocks.map((b, i) => {
         switch (b.type) {
-          case "heading":
+          case "heading": {
+            if (b.variant === "sheet-section") {
+              const section = sectionParts(b.text);
+              return (
+                <div key={i} className="rule-sheet-section">
+                  {section.number && (
+                    <span className="rule-sheet-section-number">{section.number}</span>
+                  )}
+                  <h3>{section.title}</h3>
+                </div>
+              );
+            }
             return (
               <h3
                 key={i}
@@ -81,8 +141,45 @@ export function RuleReader({
                 {b.text}
               </h3>
             );
+          }
 
-          case "callout":
+          case "callout": {
+            if (b.variant === "sheet-lead") {
+              return (
+                <div key={i} className="rule-sheet-lead">
+                  <span className="rule-sheet-kicker">{b.label ?? "Головна ідея"}</span>
+                  <p>{b.text}</p>
+                </div>
+              );
+            }
+
+            if (b.variant === "sheet-mistake") {
+              const parts = mistakeParts(b.text);
+              return (
+                <div key={i} className="rule-sheet-mistake">
+                  <div className="rule-sheet-mistake-wrong">
+                    <span aria-hidden="true">×</span>
+                    <p>{parts.wrong}</p>
+                  </div>
+                  {parts.right && (
+                    <div className="rule-sheet-mistake-right">
+                      <span aria-hidden="true">✓</span>
+                      <p>{parts.right}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (b.variant === "sheet-answers") {
+              return (
+                <div key={i} className="rule-sheet-answers">
+                  <span>{b.label ?? "Відповіді"}</span>
+                  <p>{b.text}</p>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={i}
@@ -92,8 +189,19 @@ export function RuleReader({
                 <span className="leading-snug">{b.text}</span>
               </div>
             );
+          }
 
-          case "formula":
+          case "formula": {
+            if (b.variant === "sheet-formula") {
+              const parts = formulaParts(b.text);
+              return (
+                <div key={i} className="rule-sheet-formula">
+                  <strong>{parts.formula}</strong>
+                  {parts.meaning && <span aria-hidden="true">→</span>}
+                  {parts.meaning && <p>{parts.meaning}</p>}
+                </div>
+              );
+            }
             return (
               <div
                 key={i}
@@ -102,6 +210,7 @@ export function RuleReader({
                 <p className="text-base font-bold tracking-wide text-accent">{b.text}</p>
               </div>
             );
+          }
 
           case "example": {
             const key = `ex-${i}`;
@@ -131,6 +240,18 @@ export function RuleReader({
           }
 
           case "list":
+            if (b.variant === "sheet-quiz") {
+              return (
+                <ol key={i} className="rule-sheet-quiz">
+                  {b.items.map((item, j) => (
+                    <li key={j}>
+                      <span>{j + 1}</span>
+                      <p>{item}</p>
+                    </li>
+                  ))}
+                </ol>
+              );
+            }
             return (
               <ul key={i} className="flex flex-col gap-1.5 pl-1">
                 {b.items.map((it, j) => (
@@ -142,7 +263,47 @@ export function RuleReader({
               </ul>
             );
 
-          case "table":
+          case "table": {
+            if (b.variant === "sheet-formula-grid") {
+              const rows = b.headers.length ? [b.headers, ...b.rows] : b.rows;
+              return (
+                <div key={i} className="rule-sheet-formula-grid">
+                  {rows.flat().filter(Boolean).map((cell, j) => {
+                    const parts = formulaParts(cell);
+                    return (
+                      <div key={j}>
+                        <strong>{parts.formula}</strong>
+                        {parts.meaning && <p>{parts.meaning}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+
+            if (b.variant === "sheet-table") {
+              return (
+                <div key={i} className="rule-sheet-table-wrap">
+                  <table className="rule-sheet-table">
+                    {b.headers.length > 0 && (
+                      <thead>
+                        <tr>
+                          {b.headers.map((header, j) => <th key={j}>{header}</th>)}
+                        </tr>
+                      </thead>
+                    )}
+                    <tbody>
+                      {b.rows.map((row, ri) => (
+                        <tr key={ri}>
+                          {row.map((cell, ci) => <td key={ci}>{cell}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={i}
@@ -189,10 +350,17 @@ export function RuleReader({
                 </table>
               </div>
             );
+          }
 
           default:
             return (
-              <p key={i} className="text-sm leading-relaxed text-muted">
+              <p
+                key={i}
+                className={cn(
+                  "text-sm leading-relaxed text-muted",
+                  b.variant === "sheet-text" && "rule-sheet-copy",
+                )}
+              >
                 {(b as { text: string }).text}
               </p>
             );

@@ -8,14 +8,26 @@
  * оставлен запасной разбор по табуляциям.
  */
 
-export type RuleBlock =
+export type RuleBlockVariant =
+  | "sheet-text"
+  | "sheet-lead"
+  | "sheet-section"
+  | "sheet-formula"
+  | "sheet-formula-grid"
+  | "sheet-table"
+  | "sheet-mistake"
+  | "sheet-quiz"
+  | "sheet-answers";
+
+export type RuleBlock = (
   | { type: "heading"; text: string }
   | { type: "callout"; label?: string; text: string; tone?: "key" | "warn" | "tip" | "info" }
   | { type: "formula"; text: string }
   | { type: "text"; text: string }
   | { type: "example"; en: string; tr?: string }
   | { type: "list"; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] };
+  | { type: "table"; headers: string[]; rows: string[][] }
+) & { variant?: RuleBlockVariant };
 
 export type RuleParseResult = {
   title: string | null;
@@ -125,7 +137,9 @@ function splitExample(s: string): { en: string; tr: string } | null {
   return { en, tr };
 }
 
-function detectCallout(s: string): RuleBlock | null {
+function detectCallout(
+  s: string,
+): Extract<RuleBlock, { type: "callout" }> | null {
   // «ВАЖЛИВО: текст» или «Примітка: текст»
   const colon = s.indexOf(":");
   const head = colon > 0 && colon < 40 ? s.slice(0, colon) : "";
@@ -220,12 +234,12 @@ function detectRuleFormat(raw: string, blocks: RuleBlock[]): RuleParserFormat {
 function splitStructuredTitle(text: string): { title: string; subtitle: string | null } | null {
   const s = cleanText(text);
   const known = s.match(
-    /^(REMEMBER\s*[|/]\s*FORGET)\s*(?:(INFINITIVE\s+(?:VS|ТА|AND)\s+GERUND)|(.+?БЕЗ\s+ПЛУТАНИНИ))?$/i,
+    /^(REMEMBER)\s*(?:[|/]|[ІI])\s*(FORGET)\s*(?:(INFINITIVE\s+(?:VS|ТА|AND)\s+GERUND)|(.+?БЕЗ\s+ПЛУТАНИНИ))?$/i,
   );
   if (!known) return null;
   return {
-    title: cleanText(known[1]).replace(/\s*([|/])\s*/g, " $1 ").toUpperCase(),
-    subtitle: cleanText(known[2] ?? known[3] ?? "") || null,
+    title: `${known[1]} | ${known[2]}`.toUpperCase(),
+    subtitle: cleanText(known[3] ?? known[4] ?? "") || null,
   };
 }
 
@@ -248,6 +262,7 @@ function answerCallout(text: string): RuleBlock {
     label,
     text: cleanText(clean.slice(match?.[0].length ?? 0)),
     tone: "key",
+    variant: "sheet-answers",
   };
 }
 
@@ -291,7 +306,9 @@ function normalizeStructuredStudySheet(input: RuleBlock[]): {
   const blocks: RuleBlock[] = [];
 
   const flushQuiz = () => {
-    if (quizItems.length) blocks.push({ type: "list", items: quizItems });
+    if (quizItems.length) {
+      blocks.push({ type: "list", items: quizItems, variant: "sheet-quiz" });
+    }
     quizItems = [];
   };
 
@@ -334,27 +351,40 @@ function normalizeStructuredStudySheet(input: RuleBlock[]): {
     if (singleCell !== null || original.type !== "table") {
       if (isQuizHeading(text)) {
         flushQuiz();
-        blocks.push({ type: "heading", text: normalizeSectionHeading(text) });
+        blocks.push({
+          type: "heading",
+          text: normalizeSectionHeading(text),
+          variant: "sheet-section",
+        });
         inQuiz = true;
         continue;
       }
 
       if (isNumberedSection(text)) {
         flushQuiz();
-        blocks.push({ type: "heading", text: normalizeSectionHeading(text) });
+        blocks.push({
+          type: "heading",
+          text: normalizeSectionHeading(text),
+          variant: "sheet-section",
+        });
         inQuiz = false;
         continue;
       }
 
       if (isStructuredFormula(text)) {
         flushQuiz();
-        blocks.push({ type: "formula", text });
+        blocks.push({ type: "formula", text, variant: "sheet-formula" });
         continue;
       }
 
       if (isMistakeLine(text)) {
         flushQuiz();
-        blocks.push({ type: "callout", text, tone: markerTone(text) === "key" ? "key" : "warn" });
+        blocks.push({
+          type: "callout",
+          text,
+          tone: markerTone(text) === "key" ? "key" : "warn",
+          variant: "sheet-mistake",
+        });
         continue;
       }
 
@@ -363,13 +393,38 @@ function normalizeStructuredStudySheet(input: RuleBlock[]): {
       if (singleCell !== null) {
         flushQuiz();
         const callout = detectCallout(text);
-        blocks.push(callout ?? { type: "heading", text: normalizeSectionHeading(text) });
+        blocks.push(
+          callout
+            ? { ...callout, variant: callout.tone === "key" ? "sheet-lead" : "sheet-text" }
+            : {
+                type: "heading",
+                text: normalizeSectionHeading(text),
+                variant: "sheet-section",
+              },
+        );
         continue;
       }
     }
 
     flushQuiz();
-    blocks.push(original);
+    if (original.type === "table") {
+      const formulaGrid =
+        original.rows.length <= 1 &&
+        original.headers.length <= 2 &&
+        /TO\s*\+\s*V/i.test(text) &&
+        /V\s*[-‐‑]?\s*ING/i.test(text);
+      blocks.push({
+        ...original,
+        variant: formulaGrid ? "sheet-formula-grid" : "sheet-table",
+      });
+    } else if (original.type === "callout") {
+      blocks.push({
+        ...original,
+        variant: original.tone === "key" ? "sheet-lead" : "sheet-text",
+      });
+    } else {
+      blocks.push({ ...original, variant: "sheet-text" });
+    }
   }
 
   flushQuiz();

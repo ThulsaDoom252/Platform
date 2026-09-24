@@ -183,7 +183,9 @@ function BlockCard({
       {block.type === "list" && (
         <textarea
           value={block.items.join("\n")}
-          onChange={(e) => onChange({ type: "list", items: e.target.value.split(/\r?\n/) })}
+          onChange={(e) =>
+            onChange({ ...block, items: e.target.value.split(/\r?\n/) })
+          }
           rows={Math.max(2, block.items.length)}
           placeholder="Каждый пункт с новой строки"
           className={cn(inputCls, "resize-y")}
@@ -197,7 +199,9 @@ function BlockCard({
           </p>
           <textarea
             value={tableToText(block)}
-            onChange={(e) => onChange(textToTable(e.target.value))}
+            onChange={(e) =>
+              onChange({ ...textToTable(e.target.value), variant: block.variant })
+            }
             rows={Math.max(3, block.rows.length + 1)}
             className={cn(inputCls, "resize-y font-mono text-[12px]")}
           />
