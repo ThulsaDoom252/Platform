@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { users, materialNodes, studentMaterials } from "@/lib/db/schema";
 import { getDict } from "@/lib/i18n/server";
 import { getOwnedTree, getSharedSections, getMaterialsTree } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 import { SharedAccess } from "@/components/materials/shared-access";
 import { ReportButton } from "@/components/materials/report-button";
+import { StudentWipe } from "@/components/materials/student-wipe";
 import { Avatar } from "@/components/avatar";
 import { IconChevronLeft } from "@/components/icons";
 
@@ -37,6 +38,26 @@ export default async function StudentMaterialsForTeacherPage({
   const { sections, granted } = await getSharedSections(student.id);
   // То же, что видит ученик из общей базы — чтобы не гадать по названиям.
   const sharedTree = await getMaterialsTree(student.id);
+
+  // Счётчики для кнопки очистки: сколько чего уедет, если нажать.
+  const owned = async (scope: "STUDENT" | "MISTAKE") =>
+    (
+      await db
+        .select({ n: count() })
+        .from(materialNodes)
+        .where(and(eq(materialNodes.ownerId, student.id), eq(materialNodes.scope, scope)))
+    )[0]?.n ?? 0;
+
+  const wipeCounts = {
+    personal: await owned("STUDENT"),
+    mistakes: await owned("MISTAKE"),
+    access: (
+      await db
+        .select({ n: count() })
+        .from(studentMaterials)
+        .where(eq(studentMaterials.studentId, student.id))
+    )[0]?.n ?? 0,
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -91,6 +112,11 @@ export default async function StudentMaterialsForTeacherPage({
         </div>
       )}
 
+      <StudentWipe
+        studentId={student.id}
+        studentName={student.name}
+        counts={wipeCounts}
+      />
     </div>
   );
 }

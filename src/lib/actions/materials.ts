@@ -346,6 +346,73 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
   return { ok: true, message: `Удалено: ${clean.length}` };
 }
 
+export type WipeWhat = { personal?: boolean; mistakes?: boolean; access?: boolean };
+export type WipeSummary = { nodes: number; grants: number; error?: string };
+
+/**
+ * Стереть материалы ученика подчистую.
+ *
+ * Выбирается, что именно сносить: личное дерево, ошибки, выданные
+ * разделы общей базы. Сама общая база не трогается никогда — у ученика
+ * забирается только доступ к ней.
+ *
+ * Фразы, блоки правил и выдачи уезжают вместе с узлами по каскаду.
+ */
+export async function wipeStudentMaterialsAction(
+  studentId: string,
+  what: WipeWhat,
+): Promise<WipeSummary> {
+  await requireTeacher();
+
+  const id = String(studentId ?? "");
+  if (!id) return { nodes: 0, grants: 0, error: "Не выбран ученик" };
+
+  // Чужие деревья под ту же кнопку попасть не должны: чистим только
+  // то, что принадлежит именно ученику.
+  const [student] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+
+  if (!student || student.role !== "STUDENT") {
+    return { nodes: 0, grants: 0, error: "Это не ученик" };
+  }
+
+  const scopes: NodeScope[] = [];
+  if (what?.personal) scopes.push("STUDENT");
+  if (what?.mistakes) scopes.push("MISTAKE");
+
+  if (scopes.length === 0 && !what?.access) {
+    return { nodes: 0, grants: 0, error: "Не выбрано, что удалять" };
+  }
+
+  let nodes = 0;
+  if (scopes.length > 0) {
+    const gone = await db
+      .delete(materialNodes)
+      .where(
+        and(eq(materialNodes.ownerId, id), inArray(materialNodes.scope, scopes)),
+      )
+      .returning({ id: materialNodes.id });
+    nodes = gone.length;
+  }
+
+  let grants = 0;
+  if (what?.access) {
+    const gone = await db
+      .delete(studentMaterials)
+      .where(eq(studentMaterials.studentId, id))
+      .returning({ id: studentMaterials.id });
+    grants = gone.length;
+  }
+
+  revalidateMaterials();
+  revalidatePath(`/teacher/students/${id}/materials`);
+  revalidatePath(`/teacher/students/${id}/mistakes`);
+  return { nodes, grants };
+}
+
 /** Орфография названия. Словари лежат на сервере, в браузер не уезжают. */
 export async function checkSpellingAction(text: string): Promise<Misspelling[]> {
   await requireTeacher();
