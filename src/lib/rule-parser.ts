@@ -22,25 +22,29 @@ export type RuleParseResult = {
   subtitle: string | null;
   blocks: RuleBlock[];
   warnings: string[];
+  /** Внутренний способ разбора. В интерфейсе по-прежнему один парсер правил. */
+  format: RuleParserFormat;
 };
+
+export type RuleParserFormat = "generic" | "structured-study-sheet";
 
 const DASH = /\s+[—–]\s+/;
 
 /** Метки врезок, встречающиеся в документах. */
 const CALLOUT_LABELS: { re: RegExp; tone: "key" | "warn" | "tip" | "info" }[] = [
   {
-    re: /^(важливо|увага|важно|внимание|виняток|исключение|exception|не плутай|не путай)\b/i,
+    re: /^(важливо|увага|важно|внимание|виняток|исключение|exception|не плутай|не путай)(?=[:\s!?]|$)/i,
     tone: "warn",
   },
   {
-    re: /^(просто запам'?ятай|шпаргалка|порада|підказка|запам'?ятай|швидка перевірка)\b/i,
+    re: /^(просто запам'?ятай|шпаргалка|порада|підказка|запам'?ятай|швидка перевірка)(?=[:\s!?]|$)/i,
     tone: "tip",
   },
   {
-    re: /^(головне|головна ідея|найпростіше|ключове|коли використовуємо)\b/i,
+    re: /^(головне|головна ідея|найпростіше|ключове|коли використовуємо)(?=[:\s!?]|$)/i,
     tone: "key",
   },
-  { re: /^(примітка|зверни увагу|нотатка)\b/i, tone: "info" },
+  { re: /^(примітка|зверни увагу|нотатка)(?=[:\s!?]|$)/i, tone: "info" },
 ];
 
 /** Эмодзи в начале строки: для проверки «похоже на заголовок» оно лишнее. */
@@ -166,6 +170,236 @@ function lineToBlock(raw: string): RuleBlock | null {
   return { type: "text", text: s };
 }
 
+// --------------------------------------------------------- Форматы правил
+
+function blockText(block: RuleBlock): string {
+  switch (block.type) {
+    case "example":
+      return [block.en, block.tr].filter(Boolean).join(" — ");
+    case "list":
+      return block.items.join(" ");
+    case "table":
+      return [...block.headers, ...block.rows.flat()].join(" ");
+    default:
+      return block.text;
+  }
+}
+
+function singleCellTableText(block: RuleBlock): string | null {
+  if (block.type !== "table") return null;
+  const cells = [...block.headers, ...block.rows.flat()].filter(Boolean);
+  return cells.length === 1 ? cells[0] : null;
+}
+
+/**
+ * Формат цветной учебной шпаргалки из Google Docs: несколько нумерованных
+ * секций, сравнительные таблицы, формулы, типичные ошибки и мини-проверка.
+ * Названия темы здесь только усиливают сигнал — формат не привязан к одному
+ * конкретному правилу и пригодится для следующих таких же документов.
+ */
+function detectRuleFormat(raw: string, blocks: RuleBlock[]): RuleParserFormat {
+  const text = cleanText(`${raw} ${blocks.map(blockText).join(" ")}`);
+  const upper = text.toUpperCase();
+  let score = 0;
+
+  const tables = blocks.filter((block) => block.type === "table").length;
+  const numberedSections = (text.match(/(?:^|\s)\d{1,2}[.)]?\s*[А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Z\s]{4,}/gu) ?? [])
+    .length;
+
+  if (tables >= 2) score += 2;
+  if (numberedSections >= 3) score += 2;
+  if (/\bTO\s*\+\s*V\b/i.test(text) && /\bV\s*[-‐‑]?\s*ING\b/i.test(text)) score += 2;
+  if (/ТИПОВІ\s+ПОМИЛКИ|ТИПИЧНЫЕ\s+ОШИБКИ|COMMON\s+MISTAKES/i.test(upper)) score += 2;
+  if (/МІНІ\s*ПЕРЕВІРКА|МИНИ\s*ПРОВЕРКА|MINI\s*(?:CHECK|TEST)/i.test(upper)) score += 2;
+  if (/ВІДПОВІДІ|ОТВЕТЫ|ANSWERS/i.test(upper)) score += 1;
+  if (/REMEMBER/.test(upper) && /FORGET/.test(upper)) score += 1;
+
+  return score >= 5 ? "structured-study-sheet" : "generic";
+}
+
+function splitStructuredTitle(text: string): { title: string; subtitle: string | null } | null {
+  const s = cleanText(text);
+  const known = s.match(
+    /^(REMEMBER\s*[|/]\s*FORGET)\s*(?:(INFINITIVE\s+(?:VS|ТА|AND)\s+GERUND)|(.+?БЕЗ\s+ПЛУТАНИНИ))?$/i,
+  );
+  if (!known) return null;
+  return {
+    title: cleanText(known[1]).replace(/\s*([|/])\s*/g, " $1 ").toUpperCase(),
+    subtitle: cleanText(known[2] ?? known[3] ?? "") || null,
+  };
+}
+
+function isStructuredFormula(text: string): boolean {
+  return /^(?:REMEMBER|FORGET)\s*\+\s*(?:TO\s*\+\s*V|V\s*[-‐‑]?\s*ING)\s*=/i.test(
+    stripLeadEmoji(text),
+  );
+}
+
+function isAnswerLine(text: string): boolean {
+  return /^(?:ВІДПОВІДІ|ОТВЕТЫ|ANSWERS)(?=[:\s]|$)\s*:*/i.test(stripLeadEmoji(text));
+}
+
+function answerCallout(text: string): RuleBlock {
+  const clean = stripLeadEmoji(text);
+  const match = clean.match(/^(ВІДПОВІДІ|ОТВЕТЫ|ANSWERS)(?=[:\s]|$)\s*:*/i);
+  const label = cleanText(match?.[1] ?? "Відповіді");
+  return {
+    type: "callout",
+    label,
+    text: cleanText(clean.slice(match?.[0].length ?? 0)),
+    tone: "key",
+  };
+}
+
+function normalizeSectionHeading(text: string): string {
+  const clean = stripLeadEmoji(text);
+  // Google Docs иногда склеивает номер и название цветной плашки: «1ПОРЯДОК».
+  return clean.replace(/^(\d{1,2})\s*(?=[А-ЯІЇЄҐA-Z])/u, "$1. ");
+}
+
+function isNumberedSection(text: string): boolean {
+  const normalized = normalizeSectionHeading(text);
+  const body = normalized.replace(/^\d{1,2}[.)]\s*/, "");
+  return /^\d{1,2}[.)]\s*/.test(normalized) && isMostlyUpper(body);
+}
+
+function isQuizHeading(text: string): boolean {
+  return /МІНІ\s*ПЕРЕВІРКА|МИНИ\s*ПРОВЕРКА|MINI\s*(?:CHECK|TEST)/i.test(text);
+}
+
+function isQuizItem(text: string): boolean {
+  const clean = stripLeadEmoji(text);
+  const match = clean.match(/^\d{1,2}[.)]\s*(.+)$/);
+  if (!match || isMostlyUpper(match[1])) return false;
+  return /_{2,}|\b(?:remember|forget)\b/i.test(match[1]);
+}
+
+function isMistakeLine(text: string): boolean {
+  const clean = text.trim();
+  return /^[✗✘❌🚫⛔✓✔✅]/u.test(clean) || (/\b[✗✘❌]\b/u.test(clean) && /[✓✔✅]/u.test(clean));
+}
+
+function normalizeStructuredStudySheet(input: RuleBlock[]): {
+  title: string | null;
+  subtitle: string | null;
+  blocks: RuleBlock[];
+} {
+  let title: string | null = null;
+  let subtitle: string | null = null;
+  let inQuiz = false;
+  let quizItems: string[] = [];
+  const blocks: RuleBlock[] = [];
+
+  const flushQuiz = () => {
+    if (quizItems.length) blocks.push({ type: "list", items: quizItems });
+    quizItems = [];
+  };
+
+  for (const original of input) {
+    const singleCell = singleCellTableText(original);
+    const text = cleanText(singleCell ?? blockText(original));
+    if (!text) continue;
+
+    const titleParts = splitStructuredTitle(text);
+    if (titleParts) {
+      if (!title) title = titleParts.title;
+      if (!subtitle && titleParts.subtitle) subtitle = titleParts.subtitle;
+      // На второй странице Google Docs часто повторяет шапку документа.
+      // В материале она не должна становиться ещё одним разделом.
+      continue;
+    }
+
+    if (
+      title &&
+      !subtitle &&
+      /INFINITIVE\s+(?:VS|ТА|AND)\s+GERUND|ІНФІНІТИВ.+ГЕРУНД/i.test(text) &&
+      text.length <= 100
+    ) {
+      subtitle = text;
+      continue;
+    }
+
+    if (isAnswerLine(text)) {
+      flushQuiz();
+      blocks.push(answerCallout(text));
+      inQuiz = false;
+      continue;
+    }
+
+    if (isQuizItem(text) && inQuiz) {
+      quizItems.push(text.replace(/^\d{1,2}[.)]\s*/, ""));
+      continue;
+    }
+
+    if (singleCell !== null || original.type !== "table") {
+      if (isQuizHeading(text)) {
+        flushQuiz();
+        blocks.push({ type: "heading", text: normalizeSectionHeading(text) });
+        inQuiz = true;
+        continue;
+      }
+
+      if (isNumberedSection(text)) {
+        flushQuiz();
+        blocks.push({ type: "heading", text: normalizeSectionHeading(text) });
+        inQuiz = false;
+        continue;
+      }
+
+      if (isStructuredFormula(text)) {
+        flushQuiz();
+        blocks.push({ type: "formula", text });
+        continue;
+      }
+
+      if (isMistakeLine(text)) {
+        flushQuiz();
+        blocks.push({ type: "callout", text, tone: markerTone(text) === "key" ? "key" : "warn" });
+        continue;
+      }
+
+      // Одноячеечные таблицы в таких документах используются как цветные
+      // полосы-заголовки, а не как настоящие таблицы данных.
+      if (singleCell !== null) {
+        flushQuiz();
+        const callout = detectCallout(text);
+        blocks.push(callout ?? { type: "heading", text: normalizeSectionHeading(text) });
+        continue;
+      }
+    }
+
+    flushQuiz();
+    blocks.push(original);
+  }
+
+  flushQuiz();
+
+  if (!title) {
+    const extracted = extractTitle(blocks);
+    title = extracted.title;
+    subtitle = extracted.subtitle;
+  }
+
+  return { title, subtitle, blocks };
+}
+
+function finalizeRuleParse(
+  raw: string,
+  blocks: RuleBlock[],
+  warnings: string[],
+): RuleParseResult {
+  const format = detectRuleFormat(raw, blocks);
+  if (format === "structured-study-sheet") {
+    const normalized = normalizeStructuredStudySheet(blocks);
+    if (normalized.blocks.length === 0) warnings.push("Не удалось выделить содержимое.");
+    return { ...normalized, warnings, format };
+  }
+
+  const { title, subtitle } = extractTitle(blocks);
+  if (blocks.length === 0) warnings.push(raw.trim() ? "Не удалось выделить содержимое." : "Пустой текст.");
+  return { title, subtitle, blocks, warnings, format };
+}
+
 // ---------------------------------------------------------------- HTML
 
 /**
@@ -285,7 +519,13 @@ function tableToBlock(table: Element): RuleBlock | null {
 export function parseRuleHtml(html: string): RuleParseResult {
   const warnings: string[] = [];
   if (typeof DOMParser === "undefined") {
-    return { title: null, subtitle: null, blocks: [], warnings: ["HTML доступен только в браузере."] };
+    return {
+      title: null,
+      subtitle: null,
+      blocks: [],
+      warnings: ["HTML доступен только в браузере."],
+      format: "generic",
+    };
   }
 
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -369,11 +609,7 @@ export function parseRuleHtml(html: string): RuleParseResult {
   };
 
   walk(doc.body);
-
-  const { title, subtitle } = extractTitle(blocks);
-
-  if (blocks.length === 0) warnings.push("Не удалось выделить содержимое.");
-  return { title, subtitle, blocks, warnings };
+  return finalizeRuleParse(doc.body.textContent ?? "", blocks, warnings);
 }
 
 // ---------------------------------------------------------------- Текст
@@ -414,9 +650,5 @@ export function parseRuleText(raw: string): RuleParseResult {
     if (b) blocks.push(b);
   }
   flushTable();
-
-  const { title, subtitle } = extractTitle(blocks);
-
-  if (blocks.length === 0) warnings.push("Пустой текст.");
-  return { title, subtitle, blocks, warnings };
+  return finalizeRuleParse(raw, blocks, warnings);
 }

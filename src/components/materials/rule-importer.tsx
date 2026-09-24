@@ -3,7 +3,12 @@
 import { useActionState, useEffect, useState } from "react";
 import { Modal } from "@/components/modal";
 import { RuleReader } from "./rule-reader";
-import { parseRuleHtml, parseRuleText, type RuleBlock } from "@/lib/rule-parser";
+import {
+  parseRuleHtml,
+  parseRuleText,
+  type RuleBlock,
+  type RuleParserFormat,
+} from "@/lib/rule-parser";
 import { flattenClipboardHtml } from "@/lib/materials-parser";
 import { saveRuleBlocksAction, type BlocksState } from "@/lib/actions/materials";
 import { IconMaterials, IconCheck, IconX } from "@/components/icons";
@@ -13,6 +18,7 @@ type Parsed = {
   subtitle: string | null;
   blocks: RuleBlock[];
   warnings: string[];
+  format: RuleParserFormat;
   source: "html" | "text";
   /** Исходник в виде текста — его показывает «Редактировать». */
   sourceText: string;
@@ -119,6 +125,11 @@ export function RuleImporter({
                 {counts?.examples ? ` · примеров: ${counts.examples}` : ""}
               </p>
               <div className="flex items-center gap-3">
+                {parsed.format === "structured-study-sheet" && (
+                  <span className="tint-violet rounded-md px-2 py-0.5 text-[10px] font-bold">
+                    структурированная шпаргалка
+                  </span>
+                )}
                 <span
                   className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${parsed.source === "html" ? "tint-green" : "tint-amber"}`}
                 >
