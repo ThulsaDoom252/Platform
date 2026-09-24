@@ -42,6 +42,39 @@ export async function loginAction(
   redirect(user.role === "TEACHER" ? "/teacher" : "/student");
 }
 
+/**
+ * Временный вход в ученика одним кликом для локальной разработки.
+ * Проверка повторяется на сервере: скрытой кнопки недостаточно как защиты.
+ */
+export async function testStudentLoginAction(formData: FormData) {
+  if (process.env.NODE_ENV !== "development") {
+    throw new Error("Тестовый вход доступен только в локальной разработке");
+  }
+
+  const studentId = String(formData.get("studentId") || "");
+  if (!studentId) return;
+
+  const [student] = await db
+    .select({
+      id: users.id,
+      role: users.role,
+      name: users.name,
+    })
+    .from(users)
+    .where(eq(users.id, studentId))
+    .limit(1);
+
+  // Удалённый между открытием страницы и кликом аккаунт просто не войдёт.
+  if (!student || student.role !== "STUDENT") return;
+
+  await createSession({
+    userId: student.id,
+    role: student.role,
+    name: student.name,
+  });
+  redirect("/student");
+}
+
 export async function logoutAction() {
   await destroySession();
   redirect("/login");
