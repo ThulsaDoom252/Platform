@@ -27,6 +27,7 @@ import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
 import { mergeImportTrees, splitIcon, type ImportNode } from "@/lib/tree-import";
+import { suggestVocabularyIcon } from "@/lib/icon-suggest";
 
 export type { Misspelling };
 
@@ -104,7 +105,9 @@ export async function createNodesAction(
   const clean = (items ?? [])
     .map((i) => ({
       name: String(i?.name ?? "").trim().slice(0, 200),
-      icon: i?.icon ? String(i.icon).slice(0, 16) : null,
+      // Сложные emoji (семьи, профессии, региональные флаги) состоят из
+      // нескольких code point и легко превышают 16 UTF-16 символов.
+      icon: i?.icon ? String(i.icon).slice(0, 64) : null,
       description: i?.description ? String(i.description).trim().slice(0, 500) : null,
     }))
     .filter((i) => i.name);
@@ -261,7 +264,7 @@ export async function importTreeAction(
           .values({
             parentId,
             name,
-            icon: item.icon ? String(item.icon).slice(0, 16) : null,
+            icon: item.icon ? String(item.icon).slice(0, 64) : null,
             scope,
             ownerId,
             type,
@@ -460,7 +463,7 @@ function cleanPhrase(p: PhraseInput): PhraseInput | null {
   if (!phrase) return null;
   return {
     section: p.section ? String(p.section).trim().slice(0, 200) || null : null,
-    icon: p.icon ? String(p.icon).slice(0, 16) : null,
+    icon: p.icon ? String(p.icon).slice(0, 64) : null,
     phrase,
     transcription: p.transcription ? String(p.transcription).trim().slice(0, 120) : null,
     translation: String(p?.translation ?? "").trim().slice(0, 600),
@@ -590,6 +593,65 @@ export async function updatePhraseAction(
 
   revalidateMaterials();
   return { ok: true, message: "Сохранено" };
+}
+
+/**
+ * Заново подобрать смысловую иконку каждой записи одного словаря.
+ * Анализируются слово/фраза, перевод, категория и примеры. Заметки не трогаем,
+ * а записи без достаточно уверенного совпадения сохраняют прежнюю иконку.
+ */
+export async function repairPhraseIconsAction(nodeId: string): Promise<BulkState> {
+  await requireTeacher();
+  if (!nodeId) return { error: "Не выбран словарь" };
+
+  const [node] = await db
+    .select({ id: materialNodes.id, type: materialNodes.type })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, nodeId))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Файл словаря не найден" };
+
+  const rows = await loadPhrases(nodeId);
+  const words = rows.filter((row) => row.kind !== "NOTE");
+  if (words.length === 0) return { error: "В словаре пока нет слов или фраз" };
+
+  let recognized = 0;
+  const proposals: { id: string; icon: string }[] = [];
+  for (const row of words) {
+    const icon = suggestVocabularyIcon(
+      row.phrase,
+      row.translation,
+      row.section,
+      row.examples ?? [],
+    );
+    if (!icon) continue;
+    recognized++;
+    if (icon !== row.icon) proposals.push({ id: row.id, icon });
+  }
+
+  if (proposals.length > 0) {
+    await db.transaction(async (tx) => {
+      for (const proposal of proposals) {
+        await tx
+          .update(materialPhrases)
+          .set({ icon: proposal.icon.slice(0, 64) })
+          .where(eq(materialPhrases.id, proposal.id));
+      }
+    });
+  }
+
+  const kept = words.length - recognized;
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    message:
+      proposals.length > 0
+        ? `Иконки исправлены: ${proposals.length}${kept ? ` · без точного совпадения: ${kept}` : ""}`
+        : kept
+          ? `Точных новых совпадений нет · сохранены прежние: ${kept}`
+          : "Все иконки уже подобраны правильно",
+  };
 }
 
 /**
@@ -742,7 +804,7 @@ export async function updateNodeIconsAction(
   for (const e of clean) {
     await db
       .update(materialNodes)
-      .set({ icon: e.icon.slice(0, 16) || null })
+      .set({ icon: e.icon.slice(0, 64) || null })
       .where(eq(materialNodes.id, e.id));
   }
 

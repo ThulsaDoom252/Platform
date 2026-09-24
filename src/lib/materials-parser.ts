@@ -5,6 +5,7 @@
  * тире. Поэтому строки различаются эвристиками (маркер списка, транскрипция,
  * конечная пунктуация). Результат обязательно показывается на предпросмотре.
  */
+import { suggestVocabularyIcon } from "./icon-suggest";
 
 export type ParsedExample = { en: string; tr: string };
 
@@ -385,7 +386,16 @@ function parseVocabulary(raw: string): ParseResult {
         const examples = parsePairedExamples(raw[wordExamplesColumns.examples] ?? "");
         flush();
         const phrase: ParsedPhrase = {
-          icon: entry.icon ?? sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
+          icon:
+            entry.icon ??
+            suggestVocabularyIcon(
+              entry.phrase,
+              entry.translation,
+              currentSection,
+              examples,
+            ) ??
+            sectionIcon ??
+            ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
           section: currentSection,
           kind: "PHRASE",
           phrase: entry.phrase,
@@ -417,7 +427,10 @@ function parseVocabulary(raw: string): ParseResult {
 
         flush();
         const phrase: ParsedPhrase = {
-          icon: sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
+          icon:
+            suggestVocabularyIcon(cell.word, cell.translation, currentSection) ??
+            sectionIcon ??
+            ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
           section: currentSection,
           kind: "PHRASE",
           phrase: cell.word,
@@ -539,14 +552,19 @@ function parseVocabulary(raw: string): ParseResult {
         ? null
         : right.slice(arrow + right.match(TO)![0].length).trim();
 
+    const examples = inlineExample ? [{ en: inlineExample, tr: "" }] : [];
     current = {
-      icon: icon ?? sectionIcon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
+      icon:
+        icon ??
+        suggestVocabularyIcon(phrase, translation, currentSection, examples) ??
+        sectionIcon ??
+        ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
       section: currentSection,
       kind: "PHRASE",
       phrase,
       transcription,
       translation,
-      examples: inlineExample ? [{ en: inlineExample, tr: "" }] : [],
+      examples,
     };
     lastPhrase = current;
   }

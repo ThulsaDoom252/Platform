@@ -49,6 +49,7 @@ import {
   deleteNodeAction,
   deleteNodesAction,
   moveNodeAction,
+  repairPhraseIconsAction,
   reorderNodeAction,
 } from "@/lib/actions/materials";
 
@@ -554,6 +555,31 @@ export function MaterialsExplorer({
     startMove(async () => {
       const res = await clearPagesAction(ids);
       if (res.error) setMoveError(res.error);
+    });
+  }
+
+  /** Заново подобрать смысловые иконки всем словам открытого словаря. */
+  function repairPhraseIcons(node: MaterialNode) {
+    const count = node.phrases.filter((phrase) => phrase.kind !== "NOTE").length;
+    if (count === 0) return;
+    if (
+      !confirm(
+        `Заново подобрать иконки для ${count} записей в «${node.name}»?\n\n` +
+          "Текущие иконки могут измениться. Любую из них потом можно заменить вручную.",
+      )
+    ) {
+      return;
+    }
+
+    setNotice("Подбираю иконки по словам, переводам и примерам…");
+    startMove(async () => {
+      const res = await repairPhraseIconsAction(node.id);
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? "Иконки исправлены");
+      }
     });
   }
 
@@ -1387,6 +1413,18 @@ export function MaterialsExplorer({
                         <IconPlus className="h-4 w-4" /> Словник из текста
                       </>
                     )}
+                  </button>
+                )}
+
+                {pageKind(selected) === "VOCAB" && (
+                  <button
+                    type="button"
+                    onClick={() => repairPhraseIcons(selected)}
+                    disabled={moving || selected.phrases.length === 0}
+                    className={pageBtn}
+                    title="Подобрать каждой записи новую иконку по слову, переводу, категории и примерам"
+                  >
+                    <span aria-hidden>✨</span> Исправить иконки
                   </button>
                 )}
 

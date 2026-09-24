@@ -1,74 +1,67 @@
-import unicodeGroupsJson from "unicode-emoji-json/data-by-group.json";
+import englishEmoji from "emojibase-data/en/compact.json";
+import russianEmoji from "emojibase-data/ru/compact.json";
+import ukrainianEmoji from "emojibase-data/uk/compact.json";
 import type { IconGroup } from "./icons-extra";
 
-type UnicodeEmoji = {
-  emoji: string;
-  name: string;
-  slug: string;
-  unicode_version: string;
-  emoji_version: string;
-  skin_tone_support: boolean;
+type EmojiRecord = {
+  hexcode: string;
+  label: string;
+  unicode: string;
+  group?: number;
+  tags?: string[];
 };
 
-type UnicodeSourceGroup = {
-  name: string;
-  slug: string;
-  emojis: UnicodeEmoji[];
-};
-
-const GROUP_META: Record<string, { label: string; keywords: string }> = {
-  "Smileys & Emotion": {
+const GROUP_META: Record<number, { label: string; keywords: string }> = {
+  0: {
     label: "😊 Эмоции и лица",
     keywords:
       "эмоции эмоция емоции чувства настроение лица смайлы емоції емоція почуття настрій обличчя smileys emotion feelings faces mood",
   },
-  "People & Body": {
+  1: {
     label: "👋 Люди и жесты",
     keywords:
       "люди человек тело части тела руки жесты профессии людина тіло частини тіла руки жести професії people body hands gestures profession",
   },
-  "Animals & Nature": {
+  3: {
     label: "🐾 Животные и природа",
     keywords:
       "животные растения природа птицы насекомые тварини рослини природа птахи комахи animals nature plants birds insects",
   },
-  "Food & Drink": {
+  4: {
     label: "🍎 Еда и продукты",
     keywords:
       "еда продукты напитки кухня блюда фрукты овощи їжа продукти напої кухня страви фрукти овочі food drink products meals fruit vegetables",
   },
-  "Travel & Places": {
+  5: {
     label: "🌍 Места и транспорт",
     keywords:
       "путешествия места транспорт здания страны города подорожі місця транспорт будівлі країни міста travel places transport buildings countries cities",
   },
-  Activities: {
+  6: {
     label: "⚽ Спорт и занятия",
     keywords:
       "спорт игры занятия праздники награды ігри заняття свята нагороди activities sports games events awards",
   },
-  Objects: {
+  7: {
     label: "💡 Предметы",
     keywords:
       "предметы вещи инструменты техника одежда музыка работа предмети речі інструменти техніка одяг музика objects tools technology clothing music work",
   },
-  Symbols: {
+  8: {
     label: "🔣 Знаки и символы",
     keywords:
       "знаки символы кнопки цифры стрелки цвета знаки символи кнопки цифри стрілки кольори symbols signs buttons numbers arrows colors",
   },
-  Flags: {
+  9: {
     label: "🏳️ Флаги",
     keywords: "флаги страны регионы прапори країни регіони flags countries regions",
   },
 };
 
-/**
- * Разговорные русские и украинские запросы, которых нет в официальных
- * английских названиях Unicode. Это не отдельные иконки, а дополнительные
- * способы найти нужные записи в полном каталоге.
- */
+/** Дополнительные тематические запросы, которых нет даже в CLDR-тегах. */
 const TOPIC_KEYWORDS: Record<string, string> = {
+  "😈": "devil demon daemon fiend evil дьявол демон черт чёрт бес диявол чорт дідько",
+  "👿": "devil demon daemon imp fiend evil дьявол демон черт чёрт бес диявол чорт дідько",
   "🪖": "армия военный солдат каска військо військовий солдат армія",
   "🫡": "армия честь салют военный військо честь військовий армія",
   "🎖️": "армия военная медаль награда військова медаль армія",
@@ -104,25 +97,48 @@ const TOPIC_KEYWORDS: Record<string, string> = {
   "🧑‍🚀": "планета планеты космос космонавт планети космос космонавт",
 };
 
-const sourceGroups = unicodeGroupsJson as UnicodeSourceGroup[];
-
-/** Полный актуальный каталог RGI Emoji, сгруппированный по Unicode. */
-export const UNICODE_GROUPS: IconGroup[] = sourceGroups.map((group) => {
-  const meta = GROUP_META[group.name] ?? {
-    label: group.name,
-    keywords: group.name.toLowerCase(),
-  };
-
-  return {
-    label: meta.label,
-    icons: group.emojis.map(({ emoji, name, slug }) => [
-      emoji,
-      `${name} ${slug.replaceAll("_", " ")} ${meta.keywords} ${TOPIC_KEYWORDS[emoji] ?? ""}`.toLowerCase(),
-    ]),
-  };
-});
-
-export const UNICODE_ICON_COUNT = sourceGroups.reduce(
-  (total, group) => total + group.emojis.length,
-  0,
+const en = englishEmoji as EmojiRecord[];
+const ruByCode = new Map(
+  (russianEmoji as EmojiRecord[]).map((entry) => [entry.hexcode, entry]),
 );
+const ukByCode = new Map(
+  (ukrainianEmoji as EmojiRecord[]).map((entry) => [entry.hexcode, entry]),
+);
+
+const supportedGroups = new Set(Object.keys(GROUP_META).map(Number));
+const source = en.filter(
+  (entry): entry is EmojiRecord & { group: number } =>
+    typeof entry.group === "number" && supportedGroups.has(entry.group),
+);
+
+function localizedKeywords(entry: EmojiRecord): string {
+  const localized = [entry, ruByCode.get(entry.hexcode), ukByCode.get(entry.hexcode)];
+  return localized
+    .flatMap((item) => (item ? [item.label, ...(item.tags ?? [])] : []))
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * Индекс для умного автоматического подбора. В нём нет общих слов категории,
+ * иначе слово «люди» одинаково подходило бы сразу к сотням значков.
+ */
+export const UNICODE_SUGGEST_ICONS: [string, string][] = source.map((entry) => [
+  entry.unicode,
+  `${localizedKeywords(entry)} ${TOPIC_KEYWORDS[entry.unicode] ?? ""}`.trim(),
+]);
+
+/** Полный актуальный каталог RGI Emoji с EN/RU/UK названиями и тегами. */
+export const UNICODE_GROUPS: IconGroup[] = Object.entries(GROUP_META).map(
+  ([groupId, meta]) => ({
+    label: meta.label,
+    icons: source
+      .filter((entry) => entry.group === Number(groupId))
+      .map((entry) => [
+        entry.unicode,
+        `${localizedKeywords(entry)} ${meta.keywords} ${TOPIC_KEYWORDS[entry.unicode] ?? ""}`.trim(),
+      ]),
+  }),
+);
+
+export const UNICODE_ICON_COUNT = source.length;

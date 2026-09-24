@@ -84,7 +84,9 @@ assert.equal(clerical.vocabularyFormat, "word-examples-table");
 assert.equal(clerical.title, "CLERICAL ERROR");
 assert.equal(clerical.phrases.length, 7);
 assert.deepEqual(clerical.warnings, []);
-assert.equal(clerical.phrases[0].icon, "📦");
+// Общий значок раздела 📦 больше не становится заглушкой для всех слов:
+// семантический подбор использует слово, перевод и примеры.
+assert.equal(clerical.phrases[0].icon, "🤝");
 assert.equal(clerical.phrases[0].translation, "соглашение");
 assert.equal(clerical.phrases[3].phrase, "to be in charge");
 assert.equal(clerical.phrases[5].phrase, "Can I have a moment of your time?");
