@@ -12,6 +12,7 @@ import { useRef, useState, useTransition } from "react";
 import { parseTree, countNodes, type ImportNode } from "@/lib/tree-import";
 import { importTreeAction } from "@/lib/actions/materials";
 import { readTreeImageAction } from "@/lib/actions/tree-image";
+import { readTreeLinkAction } from "@/lib/actions/tree-link";
 import { suggestIcon } from "@/lib/icon-suggest";
 import { IconPlus, IconX, IconFolder, IconFile } from "@/components/icons";
 import type { TreeScope } from "./node-editor";
@@ -61,6 +62,7 @@ export function TreeImporter({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
+  const [link, setLink] = useState("");
   const [over, setOver] = useState(false);
   const [busy, startBusy] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -96,6 +98,25 @@ export function TreeImporter({
   function fromText() {
     const res = parseTree({ text });
     show(res.nodes, res.flat, "Из текста");
+  }
+
+  function fromLink() {
+    if (!link.trim()) return;
+
+    setError(null);
+    setNote("Скачиваю документ…");
+
+    startBusy(async () => {
+      const res = await readTreeLinkAction(link.trim());
+      if (res.error || !res.html) {
+        setNodes(null);
+        setNote(null);
+        setError(res.error ?? "Не получилось прочитать документ.");
+        return;
+      }
+      const parsed = parseTree({ html: res.html });
+      show(parsed.nodes, parsed.flat, "По ссылке");
+    });
   }
 
   function fromImage(file: File | null | undefined) {
@@ -232,10 +253,42 @@ export function TreeImporter({
           </button>
         </div>
 
+        <div className="mt-4">
+          <p className="text-[12px] font-semibold text-muted">
+            Ссылка на документ Google Docs
+          </p>
+          <div className="mt-1.5 flex gap-2">
+            <input
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  fromLink();
+                }
+              }}
+              placeholder="https://docs.google.com/document/d/…"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
+            />
+            <button
+              type="button"
+              onClick={fromLink}
+              disabled={!link.trim() || busy}
+              className="h-10 shrink-0 rounded-xl border border-line px-4 text-sm font-semibold text-content transition hover:border-accent hover:text-accent disabled:opacity-40"
+            >
+              Загрузить
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-faint">
+            Документ должен быть открыт по ссылке хотя бы на чтение. Закрытый
+            Google не отдаст — тогда вставляй текстом.
+          </p>
+        </div>
+
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
             <p className="text-[12px] font-semibold text-muted">
-              Вставь сюда из Google Docs
+              Или вставь сюда из Google Docs
             </p>
             <textarea
               value={text}
@@ -321,6 +374,7 @@ export function TreeImporter({
                   setNodes(null);
                   setNote(null);
                   setText("");
+                  setLink("");
                 }}
                 className="text-sm text-faint transition hover:text-content"
               >
