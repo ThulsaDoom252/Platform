@@ -399,35 +399,64 @@ export function PhraseReader({
       {/* Шапка страницы */}
       <header
         className={cn(
-          "relative overflow-hidden rounded-2xl p-5 text-white shadow-md sm:min-h-56 sm:p-6",
-          coverImageUrl ? "bg-slate-950" : "grad-accent",
+          "relative overflow-hidden rounded-2xl shadow-md",
+          coverImageUrl
+            ? "bg-surface ring-1 ring-line"
+            : "grad-accent p-5 text-white sm:min-h-56 sm:p-6",
         )}
       >
         {coverImageUrl && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={coverImageUrl}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/10" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/10" />
-          </>
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={coverImageUrl}
+            alt={`Обложка: ${title}`}
+            className="block h-auto w-full object-contain"
+          />
         )}
-        <div className="relative z-10">
+        <div
+          className={cn(
+            "relative z-10",
+            coverImageUrl && "border-t border-line bg-surface p-5 sm:p-6",
+          )}
+        >
           <div className="flex items-center gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-2xl backdrop-blur">
+            <span
+              className={cn(
+                "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl",
+                coverImageUrl
+                  ? "bg-accent-soft ring-1 ring-accent/20"
+                  : "bg-white/20 backdrop-blur",
+              )}
+            >
               {icon ?? "📖"}
             </span>
             <div className="min-w-0">
-              <h2 className="text-xl font-bold leading-tight sm:text-2xl">{title}</h2>
+              <h2
+                className={cn(
+                  "text-xl font-bold leading-tight sm:text-2xl",
+                  coverImageUrl && "text-content",
+                )}
+              >
+                {title}
+              </h2>
               {description && (
-                <p className="mt-0.5 text-sm text-white/80">{description}</p>
+                <p
+                  className={cn(
+                    "mt-0.5 text-sm",
+                    coverImageUrl ? "text-muted" : "text-white/80",
+                  )}
+                >
+                  {description}
+                </p>
               )}
             </div>
           </div>
-          <p className="mt-3 text-xs text-white/70">
+          <p
+            className={cn(
+              "mt-3 text-xs",
+              coverImageUrl ? "text-faint" : "text-white/70",
+            )}
+          >
             {fmt(t.phrases.count, { n: phraseCount })}
           </p>
         </div>
