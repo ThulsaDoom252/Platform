@@ -10,7 +10,7 @@ assert(
   "document id",
 );
 
-const nodes = googleTabsToImportNodes({
+const { nodes, truncated } = googleTabsToImportNodes({
   tabs: [
     {
       tabProperties: { title: "Vocabulary", iconEmoji: "📚", index: 1 },
@@ -32,5 +32,15 @@ assert(nodes[0]?.name === "Learned" && nodes[0]?.kind === "FILE", "root ordering
 assert(nodes[1]?.name === "Vocabulary" && nodes[1]?.kind === "FOLDER", "folder");
 assert(nodes[1]?.children[0]?.name === "Idioms", "child ordering");
 assert(nodes[1]?.children[0]?.children[0]?.icon === "👷‍♂️", "compound emoji");
+assert(truncated === false, "маленькое дерево не считается обрезанным");
+
+// Потолок должен не просто резать, а признаваться в этом.
+const many = googleTabsToImportNodes({
+  tabs: Array.from({ length: 640 }, (_, i) => ({
+    tabProperties: { title: `Вкладка ${i + 1}`, index: i },
+  })),
+});
+assert(many.nodes.length === 500, `потолок 500, отдано ${many.nodes.length}`);
+assert(many.truncated === true, "обрезка обязана быть заметной");
 
 process.stdout.write("Google tabs parser: OK\n");

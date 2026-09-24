@@ -143,7 +143,13 @@ export async function createNodesAction(
   return { ok: true, message: `Создано: ${rows.length}` };
 }
 
-export type ImportSummary = { created: number; reused: number; error?: string };
+export type ImportSummary = {
+  created: number;
+  reused: number;
+  error?: string;
+  /** Упёрлись в потолок — часть дерева не завелась, надо сказать вслух. */
+  truncated?: boolean;
+};
 
 /** Сколько узлов разрешаем завести за один раз и как глубоко лезем. */
 const IMPORT_LIMIT = 500;
@@ -173,9 +179,15 @@ export async function importTreeAction(
 
   let created = 0;
   let reused = 0;
+  let truncated = false;
 
   async function level(items: ImportNode[], parentId: string | null, depth: number) {
-    if (depth > IMPORT_DEPTH || items.length === 0) return;
+    if (items.length === 0) return;
+    // Слишком глубоко — дальше не лезем, но и молчать об этом не станем.
+    if (depth > IMPORT_DEPTH) {
+      truncated = true;
+      return;
+    }
 
     const existing = await db
       .select({
@@ -215,7 +227,10 @@ export async function importTreeAction(
     for (const item of items) {
       const name = String(item?.name ?? "").trim().slice(0, 200);
       if (!name) continue;
-      if (created >= IMPORT_LIMIT) return;
+      if (created >= IMPORT_LIMIT) {
+        truncated = true;
+        return;
+      }
 
       const children = Array.isArray(item.children) ? item.children : [];
       // Дети есть — значит папка, что бы ни стояло в разметке.
@@ -268,7 +283,7 @@ export async function importTreeAction(
   if (created === 0 && reused === 0) return { created: 0, reused: 0, error: "Нечего создавать" };
 
   revalidateMaterials();
-  return { created, reused };
+  return { created, reused, truncated };
 }
 
 /** Переименовать узел, сменить иконку и подзаголовок. */

@@ -1060,9 +1060,13 @@ export function MaterialsExplorer({
                 n,
                 "material-root-emoji flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl leading-none transition",
               )}
-            {kindMarker(n)}
+            {/* Значка папки здесь нет намеренно: рядом уже эмодзи, справа
+                стрелка-раскрывашка, а снизу счётчик материалов. Эти 32px
+                нужнее названию — без них в строку не влезало даже
+                «Vocabulary». */}
             <span className="min-w-0 flex-1">
               <span
+                title={n.name}
                 className={cn(
                   "block truncate text-sm font-bold transition",
                   isSelected ? "text-accent" : "text-content",
@@ -1102,7 +1106,7 @@ export function MaterialsExplorer({
   };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]">
+    <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
       {/* ---------- Путь обучения ---------- */}
       <aside className="materials-tree-panel flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4">
         <button

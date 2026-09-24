@@ -18,9 +18,19 @@ type GoogleTab = {
 
 type GoogleDocument = { tabs?: GoogleTab[] };
 
-export type GoogleTabsResult = { nodes?: ImportNode[]; error?: string };
+export type GoogleTabsResult = {
+  nodes?: ImportNode[];
+  error?: string;
+  /** Вкладок оказалось больше потолка — часть не доехала, надо сказать. */
+  truncated?: boolean;
+};
 
-const MAX_TABS = 100;
+/**
+ * Потолок на число вкладок. Нужен, чтобы случайный чужой документ не
+ * подвесил предпросмотр, но молчать про обрезку нельзя: учитель увидит
+ * правдоподобное дерево и не узнает, что конца у него нет.
+ */
+const MAX_TABS = 500;
 
 /** ID из обычной ссылки на документ или ссылки на активную вкладку. */
 export function googleDocumentId(raw: string): string | null {
@@ -41,13 +51,24 @@ function cleanEmoji(value: unknown): string | null {
   return emoji ? emoji.slice(0, 32) : null;
 }
 
-/** Преобразование ответа Google в формат предпросмотра импортёра. */
-export function googleTabsToImportNodes(value: unknown): ImportNode[] {
+/**
+ * Преобразование ответа Google в формат предпросмотра импортёра.
+ * Вместе с деревом отдаёт признак того, что упёрлись в потолок.
+ */
+export function googleTabsToImportNodes(value: unknown): {
+  nodes: ImportNode[];
+  truncated: boolean;
+} {
   const document = value && typeof value === "object" ? (value as GoogleDocument) : null;
   let seen = 0;
+  let truncated = false;
 
   function convert(tabs: GoogleTab[] | undefined): ImportNode[] {
-    if (!Array.isArray(tabs) || seen >= MAX_TABS) return [];
+    if (!Array.isArray(tabs)) return [];
+    if (seen >= MAX_TABS) {
+      if (tabs.length > 0) truncated = true;
+      return [];
+    }
 
     return [...tabs]
       .sort(
@@ -56,7 +77,11 @@ export function googleTabsToImportNodes(value: unknown): ImportNode[] {
           (Number.isFinite(b.tabProperties?.index) ? Number(b.tabProperties?.index) : 0),
       )
       .flatMap((tab) => {
-        if (seen >= MAX_TABS || !tab || typeof tab !== "object") return [];
+        if (!tab || typeof tab !== "object") return [];
+        if (seen >= MAX_TABS) {
+          truncated = true;
+          return [];
+        }
 
         const name = String(tab.tabProperties?.title ?? "").trim().slice(0, 200);
         if (!name) return [];
@@ -75,7 +100,8 @@ export function googleTabsToImportNodes(value: unknown): ImportNode[] {
       });
   }
 
-  return convert(document?.tabs);
+  const nodes = convert(document?.tabs);
+  return { nodes, truncated };
 }
 
 /**
@@ -124,9 +150,11 @@ export async function readGoogleDocumentTabs(
     if (response.status === 404) return { error: "Документ не найден." };
     if (!response.ok) return { error: `Google ответил ${response.status}.` };
 
-    const nodes = googleTabsToImportNodes((await response.json()) as unknown);
+    const { nodes, truncated } = googleTabsToImportNodes(
+      (await response.json()) as unknown,
+    );
     if (nodes.length === 0) return { error: "Google не вернул ни одной вкладки." };
-    return { nodes };
+    return { nodes, truncated };
   } catch (error) {
     console.error("Не удалось прочитать вкладки Google Docs:", error);
     return { error: "Не получилось связаться с Google Docs." };

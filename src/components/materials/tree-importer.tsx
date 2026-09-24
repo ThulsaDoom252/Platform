@@ -102,7 +102,7 @@ export function TreeImporter({
 
   if (!target) return null;
 
-  function show(found: ImportNode[], flat: boolean, from: string) {
+  function show(found: ImportNode[], flat: boolean, from: string, truncated = false) {
     if (found.length === 0) {
       setNodes(null);
       setError(`${from}: структура не распозналась.`);
@@ -110,10 +110,19 @@ export function TreeImporter({
     }
     setError(null);
     setNodes(found);
+
+    const head = `${from}: ${countNodes(found)} шт.`;
+    // Про обрезку молчать нельзя: дерево выглядит целым, а конца у него нет.
+    if (truncated) {
+      setNote(
+        `${head} Это потолок — в документе вкладок больше, остальные не доехали. Перенеси частями.`,
+      );
+      return;
+    }
     setNote(
       flat
-        ? `${from}: ${countNodes(found)} шт., но все на одном уровне — вложенность не считалась. Вставь с форматированием или поправь вручную.`
-        : `${from}: ${countNodes(found)} шт.`,
+        ? `${head}, но все на одном уровне — вложенность не считалась. Вставь с форматированием или поправь вручную.`
+        : head,
     );
   }
 
@@ -189,7 +198,7 @@ export function TreeImporter({
           setNote(null);
           setError(result.error ?? "Не получилось прочитать вкладки.");
         } else {
-          show(result.nodes, false, "Из вкладок Google");
+          show(result.nodes, false, "Из вкладок Google", result.truncated);
         }
         setGoogleBusy(false);
       },
@@ -246,6 +255,16 @@ export function TreeImporter({
 
       if (res.error) {
         setError(res.error);
+        return;
+      }
+      // Часть дерева не влезла — окно не закрываем, иначе учитель решит,
+      // что перенеслось всё.
+      if (res.truncated) {
+        setNodes(null);
+        setNote(null);
+        setError(
+          `Создано ${res.created}, уже было ${res.reused} — но дерево упёрлось в потолок, остальное не завелось. Перенеси остаток отдельно.`,
+        );
         return;
       }
       onClose();
