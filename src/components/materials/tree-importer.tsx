@@ -280,8 +280,12 @@ export function TreeImporter({
             </button>
           </div>
           <p className="mt-1.5 text-[11px] text-faint">
-            Документ должен быть открыт по ссылке хотя бы на чтение. Закрытый
-            Google не отдаст — тогда вставляй текстом.
+            Читает <b>заголовки внутри документа</b> (стили «Заголовок 1/2/3»).
+            Документ должен быть открыт по ссылке хотя бы на чтение.
+          </p>
+          <p className="mt-1 text-[11px] text-amber-500/90">
+            Список вкладок из боковой панели так не переносится — Google не
+            отдаёт его по ссылке. Для вкладок нужен скриншот.
           </p>
         </div>
 
@@ -309,7 +313,9 @@ export function TreeImporter({
           </div>
 
           <div>
-            <p className="text-[12px] font-semibold text-muted">Или брось скриншот</p>
+            <p className="text-[12px] font-semibold text-muted">
+              Или брось скриншот — в том числе списка вкладок
+            </p>
             <div
               onDragOver={(e) => {
                 e.preventDefault();
