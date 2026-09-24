@@ -474,6 +474,28 @@ export function MaterialsExplorer({
     );
   };
 
+  /**
+   * Системный маркер типа не заменяет пользовательский emoji: в дереве
+   * emoji всегда идёт первым, а папка / файл читаются вторым знаком.
+   */
+  const kindMarker = (n: MaterialNode, compact = false) => (
+    <span
+      title={n.type === "FOLDER" ? "Папка" : "Файл"}
+      aria-hidden="true"
+      className={cn(
+        "material-kind-marker",
+        n.type === "FOLDER" ? "material-kind-folder" : "material-kind-file",
+        compact ? "h-6 w-6 rounded-lg" : "h-8 w-8 rounded-xl",
+      )}
+    >
+      {n.type === "FOLDER" ? (
+        <IconFolder className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+      ) : (
+        <IconFile className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+      )}
+    </span>
+  );
+
   const selectBox = (n: MaterialNode) =>
     editable ? (
       <input
@@ -921,7 +943,7 @@ export function MaterialsExplorer({
     );
   })();
 
-  /** Подкатегории: точка-маркер + линия-связка. */
+  /** Подкатегории: точка-маркер + линия-связка + явный тип узла. */
   const renderSub = (n: MaterialNode) => {
     const isOpen = expanded.has(n.id);
     const isSelected = selectedId === n.id;
@@ -933,8 +955,9 @@ export function MaterialsExplorer({
           {...menuHandlers(n)}
           {...dragProps(n)}
           className={cn(
-            "group relative flex items-center gap-1 rounded-lg pr-1 transition",
-            isSelected ? "bg-accent-soft" : "hover:bg-surface-2",
+            "material-tree-row group relative flex items-center gap-1 rounded-xl pr-1 transition",
+            n.type === "FOLDER" ? "material-tree-row-folder" : "material-tree-row-file",
+            isSelected ? "is-selected" : "",
             dragId === n.id && "opacity-40",
             dropRing(n.id),
           )}
@@ -949,13 +972,18 @@ export function MaterialsExplorer({
           >
             <span
               className={cn(
-                "h-2.5 w-2.5 shrink-0 rounded-full border-2 transition",
+                "material-tree-dot h-2.5 w-2.5 shrink-0 rounded-full border-2 transition",
                 isSelected
                   ? "border-accent bg-accent"
                   : "border-line bg-surface group-hover:border-faint",
               )}
             />
-            {n.icon && iconSlot(n, "shrink-0 text-sm leading-none")}
+            {n.icon &&
+              iconSlot(
+                n,
+                "material-node-emoji flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-sm leading-none",
+              )}
+            {kindMarker(n, true)}
             <span
               className={cn(
                 "truncate text-[13px] transition",
@@ -998,15 +1026,13 @@ export function MaterialsExplorer({
     const hasChildren = n.children.length > 0;
 
     return (
-      <div key={n.id} className="mb-1.5">
+      <div key={n.id} className="material-tree-root-wrap mb-2">
         <div
           {...menuHandlers(n)}
           {...dragProps(n)}
           className={cn(
-            "group relative flex items-center gap-2 rounded-xl px-2 py-2 transition",
-            isSelected
-              ? "bg-accent-soft ring-1 ring-accent/25"
-              : "hover:bg-surface-2",
+            "material-tree-root group relative flex items-center gap-2 rounded-2xl px-2.5 py-2.5 transition",
+            isSelected ? "is-selected" : "",
             dragId === n.id && "opacity-40",
             dropRing(n.id),
           )}
@@ -1027,23 +1053,26 @@ export function MaterialsExplorer({
               // нельзя — второе обновление отменяло первое.
               openNode(n);
             }}
-            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
           >
-            {iconSlot(
-              n,
-              cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg transition",
-                isSelected ? "bg-surface shadow-sm" : "bg-surface-2",
-              ),
-              "📁",
-            )}
-            <span
-              className={cn(
-                "truncate text-sm font-semibold transition",
-                isSelected ? "text-accent" : "text-content",
+            {n.icon &&
+              iconSlot(
+                n,
+                "material-root-emoji flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl leading-none transition",
               )}
-            >
-              {n.name}
+            {kindMarker(n)}
+            <span className="min-w-0 flex-1">
+              <span
+                className={cn(
+                  "block truncate text-sm font-bold transition",
+                  isSelected ? "text-accent" : "text-content",
+                )}
+              >
+                {n.name}
+              </span>
+              <span className="mt-0.5 block truncate text-[10px] font-medium text-faint">
+                {n.description || fmt(t.materials.itemsCount, { n: countFiles(n) })}
+              </span>
             </span>
           </button>
 
@@ -1064,7 +1093,7 @@ export function MaterialsExplorer({
         </div>
 
         {hasChildren && isOpen && (
-          <div className="ml-5 mt-1 border-l border-line pl-3">
+          <div className="material-tree-branch ml-5 mt-1 border-l border-line pl-3">
             {n.children.map(renderSub)}
           </div>
         )}
@@ -1073,9 +1102,9 @@ export function MaterialsExplorer({
   };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[300px_1fr]">
+    <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]">
       {/* ---------- Путь обучения ---------- */}
-      <aside className="flex flex-col gap-4 rounded-2xl bg-surface p-3.5 ring-1 ring-line shadow-sm sm:p-4">
+      <aside className="materials-tree-panel flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4">
         <button
           type="button"
           onClick={() => setPathOpen((v) => !v)}
@@ -1094,7 +1123,7 @@ export function MaterialsExplorer({
         </button>
 
         {pathOpen && (
-          <div className="max-h-[60vh] overflow-y-auto pr-0.5">
+          <div className="materials-tree-scroll max-h-[70vh] overflow-y-auto pr-1">
             {tree.map(renderCategory)}
           </div>
         )}
@@ -1432,9 +1461,9 @@ export function MaterialsExplorer({
         )}
 
         {!isPhrasePage && view === "grid" && items.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          <div className="material-card-grid">
             {items.map((n) => (
-              <div key={n.id} className="group relative">
+              <div key={n.id} className="material-grid-item group relative">
                 {dropLine(n.id, "x")}
                 {editable && (
                   <input
@@ -1454,21 +1483,36 @@ export function MaterialsExplorer({
                 {...menuHandlers(n)}
                 {...dragProps(n, "x")}
                 className={cn(
-                  "flex w-full flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-md",
+                  "material-content-card flex w-full flex-col items-start rounded-2xl border text-left transition",
+                  n.type === "FOLDER" ? "material-folder-card" : "material-file-card",
                   selection.has(n.id)
-                    ? "border-accent bg-accent-soft ring-2 ring-accent"
+                    ? "is-multi-selected ring-2 ring-accent"
                     : selectedId === n.id
-                      ? "border-accent bg-accent-soft"
-                      : "border-line hover:bg-surface-2",
+                      ? "is-selected"
+                      : "",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
                 )}
               >
-                {iconSlot(n, "text-2xl leading-none", n.type === "FOLDER" ? "📁" : "📄")}
-                <span className="w-full truncate text-sm font-semibold text-content">
+                <span className="material-card-visual relative flex w-full items-center justify-between overflow-hidden">
+                  {n.type === "FOLDER" ? (
+                    <IconFolder className="material-folder-watermark" />
+                  ) : (
+                    <IconFile className="material-file-watermark" />
+                  )}
+                  {iconSlot(
+                    n,
+                    "material-card-emoji relative z-[1] flex h-12 w-12 items-center justify-center rounded-2xl text-2xl leading-none",
+                    n.type === "FOLDER" ? "📁" : "📄",
+                  )}
+                  {n.type === "FOLDER" && (
+                    <IconChevronRight className="relative z-[1] h-5 w-5 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-content" />
+                  )}
+                </span>
+                <span className="mt-3 w-full truncate text-sm font-bold text-content">
                   {n.name}
                 </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-faint">
+                <span className="mt-1 flex items-center gap-1.5 text-[11px] text-faint">
                   {n.type === "FOLDER" ? (
                     <>
                       <IconFolder className="h-3.5 w-3.5" />
@@ -1477,7 +1521,7 @@ export function MaterialsExplorer({
                   ) : (
                     <>
                       <IconFile className="h-3.5 w-3.5" />
-                      {n.fileKind} · {n.sizeLabel}
+                      {[n.fileKind, n.sizeLabel].filter(Boolean).join(" · ") || "Материал"}
                     </>
                   )}
                 </span>
@@ -1499,17 +1543,19 @@ export function MaterialsExplorer({
                 {...menuHandlers(n)}
                 {...dragProps(n)}
                 className={cn(
-                  "flex min-w-0 flex-1 items-center gap-3 rounded-lg py-2.5 text-left transition hover:bg-surface-2",
-                  selection.has(n.id) && "bg-accent-soft",
+                  "material-list-row flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2.5 text-left transition",
+                  n.type === "FOLDER" ? "is-folder" : "is-file",
+                  selection.has(n.id) && "is-selected",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
                 )}
               >
-                {iconSlot(
-                  n,
-                  "w-7 shrink-0 text-center text-lg leading-none",
-                  n.type === "FOLDER" ? "📁" : "📄",
-                )}
+                {n.icon &&
+                  iconSlot(
+                    n,
+                    "material-node-emoji flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base leading-none",
+                  )}
+                {kindMarker(n)}
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-content">
                   {n.name}
                 </span>
