@@ -1055,7 +1055,8 @@ export async function savePageContentAction(
   await requireTeacher();
 
   const nodeId = String(formData.get("nodeId") || "");
-  const mode = (String(formData.get("mode") || "vocabulary") as ParserMode) ?? "vocabulary";
+  const requestedMode = String(formData.get("mode") || "vocabulary");
+  const mode: ParserMode = requestedMode === "mistake" ? "mistake" : "vocabulary";
   const raw = String(formData.get("raw") || "");
   const applyTitle = formData.get("applyTitle") === "on";
 
@@ -1094,7 +1095,7 @@ export async function savePageContentAction(
     .update(materialNodes)
     .set({
       // Страница запоминает, чем её наполнили, и исходник для «Редактировать».
-      pageKind: mode === "mistake" ? "MISTAKE" : mode === "rule" ? "RULE" : "VOCAB",
+      pageKind: mode === "mistake" ? "MISTAKE" : "VOCAB",
       sourceText: raw.slice(0, 200_000),
       ...(coverImageUrl ? { imageUrl: coverImageUrl } : {}),
       ...(applyTitle && result.title ? { name: result.title } : {}),

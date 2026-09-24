@@ -27,7 +27,7 @@ export type ParseResult = {
   vocabularyFormat?: VocabularyParserFormat;
 };
 
-export type ParserMode = "vocabulary" | "rule" | "mistake";
+export type ParserMode = "vocabulary" | "mistake";
 export type VocabularyParserFormat = "standard" | "word-examples-table";
 
 /** Тире, которыми в документе разделены термин и перевод. */
@@ -563,74 +563,6 @@ function parseVocabulary(raw: string): ParseResult {
   return { title, description, phrases, warnings, vocabularyFormat };
 }
 
-/**
- * Правило: блоки, разделённые пустой строкой.
- * Первая строка блока — название, дальше пояснение, строки-маркеры — примеры.
- */
-function parseRule(raw: string): ParseResult {
-  const warnings: string[] = [];
-  const blocks = raw
-    .split(/\r?\n\s*\r?\n/)
-    .map((b) => b.trim())
-    .filter(Boolean);
-
-  let title: string | null = null;
-  let description: string | null = null;
-  const phrases: ParsedPhrase[] = [];
-  let iconIndex = 0;
-
-  blocks.forEach((block, bi) => {
-    const lines = block
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) return;
-
-    // Первый блок без маркеров и из 1–2 строк считаем шапкой страницы.
-    if (bi === 0 && lines.length <= 2 && !lines.some((l) => BULLET.test(l))) {
-      title = lines[0];
-      description = lines[1] ?? null;
-      return;
-    }
-
-    const head = takeLeadingIcon(stripBullet(lines[0]));
-    const name = head.rest.trim();
-    const explanation: string[] = [];
-    const examples: ParsedExample[] = [];
-
-    for (const line of lines.slice(1)) {
-      const isBullet = BULLET.test(line);
-      const text = takeLeadingIcon(stripBullet(line)).rest.trim();
-      if (!text) continue;
-      const parts = splitByDash(text);
-      if (isBullet && parts) examples.push({ en: parts[0], tr: parts[1] });
-      else if (isBullet) examples.push({ en: text, tr: "" });
-      else explanation.push(text);
-    }
-
-    if (!name) {
-      warnings.push(`Блок ${bi + 1}: не найдено название правила.`);
-      return;
-    }
-
-    phrases.push({
-      icon: head.icon ?? ICON_CYCLE[iconIndex++ % ICON_CYCLE.length],
-      section: null,
-      kind: "PHRASE",
-      phrase: name,
-      transcription: null,
-      translation: explanation.join(" ") || "",
-      examples,
-    });
-  });
-
-  if (phrases.length === 0) {
-    warnings.push("Не найдено ни одного правила. Раздели блоки пустой строкой.");
-  }
-
-  return { title, description, phrases, warnings };
-}
-
 /** Стрелка как разделитель «было → стало». */
 const ARROW = /\s*(?:→|⟶|=>|->)\s*/;
 
@@ -777,7 +709,6 @@ export function parseMaterial(raw: string, mode: ParserMode): ParseResult {
   if (!raw.trim()) {
     return { title: null, description: null, phrases: [], warnings: ["Пустой текст."] };
   }
-  if (mode === "rule") return parseRule(raw);
   if (mode === "mistake") return parseMistakes(raw);
   return parseVocabulary(raw);
 }

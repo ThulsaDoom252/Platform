@@ -11,19 +11,12 @@ import { savePageContentAction, type ParseState } from "@/lib/actions/materials"
 import { IconMaterials, IconCheck } from "@/components/icons";
 import type { TreeScope } from "./node-editor";
 import { VocabularyCoverField } from "./vocabulary-cover";
-import { cn } from "@/lib/utils";
 
 /**
  * Вставка учебного текста из Google Docs.
  * Разбор делается прямо в браузере для мгновенного предпросмотра,
  * а при сохранении сервер разбирает текст заново — ему нельзя доверять клиенту.
  */
-const MODE_OPTIONS: Record<ParserMode, { label: string; hint: string }> = {
-  vocabulary: { label: "Словник", hint: "слово / фраза — перевод + примеры" },
-  rule: { label: "Правило", hint: "название, пояснение, примеры" },
-  mistake: { label: "Ошибка", hint: "как сказал → как правильно" },
-};
-
 export function ContentImporter({
   node,
   onClose,
@@ -33,10 +26,8 @@ export function ContentImporter({
   onClose: () => void;
   scope?: TreeScope;
 }) {
-  const modes: ParserMode[] =
-    scope === "MISTAKE" ? ["mistake", "rule"] : ["vocabulary", "rule"];
+  const mode: ParserMode = scope === "MISTAKE" ? "mistake" : "vocabulary";
   const [raw, setRaw] = useState("");
-  const [mode, setMode] = useState<ParserMode>(modes[0]);
   const [applyTitle, setApplyTitle] = useState(false);
   const [state, formAction, pending] = useActionState<ParseState, FormData>(
     savePageContentAction,
@@ -86,33 +77,6 @@ export function ContentImporter({
         <input type="hidden" name="raw" value={raw} />
         {applyTitle && <input type="hidden" name="applyTitle" value="on" />}
 
-        {/* Тип парсера */}
-        <div>
-          <p className="mb-2 text-sm font-medium text-content">Тип материала</p>
-          <div className="flex gap-2">
-            {modes.map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMode(id)}
-                className={cn(
-                  "flex-1 rounded-xl border p-3 text-left transition",
-                  mode === id
-                    ? "border-accent bg-accent-soft"
-                    : "border-line hover:bg-surface-2",
-                )}
-              >
-                <span className="block text-sm font-semibold text-content">
-                  {MODE_OPTIONS[id].label}
-                </span>
-                <span className="mt-0.5 block text-[11px] text-muted">
-                  {MODE_OPTIONS[id].hint}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Ввод */}
         <div>
           <label className="text-sm font-medium text-content">
@@ -133,9 +97,7 @@ export function ContentImporter({
             placeholder={
               mode === "vocabulary"
                 ? "Строками:\ndropped /drɒpt/ — виключений зі складу\n• The striker was dropped. — Нападника виключили.\n\nИли таблицей:\n📖 Nouns — Іменники\nWord / Phrase\tIPA\tTranslation\nan election\t/ɪˈlekʃən/\tвибори"
-                : mode === "mistake"
-                  ? "Past Simple\nI go to school yesterday → I went to school yesterday\n• Прошедшее время, а не настоящее\n\nArticles\nI am student → I am a student"
-                  : "Present Simple\nВживаємо для регулярних дій.\n• I go to school every day. — Я ходжу до школи щодня."
+                : "Past Simple\nI go to school yesterday → I went to school yesterday\n• Прошедшее время, а не настоящее\n\nArticles\nI am student → I am a student"
             }
             className="mt-1.5 w-full resize-y rounded-xl border border-line bg-surface-2 px-3.5 py-3 font-mono text-[13px] leading-relaxed text-content outline-none transition placeholder:text-faint focus:border-accent"
           />

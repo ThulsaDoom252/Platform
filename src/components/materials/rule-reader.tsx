@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { speakableText } from "./phrase-reader";
+import { speakableText } from "@/lib/speech";
 import { IconVolume } from "@/components/icons";
 import type { RuleBlock } from "@/lib/rule-parser";
 

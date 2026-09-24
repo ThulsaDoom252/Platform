@@ -9,6 +9,7 @@ import {
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { speakableText } from "@/lib/speech";
 import {
   IconVolume,
   IconChevronDown,
@@ -31,18 +32,6 @@ export type MaterialPhrase = {
   kind: string;
   examples: PhraseExample[];
 };
-
-/**
- * Текст для озвучки.
- * Пометки в скобках — «cook (noun)», «no love lost (between ...)» — это
- * подсказки для чтения глазами, вслух их произносить не нужно.
- */
-export function speakableText(text: string): string {
-  return text
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
 
 /** Произношение через Web Speech API — без серверов и без платных API. */
 function useSpeech() {
