@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { createSession, destroySession } from "@/lib/session";
+import { createSession, destroySession, getSession } from "@/lib/session";
 
 export type LoginState = {
   error?: string;
@@ -42,37 +42,71 @@ export async function loginAction(
   redirect(user.role === "TEACHER" ? "/teacher" : "/student");
 }
 
-/**
- * Временный вход в ученика одним кликом для локальной разработки.
- * Проверка повторяется на сервере: скрытой кнопки недостаточно как защиты.
- */
-export async function testStudentLoginAction(formData: FormData) {
-  if (process.env.NODE_ENV !== "development") {
-    throw new Error("Тестовый вход доступен только в локальной разработке");
+/** Открыть ученическую часть от лица выбранного ученика. */
+export async function viewAsStudentAction(formData: FormData) {
+  const teacherSession = await getSession();
+  if (!teacherSession || teacherSession.role !== "TEACHER") {
+    redirect("/login");
   }
-
   const studentId = String(formData.get("studentId") || "");
   if (!studentId) return;
 
-  const [student] = await db
-    .select({
-      id: users.id,
-      role: users.role,
-      name: users.name,
-    })
-    .from(users)
-    .where(eq(users.id, studentId))
-    .limit(1);
+  const [teacher, student] = await Promise.all([
+    db
+      .select({ id: users.id, role: users.role, name: users.name })
+      .from(users)
+      .where(eq(users.id, teacherSession.userId))
+      .limit(1)
+      .then((rows) => rows[0]),
+    db
+      .select({ id: users.id, role: users.role, name: users.name })
+      .from(users)
+      .where(eq(users.id, studentId))
+      .limit(1)
+      .then((rows) => rows[0]),
+  ]);
 
-  // Удалённый между открытием страницы и кликом аккаунт просто не войдёт.
+  if (!teacher || teacher.role !== "TEACHER") redirect("/login");
   if (!student || student.role !== "STUDENT") return;
 
   await createSession({
     userId: student.id,
     role: student.role,
     name: student.name,
+    impersonatedBy: {
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+    },
   });
-  redirect("/student");
+  redirect("/student/materials");
+}
+
+/** Вернуться из ученического просмотра в исходный аккаунт учителя. */
+export async function returnToTeacherAction() {
+  const studentSession = await getSession();
+  const teacherId = studentSession?.impersonatedBy?.teacherId;
+  if (!studentSession || studentSession.role !== "STUDENT" || !teacherId) {
+    redirect("/login");
+  }
+
+  const [teacher] = await db
+    .select({ id: users.id, role: users.role, name: users.name })
+    .from(users)
+    .where(eq(users.id, teacherId))
+    .limit(1);
+
+  if (!teacher || teacher.role !== "TEACHER") {
+    await destroySession();
+    redirect("/login");
+  }
+
+  const studentId = studentSession.userId;
+  await createSession({
+    userId: teacher.id,
+    role: teacher.role,
+    name: teacher.name,
+  });
+  redirect(`/teacher/students/${studentId}/materials`);
 }
 
 export async function logoutAction() {

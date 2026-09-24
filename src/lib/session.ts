@@ -18,6 +18,11 @@ export type SessionPayload = {
   userId: string;
   role: "TEACHER" | "STUDENT";
   name: string;
+  /** Учитель, временно открывший платформу глазами ученика. */
+  impersonatedBy?: {
+    teacherId: string;
+    teacherName: string;
+  };
 };
 
 export async function createSession(payload: SessionPayload) {

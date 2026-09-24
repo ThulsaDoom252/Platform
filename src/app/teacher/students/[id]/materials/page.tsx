@@ -10,7 +10,8 @@ import { SharedAccess } from "@/components/materials/shared-access";
 import { ReportButton } from "@/components/materials/report-button";
 import { StudentWipe } from "@/components/materials/student-wipe";
 import { Avatar } from "@/components/avatar";
-import { IconChevronLeft } from "@/components/icons";
+import { IconChevronLeft, IconUser } from "@/components/icons";
+import { viewAsStudentAction } from "@/lib/actions/auth";
 
 export default async function StudentMaterialsForTeacherPage({
   params,
@@ -78,6 +79,18 @@ export default async function StudentMaterialsForTeacherPage({
           </p>
         </div>
         <ReportButton studentId={student.id} studentName={student.name} />
+        <form action={viewAsStudentAction}>
+          <input type="hidden" name="studentId" value={student.id} />
+          <button
+            type="submit"
+            className="flex h-10 items-center gap-2 rounded-xl bg-accent px-3.5 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            title={`Открыть платформу глазами ${student.name}`}
+          >
+            <IconUser className="h-4 w-4" />
+            <span className="hidden sm:inline">Войти как {student.name}</span>
+            <span className="sm:hidden">Как ученик</span>
+          </button>
+        </form>
       </div>
 
       <div>

@@ -8,7 +8,7 @@ import { getStudentFeed } from "@/lib/notifications";
 import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { I18nProvider } from "@/components/i18n-provider";
-import { logoutAction } from "@/lib/actions/auth";
+import { logoutAction, returnToTeacherAction } from "@/lib/actions/auth";
 import { StudentSidebarNav } from "@/components/student/sidebar-nav";
 import { StudentMobileNav } from "@/components/student/mobile-nav";
 import { NotificationBell } from "@/components/teacher/notification-bell";
@@ -17,6 +17,7 @@ import {
   IconCap,
   IconSearch,
   IconLogout,
+  IconChevronLeft,
   IconChevronDown,
 } from "@/components/icons";
 
@@ -93,6 +94,19 @@ export default async function StudentLayout({
               </label>
 
               <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                {session.impersonatedBy && (
+                  <form action={returnToTeacherAction}>
+                    <button
+                      type="submit"
+                      className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-2.5 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:px-3"
+                      title={`Вернуться в аккаунт учителя ${session.impersonatedBy.teacherName}`}
+                    >
+                      <IconChevronLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">К учителю</span>
+                    </button>
+                  </form>
+                )}
+
                 <NotificationBell items={items} unreadCount={unreadCount} />
 
                 <Link
