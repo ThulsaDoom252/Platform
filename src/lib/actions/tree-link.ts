@@ -11,11 +11,19 @@
  * вставки и картинки один и тот же путь, и чинить его надо в одном месте.
  */
 import { getSession } from "@/lib/session";
+import { headingsOnly, stripHeavy } from "@/lib/docs-export";
 
 export type LinkResult = { html?: string; error?: string };
 
-/** Выгрузка Docs редко бывает больше пары мегабайт. */
-const MAX_BYTES = 4 * 1024 * 1024;
+/**
+ * Сколько вообще согласны скачать. Выгрузка Docs тащит внутри себя все
+ * картинки документа, закодированные прямо в текст, поэтому даже у
+ * небольшого конспекта она легко весит десятки мегабайт.
+ */
+const MAX_DOWNLOAD = 80 * 1024 * 1024;
+
+/** Сколько готовы отдать в браузер после чистки. */
+const MAX_HTML = 8 * 1024 * 1024;
 
 /**
  * Идентификатор документа из любой формы ссылки.
@@ -68,9 +76,28 @@ export async function readTreeLinkAction(rawUrl: string): Promise<LinkResult> {
       };
     }
 
-    const html = await res.text();
-    if (html.length > MAX_BYTES) return { error: "Документ слишком большой" };
-    if (!/<h[1-6]|<li|<p/i.test(html)) return { error: "В документе нечего разбирать" };
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_DOWNLOAD) {
+      return { error: "Документ слишком большой даже для скачивания" };
+    }
+
+    const raw = await res.text();
+    if (raw.length > MAX_DOWNLOAD) return { error: "Документ слишком большой" };
+    if (!/<h[1-6]|<li|<p/i.test(raw)) return { error: "В документе нечего разбирать" };
+
+    // Размечен заголовками — больше ничего и не нужно.
+    const slim = headingsOnly(stripHeavy(raw));
+    if (slim) return { html: slim };
+
+    // Заголовков нет: вложенность придётся брать из списков, а для этого
+    // нужна вся разметка. Отдаём её без картинок.
+    const html = stripHeavy(raw);
+    if (html.length > MAX_HTML) {
+      return {
+        error:
+          "Документ слишком большой, и заголовков в нём нет. Разметь разделы стилями «Заголовок 1/2/3» — тогда загрузится.",
+      };
+    }
 
     return { html };
   } catch (e) {
