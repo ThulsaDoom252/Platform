@@ -152,6 +152,20 @@ const semanticCases: [string, string, string][] = [
   ["esophagus", "стравохід", "👄"],
   ["to store", "зберігати / запасати", "📦"],
   ["to power smth up", "запустити / увімкнути / зарядити щось", "🔌"],
+  ["under the weather", "погано себе почувати", "🤒"],
+  ["break the ice", "розтопити лід, почати розмову", "🤝"],
+  ["He promises a lot", "all talk no walk — багато обіцяє, але нічого не робить", "🤥"],
+  ["to lie in", "лежати в ліжку (валятися)", "🛏️"],
+  ["to dream up (something)", "вигадувати щось", "💡"],
+  ["to not sleep a wink", "не зімкнути очей", "👁️"],
+  ["knackered", "виснажений", "😫"],
+  ["prophetic dream", "віщий сон", "🔮"],
+  ["recurring dream", "сон, що повторюється", "🔁"],
+  ["snooze", "відкладати будильник", "⏰"],
+  ["to give somebody/something a bad name", "зіпсувати репутацію", "👎"],
+  ["you name it", "що завгодно / все, що хочеш", "📋"],
+  ["to be named after", "бути названим на честь", "🏷️"],
+  ["to call someone names", "обзивати когось", "🤬"],
 ];
 
 const generalizationCases: [string, string, string][] = [
@@ -169,6 +183,13 @@ const generalizationCases: [string, string, string][] = [
   ["the consequences caught up with him", "наслідки його наздогнали", "⏳"],
   ["to tear the document apart", "розірвати документ на шматки", "💥"],
   ["to power the computer up", "увімкнути комп’ютер", "🔌"],
+  ["feeling under the weather", "нездужати", "🤒"],
+  ["breaking the ice with new classmates", "почати дружню розмову", "🤝"],
+  ["She dreamed a new product up", "вона вигадала новий продукт", "💡"],
+  ["We didn't sleep a wink", "ми не зімкнули очей", "👁️"],
+  ["giving the profession a bad name", "псувати репутацію професії", "👎"],
+  ["named after her grandmother", "названа на честь бабусі", "🏷️"],
+  ["They called him names", "вони його обзивали", "🤬"],
 ];
 
 for (const [phrase, translation, expected] of semanticCases) {
@@ -195,6 +216,20 @@ if (suggestVocabularyIcon("irrelevant", "недоречний") !== "🚫") {
 }
 if (suggestVocabularyIcon("appropriate", "доречний") === "🚫") {
   throw new Error("Положительная форма appropriate не должна совпадать с inappropriate");
+}
+if (
+  suggestVocabularyIcon("It's all started when...", "Все почалося тоді, коли...") !== "🥤"
+) {
+  throw new Error("Правило break the ice не должно влиять на обычное started");
+}
+if (suggestVocabularyIcon("weather", "погода") === "🤒") {
+  throw new Error("Обычное weather не должно считаться идиомой under the weather");
+}
+if (suggestVocabularyIcon("to lie in the report", "лгать в отчёте") === "🛏️") {
+  throw new Error("Lie in другой конструкции не должно означать лежать в кровати");
+}
+if (suggestVocabularyIcon("a phone call", "телефонный звонок") === "🤬") {
+  throw new Error("Обычный call не должен считаться выражением call someone names");
 }
 
 if (suggestIcon("Phrases with make") !== "🔨") {

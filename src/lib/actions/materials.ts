@@ -32,6 +32,7 @@ import {
   suggestVocabularyIcon,
   vocabularyFallbackIcon,
 } from "@/lib/icon-suggest";
+import { suggestVocabularyIconsWithAi } from "@/lib/vocabulary-icon-ai";
 
 export type { Misspelling };
 
@@ -619,15 +620,27 @@ export async function repairPhraseIconsAction(nodeId: string): Promise<BulkState
   const words = rows.filter((row) => row.kind !== "NOTE");
   if (words.length === 0) return { error: "В словаре пока нет слов или фраз" };
 
+  const aiIcons = await suggestVocabularyIconsWithAi(
+    words.map((row) => ({
+      id: row.id,
+      phrase: row.phrase,
+      translation: row.translation,
+      section: row.section,
+      examples: row.examples ?? [],
+    })),
+  );
+
   let recognized = 0;
   const proposals: { id: string; icon: string }[] = [];
   for (const row of words) {
-    const icon = suggestVocabularyIcon(
-      row.phrase,
-      row.translation,
-      row.section,
-      row.examples ?? [],
-    );
+    const icon =
+      aiIcons.get(row.id) ??
+      suggestVocabularyIcon(
+        row.phrase,
+        row.translation,
+        row.section,
+        row.examples ?? [],
+      );
     if (icon) {
       recognized++;
       if (icon !== row.icon) proposals.push({ id: row.id, icon });

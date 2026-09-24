@@ -186,6 +186,17 @@ const CONCEPT_ALIASES: [string, string][] = [
   ["👄", "esophagus oesophagus gullet swallowing tube alimentary canal пищевод стравохід ковтання"],
   ["📦", "store storage stockpile save keep запасать хранить складировать зберігати запасати складувати"],
   ["🔌", "power up switch on turn on energize charge device включить запустить зарядить увімкнути запустити зарядити"],
+  ["🤒", "feel ill feel unwell sick нездоровится плохо себя чувствовать погано себе почувати нездужати"],
+  ["🛏️", "stay in bed sleep late лежать в постели валяться лежати в ліжку валятися"],
+  ["💡", "invent conceive imagine idea выдумать придумать вигадувати придумати"],
+  ["👁️", "sleepless awake insomnia бодрствовать без сна без сну"],
+  ["😫", "knackered exhausted worn out drained измученный вымотанный виснажений знесилений"],
+  ["🔮", "prophetic dream precognitive dream vision вещий сон віщий сон пророцтво"],
+  ["🔁", "recurring dream repeating dream recurring nightmare повторяющийся сон сон що повторюється"],
+  ["⏰", "snooze alarm postpone alarm sleep button отложить будильник відкласти будильник"],
+  ["👎", "damage reputation discredit дурная слава испортить репутацию зіпсувати репутацію"],
+  ["🏷️", "namesake eponym commemorative naming назван в честь названий на честь назвати на честь"],
+  ["🤬", "insult verbal abuse обзывать обзываться обзивати когось лаяти"],
 ];
 
 /** Очень короткие междометия теряются при отсечении служебных слов. */
@@ -211,6 +222,16 @@ const PHRASE_ICON_RULES: [RegExp, string][] = [
   [/\bseems? to be\b/u, "👀"],
   [/\bat least\b/u, "1️⃣"],
   [/\bpower(?: \w+){0,4} up\b/u, "🔌"],
+  [/\bunder the weather\b/u, "🤒"],
+  [/\b(?:break|breaks|breaking|broke) the ice\b/u, "🤝"],
+  [/^(?:he|she|they|someone|somebody) promises? a lot$/u, "🤥"],
+  [/^(?:to |have a )?lie in$/u, "🛏️"],
+  [/\bdream(?:ed|t|ing)?(?: \w+){0,4} up\b/u, "💡"],
+  [/\b(?:not|never|didnt|couldnt|wont) sleep(?: \w+){0,2} wink\b/u, "👁️"],
+  [/\bgiv(?:e|es|ing|en)(?: \w+){0,5} bad name\b/u, "👎"],
+  [/\byou name it\b/u, "📋"],
+  [/\b(?:name|named) after\b/u, "🏷️"],
+  [/\bcall(?:ed|s|ing)?(?: \w+){0,3} names\b/u, "🤬"],
 ];
 
 const COMPATIBLE_CONCEPT_ICONS = new Set(CONCEPT_ALIASES.map(([icon]) => icon));
