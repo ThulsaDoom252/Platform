@@ -26,7 +26,7 @@ import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
-import { splitIcon, type ImportNode } from "@/lib/tree-import";
+import { mergeImportTrees, splitIcon, type ImportNode } from "@/lib/tree-import";
 
 export type { Misspelling };
 
@@ -231,11 +231,6 @@ export async function importTreeAction(
     for (const item of items) {
       const name = String(item?.name ?? "").trim().slice(0, 200);
       if (!name) continue;
-      if (created >= IMPORT_LIMIT) {
-        truncated = true;
-        return;
-      }
-
       const children = Array.isArray(item.children) ? item.children : [];
       // Дети есть — значит папка, что бы ни стояло в разметке.
       const type: "FOLDER" | "FILE" =
@@ -256,6 +251,10 @@ export async function importTreeAction(
             .where(eq(materialNodes.id, hit.id));
         }
       } else {
+        if (created >= IMPORT_LIMIT) {
+          truncated = true;
+          continue;
+        }
         order++;
         const [row] = await db
           .insert(materialNodes)
@@ -282,7 +281,10 @@ export async function importTreeAction(
     }
   }
 
-  await level(Array.isArray(nodes) ? nodes : [], opts.parentId || null, 0);
+  // Клиент уже показывает объединённый предпросмотр, но сервер повторяет
+  // слияние сам: входящим данным доверять нельзя, а дубли не должны съедать лимит.
+  const prepared = mergeImportTrees(Array.isArray(nodes) ? nodes : []);
+  await level(prepared, opts.parentId || null, 0);
 
   if (created === 0 && reused === 0) return { created: 0, reused: 0, error: "Нечего создавать" };
 

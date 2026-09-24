@@ -256,3 +256,61 @@ export function parseTree(input: { html?: string | null; text?: string | null })
 export function countNodes(nodes: ImportNode[]): number {
   return nodes.reduce((sum, n) => sum + 1 + countNodes(n.children), 0);
 }
+
+/** Имя узла внутри одного родителя: регистр и лишние пробелы не различаем. */
+function mergeKey(node: Pick<ImportNode, "name" | "icon">): string {
+  const name = node.icon ? node.name : splitIcon(node.name).name;
+  return name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+/**
+ * Рекурсивно объединяет несколько импортированных деревьев.
+ *
+ * Первый встретившийся узел задаёт позицию и название. Более поздний узел с
+ * тем же именем на том же уровне не дублируется: его дети добавляются внутрь,
+ * а отсутствующий emoji подхватывается. Совпадения в разных папках независимы.
+ */
+export function mergeImportTrees(...forests: ImportNode[][]): ImportNode[] {
+  const merged: ImportNode[] = [];
+  const byName = new Map<string, ImportNode>();
+
+  for (const forest of forests) {
+    if (!Array.isArray(forest)) continue;
+
+    for (const source of forest) {
+      const name = String(source?.name ?? "").trim();
+      if (!name) continue;
+
+      const children = mergeImportTrees(
+        Array.isArray(source.children) ? source.children : [],
+      );
+      const incoming: ImportNode = {
+        name,
+        icon: source.icon ? String(source.icon) : null,
+        kind:
+          children.length > 0 || source.kind === "FOLDER" ? "FOLDER" : "FILE",
+        children,
+      };
+      const key = mergeKey(incoming);
+      const current = byName.get(key);
+
+      if (!current) {
+        merged.push(incoming);
+        byName.set(key, incoming);
+        continue;
+      }
+
+      current.icon ??= incoming.icon;
+      current.children = mergeImportTrees(current.children, incoming.children);
+      if (
+        current.children.length > 0 ||
+        current.kind === "FOLDER" ||
+        incoming.kind === "FOLDER"
+      ) {
+        current.kind = "FOLDER";
+      }
+    }
+  }
+
+  return merged;
+}

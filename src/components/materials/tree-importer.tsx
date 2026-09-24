@@ -10,8 +10,13 @@
  */
 import { useRef, useState, useTransition } from "react";
 import Script from "next/script";
-import { parseTree, countNodes, type ImportNode } from "@/lib/tree-import";
-import { readGoogleDocumentTabs } from "@/lib/google-docs-tabs";
+import {
+  parseTree,
+  countNodes,
+  mergeImportTrees,
+  type ImportNode,
+} from "@/lib/tree-import";
+import { googleDocumentId, readGoogleDocumentTabs } from "@/lib/google-docs-tabs";
 import { importTreeAction } from "@/lib/actions/materials";
 import { readTreeImageAction } from "@/lib/actions/tree-image";
 import { readTreeLinkAction } from "@/lib/actions/tree-link";
@@ -93,7 +98,7 @@ export function TreeImporter({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [link, setLink] = useState("");
+  const [links, setLinks] = useState<string[]>([""]);
   const [over, setOver] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -102,7 +107,13 @@ export function TreeImporter({
 
   if (!target) return null;
 
-  function show(found: ImportNode[], flat: boolean, from: string, truncated = false) {
+  function show(
+    found: ImportNode[],
+    flat: boolean,
+    from: string,
+    truncated = false,
+    detail = "",
+  ) {
     if (found.length === 0) {
       setNodes(null);
       setError(`${from}: структура не распозналась.`);
@@ -111,19 +122,34 @@ export function TreeImporter({
     setError(null);
     setNodes(found);
 
-    const head = `${from}: ${countNodes(found)} шт.`;
+    const head = `${from}: ${countNodes(found)} уникальных узлов.`;
     // Про обрезку молчать нельзя: дерево выглядит целым, а конца у него нет.
     if (truncated) {
       setNote(
-        `${head} Это потолок — в документе вкладок больше, остальные не доехали. Перенеси частями.`,
+        `${head} Один из документов упёрся в потолок вкладок — его остаток не доехал.${detail ? ` ${detail}` : ""}`,
       );
       return;
     }
     setNote(
       flat
-        ? `${head}, но все на одном уровне — вложенность не считалась. Вставь с форматированием или поправь вручную.`
-        : head,
+        ? `${head} Все на одном уровне — вложенность не считалась. Вставь с форматированием или поправь вручную.${detail ? ` ${detail}` : ""}`
+        : `${head}${detail ? ` ${detail}` : ""}`,
     );
+  }
+
+  /** Пустые и повторно добавленные ссылки не запрашиваем второй раз. */
+  function documentLinks(): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const value of links) {
+      const url = value.trim();
+      if (!url) continue;
+      const key = googleDocumentId(url) ?? url;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(url);
+    }
+    return out;
   }
 
   function fromClipboard(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -143,27 +169,62 @@ export function TreeImporter({
   }
 
   function fromLink() {
-    if (!link.trim()) return;
+    const urls = documentLinks();
+    if (urls.length === 0) return;
 
     setError(null);
-    setNote("Скачиваю документ…");
+    setNote(`Скачиваю документы: 0 из ${urls.length}…`);
 
     startBusy(async () => {
-      const res = await readTreeLinkAction(link.trim());
-      if (res.error || !res.html) {
+      let merged: ImportNode[] = [];
+      let succeeded = 0;
+      let flatDocuments = 0;
+      const failures: string[] = [];
+
+      for (let i = 0; i < urls.length; i++) {
+        setNote(`Скачиваю документ ${i + 1} из ${urls.length}…`);
+        const res = await readTreeLinkAction(urls[i]);
+        if (res.error || !res.html) {
+          failures.push(res.error ?? "Не получилось прочитать документ.");
+          continue;
+        }
+        const parsed = parseTree({ html: res.html });
+        if (parsed.nodes.length === 0) {
+          failures.push("В документе не распозналась структура.");
+          continue;
+        }
+        merged = mergeImportTrees(merged, parsed.nodes);
+        succeeded++;
+        if (parsed.flat) flatDocuments++;
+      }
+
+      if (merged.length === 0) {
         setNodes(null);
         setNote(null);
-        setError(res.error ?? "Не получилось прочитать документ.");
+        setError(failures[0] ?? "Не получилось прочитать документы.");
         return;
       }
-      const parsed = parseTree({ html: res.html });
-      show(parsed.nodes, parsed.flat, "По ссылке");
+
+      const details = [
+        failures.length ? `Не прочитано документов: ${failures.length}.` : "",
+        flatDocuments ? `Без вложенности распознано: ${flatDocuments}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      show(
+        merged,
+        succeeded === 1 && flatDocuments === 1,
+        `Объединено документов: ${succeeded}`,
+        false,
+        details,
+      );
     });
   }
 
   /** Точный путь: Google отдаёт дерево childTabs и iconEmoji через Docs API. */
   function fromGoogleTabs() {
-    if (!link.trim()) return;
+    const urls = documentLinks();
+    if (urls.length === 0) return;
     if (!googleClientId) {
       setError("Импорт вкладок ещё не подключён: добавь NEXT_PUBLIC_GOOGLE_CLIENT_ID в .env.");
       return;
@@ -191,14 +252,35 @@ export function TreeImporter({
           return;
         }
 
-        setNote("Читаю вкладки…");
-        const result = await readGoogleDocumentTabs(link.trim(), response.access_token);
-        if (result.error || !result.nodes) {
+        let merged: ImportNode[] = [];
+        let succeeded = 0;
+        let truncated = false;
+        const failures: string[] = [];
+
+        for (let i = 0; i < urls.length; i++) {
+          setNote(`Читаю документ ${i + 1} из ${urls.length}…`);
+          const result = await readGoogleDocumentTabs(urls[i], response.access_token);
+          if (result.error || !result.nodes) {
+            failures.push(result.error ?? "Не получилось прочитать вкладки.");
+            continue;
+          }
+          merged = mergeImportTrees(merged, result.nodes);
+          succeeded++;
+          truncated ||= !!result.truncated;
+        }
+
+        if (merged.length === 0) {
           setNodes(null);
           setNote(null);
-          setError(result.error ?? "Не получилось прочитать вкладки.");
+          setError(failures[0] ?? "Не получилось прочитать документы.");
         } else {
-          show(result.nodes, false, "Из вкладок Google", result.truncated);
+          show(
+            merged,
+            false,
+            `Объединено документов Google: ${succeeded}`,
+            truncated,
+            failures.length ? `Не прочитано документов: ${failures.length}.` : "",
+          );
         }
         setGoogleBusy(false);
       },
@@ -373,42 +455,81 @@ export function TreeImporter({
         </div>
 
         <div className="mt-4">
-          <p className="text-[12px] font-semibold text-muted">
-            Ссылка на документ Google Docs
-          </p>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            <input
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  fromGoogleTabs();
-                }
-              }}
-              placeholder="https://docs.google.com/document/d/…"
-              className="h-10 min-w-[220px] flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
-            />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[12px] font-semibold text-muted">
+              Документы Google Docs
+            </p>
+            <button
+              type="button"
+              onClick={() => setLinks((current) => [...current, ""])}
+              disabled={anyBusy}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[11px] font-semibold text-muted transition hover:border-accent hover:text-accent disabled:opacity-40"
+            >
+              <IconPlus className="h-3.5 w-3.5" /> Добавить ссылку
+            </button>
+          </div>
+
+          <div className="mt-2 flex flex-col gap-2">
+            {links.map((value, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <span className="w-5 shrink-0 text-right text-[11px] font-semibold text-faint">
+                  {index + 1}
+                </span>
+                <input
+                  value={value}
+                  onChange={(e) =>
+                    setLinks((current) =>
+                      current.map((item, i) => (i === index ? e.target.value : item)),
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      fromGoogleTabs();
+                    }
+                  }}
+                  placeholder="https://docs.google.com/document/d/…"
+                  className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
+                />
+                {links.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLinks((current) => current.filter((_, i) => i !== index))
+                    }
+                    disabled={anyBusy}
+                    title="Убрать эту ссылку"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-faint transition hover:bg-rose-500/10 hover:text-rose-500 disabled:opacity-40"
+                  >
+                    <IconX className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap gap-2 pl-7">
             <button
               type="button"
               onClick={fromGoogleTabs}
-              disabled={!link.trim() || anyBusy || (!!googleClientId && !googleReady)}
+              disabled={documentLinks().length === 0 || anyBusy || (!!googleClientId && !googleReady)}
               className="h-10 shrink-0 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
             >
-              {googleBusy ? "Читаю вкладки…" : "Импортировать вкладки"}
+              {googleBusy ? "Объединяю документы…" : "Импортировать вкладки"}
             </button>
             <button
               type="button"
               onClick={fromLink}
-              disabled={!link.trim() || anyBusy}
+              disabled={documentLinks().length === 0 || anyBusy}
               className="h-10 shrink-0 rounded-xl border border-line px-4 text-sm font-semibold text-content transition hover:border-accent hover:text-accent disabled:opacity-40"
             >
               Только заголовки
             </button>
           </div>
           <p className="mt-1.5 text-[11px] text-faint">
-            <b>Вкладки:</b> точное дерево боковой панели, полные названия и emoji.
-            Google запросит доступ только на чтение и ничего не изменит.
+            <b>Вкладки:</b> деревья всех документов объединятся по одинаковым
+            названиям папок. Google запросит доступ только на чтение и ничего не
+            изменит.
           </p>
           <p className="mt-1 text-[11px] text-faint">
             <b>Только заголовки:</b> запасной вариант без входа в Google; документ
@@ -512,7 +633,7 @@ export function TreeImporter({
                   setNodes(null);
                   setNote(null);
                   setText("");
-                  setLink("");
+                  setLinks([""]);
                 }}
                 className="text-sm text-faint transition hover:text-content"
               >
