@@ -183,6 +183,8 @@ const semanticCases: [string, string, string][] = [
   ["to confess", "зізнаватися", "🙋"],
   ["to insist on smth", "наполягати на чомусь", "☝️"],
   ["to threaten", "погрожувати", "⚠️"],
+  ["a heart attack", "серцевий напад / інфаркт", "🚑"],
+  ["to abuse", "зловживати / жорстоко поводитися", "⚠️"],
   ["to make time for", "знаходити час для", "⏱️"],
   ["to make sure", "переконатися", "✅"],
   ["to make an effort", "докласти зусиль", "💪"],

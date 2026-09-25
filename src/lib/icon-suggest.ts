@@ -267,6 +267,8 @@ const EXACT_PHRASE_OVERRIDES = new Map<string, string>([["oi", "👋"]]);
  */
 const PHRASE_ICON_RULES: [RegExp, string][] = [
   [/\bbecause cause\b/u, "🔗"],
+  [/\bheart attack\b/u, "🚑"],
+  [/^(?:to )?abuse$/u, "⚠️"],
   [/\bmake time for\b|\bfind time for\b/u, "⏱️"],
   [/\bmake sure\b/u, "✅"],
   [/\b(?:ensure|ascertain)\b/u, "✅"],
