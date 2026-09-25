@@ -177,6 +177,12 @@ const semanticCases: [string, string, string][] = [
   ["It’s all Greek to me", "нічого не розумію", "🤷"],
   ["When in Rome, do as the Romans do", "роби як місцеві", "🌍"],
   ["Swiss Army knife", "універсальна річ", "🛠️"],
+  ["charming", "чарівний", "✨"],
+  ["to beg", "благати", "🙏"],
+  ["to boast", "хвалитися", "😎"],
+  ["to confess", "зізнаватися", "🙋"],
+  ["to insist on smth", "наполягати на чомусь", "☝️"],
+  ["to threaten", "погрожувати", "⚠️"],
 ];
 
 const generalizationCases: [string, string, string][] = [

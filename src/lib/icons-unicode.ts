@@ -1,6 +1,7 @@
 import englishEmoji from "emojibase-data/en/compact.json";
 import russianEmoji from "emojibase-data/ru/compact.json";
 import ukrainianEmoji from "emojibase-data/uk/compact.json";
+import emojiVersions from "emojibase-data/versions/emoji.json";
 import type { IconGroup } from "./icons-extra";
 
 type EmojiRecord = {
@@ -111,9 +112,15 @@ const source = en.filter(
     typeof entry.group === "number" && supportedGroups.has(entry.group),
 );
 
-// Подборщик использует тот же полный актуальный каталог Emoji 17, который
-// доступен учителю вручную. Это даёт достаточно образов для любых тем.
-const suggestionSource = source;
+// Вручную доступны все Emoji 17, но автомат использует только символы,
+// которые гарантированно отображаются текущим системным шрифтом Windows.
+// Иначе новый корректный emoji сохраняется в базе, но выглядит квадратом.
+const safeAutoHexcodes = new Set(
+  Object.entries(emojiVersions as Record<string, string[]>)
+    .filter(([version]) => Number(version) <= 11)
+    .flatMap(([, hexcodes]) => hexcodes),
+);
+const suggestionSource = source.filter((entry) => safeAutoHexcodes.has(entry.hexcode));
 
 /** Emoji, которые автоподбор может безопасно поставить на текущей Windows. */
 export const SAFE_UNICODE_ICONS = new Set(

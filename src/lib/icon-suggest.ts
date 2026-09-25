@@ -101,6 +101,12 @@ const STOP = new Set([
 
 /** Частые смысловые связи, которых нет в официальных названиях emoji. */
 const CONCEPT_ALIASES: [string, string][] = [
+  ["✨", "charming charm delightful enchanting lovely captivating charismatic чарующий очаровательный чарівний привабливий чарівність"],
+  ["🙏", "beg begging plead pleading implore beseech молить умолять просить благати благаючий прохати"],
+  ["😎", "boast boasting brag bragging show off хвастаться хвастовство хвалитися вихвалятися"],
+  ["🙋", "confess confessing admit admission own up признаться сознаваться зізнаватися визнавати провину"],
+  ["☝️", "insist insisting insistence demand stand firm настаивать наполягати наполегливо вимагати"],
+  ["⚠️", "threaten threatening threat menace intimidate warning угрожать угроза погрожувати погроза залякувати"],
   ["😔", "deprived disadvantaged underprivileged destitute lacking needy неблагополучный обездоленный лишенный знедолений неблагополучний позбавлений"],
   ["🏚️", "run down run-down dilapidated shabby decrepit neglected shanty town slum занедбаний ветхий обветшалый трущобы нетрі халупи"],
   ["🏜️", "middle of nowhere remote wilderness wasteland barren deserted пустошь глушь глухомань пустырь безлюдный глухомань пустир занедбана територія безлюдний"],
