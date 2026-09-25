@@ -18,9 +18,9 @@ import { cn } from "@/lib/utils";
 const inputCls =
   "h-10 w-full rounded-xl border border-line bg-surface-2 px-3 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
-type Example = { en: string; tr: string };
+export type Example = { en: string; tr: string };
 
-type Draft = {
+export type Draft = {
   key: string;
   section: string;
   icon: string;
@@ -31,7 +31,7 @@ type Draft = {
 };
 
 let seq = 0;
-const newDraft = (section = "", icon = "💬", examples = 2): Draft => ({
+export const newDraft = (section = "", icon = "💬", examples = 2): Draft => ({
   key: `d${seq++}`,
   section,
   icon,
@@ -41,7 +41,7 @@ const newDraft = (section = "", icon = "💬", examples = 2): Draft => ({
   examples: Array.from({ length: examples }, () => ({ en: "", tr: "" })),
 });
 
-const toInput = (d: Draft): PhraseInput => ({
+export const toInput = (d: Draft): PhraseInput => ({
   section: d.section.trim() || null,
   icon: d.icon || null,
   phrase: d.phrase.trim(),
@@ -54,7 +54,7 @@ const toInput = (d: Draft): PhraseInput => ({
 export type SectionHint = { name: string; icon: string | null };
 
 /** Поля одной записи: тип речи, слово, транскрипция, перевод и примеры. */
-function DraftFields({
+export function DraftFields({
   draft,
   sections,
   onChange,

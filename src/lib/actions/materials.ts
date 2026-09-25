@@ -463,6 +463,11 @@ export type PhraseInput = {
   examples: { en: string; tr: string }[];
 };
 
+export type VocabularyEditInput = PhraseInput & {
+  kind: "PHRASE" | "NOTE";
+  imageUrl?: string | null;
+};
+
 function cleanPhrase(p: PhraseInput): PhraseInput | null {
   const phrase = String(p?.phrase ?? "").trim().slice(0, 300);
   if (!phrase) return null;
@@ -479,6 +484,16 @@ function cleanPhrase(p: PhraseInput): PhraseInput | null {
       }))
       .filter((e) => e.en)
       .slice(0, 10),
+  };
+}
+
+function cleanVocabularyEditItem(p: VocabularyEditInput): VocabularyEditInput | null {
+  const clean = cleanPhrase(p);
+  if (!clean) return null;
+  return {
+    ...clean,
+    kind: p?.kind === "NOTE" ? "NOTE" : "PHRASE",
+    imageUrl: p?.imageUrl ? String(p.imageUrl).slice(0, 2_000) : null,
   };
 }
 
@@ -598,6 +613,63 @@ export async function updatePhraseAction(
 
   revalidateMaterials();
   return { ok: true, message: "Сохранено" };
+}
+
+/** Полностью сохранить словарь после комплексной ручной правки. */
+export async function saveVocabularyEditAction(
+  nodeId: string,
+  items: unknown,
+  sourceText: string,
+): Promise<BulkState> {
+  await requireTeacher();
+  if (!nodeId) return { error: "Не выбрана страница" };
+  if (!Array.isArray(items)) return { error: "Некорректный список записей" };
+
+  const [node] = await db
+    .select({ type: materialNodes.type, pageKind: materialNodes.pageKind })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, nodeId))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Файл словаря не найден" };
+
+  const clean = (items as VocabularyEditInput[])
+    .slice(0, 2_000)
+    .map(cleanVocabularyEditItem)
+    .filter((item): item is VocabularyEditInput => !!item);
+  if (clean.length === 0) return { error: "Пустой словарь — нечего сохранять" };
+
+  await db.transaction(async (tx) => {
+    await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, nodeId));
+    await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, nodeId));
+    await tx.insert(materialPhrases).values(
+      clean.map((item, index) => ({
+        nodeId,
+        sortOrder: index + 1,
+        icon: item.icon,
+        imageUrl: item.imageUrl,
+        phrase: item.phrase,
+        transcription: item.transcription,
+        translation: item.translation,
+        section: item.section,
+        kind: item.kind,
+        examples: item.examples,
+      })),
+    );
+    await tx
+      .update(materialNodes)
+      .set({
+        pageKind: node.pageKind === "MISTAKE" ? "MISTAKE" : "VOCAB",
+        sourceText: String(sourceText ?? "").slice(0, 200_000),
+      })
+      .where(eq(materialNodes.id, nodeId));
+  });
+
+  const notes = clean.filter((item) => item.kind === "NOTE").length;
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: `Сохранено: ${clean.length - notes} записей${notes ? `, ${notes} заметок` : ""}`,
+  };
 }
 
 /**

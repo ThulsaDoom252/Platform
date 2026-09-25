@@ -37,7 +37,7 @@ export type MaterialNode = {
   sizeLabel: string | null;
   /** VOCAB | RULE | MISTAKE — чем страницу заполняли в прошлый раз. */
   pageKind: string | null;
-  /** Исходный текст правила, как его вставили. */
+  /** Исходный текст правила или словаря, как его вставили. */
   sourceText: string | null;
   phrases: MaterialPhrase[];
   /** Блоки правила. Страница — либо словник (phrases), либо правило (blocks). */

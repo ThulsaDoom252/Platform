@@ -33,6 +33,7 @@ import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
 import { WordAdder, PhraseEditor } from "./phrase-form";
 import { RuleEditor } from "./rule-editor";
+import { VocabularyEditor } from "./vocabulary-editor";
 import { ExportDialog } from "./export-dialog";
 import { CopyDialog, type CopySource } from "./copy-dialog";
 
@@ -151,6 +152,7 @@ export function MaterialsExplorer({
   } | null>(null);
   const [addWordsTo, setAddWordsTo] = useState<{ id: string; name: string } | null>(null);
   const [ruleEditNode, setRuleEditNode] = useState<MaterialNode | null>(null);
+  const [vocabularyEditNode, setVocabularyEditNode] = useState<MaterialNode | null>(null);
   const [copyNodes, setCopyNodes] = useState<MaterialNode[] | null>(null);
   const [importTree, setImportTree] = useState<ImportTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
@@ -1419,6 +1421,16 @@ export function MaterialsExplorer({
                 {pageKind(selected) === "VOCAB" && (
                   <button
                     type="button"
+                    onClick={() => setVocabularyEditNode(selected)}
+                    className={pageBtn}
+                  >
+                    <IconPencil className="h-4 w-4" /> Редактировать
+                  </button>
+                )}
+
+                {pageKind(selected) === "VOCAB" && (
+                  <button
+                    type="button"
                     onClick={() => repairPhraseIcons(selected)}
                     disabled={moving || selected.phrases.length === 0}
                     className={pageBtn}
@@ -1688,6 +1700,11 @@ export function MaterialsExplorer({
             key={ruleEditNode ? `ruleedit-${ruleEditNode.id}` : "ruleedit-idle"}
             node={ruleEditNode}
             onClose={() => setRuleEditNode(null)}
+          />
+          <VocabularyEditor
+            key={vocabularyEditNode ? `vocabedit-${vocabularyEditNode.id}` : "vocabedit-idle"}
+            node={vocabularyEditNode}
+            onClose={() => setVocabularyEditNode(null)}
           />
 
           {copyNodes && copyNodes.length > 0 && (

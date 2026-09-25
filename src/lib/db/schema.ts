@@ -165,8 +165,8 @@ export const materialNodes = pgTable("material_nodes", {
    */
   pageKind: text("page_kind"),
   /**
-   * Исходный текст правила, как его вставили. Нужен, чтобы «Редактировать»
-   * показывало не только разобранные блоки, но и то, что вводили.
+   * Исходный текст правила или словаря, как его вставили. Нужен, чтобы
+   * «Редактировать» показывало и разобранное содержимое, и оригинал.
    */
   sourceText: text("source_text"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
