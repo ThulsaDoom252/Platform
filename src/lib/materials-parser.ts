@@ -515,14 +515,20 @@ function parseVocabulary(raw: string): ParseResult {
     }
 
     const [left, right] = parts;
+    // В примере тире может быть частью самой английской фразы:
+    // «We have pizza, pasta — you name it. — У нас є піца…».
+    // Поэтому для классификации берём всю английскую половину до первого
+    // кириллического фрагмента, а не только текст до первого тире.
+    const languagePair = splitExampleByLanguage(line);
+    const englishSide = languagePair?.[0] ?? left;
 
-    if (looksLikeExample(left, hadBullet)) {
+    if (looksLikeExample(englishSide, hadBullet)) {
       const owner = current ?? lastPhrase;
       if (!owner) {
-        warnings.push(`Строка ${i + 1}: пример без записи — «${left.slice(0, 50)}»`);
+        warnings.push(`Строка ${i + 1}: пример без записи — «${englishSide.slice(0, 50)}»`);
         continue;
       }
-      const example = splitExampleByLanguage(line) ?? parts;
+      const example = languagePair ?? parts;
       owner.examples.push({ en: example[0], tr: example[1] });
       continue;
     }
