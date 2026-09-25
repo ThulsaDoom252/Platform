@@ -38,6 +38,8 @@ export function NodeCreator({
   const isPage = target?.kind === "PAGE";
   const defaultIcon = isPage ? "📄" : "📁";
 
+  // Счётчик крутится только в обработчиках. Трогать его во время рендера
+  // нельзя, поэтому первая строка получает готовый ключ.
   const nextKey = useRef(1);
   const makeRow = (): Row => ({
     key: `r${nextKey.current++}`,
@@ -46,7 +48,9 @@ export function NodeCreator({
     auto: true,
   });
 
-  const [rows, setRows] = useState<Row[]>(() => [makeRow()]);
+  const [rows, setRows] = useState<Row[]>(() => [
+    { key: "r0", name: "", icon: defaultIcon, auto: true },
+  ]);
   const [tab, setTab] = useState<"all" | "each">("all");
   const [oneIcon, setOneIcon] = useState<string | null>(defaultIcon);
   /** Общую иконку тоже подбираем, пока её не выбрали руками. */
@@ -58,14 +62,17 @@ export function NodeCreator({
   const [saving, startSave] = useTransition();
 
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
-  const [focusKey, setFocusKey] = useState<string | null>(null);
+  /** Строка, которую надо сфокусировать, как только она окажется в DOM. */
+  const focusKey = useRef<string | null>(null);
 
   // Фокус ставим после отрисовки строки, иначе поля ещё нет в DOM.
+  // Заявка живёт в ref, а не в состоянии: лишний рендер тут ни к чему.
   useEffect(() => {
-    if (!focusKey) return;
-    inputs.current[focusKey]?.focus();
-    setFocusKey(null);
-  }, [focusKey]);
+    const key = focusKey.current;
+    if (!key) return;
+    focusKey.current = null;
+    inputs.current[key]?.focus();
+  });
 
   if (!target) return null;
 
@@ -81,7 +88,7 @@ export function NodeCreator({
       return next;
     });
     setActiveKey(row.key);
-    setFocusKey(row.key);
+    focusKey.current = row.key;
   }
 
   function removeRow(key: string) {

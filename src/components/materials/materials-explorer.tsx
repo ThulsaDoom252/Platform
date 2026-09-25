@@ -219,20 +219,24 @@ export function MaterialsExplorer({
   const [moving, startMove] = useTransition();
 
   /** Групповые операции: выбор галочками, Ctrl+клик выделяет диапазон. */
-  const [selection, setSelection] = useState<Set<string>>(new Set());
+  /** Отмеченное как есть; наружу отдаётся очищенный от призраков selection. */
+  const [rawSelection, setSelection] = useState<Set<string>>(new Set());
   /** Точка отсчёта диапазона — последний элемент, тронутый без Ctrl. */
   const [anchorId, setAnchorId] = useState<string | null>(null);
   const [bulkIcons, setBulkIcons] = useState(false);
   /** Очередь наполнения: по выбранным страницам идём одна за другой. */
   const [fillQueue, setFillQueue] = useState<{ ids: string[]; index: number } | null>(null);
 
-  // Дерево могло перестроиться (перенос, удаление) — чистим выбор от призраков.
-  useEffect(() => {
-    setSelection((prev) => {
-      const next = new Set([...prev].filter((id) => byId.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [byId]);
+  /*
+   * Дерево могло перестроиться (перенос, удаление), и в выборе остаются
+   * призраки. Раньше их вычищал эффект, но это лишний проход отрисовки и
+   * короткое окно, в котором выбор уже неверен. Теперь просто не считаем
+   * выбранным то, чего в дереве нет.
+   */
+  const selection = useMemo(
+    () => new Set([...rawSelection].filter((id) => byId.has(id))),
+    [rawSelection, byId],
+  );
 
   useEffect(() => {
     if (!menu) return;
@@ -846,10 +850,12 @@ export function MaterialsExplorer({
     menu
   );
 
-  // Обработчик пересобирается на каждый рендер, поэтому держим его в ref —
-  // так подписка ставится один раз, но всегда видит свежее состояние.
-  const hotkeys = useRef<(e: KeyboardEvent) => void>(undefined);
-  hotkeys.current = (e: KeyboardEvent) => {
+  const selected = selectedId ? byId.get(selectedId) ?? null : null;
+
+  // Обработчик пересобирается на каждый рендер, поэтому подписка ставится
+  // один раз, а свежую версию ей подкладывает ref (обновляется в эффекте:
+  // писать в ref во время рендера нельзя).
+  const handleHotkeys = (e: KeyboardEvent) => {
     const el = document.activeElement as HTMLElement | null;
     // В полях ввода Delete и Backspace означают ровно то, что означают.
     if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
@@ -889,13 +895,17 @@ export function MaterialsExplorer({
     }
   };
 
+  const hotkeys = useRef(handleHotkeys);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => hotkeys.current?.(e);
+    hotkeys.current = handleHotkeys;
+  });
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => hotkeys.current(e);
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, []);
 
-  const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const breadcrumb = selectedId ? pathById.get(selectedId) ?? [] : [];
   // Страница материала (FILE без типа файла) открывается как читалка фраз,
   // а обычный файл (PDF/DOC/MP3) остаётся элементом списка папки.

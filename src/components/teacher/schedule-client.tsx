@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
+import { useNow } from "@/lib/use-now";
 import { fmt } from "@/lib/i18n";
 import {
   cancelLessonByTeacherAction,
@@ -191,18 +192,29 @@ export function ScheduleClient({
     FormData
   >(assignLessonAction, {});
 
-  // После любого серверного действия данные обновляются — закрываем окно редактирования.
-  useEffect(() => {
-    setEditing(null);
-  }, [lessons]);
+  /*
+   * Ниже — приём React «поправить состояние при смене входных данных»:
+   * сравниваем с прошлым значением прямо в рендере. В эффекте то же самое
+   * стоило бы лишнего прохода отрисовки на каждое обновление расписания.
+   */
 
-  // Успешное назначение: закрываем окно и показываем сообщение, которое не исчезнет при ревалидации.
-  useEffect(() => {
+  // После любого серверного действия данные обновляются — закрываем окно.
+  const [seenLessons, setSeenLessons] = useState(lessons);
+  if (seenLessons !== lessons) {
+    setSeenLessons(lessons);
+    setEditing(null);
+  }
+
+  // Успешное назначение: закрываем окно и показываем сообщение,
+  // которое переживёт ревалидацию.
+  const [seenAssign, setSeenAssign] = useState(assignState);
+  if (seenAssign !== assignState) {
+    setSeenAssign(assignState);
     if (assignState.ok && assignState.message) {
       setToast(assignState.message);
       setAssignSlot(null);
     }
-  }, [assignState]);
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -498,7 +510,10 @@ function EditLessonBody({
   const { t } = useT();
   const end = new Date(lesson.startTime.getTime() + lesson.duration * 60000);
   const isScheduled = lesson.status === "SCHEDULED";
-  const isPast = lesson.startTime.getTime() < Date.now();
+  // Время берём из общего источника: до гидратации оно равно нулю, и урок
+  // считается предстоящим — это безопаснее, чем показать «уже прошёл».
+  const now = useNow();
+  const isPast = now > 0 && lesson.startTime.getTime() < now;
 
   return (
     <div className="p-5 sm:p-6">

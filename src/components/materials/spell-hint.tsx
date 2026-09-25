@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { checkSpellingAction, type Misspelling } from "@/lib/actions/materials";
+import { useLocalFlag } from "@/lib/use-local-flag";
 import { cn } from "@/lib/utils";
 
 const OFF_KEY = "lingora.spellcheck.off";
@@ -19,32 +20,30 @@ export function SpellHint({
   /** Заменить слово в названии: позиция и новое написание. */
   onFix: (start: number, end: number, word: string) => void;
 }) {
-  const [errors, setErrors] = useState<Misspelling[]>([]);
+  /**
+   * Ответ сервера вместе с текстом, для которого он получен. Так ошибки
+   * от предыдущего названия не показываются поверх нового: они просто
+   * перестают подходить, и сбрасывать их отдельно не нужно.
+   */
+  const [found, setFound] = useState<{ text: string; errors: Misspelling[] }>({
+    text: "",
+    errors: [],
+  });
   const [open, setOpen] = useState<number | null>(null);
-  const [off, setOff] = useState(false);
-
   // Настройка живёт в браузере: это привычка учителя, а не свойство данных.
-  useEffect(() => {
-    try {
-      setOff(localStorage.getItem(OFF_KEY) === "1");
-    } catch {
-      /* приватный режим — просто проверяем */
-    }
-  }, []);
+  const [off, setOff] = useLocalFlag(OFF_KEY);
 
   useEffect(() => {
-    if (off || !text.trim()) {
-      setErrors([]);
-      return;
-    }
+    if (off || !text.trim()) return;
+
     let alive = true;
     const t = setTimeout(async () => {
       try {
-        const found = await checkSpellingAction(text);
-        if (alive) setErrors(found);
+        const errors = await checkSpellingAction(text);
+        if (alive) setFound({ text, errors });
       } catch {
         // Проверка — помощник, а не преграда: молча пропускаем.
-        if (alive) setErrors([]);
+        if (alive) setFound({ text, errors: [] });
       }
     }, 600);
 
@@ -56,14 +55,10 @@ export function SpellHint({
 
   function disable() {
     setOff(true);
-    setErrors([]);
-    try {
-      localStorage.setItem(OFF_KEY, "1");
-    } catch {
-      /* не сохранилось — и ладно */
-    }
   }
 
+  // Показываем только то, что относится к нынешнему названию.
+  const errors = found.text === text ? found.errors : [];
   if (off || errors.length === 0) return null;
 
   // Разрезаем название на куски: обычный текст и слова с ошибкой.

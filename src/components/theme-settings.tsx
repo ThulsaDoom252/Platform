@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useT } from "@/components/i18n-provider";
 import { IconMoon, IconSun, IconCheck } from "@/components/icons";
 
@@ -14,10 +14,37 @@ const accents: { id: Accent; chips: string[] }[] = [
   { id: "violet", chips: ["#8b5cf6", "#d946ef", "#6366f1", "#06b6d4"] },
 ];
 
+/**
+ * Тему держит не состояние компонента, а сам документ: inline-скрипт в
+ * layout проставляет атрибуты ещё до гидратации, чтобы не мигала светлая
+ * тема. Поэтому читаем прямо оттуда через useSyncExternalStore — так на
+ * сервере отдаются значения по умолчанию, а в браузере настоящие, и
+ * лишнего рендера после монтирования не происходит.
+ */
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function notify() {
+  for (const listener of listeners) listener();
+}
+
+function readMode(): Mode {
+  return document.documentElement.getAttribute("data-mode") === "dark" ? "dark" : "light";
+}
+
+function readAccent(): Accent {
+  const value = document.documentElement.getAttribute("data-accent");
+  return accents.some((a) => a.id === value) ? (value as Accent) : "indigo";
+}
+
 export function ThemeSettings() {
   const { t } = useT();
-  const [mode, setMode] = useState<Mode>("light");
-  const [accent, setAccent] = useState<Accent>("indigo");
+  const mode = useSyncExternalStore(subscribe, readMode, () => "light" as Mode);
+  const accent = useSyncExternalStore(subscribe, readAccent, () => "indigo" as Accent);
 
   const accentLabel: Record<Accent, string> = {
     indigo: t.settings.themeIndigo,
@@ -26,16 +53,7 @@ export function ThemeSettings() {
     violet: t.settings.themeViolet,
   };
 
-  // Синхронизируемся с тем, что уже применил inline-скрипт.
-  useEffect(() => {
-    const r = document.documentElement;
-    setMode(r.getAttribute("data-mode") === "dark" ? "dark" : "light");
-    const a = r.getAttribute("data-accent") as Accent | null;
-    if (a) setAccent(a);
-  }, []);
-
   function applyMode(next: Mode) {
-    setMode(next);
     const r = document.documentElement;
     try {
       if (next === "dark") {
@@ -45,16 +63,21 @@ export function ThemeSettings() {
         r.removeAttribute("data-mode");
         localStorage.setItem("lingora-mode", "light");
       }
-    } catch {}
+    } catch {
+      /* хранилище недоступно — тема всё равно применится до перезагрузки */
+    }
+    notify();
   }
 
   function applyAccent(next: Accent) {
-    setAccent(next);
     const r = document.documentElement;
     try {
       r.setAttribute("data-accent", next);
       localStorage.setItem("lingora-accent", next);
-    } catch {}
+    } catch {
+      /* то же самое: атрибут проставлен, не сохранилась только настройка */
+    }
+    notify();
   }
 
   const dark = mode === "dark";

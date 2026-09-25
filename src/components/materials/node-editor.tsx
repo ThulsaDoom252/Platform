@@ -42,16 +42,12 @@ export function NodeEditor({
     {},
   );
 
-  const [icon, setIcon] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-
-  useEffect(() => {
-    if (!target) return;
-    setIcon(target.icon);
-    setName(target.name);
-    setDescription(target.description ?? "");
-  }, [target]);
+  // Окно пересоздаётся по key на каждую новую цель (см. materials-explorer),
+  // поэтому поля заполняются прямо при монтировании — досинхронизировать
+  // их эффектом не нужно.
+  const [icon, setIcon] = useState<string | null>(target?.icon ?? null);
+  const [name, setName] = useState(target?.name ?? "");
+  const [description, setDescription] = useState(target?.description ?? "");
 
   // Закрываем окно, когда действие отработало успешно.
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import {
   movePhraseAction,
   repairPhraseIconAction,
@@ -35,27 +35,36 @@ export type MaterialPhrase = {
 };
 
 /** Произношение через Web Speech API — без серверов и без платных API. */
+/** Синтез речи в браузере, если он вообще есть. */
+function synthesizer() {
+  return typeof window === "undefined" ? undefined : window.speechSynthesis;
+}
+
+/**
+ * Голоса подгружаются не сразу, поэтому браузер сообщает о них событием.
+ * Это внешнее состояние, а не состояние компонента: читаем его напрямую,
+ * иначе после монтирования получаем лишний каскад рендеров.
+ */
+function subscribeVoices(listener: () => void) {
+  const synth = synthesizer();
+  synth?.addEventListener?.("voiceschanged", listener);
+  return () => synth?.removeEventListener?.("voiceschanged", listener);
+}
+
+const readSupported = () => !!synthesizer();
+
+const readUkVoice = () =>
+  (synthesizer()?.getVoices() ?? []).some(
+    (voice) => voice.lang.replace("_", "-") === "en-GB",
+  );
+
 function useSpeech() {
-  const [ukAvailable, setUkAvailable] = useState(false);
-  const [supported, setSupported] = useState(false);
+  const supported = useSyncExternalStore(subscribeVoices, readSupported, () => false);
+  const ukAvailable = useSyncExternalStore(subscribeVoices, readUkVoice, () => false);
   const [speaking, setSpeaking] = useState<string | null>(null);
 
-  useEffect(() => {
-    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
-    if (!synth) return;
-    setSupported(true);
-
-    const load = () => {
-      const voices = synth.getVoices();
-      setUkAvailable(voices.some((v) => v.lang.replace("_", "-") === "en-GB"));
-    };
-    load();
-    synth.addEventListener?.("voiceschanged", load);
-    return () => {
-      synth.removeEventListener?.("voiceschanged", load);
-      synth.cancel();
-    };
-  }, []);
+  // Уходим со страницы — обрываем чтение, иначе голос продолжит говорить.
+  useEffect(() => () => synthesizer()?.cancel(), []);
 
   function speak(key: string, text: string, lang: "en-US" | "en-GB") {
     const synth = window.speechSynthesis;
