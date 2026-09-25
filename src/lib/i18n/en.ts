@@ -154,7 +154,7 @@ export const en = {
     packageTitle: "Shared lesson package",
     packageRemaining: "{n} of {total} lessons left",
     packageExpires: "Valid until {date}",
-    packageShared: "One pool for: {members}. A lesson is deducted from both.",
+    packageShared: "One pool for: {members}. All members use the same balance.",
   },
 
   schedule: {

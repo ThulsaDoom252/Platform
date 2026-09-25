@@ -52,16 +52,15 @@ export default async function StudentDetailPage({
     getStudentPackage(id),
   ]);
 
-  // Остаток у общего пакета один на всех — предупредим, с кем он делится.
-  const sharedWith = student.packageId
-    ? (
-        await db
-          .select({ name: users.name })
-          .from(users)
-          .where(eq(users.packageId, student.packageId))
-      )
-        .map((u) => u.name)
-        .filter((n) => n !== student.name)
+  const poolStudents = await db
+    .select({ id: users.id, name: users.name, packageId: users.packageId })
+    .from(users)
+    .where(eq(users.role, "STUDENT"))
+    .orderBy(asc(users.name));
+  const sharedStudentIds = student.packageId
+    ? poolStudents
+        .filter((item) => item.id !== student.id && item.packageId === student.packageId)
+        .map((item) => item.id)
     : [];
 
   return (
@@ -81,7 +80,9 @@ export default async function StudentDetailPage({
       <BalancePanel
         studentId={student.id}
         studentName={student.name}
-        sharedWith={sharedWith}
+        poolStudents={poolStudents
+          .filter((item) => item.id !== student.id)
+          .map(({ id: poolId, name }) => ({ id: poolId, name }))}
         stats={{ onPlatform: stats.onPlatform, firstLessonAt: stats.firstLessonAt }}
         initial={{
           remaining: student.lessonBalance,
@@ -95,6 +96,7 @@ export default async function StudentDetailPage({
           showTotalLessons: student.showTotalLessons,
           showExpiry: student.showExpiry,
           allowExport: student.allowExport,
+          sharedStudentIds,
         }}
       />
 

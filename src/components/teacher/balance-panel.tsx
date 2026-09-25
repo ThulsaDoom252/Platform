@@ -43,17 +43,19 @@ export type BalanceStats = {
   firstLessonAt: Date | string | null;
 };
 
+export type PoolStudent = { id: string; name: string };
+
 export function BalancePanel({
   studentId,
   studentName,
-  sharedWith,
+  poolStudents,
   stats,
   initial,
 }: {
   studentId: string;
   studentName: string;
-  /** Имена тех, с кем делится пакет — остаток у них общий. */
-  sharedWith: string[];
+  /** Ученики, которых можно добавить в общий пул с текущим. */
+  poolStudents: PoolStudent[];
   stats: BalanceStats;
   initial: BalanceSettings;
 }) {
@@ -91,6 +93,16 @@ export function BalancePanel({
 
   const total = stats.onPlatform + (Number(form.lessonsBefore) || 0);
   const approx = form.statsApproximate ? "≈ " : "";
+  const sharedStudents = poolStudents.filter((student) =>
+    form.sharedStudentIds.includes(student.id),
+  );
+
+  const togglePoolStudent = (studentId: string, checked: boolean) => {
+    const next = checked
+      ? [...new Set([...form.sharedStudentIds, studentId])]
+      : form.sharedStudentIds.filter((id) => id !== studentId);
+    set("sharedStudentIds", next);
+  };
 
   const flag = (
     key:
@@ -116,13 +128,6 @@ export function BalancePanel({
     <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5">
       <h2 className="text-sm font-bold text-content">Баланс и статистика</h2>
 
-      {sharedWith.length > 0 && (
-        <p className="mt-1 text-[12px] text-muted">
-          Пакет общий с {sharedWith.join(", ")} — остаток списывается из одного пула,
-          поэтому меняется сразу у всех.
-        </p>
-      )}
-
       {/* Короткая сводка — то, на что смотришь чаще всего. */}
       <div className="mt-3 flex flex-wrap gap-2">
         <span className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted">
@@ -138,6 +143,55 @@ export function BalancePanel({
             {total}
           </span>
         </span>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-line p-3.5">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-[12px] font-semibold text-content">
+              Общий пул уроков <span className="font-normal text-faint">· необязательно</span>
+            </p>
+            <p className="mt-1 text-[11px] text-faint">
+              Выбери учеников, которые будут тратить один остаток вместе с {studentName}.
+            </p>
+          </div>
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-[11px] font-semibold",
+              sharedStudents.length > 0 ? "tint-green" : "bg-surface-2 text-muted",
+            )}
+          >
+            {sharedStudents.length > 0
+              ? `Участников: ${sharedStudents.length + 1}`
+              : "Личный пакет"}
+          </span>
+        </div>
+
+        {poolStudents.length > 0 ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {poolStudents.map((student) => (
+              <label
+                key={student.id}
+                className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-3 py-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={form.sharedStudentIds.includes(student.id)}
+                  onChange={(event) => togglePoolStudent(student.id, event.target.checked)}
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
+                <span className="text-[12px] font-medium text-content">{student.name}</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-[11px] text-faint">Других учеников пока нет.</p>
+        )}
+
+        <p className="mt-2.5 text-[11px] text-faint">
+          Если никого не выбирать, пакет остаётся личным. Ученик может состоять только
+          в одном общем пуле.
+        </p>
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">

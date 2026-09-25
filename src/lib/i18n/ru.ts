@@ -156,7 +156,7 @@ export const ru: Dict = {
     packageTitle: "Общий пакет уроков",
     packageRemaining: "Осталось {n} из {total} уроков",
     packageExpires: "Действует до {date}",
-    packageShared: "Общий пул на: {members}. Урок списывается у обоих.",
+    packageShared: "Общий пул на: {members}. Все участники используют единый остаток.",
   },
 
   schedule: {

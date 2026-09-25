@@ -81,6 +81,166 @@ export async function setStudentLessons(studentId: string, remaining: number) {
 }
 
 /**
+ * Настраивает, с кем ученик делит пакет.
+ *
+ * Ноль выбранных одноклассников означает личный пакет. При выходе из общего
+ * пула его текущие параметры копируются в личный пакет, поэтому баланс, размер
+ * и срок действия не теряются. Один ученик может состоять только в одном пуле.
+ */
+export async function configureSharedLessonPool(
+  studentId: string,
+  sharedStudentIds: string[],
+): Promise<{ packageId: string | null; error?: string }> {
+  const requested = [...new Set(sharedStudentIds)]
+    .map(String)
+    .filter((id) => id && id !== studentId);
+
+  return db.transaction(async (tx) => {
+    const students = await tx
+      .select({
+        id: users.id,
+        name: users.name,
+        packageId: users.packageId,
+        balance: users.lessonBalance,
+      })
+      .from(users)
+      .where(eq(users.role, "STUDENT"));
+
+    const student = students.find((item) => item.id === studentId);
+    if (!student) return { packageId: null, error: "Ученик не найден" };
+
+    const byId = new Map(students.map((item) => [item.id, item]));
+    if (requested.some((id) => !byId.has(id))) {
+      return { packageId: student.packageId, error: "Некорректный состав общего пула" };
+    }
+
+    const packages = await tx.select().from(lessonPackages);
+    const packageById = new Map(packages.map((item) => [item.id, item]));
+    const touchedPackages = new Set<string>();
+
+    const normalizePackage = async (packageId: string) => {
+      const members = await tx
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(eq(users.packageId, packageId));
+
+      if (members.length === 0) {
+        await tx.delete(lessonPackages).where(eq(lessonPackages.id, packageId));
+        return;
+      }
+
+      const name =
+        members.length > 1
+          ? members
+              .map((member) => member.name)
+              .sort((a, b) => a.localeCompare(b))
+              .join(" + ")
+          : null;
+      await tx
+        .update(lessonPackages)
+        .set({ name })
+        .where(eq(lessonPackages.id, packageId));
+    };
+
+    const detachToPersonalPackage = async (
+      member: (typeof students)[number],
+      source: (typeof packages)[number],
+    ) => {
+      const [personal] = await tx
+        .insert(lessonPackages)
+        .values({
+          name: null,
+          totalLessons: source.totalLessons,
+          remainingLessons: source.remainingLessons,
+          expiresAt: source.expiresAt,
+        })
+        .returning({ id: lessonPackages.id });
+
+      await tx
+        .update(users)
+        .set({
+          packageId: personal.id,
+          lessonBalance: source.remainingLessons,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, member.id));
+      return personal.id;
+    };
+
+    let targetPackage = student.packageId
+      ? packageById.get(student.packageId) ?? null
+      : null;
+
+    // Личный режим: если ученик был в группе, отделяем только его.
+    if (requested.length === 0) {
+      if (!targetPackage) return { packageId: null };
+
+      const currentMembers = students.filter(
+        (member) => member.packageId === targetPackage!.id,
+      );
+      if (currentMembers.length <= 1) {
+        await tx
+          .update(lessonPackages)
+          .set({ name: null })
+          .where(eq(lessonPackages.id, targetPackage.id));
+        return { packageId: targetPackage.id };
+      }
+
+      const personalId = await detachToPersonalPackage(student, targetPackage);
+      await normalizePackage(targetPackage.id);
+      return { packageId: personalId };
+    }
+
+    // Для ученика без пакета создаём основу будущего общего пула.
+    if (!targetPackage) {
+      const [created] = await tx
+        .insert(lessonPackages)
+        .values({
+          totalLessons: student.balance,
+          remainingLessons: student.balance,
+        })
+        .returning();
+      targetPackage = created;
+      await tx
+        .update(users)
+        .set({ packageId: created.id, updatedAt: new Date() })
+        .where(eq(users.id, student.id));
+    }
+
+    const desired = new Set([studentId, ...requested]);
+
+    // Убранные из этого пула ученики получают самостоятельные копии пакета.
+    for (const member of students) {
+      if (member.packageId !== targetPackage.id || desired.has(member.id)) continue;
+      await detachToPersonalPackage(member, targetPackage);
+    }
+
+    // Выбранные ученики переходят в текущий пул. Их прежний пакет затем
+    // нормализуется: остаётся общим, становится личным или удаляется как пустой.
+    for (const memberId of requested) {
+      const member = byId.get(memberId)!;
+      if (member.packageId && member.packageId !== targetPackage.id) {
+        touchedPackages.add(member.packageId);
+      }
+      await tx
+        .update(users)
+        .set({
+          packageId: targetPackage.id,
+          lessonBalance: targetPackage.remainingLessons,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, memberId));
+    }
+
+    for (const packageId of touchedPackages) {
+      await normalizePackage(packageId);
+    }
+    await normalizePackage(targetPackage.id);
+    return { packageId: targetPackage.id };
+  });
+}
+
+/**
  * Сколько уроков проведено и когда был первый.
  * К посчитанным прибавляются уроки «до платформы», а дата начала
  * берётся из профиля, если учитель задал её вручную.

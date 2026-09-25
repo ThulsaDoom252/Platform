@@ -12,7 +12,11 @@ import {
   lessonPackages,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
-import { adjustStudentLessons, setStudentLessons } from "@/lib/packages";
+import {
+  adjustStudentLessons,
+  configureSharedLessonPool,
+  setStudentLessons,
+} from "@/lib/packages";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -123,6 +127,8 @@ export type BalanceSettings = {
   showExpiry: boolean;
   /** Может ли ученик выгружать материалы в текст и docx. */
   allowExport: boolean;
+  /** Остальные ученики, которые делят с этим учеником один пул. */
+  sharedStudentIds: string[];
 };
 
 /** Баланс, пакет, история занятий и видимость — одним сохранением. */
@@ -152,6 +158,13 @@ export async function saveBalanceSettingsAction(
     return d.getFullYear() >= 1900 && d.getFullYear() <= 2100 ? d : null;
   };
 
+  const sharedStudentIds = Array.isArray(s.sharedStudentIds)
+    ? s.sharedStudentIds.map(String)
+    : [];
+  const pool = await configureSharedLessonPool(studentId, sharedStudentIds);
+  if (pool.error) return { error: pool.error };
+
+  // Сначала формируем окончательный состав, затем меняем остаток только у него.
   await setStudentLessons(studentId, remaining);
 
   const [student] = await db
@@ -185,6 +198,7 @@ export async function saveBalanceSettingsAction(
     .where(eq(users.id, studentId));
 
   revalidatePath(`/teacher/students/${studentId}`);
+  revalidatePath("/teacher/students");
   revalidatePath("/teacher");
   revalidatePath("/student");
   return { ok: true };

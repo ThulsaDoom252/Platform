@@ -43,7 +43,7 @@ export default async function TeacherStudentsPage() {
     membersOf.set(s.packageId, [...(membersOf.get(s.packageId) ?? []), s.name]);
   }
   const sharedPackages = packages.filter(
-    (p) => (membersOf.get(p.id) ?? []).length > 0,
+    (p) => (membersOf.get(p.id) ?? []).length > 1,
   );
 
   return (

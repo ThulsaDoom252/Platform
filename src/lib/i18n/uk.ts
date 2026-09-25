@@ -156,7 +156,7 @@ export const uk: Dict = {
     packageTitle: "Спільний пакет уроків",
     packageRemaining: "Залишилось {n} з {total} уроків",
     packageExpires: "Діє до {date}",
-    packageShared: "Спільний пул на: {members}. Урок списується в обох.",
+    packageShared: "Спільний пул для: {members}. Усі учасники мають спільний залишок.",
   },
 
   schedule: {
