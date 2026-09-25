@@ -168,12 +168,12 @@ export async function createNodesAction(
 export type ImportSummary = {
   created: number;
   reused: number;
-  /** Новые файлы, содержимое которых сразу разобрано и сохранено. */
+  /** Файлы, содержимое которых сразу разобрано и сохранено. */
   parsed?: number;
-  /** Новые файлы с текстом, который не удалось безопасно разобрать. */
+  /** Файлы с текстом, который не удалось безопасно разобрать. */
   parseFailed?: number;
-  /** Существующие файлы не перезаписываются даже при импорте текста. */
-  contentSkippedExisting?: number;
+  /** Одноимённые файлы, которые были объединены без удаления старого содержимого. */
+  mergedFiles?: number;
   /** Разобрано, но парсер оставил предупреждения для ручной проверки. */
   parsedWithWarnings?: number;
   error?: string;
@@ -194,9 +194,9 @@ function matchKey(name: string, icon?: string | null) {
 /**
  * Завести дерево целиком, дополняя то, что уже есть.
  *
- * Совпадение ищем по названию среди соседей: нашлось — идём внутрь
- * этой папки и ничего в ней не трогаем, не нашлось — создаём. Поэтому
- * второй и третий скриншот той же структуры её дополняют, а не двоят.
+ * Совпадение ищем по названию среди соседей: папки дополняем детьми,
+ * файлы объединяем добавлением новых фраз/блоков без удаления старых.
+ * Поэтому повторная часть структуры не создаёт дублей рядом.
  */
 export async function importTreeAction(
   nodes: ImportNode[],
@@ -217,14 +217,52 @@ export async function importTreeAction(
   let truncated = false;
   let parsed = 0;
   let parseFailed = 0;
-  let contentSkippedExisting = 0;
+  let mergedFiles = 0;
   let parsedWithWarnings = 0;
 
-  /** Наполнить только что созданный файл, не касаясь ни одного старого узла. */
-  async function fillNewFile(id: string, item: ImportNode, path: string[]) {
+  type ExistingFile = {
+    pageKind: string | null;
+    sourceText: string | null;
+    formattingIssue: boolean;
+  };
+
+  const cleanKey = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase();
+  const phraseMergeKey = (phrase: {
+    phrase: string;
+    transcription?: string | null;
+    translation?: string | null;
+    section?: string | null;
+    kind?: string | null;
+    examples?: unknown;
+  }) =>
+    JSON.stringify([
+      cleanKey(phrase.phrase),
+      cleanKey(phrase.transcription),
+      cleanKey(phrase.translation),
+      cleanKey(phrase.section),
+      cleanKey(phrase.kind),
+      phrase.examples ?? [],
+    ]);
+
+  /**
+   * Наполняет новый файл или добавляет в существующий только новые элементы.
+   * Старые фразы, блоки и исходник никогда не удаляются и не заменяются.
+   */
+  async function fillFile(
+    id: string,
+    item: ImportNode,
+    path: string[],
+    existingFile?: ExistingFile,
+  ) {
     if (!opts.parseContents || typeof item.content !== "string" || !item.content.trim()) return;
 
-    const result = parseImportedFileContent(item.content, path, scope);
+    const preferredKind =
+      existingFile?.pageKind === "RULE" ||
+      existingFile?.pageKind === "VOCAB" ||
+      existingFile?.pageKind === "MISTAKE"
+        ? existingFile.pageKind
+        : null;
+    const result = parseImportedFileContent(item.content, path, scope, preferredKind);
     if ("error" in result) {
       parseFailed++;
       return;
@@ -234,38 +272,88 @@ export async function importTreeAction(
       if (result.kind === "RULE") {
         const blocks = sanitizeBlocks(result.blocks);
         if (blocks.length === 0) throw new Error("Правило разобралось без содержимого");
-        await tx.insert(materialBlocks).values(
-          blocks.map((block, index) => ({
-            nodeId: id,
-            sortOrder: index + 1,
-            type: block.type,
-            data: block,
-          })),
-        );
+        const oldBlocks = existingFile
+          ? await tx
+              .select({ sortOrder: materialBlocks.sortOrder, data: materialBlocks.data })
+              .from(materialBlocks)
+              .where(eq(materialBlocks.nodeId, id))
+          : [];
+        const known = new Set(oldBlocks.map((block) => JSON.stringify(block.data)));
+        const fresh = blocks.filter((block) => {
+          const key = JSON.stringify(block);
+          if (known.has(key)) return false;
+          known.add(key);
+          return true;
+        });
+        const start = oldBlocks.reduce((value, block) => Math.max(value, block.sortOrder), 0);
+        if (fresh.length > 0) {
+          await tx.insert(materialBlocks).values(
+            fresh.map((block, index) => ({
+              nodeId: id,
+              sortOrder: start + index + 1,
+              type: block.type,
+              data: block,
+            })),
+          );
+        }
       } else {
         const phrases = result.phrases.slice(0, 2_000);
         if (phrases.length === 0) throw new Error("Словарь разобрался без записей");
-        await tx.insert(materialPhrases).values(
-          phrases.map((phrase, index) => ({
-            nodeId: id,
-            sortOrder: index + 1,
-            icon: phrase.icon,
-            phrase: phrase.phrase,
-            transcription: phrase.transcription,
-            translation: phrase.translation,
-            section: phrase.section,
-            kind: phrase.kind,
-            examples: phrase.examples,
-          })),
-        );
+        const oldPhrases = existingFile
+          ? await tx
+              .select({
+                sortOrder: materialPhrases.sortOrder,
+                phrase: materialPhrases.phrase,
+                transcription: materialPhrases.transcription,
+                translation: materialPhrases.translation,
+                section: materialPhrases.section,
+                kind: materialPhrases.kind,
+                examples: materialPhrases.examples,
+              })
+              .from(materialPhrases)
+              .where(eq(materialPhrases.nodeId, id))
+          : [];
+        const known = new Set(oldPhrases.map(phraseMergeKey));
+        const fresh = phrases.filter((phrase) => {
+          const key = phraseMergeKey(phrase);
+          if (known.has(key)) return false;
+          known.add(key);
+          return true;
+        });
+        const start = oldPhrases.reduce((value, phrase) => Math.max(value, phrase.sortOrder), 0);
+        if (fresh.length > 0) {
+          await tx.insert(materialPhrases).values(
+            fresh.map((phrase, index) => ({
+              nodeId: id,
+              sortOrder: start + index + 1,
+              icon: phrase.icon,
+              phrase: phrase.phrase,
+              transcription: phrase.transcription,
+              translation: phrase.translation,
+              section: phrase.section,
+              kind: phrase.kind,
+              examples: phrase.examples,
+            })),
+          );
+        }
       }
+
+      const oldSource = existingFile?.sourceText?.trim() ?? "";
+      const incomingSource = result.sourceText.trim();
+      const sourceText =
+        !oldSource || oldSource === incomingSource || oldSource.includes(incomingSource)
+          ? oldSource || incomingSource
+          : incomingSource.includes(oldSource)
+            ? incomingSource
+            : `${oldSource}\n\n${incomingSource}`;
 
       await tx
         .update(materialNodes)
         .set({
-          pageKind: result.kind,
-          sourceText: result.sourceText,
-          formattingIssue: result.warnings.length > 0,
+          pageKind: existingFile?.pageKind || result.kind,
+          sourceText,
+          formattingIssue:
+            !!existingFile?.formattingIssue || result.warnings.length > 0,
         })
         .where(eq(materialNodes.id, id));
     });
@@ -293,6 +381,10 @@ export async function importTreeAction(
         name: materialNodes.name,
         icon: materialNodes.icon,
         type: materialNodes.type,
+        pageKind: materialNodes.pageKind,
+        sourceText: materialNodes.sourceText,
+        formattingIssue: materialNodes.formattingIssue,
+        mergeCount: materialNodes.mergeCount,
       })
       .from(materialNodes)
       .where(
@@ -336,13 +428,24 @@ export async function importTreeAction(
       if (hit) {
         reused++;
         id = hit.id;
-        if (
-          opts.parseContents &&
-          type === "FILE" &&
-          typeof item.content === "string" &&
-          item.content.trim()
-        ) {
-          contentSkippedExisting++;
+        const fileCollision = type === "FILE" && hit.type === "FILE";
+        if (fileCollision) {
+          const incomingCount = Math.min(
+            99,
+            Math.max(1, Math.trunc(Number(item.mergeCount) || 1)),
+          );
+          hit.mergeCount = Math.min(99, Math.max(1, hit.mergeCount) + incomingCount);
+          await db
+            .update(materialNodes)
+            .set({ mergeCount: hit.mergeCount })
+            .where(eq(materialNodes.id, hit.id));
+          mergedFiles++;
+          try {
+            await fillFile(id, item, [...path, name], hit);
+          } catch (error) {
+            console.error(`Не удалось объединить импортированный файл «${name}»:`, error);
+            parseFailed++;
+          }
         }
         // Прошлый раз это был лист, а теперь к нему приехали дети —
         // значит на деле это папка. Иначе они повисли бы внутри файла.
@@ -368,16 +471,34 @@ export async function importTreeAction(
             ownerId,
             type,
             sortOrder: order,
+            mergeCount:
+              type === "FILE"
+                ? Math.min(99, Math.max(1, Math.trunc(Number(item.mergeCount) || 1)))
+                : 1,
           })
           .returning({ id: materialNodes.id });
 
         created++;
         id = row.id;
-        byName.set(matchKey(name), { id, name, icon: item.icon ?? null, type });
+        const importedMergeCount =
+          type === "FILE"
+            ? Math.min(99, Math.max(1, Math.trunc(Number(item.mergeCount) || 1)))
+            : 1;
+        byName.set(matchKey(name), {
+          id,
+          name,
+          icon: item.icon ?? null,
+          type,
+          pageKind: null,
+          sourceText: null,
+          formattingIssue: false,
+          mergeCount: importedMergeCount,
+        });
+        if (importedMergeCount > 1) mergedFiles++;
 
         if (type === "FILE") {
           try {
-            await fillNewFile(id, item, [...path, name]);
+            await fillFile(id, item, [...path, name]);
           } catch (error) {
             console.error(`Не удалось наполнить импортированный файл «${name}»:`, error);
             parseFailed++;
@@ -407,7 +528,7 @@ export async function importTreeAction(
     reused,
     parsed,
     parseFailed,
-    contentSkippedExisting,
+    mergedFiles,
     parsedWithWarnings,
     truncated,
   };
@@ -2607,6 +2728,7 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
         sizeLabel: src.sizeLabel,
         pageKind: src.pageKind,
         translationLang: src.translationLang,
+        mergeCount: src.mergeCount,
         sourceText: src.sourceText,
         sortOrder: await nextOrder(parentId),
       })

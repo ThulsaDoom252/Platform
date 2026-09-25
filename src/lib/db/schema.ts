@@ -172,6 +172,8 @@ export const materialNodes = pgTable("material_nodes", {
   formattingIssue: boolean("formatting_issue").notNull().default(false),
   /** Учитель исключил файл из последующих автоматических проверок. */
   formattingScanIgnored: boolean("formatting_scan_ignored").notNull().default(false),
+  /** Число одноимённых файлов, которые были безопасно объединены при импорте. */
+  mergeCount: integer("merge_count").notNull().default(1),
   /**
    * Исходный текст правила или словаря, как его вставили. Нужен, чтобы
    * «Редактировать» показывало и разобранное содержимое, и оригинал.

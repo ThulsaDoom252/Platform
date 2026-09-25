@@ -52,11 +52,12 @@ export function parseImportedFileContent(
   raw: string,
   path: string[],
   scope: "MATERIAL" | "PERSONAL" | "STUDENT" | "MISTAKE",
+  preferredKind?: "VOCAB" | "RULE" | "MISTAKE" | null,
 ): ImportedFileContent {
-  const sourceText = String(raw ?? "").trim().slice(0, 200_000);
+  const sourceText = String(raw ?? "").trim().slice(0, 1_000_000);
   if (!sourceText) return { error: "пустой текст" };
 
-  if (scope === "MISTAKE") {
+  if (scope === "MISTAKE" || preferredKind === "MISTAKE") {
     const parsed = parseMaterial(sourceText, "mistake");
     return parsed.phrases.length > 0
       ? {
@@ -66,6 +67,30 @@ export function parseImportedFileContent(
           warnings: parsed.warnings,
         }
       : { error: parsed.warnings[0] ?? "не удалось разобрать ошибки" };
+  }
+
+  if (preferredKind === "VOCAB") {
+    const parsed = parseMaterial(sourceText, "vocabulary");
+    return parsed.phrases.length > 0
+      ? {
+          kind: "VOCAB",
+          phrases: parsed.phrases,
+          sourceText,
+          warnings: parsed.warnings,
+        }
+      : { error: parsed.warnings[0] ?? "не удалось разобрать словарь" };
+  }
+
+  if (preferredKind === "RULE") {
+    const parsed = parseRuleText(sourceText);
+    return parsed.blocks.length > 0
+      ? {
+          kind: "RULE",
+          blocks: parsed.blocks,
+          sourceText,
+          warnings: parsed.warnings,
+        }
+      : { error: parsed.warnings[0] ?? "не удалось разобрать правило" };
   }
 
   const hint = pathHint(path);

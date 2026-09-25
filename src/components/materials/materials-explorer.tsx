@@ -104,6 +104,7 @@ export type MaterialNode = {
   needsFix: boolean;
   formattingIssue: boolean;
   formattingScanIgnored: boolean;
+  mergeCount: number;
   sourceText: string | null;
   phrases: MaterialPhrase[];
   blocks: RuleBlock[];
@@ -918,6 +919,21 @@ export function MaterialsExplorer({
     );
   };
 
+  /** Жёлтая цифра показывает, сколько одноимённых файлов сведено в один. */
+  const mergedMarker = (n: MaterialNode) =>
+    editable && n.type === "FILE" && n.mergeCount > 1 ? (
+      <span
+        title={`Объединено одноимённых файлов: ${n.mergeCount}`}
+        aria-label={`Объединено одноимённых файлов: ${n.mergeCount}`}
+        className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg bg-amber-400 px-1 text-sm font-black text-slate-950 ring-1 ring-amber-300"
+      >
+        {n.mergeCount}
+      </span>
+    ) : null;
+
+  const mergedHighlight = (n: MaterialNode) =>
+    editable && n.type === "FILE" && n.mergeCount > 1;
+
   if (tree.length === 0) {
     return (
       <>
@@ -1226,6 +1242,7 @@ export function MaterialsExplorer({
             "material-tree-row group relative flex items-center gap-1.5 rounded-xl px-1.5 transition",
             n.type === "FOLDER" ? "material-tree-row-folder" : "material-tree-row-file",
             isSelected ? "is-selected" : "",
+            mergedHighlight(n) && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
             editable && n.formattingIssue && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
             editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
             dragId === n.id && "opacity-40",
@@ -1262,6 +1279,7 @@ export function MaterialsExplorer({
             >
               {n.name}
             </span>
+            {mergedMarker(n)}
             {formattingMarker(n)}
             {fixMarker(n)}
           </button>
@@ -1305,6 +1323,7 @@ export function MaterialsExplorer({
           className={cn(
             "material-tree-root group relative flex items-center gap-2 rounded-2xl px-2.5 py-2.5 transition",
             isSelected ? "is-selected" : "",
+            mergedHighlight(n) && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
             editable && n.formattingIssue && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
             editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
             dragId === n.id && "opacity-40",
@@ -1352,6 +1371,7 @@ export function MaterialsExplorer({
                 {n.description || fmt(t.materials.itemsCount, { n: countFiles(n) })}
               </span>
             </span>
+            {mergedMarker(n)}
             {formattingMarker(n)}
             {fixMarker(n)}
           </button>
@@ -1929,6 +1949,7 @@ export function MaterialsExplorer({
                     : selectedId === n.id
                       ? "is-selected"
                       : "",
+                  mergedHighlight(n) && "border-amber-400 bg-amber-400/10 ring-1 ring-amber-300",
                   editable && n.formattingIssue && "border-amber-400 bg-amber-400/10 ring-1 ring-amber-300",
                   editable && n.needsFix && "border-rose-400 bg-rose-500/10 ring-1 ring-rose-300",
                   dragId === n.id && "opacity-40",
@@ -1949,6 +1970,7 @@ export function MaterialsExplorer({
                   {n.type === "FOLDER" && (
                     <IconChevronRight className="relative z-[1] h-5 w-5 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-content" />
                   )}
+                  {n.type === "FILE" && mergedMarker(n)}
                 </span>
                 <span className="mt-3 w-full truncate text-sm font-bold text-content">
                   {n.name}
@@ -1993,6 +2015,7 @@ export function MaterialsExplorer({
                   "material-list-row flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2.5 text-left transition",
                   n.type === "FOLDER" ? "is-folder" : "is-file",
                   selection.has(n.id) && "is-selected",
+                  mergedHighlight(n) && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
                   editable && n.formattingIssue && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
                   editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
                   dragId === n.id && "opacity-40",
@@ -2008,6 +2031,7 @@ export function MaterialsExplorer({
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-content">
                   {n.name}
                 </span>
+                {mergedMarker(n)}
                 {formattingMarker(n)}
                 {fixMarker(n)}
                 {n.type === "FILE" && n.fileKind && (

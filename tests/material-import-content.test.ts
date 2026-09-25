@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseImportedFileContent } from "../src/lib/material-import-content";
-import { prepareImportContentPayload, type ImportNode } from "../src/lib/tree-import";
+import {
+  mergeImportTrees,
+  prepareImportContentPayload,
+  type ImportNode,
+} from "../src/lib/tree-import";
 
 test("nearest vocabulary folder wins over a Rules root", () => {
   const result = parseImportedFileContent(
@@ -46,4 +50,38 @@ test("payload limit counts UTF-8 bytes, not JavaScript characters", () => {
   const result = prepareImportContentPayload(nodes, true, 5);
   assert.equal(result.nodes[0]?.content, null);
   assert.equal(result.omitted, 1);
+});
+
+test("same-named files merge their text and receive a count marker", () => {
+  const first: ImportNode = {
+    name: "Health",
+    icon: null,
+    kind: "FILE",
+    children: [],
+    content: "fever — температура",
+  };
+  const second: ImportNode = {
+    name: " health ",
+    icon: null,
+    kind: "FILE",
+    children: [],
+    content: "rash — висип",
+  };
+
+  const [merged] = mergeImportTrees([first], [second]);
+  assert.equal(merged.mergeCount, 2);
+  assert.equal(merged.content, "fever — температура\n\nrash — висип");
+});
+
+test("same-named folders merge without a file-count marker", () => {
+  const folder = (child: string): ImportNode => ({
+    name: "Vocabulary",
+    icon: null,
+    kind: "FOLDER",
+    children: [{ name: child, icon: null, kind: "FILE", children: [] }],
+  });
+
+  const [merged] = mergeImportTrees([folder("Food")], [folder("Health")]);
+  assert.equal(merged.mergeCount, undefined);
+  assert.deepEqual(merged.children.map((node) => node.name), ["Food", "Health"]);
 });

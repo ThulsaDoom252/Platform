@@ -36,6 +36,7 @@ assert.deepEqual(merged[0].children[0].children.map((node) => node.name), [
   "Business",
   "Work",
 ]);
+assert.equal(merged[0].children[0].children[0].mergeCount, 2);
 assert.deepEqual(merged[1].children.map((node) => node.name), [
   "Conditionals",
   "Passive voice",

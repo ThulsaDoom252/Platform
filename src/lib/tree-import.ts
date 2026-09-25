@@ -25,6 +25,8 @@ export type ImportNode = {
   children: ImportNode[];
   /** Текст одноимённой вкладки Google Docs. В базу идёт только по явной опции. */
   content?: string | null;
+  /** Сколько одноимённых файлов уже сведено в этот узел предпросмотра. */
+  mergeCount?: number;
 };
 
 /** Строка до сборки в дерево. */
@@ -327,8 +329,12 @@ export function mergeImportTrees(...forests: ImportNode[][]): ImportNode[] {
         children,
         content:
           typeof source.content === "string"
-            ? source.content.trim().slice(0, 200_000) || null
+            ? source.content.trim().slice(0, 1_000_000) || null
             : null,
+        mergeCount:
+          source.kind === "FILE"
+            ? Math.min(99, Math.max(1, Math.trunc(Number(source.mergeCount) || 1)))
+            : undefined,
       };
       const key = mergeKey(incoming);
       const current = byName.get(key);
@@ -340,7 +346,24 @@ export function mergeImportTrees(...forests: ImportNode[][]): ImportNode[] {
       }
 
       current.icon ??= incoming.icon;
-      current.content ??= incoming.content;
+      const duplicateFiles =
+        current.kind === "FILE" &&
+        incoming.kind === "FILE" &&
+        current.children.length === 0 &&
+        incoming.children.length === 0;
+      if (duplicateFiles) {
+        current.mergeCount = Math.min(
+          99,
+          (current.mergeCount ?? 1) + (incoming.mergeCount ?? 1),
+        );
+        if (incoming.content && incoming.content !== current.content) {
+          current.content = current.content
+            ? `${current.content}\n\n${incoming.content}`
+            : incoming.content;
+        }
+      } else {
+        current.content ??= incoming.content;
+      }
       current.children = mergeImportTrees(current.children, incoming.children);
       if (
         current.children.length > 0 ||

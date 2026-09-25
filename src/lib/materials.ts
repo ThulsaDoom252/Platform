@@ -46,6 +46,8 @@ export type MaterialNode = {
   formattingIssue: boolean;
   /** Файл вручную исключён учителем из следующих проверок. */
   formattingScanIgnored: boolean;
+  /** Сколько одноимённых импортированных файлов объединено в этот файл. */
+  mergeCount: number;
   /** Исходный текст правила или словаря, как его вставили. */
   sourceText: string | null;
   phrases: MaterialPhrase[];
@@ -117,6 +119,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       needsFix: r.needsFix,
       formattingIssue: r.formattingIssue,
       formattingScanIgnored: r.formattingScanIgnored,
+      mergeCount: r.mergeCount,
       sourceText: r.sourceText,
       phrases: phrasesByNode.get(r.id) ?? [],
       blocks: blocksByNode.get(r.id) ?? [],

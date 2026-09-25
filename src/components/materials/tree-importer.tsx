@@ -373,9 +373,7 @@ export function TreeImporter({
           ? `нужно проверить форматирование: ${res.parsedWithWarnings}`
           : "",
         res.parseFailed ? `не распознано: ${res.parseFailed}` : "",
-        res.contentSkippedExisting
-          ? `существующих файлов не перезаписано: ${res.contentSkippedExisting}`
-          : "",
+        res.mergedFiles ? `объединено одноимённых файлов: ${res.mergedFiles}` : "",
         payload.omitted ? `не отправлено из-за лимита: ${payload.omitted}` : "",
       ]
         .filter(Boolean)
@@ -393,7 +391,11 @@ export function TreeImporter({
     return (
       <div key={path.join("-")}>
         <div
-          className="flex items-center gap-2 py-1"
+          className={cn(
+            "flex items-center gap-2 rounded-xl py-1 pr-1",
+            node.kind === "FILE" && (node.mergeCount ?? 1) > 1 &&
+              "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
+          )}
           style={{ paddingLeft: `${(path.length - 1) * 20}px` }}
         >
           <button
@@ -427,6 +429,16 @@ export function TreeImporter({
             onChange={(e) => patch({ name: e.target.value })}
             className={inputCls}
           />
+
+          {node.kind === "FILE" && (node.mergeCount ?? 1) > 1 && (
+            <span
+              title={`Объединено одноимённых файлов: ${node.mergeCount}`}
+              aria-label={`Объединено одноимённых файлов: ${node.mergeCount}`}
+              className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg bg-amber-400 px-1 text-sm font-black text-slate-950 ring-1 ring-amber-300"
+            >
+              {node.mergeCount}
+            </span>
+          )}
 
           {node.kind === "FILE" && node.content?.trim() && (
             <span
