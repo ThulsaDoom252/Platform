@@ -368,6 +368,40 @@ export async function deleteNodeAction(formData: FormData) {
 
 export type BulkState = { ok?: boolean; error?: string; message?: string };
 
+/**
+ * Поставить или снять внутреннюю отметку «нужно исправить».
+ * Это состояние доступно только учителю и не меняет сам материал.
+ */
+export async function setMaterialsNeedsFixAction(
+  ids: string[],
+  needsFix: boolean,
+): Promise<BulkState> {
+  await requireTeacher();
+
+  const clean = [...new Set((ids ?? []).filter((id) => typeof id === "string" && id))];
+  if (clean.length === 0) return { error: "Ничего не выбрано" };
+
+  const updated = await db
+    .update(materialNodes)
+    .set({ needsFix: !!needsFix })
+    .where(inArray(materialNodes.id, clean))
+    .returning({ id: materialNodes.id });
+
+  if (updated.length === 0) return { error: "Материалы не найдены" };
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: needsFix
+      ? updated.length === 1
+        ? "Отмечено красным: нужно исправить"
+        : `Отмечено красным: ${updated.length}`
+      : updated.length === 1
+        ? "Красная отметка снята"
+        : `Красных отметок снято: ${updated.length}`,
+  };
+}
+
 /** Удалить несколько выбранных узлов разом, каждый со своим содержимым. */
 export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
   await requireTeacher();

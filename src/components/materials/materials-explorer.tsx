@@ -52,6 +52,7 @@ import {
   moveNodeAction,
   repairPhraseIconsAction,
   reorderNodeAction,
+  setMaterialsNeedsFixAction,
   translateMaterialPageAction,
 } from "@/lib/actions/materials";
 
@@ -96,6 +97,7 @@ export type MaterialNode = {
   sizeLabel: string | null;
   pageKind: string | null;
   translationLang: "RU" | "UK";
+  needsFix: boolean;
   sourceText: string | null;
   phrases: MaterialPhrase[];
   blocks: RuleBlock[];
@@ -566,6 +568,24 @@ export function MaterialsExplorer({
     });
   }
 
+  /** Поставить или снять учительскую красную отметку у одного или нескольких материалов. */
+  function setNeedsFix(nodes: MaterialNode[], marked: boolean) {
+    if (nodes.length === 0) return;
+    setNotice(marked ? "Отмечаю материалы красным…" : "Снимаю красную отметку…");
+    startMove(async () => {
+      const res = await setMaterialsNeedsFixAction(
+        nodes.map((node) => node.id),
+        marked,
+      );
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? (marked ? "Отмечено красным" : "Отметка снята"));
+      }
+    });
+  }
+
   /** Заново подобрать смысловые иконки всем словам открытого словаря. */
   function repairPhraseIcons(node: MaterialNode) {
     const count = node.phrases.filter((phrase) => phrase.kind !== "NOTE").length;
@@ -728,6 +748,18 @@ export function MaterialsExplorer({
   const contentNode =
     selected?.type === "FILE" ? breadcrumb[breadcrumb.length - 2] ?? null : selected;
   const items = contentNode?.children ?? [];
+
+  /** Красный статус существует только в учительском интерфейсе. */
+  const fixMarker = (n: MaterialNode) =>
+    editable && n.needsFix ? (
+      <span
+        title="Нужно исправить"
+        aria-label="Нужно исправить"
+        className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-black text-white shadow-sm"
+      >
+        !
+      </span>
+    ) : null;
 
   if (tree.length === 0) {
     return (
@@ -918,6 +950,17 @@ export function MaterialsExplorer({
               <span className="text-[10px] text-faint">Enter</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => {
+                setNeedsFix([n], !n.needsFix);
+                close();
+              }}
+              className={cn(menuItemClass, n.needsFix && "font-semibold text-rose-600")}
+            >
+              {n.needsFix ? "Снять красную отметку" : "Отметить красным"}
+            </button>
+
             {isPage && (
               <>
                 <button
@@ -1025,6 +1068,7 @@ export function MaterialsExplorer({
             "material-tree-row group relative flex items-center gap-1 rounded-xl pr-1 transition",
             n.type === "FOLDER" ? "material-tree-row-folder" : "material-tree-row-file",
             isSelected ? "is-selected" : "",
+            editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
             dragId === n.id && "opacity-40",
             dropRing(n.id),
           )}
@@ -1059,6 +1103,7 @@ export function MaterialsExplorer({
             >
               {n.name}
             </span>
+            {fixMarker(n)}
           </button>
 
           {hasChildren && (
@@ -1100,6 +1145,7 @@ export function MaterialsExplorer({
           className={cn(
             "material-tree-root group relative flex items-center gap-2 rounded-2xl px-2.5 py-2.5 transition",
             isSelected ? "is-selected" : "",
+            editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
             dragId === n.id && "opacity-40",
             dropRing(n.id),
           )}
@@ -1145,6 +1191,7 @@ export function MaterialsExplorer({
                 {n.description || fmt(t.materials.itemsCount, { n: countFiles(n) })}
               </span>
             </span>
+            {fixMarker(n)}
           </button>
 
           {hasChildren && (
@@ -1277,7 +1324,12 @@ export function MaterialsExplorer({
       </aside>
 
       {/* ---------- Содержимое ---------- */}
-      <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
+      <section
+        className={cn(
+          "rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6",
+          editable && selected?.needsFix && "ring-2 ring-rose-400",
+        )}
+      >
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
             {breadcrumb.map((b, i) => (
@@ -1295,6 +1347,7 @@ export function MaterialsExplorer({
                 >
                   {b.icon} {b.name}
                 </button>
+                {i === breadcrumb.length - 1 && fixMarker(b)}
               </span>
             ))}
           </div>
@@ -1393,6 +1446,20 @@ export function MaterialsExplorer({
               className={toolBtn}
             >
               <IconPencil className="h-4 w-4" /> Переименовать
+            </button>
+            <button
+              type="button"
+              onClick={() => setNeedsFix([contentNode], !contentNode.needsFix)}
+              disabled={moving}
+              className={cn(
+                toolBtn,
+                contentNode.needsFix
+                  ? "border-rose-400 bg-rose-500/10 text-rose-500"
+                  : "hover:border-rose-400 hover:text-rose-500",
+              )}
+            >
+              <span aria-hidden>🔴</span>
+              {contentNode.needsFix ? "Снять отметку" : "Нужно исправить"}
             </button>
             <button
               type="button"
@@ -1542,6 +1609,21 @@ export function MaterialsExplorer({
                     ))}
                 </div>
 
+                <button
+                  type="button"
+                  onClick={() => setNeedsFix([selected], !selected.needsFix)}
+                  disabled={moving}
+                  className={cn(
+                    pageBtn,
+                    selected.needsFix
+                      ? "border-solid border-rose-400 bg-rose-500/10 text-rose-500"
+                      : "hover:border-rose-400 hover:text-rose-500",
+                  )}
+                >
+                  <span aria-hidden>🔴</span>
+                  {selected.needsFix ? "Снять отметку" : "Нужно исправить"}
+                </button>
+
                 {hasContent(selected) && (
                   <button
                     type="button"
@@ -1622,6 +1704,7 @@ export function MaterialsExplorer({
                     : selectedId === n.id
                       ? "is-selected"
                       : "",
+                  editable && n.needsFix && "border-rose-400 bg-rose-500/10 ring-1 ring-rose-300",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
                 )}
@@ -1644,6 +1727,11 @@ export function MaterialsExplorer({
                 <span className="mt-3 w-full truncate text-sm font-bold text-content">
                   {n.name}
                 </span>
+                {editable && n.needsFix && (
+                  <span className="mt-1 flex w-full items-center justify-between gap-2">
+                    {fixMarker(n)}
+                  </span>
+                )}
                 <span className="mt-1 flex items-center gap-1.5 text-[11px] text-faint">
                   {n.type === "FOLDER" ? (
                     <>
@@ -1678,6 +1766,7 @@ export function MaterialsExplorer({
                   "material-list-row flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2.5 text-left transition",
                   n.type === "FOLDER" ? "is-folder" : "is-file",
                   selection.has(n.id) && "is-selected",
+                  editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
                 )}
@@ -1691,6 +1780,7 @@ export function MaterialsExplorer({
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-content">
                   {n.name}
                 </span>
+                {fixMarker(n)}
                 {n.type === "FILE" && n.fileKind && (
                   <span
                     className={cn(
@@ -1881,6 +1971,22 @@ export function MaterialsExplorer({
             className="h-9 rounded-xl border border-line px-3.5 text-sm font-semibold text-content transition hover:bg-surface-2"
           >
             Иконки
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const clear = selectedNodes.every((node) => node.needsFix);
+              setNeedsFix(selectedNodes, !clear);
+            }}
+            disabled={moving}
+            className={cn(
+              "h-9 rounded-xl border px-3.5 text-sm font-semibold transition",
+              selectedNodes.every((node) => node.needsFix)
+                ? "border-rose-400 bg-rose-500/10 text-rose-500"
+                : "border-line text-content hover:border-rose-400 hover:text-rose-500",
+            )}
+          >
+            🔴 {selectedNodes.every((node) => node.needsFix) ? "Снять отметку" : "Нужно исправить"}
           </button>
           <button
             type="button"
