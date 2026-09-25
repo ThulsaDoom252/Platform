@@ -11,7 +11,18 @@ import { IconChevronRight, IconLayers } from "@/components/icons";
 const inputCls =
   "h-10 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
-export default async function TeacherStudentsPage() {
+/** По чему сортируем список. */
+type SortKey = "name" | "lessons";
+
+export default async function TeacherStudentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string; dir?: string }>;
+}) {
+  const params = await searchParams;
+  const sort: SortKey = params.sort === "lessons" ? "lessons" : "name";
+  const desc = params.dir === "desc";
+
   const { t, locale } = await getDict();
   const dateFmt = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
     day: "2-digit",
@@ -45,6 +56,46 @@ export default async function TeacherStudentsPage() {
   const sharedPackages = packages.filter(
     (p) => (membersOf.get(p.id) ?? []).length > 1,
   );
+
+  /*
+   * «Текущие уроки» — то же число, что в плашке справа: у кого общий пакет,
+   * считается остаток пакета, у остальных — личный баланс.
+   */
+  const rows = students.map((s) => {
+    const pkg = s.packageId ? pkgOf.get(s.packageId) : null;
+    return { ...s, pkg, lessons: pkg ? pkg.remainingLessons : s.balance };
+  });
+
+  const collator = new Intl.Collator(locale === "en" ? "en" : locale);
+  rows.sort((a, b) => {
+    const by =
+      sort === "lessons" ? a.lessons - b.lessons : collator.compare(a.name, b.name);
+    // При равном числе уроков порядок всё равно должен быть предсказуемым.
+    return (desc ? -by : by) || collator.compare(a.name, b.name);
+  });
+
+  /** Ссылка на ту же страницу с другой сортировкой. */
+  const sortHref = (key: SortKey) =>
+    `/teacher/students?sort=${key}&dir=${sort === key && !desc ? "desc" : "asc"}`;
+
+  const sortBtn = (key: SortKey, label: string) => {
+    const active = sort === key;
+    return (
+      <Link
+        href={sortHref(key)}
+        className={`flex h-8 items-center gap-1 rounded-lg px-3 text-[12px] font-semibold transition ${
+          active
+            ? "bg-accent-soft text-accent"
+            : "text-muted hover:bg-surface-2 hover:text-content"
+        }`}
+      >
+        {label}
+        <span aria-hidden className={active ? "" : "opacity-40"}>
+          {active && desc ? "↓" : "↑"}
+        </span>
+      </Link>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,34 +153,71 @@ export default async function TeacherStudentsPage() {
       ))}
 
       <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
+        <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-line pb-3">
+          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
+            {t.studentsPage.sortBy}
+          </span>
+          {sortBtn("name", t.studentsPage.sortName)}
+          {sortBtn("lessons", t.studentsPage.sortLessons)}
+        </div>
+
         <div className="flex flex-col divide-y divide-line">
-          {students.map((s) => {
-            const pkg = s.packageId ? pkgOf.get(s.packageId) : null;
-            return (
+          {rows.map((s) => (
+            /* Строка перестала быть одной ссылкой: внутрь встали кнопки,
+               а вкладывать кнопку в ссылку нельзя. */
+            <div
+              key={s.id}
+              className="flex flex-wrap items-center gap-3 py-3.5 first:pt-0 last:pb-0"
+            >
               <Link
-                key={s.id}
                 href={`/teacher/students/${s.id}`}
-                className="group flex items-center gap-4 py-3.5 first:pt-0 last:pb-0"
+                className="group flex min-w-0 flex-1 items-center gap-4"
               >
                 <Avatar name={s.name} src={s.avatarUrl} className="h-11 w-11 text-sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-content group-hover:text-accent">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-content group-hover:text-accent">
                     {s.name}
-                  </p>
-                  <p className="text-xs text-faint">
+                  </span>
+                  <span className="block text-xs text-faint">
                     {s.login}
                     {s.level ? ` · ${s.level}` : ""}
-                  </p>
-                </div>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${s.balance > 3 ? "tint-green" : s.balance > 0 ? "tint-amber" : "tint-rose"}`}
-                >
-                  {fmt(t.studentsPage.balanceLabel, { n: pkg ? pkg.remainingLessons : s.balance })}
+                  </span>
                 </span>
-                <IconChevronRight className="h-4 w-4 shrink-0 text-faint group-hover:text-accent" />
               </Link>
-            );
-          })}
+
+              <span
+                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${s.lessons > 3 ? "tint-green" : s.lessons > 0 ? "tint-amber" : "tint-rose"}`}
+              >
+                {fmt(t.studentsPage.balanceLabel, { n: s.lessons })}
+              </span>
+
+              {/* Живого урока ещё нет — кнопка стоит на своём месте,
+                  но честно говорит, что не работает. */}
+              <button
+                type="button"
+                disabled
+                title={t.studentsPage.toClassSoon}
+                className="h-9 shrink-0 cursor-not-allowed rounded-xl border border-line px-3.5 text-[13px] font-semibold text-faint opacity-60"
+              >
+                {t.studentsPage.toClass}
+              </button>
+
+              <Link
+                href={`/teacher/students/${s.id}/materials`}
+                className="flex h-9 shrink-0 items-center rounded-xl border border-line px-3.5 text-[13px] font-semibold text-content transition hover:border-accent hover:text-accent"
+              >
+                {t.nav.materials}
+              </Link>
+
+              <Link
+                href={`/teacher/students/${s.id}`}
+                aria-label={s.name}
+                className="flex h-9 w-6 shrink-0 items-center justify-center text-faint transition hover:text-accent"
+              >
+                <IconChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
+          ))}
         </div>
       </section>
 
