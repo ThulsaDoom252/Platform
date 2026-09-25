@@ -14,6 +14,7 @@ import {
   parseTree,
   countNodes,
   mergeImportTrees,
+  prepareImportContentPayload,
   type ImportNode,
 } from "@/lib/tree-import";
 import { googleDocumentId, readGoogleDocumentTabs } from "@/lib/google-docs-tabs";
@@ -90,9 +91,11 @@ const inputCls =
 export function TreeImporter({
   target,
   onClose,
+  onDone,
 }: {
   target: ImportTarget | null;
   onClose: () => void;
+  onDone?: (message: string) => void;
 }) {
   const [nodes, setNodes] = useState<ImportNode[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -102,6 +105,8 @@ export function TreeImporter({
   const [over, setOver] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [parseContents, setParseContents] = useState(false);
+  const [googleContentReady, setGoogleContentReady] = useState(false);
   const [busy, startBusy] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -113,6 +118,7 @@ export function TreeImporter({
     from: string,
     truncated = false,
     detail = "",
+    contentReady = false,
   ) {
     if (found.length === 0) {
       setNodes(null);
@@ -121,6 +127,7 @@ export function TreeImporter({
     }
     setError(null);
     setNodes(found);
+    setGoogleContentReady(contentReady);
 
     const head = `${from}: ${countNodes(found)} уникальных узлов.`;
     // Про обрезку молчать нельзя: дерево выглядит целым, а конца у него нет.
@@ -259,7 +266,11 @@ export function TreeImporter({
 
         for (let i = 0; i < urls.length; i++) {
           setNote(`Читаю документ ${i + 1} из ${urls.length}…`);
-          const result = await readGoogleDocumentTabs(urls[i], response.access_token);
+          const result = await readGoogleDocumentTabs(
+            urls[i],
+            response.access_token,
+            parseContents,
+          );
           if (result.error || !result.nodes) {
             failures.push(result.error ?? "Не получилось прочитать вкладки.");
             continue;
@@ -280,6 +291,7 @@ export function TreeImporter({
             `Объединено документов Google: ${succeeded}`,
             truncated,
             failures.length ? `Не прочитано документов: ${failures.length}.` : "",
+            parseContents,
           );
         }
         setGoogleBusy(false);
@@ -329,10 +341,13 @@ export function TreeImporter({
   function create() {
     if (!nodes || nodes.length === 0) return;
     startBusy(async () => {
-      const res = await importTreeAction(nodes, {
+      const includeContents = parseContents && googleContentReady;
+      const payload = prepareImportContentPayload(nodes, includeContents);
+      const res = await importTreeAction(payload.nodes, {
         parentId: target!.parentId,
         scope: target!.scope,
         ownerId: target!.ownerId,
+        parseContents: includeContents,
       });
 
       if (res.error) {
@@ -349,6 +364,23 @@ export function TreeImporter({
         );
         return;
       }
+
+      const summary = [
+        `Создано: ${res.created}`,
+        res.reused ? `уже было: ${res.reused}` : "",
+        includeContents ? `текстов разобрано: ${res.parsed ?? 0}` : "",
+        res.parsedWithWarnings
+          ? `нужно проверить форматирование: ${res.parsedWithWarnings}`
+          : "",
+        res.parseFailed ? `не распознано: ${res.parseFailed}` : "",
+        res.contentSkippedExisting
+          ? `существующих файлов не перезаписано: ${res.contentSkippedExisting}`
+          : "",
+        payload.omitted ? `не отправлено из-за лимита: ${payload.omitted}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      onDone?.(summary);
       onClose();
     });
   }
@@ -396,6 +428,15 @@ export function TreeImporter({
             className={inputCls}
           />
 
+          {node.kind === "FILE" && node.content?.trim() && (
+            <span
+              title="Google Docs передал текст этой вкладки"
+              className="shrink-0 rounded-md bg-amber-400/15 px-2 py-1 text-[10px] font-bold text-amber-600"
+            >
+              текст {node.content.trim().length}
+            </span>
+          )}
+
           <button
             type="button"
             onClick={() => patch({ icon: suggestIcon(node.name) ?? node.icon })}
@@ -421,6 +462,17 @@ export function TreeImporter({
   };
 
   const total = nodes ? countNodes(nodes) : 0;
+  const contentFiles = (() => {
+    const count = (items: ImportNode[]): number =>
+      items.reduce(
+        (sum, node) =>
+          sum +
+          (node.kind === "FILE" && !!node.content?.trim() ? 1 : 0) +
+          count(node.children),
+        0,
+      );
+    return nodes ? count(nodes) : 0;
+  })();
   const anyBusy = busy || googleBusy;
 
   return (
@@ -515,7 +567,11 @@ export function TreeImporter({
               disabled={documentLinks().length === 0 || anyBusy || (!!googleClientId && !googleReady)}
               className="h-10 shrink-0 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
             >
-              {googleBusy ? "Объединяю документы…" : "Импортировать вкладки"}
+              {googleBusy
+                ? "Объединяю документы…"
+                : parseContents
+                  ? "Импортировать вкладки и тексты"
+                  : "Импортировать вкладки"}
             </button>
             <button
               type="button"
@@ -526,6 +582,34 @@ export function TreeImporter({
               Только заголовки
             </button>
           </div>
+          <label className="mt-3 ml-7 flex cursor-pointer items-start gap-2 rounded-xl border border-line bg-surface-2 p-3">
+            <input
+              type="checkbox"
+              checked={parseContents}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setParseContents(checked);
+                // Режим определяет сам запрос к Google. Старый предпросмотр
+                // нельзя выдавать за содержащий тексты — читаем документ заново.
+                if (nodes) {
+                  setNodes(null);
+                  setGoogleContentReady(false);
+                  setNote("Режим изменён — импортируй вкладки Google заново.");
+                }
+              }}
+              disabled={anyBusy}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-content">
+                Сразу разобрать текст внутри каждого файла
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-faint">
+                Опционально. Словари и правила определятся автоматически. Уже существующие
+                файлы не перезаписываются.
+              </span>
+            </span>
+          </label>
           <p className="mt-1.5 text-[11px] text-faint">
             <b>Вкладки:</b> деревья всех документов объединятся по одинаковым
             названиям папок. Google запросит доступ только на чтение и ничего не
@@ -614,6 +698,20 @@ export function TreeImporter({
 
         {nodes && nodes.length > 0 && (
           <>
+            {googleContentReady && (
+              <p className="mt-3 text-[11px] text-muted">
+                Google передал текст для файлов: <b>{contentFiles}</b>
+                {parseContents
+                  ? " · при создании он будет разобран"
+                  : " · разбор выключен"}
+              </p>
+            )}
+            {parseContents && !googleContentReady && (
+              <p className="mt-3 text-[11px] text-amber-600">
+                В этом предпросмотре нет текстов вкладок. Используй «Импортировать вкладки и
+                тексты», а не запасной режим заголовков.
+              </p>
+            )}
             <div className="mt-4 max-h-[46vh] overflow-y-auto rounded-xl bg-surface-2 p-3">
               {nodes.map((n, i) => row(n, [i]))}
             </div>
@@ -634,6 +732,8 @@ export function TreeImporter({
                   setNote(null);
                   setText("");
                   setLinks([""]);
+                  setGoogleContentReady(false);
+                  setParseContents(false);
                 }}
                 className="text-sm text-faint transition hover:text-content"
               >

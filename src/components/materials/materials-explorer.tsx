@@ -966,6 +966,7 @@ export function MaterialsExplorer({
           key={importTree ? "tree-root" : "tree-root-idle"}
           target={importTree}
           onClose={() => setImportTree(null)}
+          onDone={setNotice}
         />
         <NodeCreator
           key={editorTarget ? "create-root" : "creator-idle"}
@@ -2057,6 +2058,7 @@ export function MaterialsExplorer({
             }
             target={importTree}
             onClose={() => setImportTree(null)}
+            onDone={setNotice}
           />
           <ContentImporter
             key={importNode ? `import-${importNode.id}` : "import-idle"}

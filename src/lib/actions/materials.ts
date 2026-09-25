@@ -32,6 +32,7 @@ import {
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
 import { mergeImportTrees, splitIcon, type ImportNode } from "@/lib/tree-import";
+import { parseImportedFileContent } from "@/lib/material-import-content";
 import {
   isSafeAutomaticIcon,
   suggestVocabularyIcon,
@@ -167,6 +168,14 @@ export async function createNodesAction(
 export type ImportSummary = {
   created: number;
   reused: number;
+  /** Новые файлы, содержимое которых сразу разобрано и сохранено. */
+  parsed?: number;
+  /** Новые файлы с текстом, который не удалось безопасно разобрать. */
+  parseFailed?: number;
+  /** Существующие файлы не перезаписываются даже при импорте текста. */
+  contentSkippedExisting?: number;
+  /** Разобрано, но парсер оставил предупреждения для ручной проверки. */
+  parsedWithWarnings?: number;
   error?: string;
   /** Упёрлись в потолок — часть дерева не завелась, надо сказать вслух. */
   truncated?: boolean;
@@ -191,7 +200,12 @@ function matchKey(name: string, icon?: string | null) {
  */
 export async function importTreeAction(
   nodes: ImportNode[],
-  opts: { parentId: string | null; scope?: NodeScope; ownerId?: string | null },
+  opts: {
+    parentId: string | null;
+    scope?: NodeScope;
+    ownerId?: string | null;
+    parseContents?: boolean;
+  },
 ): Promise<ImportSummary> {
   await requireTeacher();
 
@@ -201,8 +215,71 @@ export async function importTreeAction(
   let created = 0;
   let reused = 0;
   let truncated = false;
+  let parsed = 0;
+  let parseFailed = 0;
+  let contentSkippedExisting = 0;
+  let parsedWithWarnings = 0;
 
-  async function level(items: ImportNode[], parentId: string | null, depth: number) {
+  /** Наполнить только что созданный файл, не касаясь ни одного старого узла. */
+  async function fillNewFile(id: string, item: ImportNode, path: string[]) {
+    if (!opts.parseContents || typeof item.content !== "string" || !item.content.trim()) return;
+
+    const result = parseImportedFileContent(item.content, path, scope);
+    if ("error" in result) {
+      parseFailed++;
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      if (result.kind === "RULE") {
+        const blocks = sanitizeBlocks(result.blocks);
+        if (blocks.length === 0) throw new Error("Правило разобралось без содержимого");
+        await tx.insert(materialBlocks).values(
+          blocks.map((block, index) => ({
+            nodeId: id,
+            sortOrder: index + 1,
+            type: block.type,
+            data: block,
+          })),
+        );
+      } else {
+        const phrases = result.phrases.slice(0, 2_000);
+        if (phrases.length === 0) throw new Error("Словарь разобрался без записей");
+        await tx.insert(materialPhrases).values(
+          phrases.map((phrase, index) => ({
+            nodeId: id,
+            sortOrder: index + 1,
+            icon: phrase.icon,
+            phrase: phrase.phrase,
+            transcription: phrase.transcription,
+            translation: phrase.translation,
+            section: phrase.section,
+            kind: phrase.kind,
+            examples: phrase.examples,
+          })),
+        );
+      }
+
+      await tx
+        .update(materialNodes)
+        .set({
+          pageKind: result.kind,
+          sourceText: result.sourceText,
+          formattingIssue: result.warnings.length > 0,
+        })
+        .where(eq(materialNodes.id, id));
+    });
+
+    parsed++;
+    if (result.warnings.length > 0) parsedWithWarnings++;
+  }
+
+  async function level(
+    items: ImportNode[],
+    parentId: string | null,
+    depth: number,
+    path: string[],
+  ) {
     if (items.length === 0) return;
     // Слишком глубоко — дальше не лезем, но и молчать об этом не станем.
     if (depth > IMPORT_DEPTH) {
@@ -259,6 +336,14 @@ export async function importTreeAction(
       if (hit) {
         reused++;
         id = hit.id;
+        if (
+          opts.parseContents &&
+          type === "FILE" &&
+          typeof item.content === "string" &&
+          item.content.trim()
+        ) {
+          contentSkippedExisting++;
+        }
         // Прошлый раз это был лист, а теперь к нему приехали дети —
         // значит на деле это папка. Иначе они повисли бы внутри файла.
         if (children.length > 0 && hit.type !== "FOLDER") {
@@ -289,11 +374,20 @@ export async function importTreeAction(
         created++;
         id = row.id;
         byName.set(matchKey(name), { id, name, icon: item.icon ?? null, type });
+
+        if (type === "FILE") {
+          try {
+            await fillNewFile(id, item, [...path, name]);
+          } catch (error) {
+            console.error(`Не удалось наполнить импортированный файл «${name}»:`, error);
+            parseFailed++;
+          }
+        }
       }
 
       // В файл вкладывать нечего: дети идут только в папку.
       if (children.length > 0 && type === "FOLDER") {
-        await level(children, id, depth + 1);
+        await level(children, id, depth + 1, [...path, name]);
       }
     }
   }
@@ -301,12 +395,22 @@ export async function importTreeAction(
   // Клиент уже показывает объединённый предпросмотр, но сервер повторяет
   // слияние сам: входящим данным доверять нельзя, а дубли не должны съедать лимит.
   const prepared = mergeImportTrees(Array.isArray(nodes) ? nodes : []);
-  await level(prepared, opts.parentId || null, 0);
+  await level(prepared, opts.parentId || null, 0, []);
 
-  if (created === 0 && reused === 0) return { created: 0, reused: 0, error: "Нечего создавать" };
+  if (created === 0 && reused === 0) {
+    return { created: 0, reused: 0, error: "Нечего создавать" };
+  }
 
   revalidateMaterials();
-  return { created, reused, truncated };
+  return {
+    created,
+    reused,
+    parsed,
+    parseFailed,
+    contentSkippedExisting,
+    parsedWithWarnings,
+    truncated,
+  };
 }
 
 /** Переименовать узел, сменить иконку и подзаголовок. */

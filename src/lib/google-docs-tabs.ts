@@ -13,7 +13,28 @@ type GoogleTab = {
     iconEmoji?: string;
     index?: number;
   };
+  documentTab?: {
+    body?: { content?: GoogleStructuralElement[] };
+  };
   childTabs?: GoogleTab[];
+};
+
+type GoogleParagraphElement = {
+  textRun?: { content?: string };
+  autoText?: { content?: string };
+};
+
+export type GoogleStructuralElement = {
+  paragraph?: {
+    elements?: GoogleParagraphElement[];
+    bullet?: unknown;
+  };
+  table?: {
+    tableRows?: {
+      tableCells?: { content?: GoogleStructuralElement[] }[];
+    }[];
+  };
+  tableOfContents?: { content?: GoogleStructuralElement[] };
 };
 
 type GoogleDocument = { tabs?: GoogleTab[] };
@@ -31,6 +52,55 @@ export type GoogleTabsResult = {
  * правдоподобное дерево и не узнает, что конца у него нет.
  */
 const MAX_TABS = 500;
+const MAX_TAB_TEXT = 200_000;
+
+/**
+ * Превращает тело вкладки в текст, который понимают существующие парсеры.
+ * Таблицы сохраняются строками с табуляцией, списки — с маркером.
+ */
+export function googleStructuralElementsToText(
+  elements: GoogleStructuralElement[] | undefined,
+): string {
+  if (!Array.isArray(elements)) return "";
+  let out = "";
+
+  const append = (value: string) => {
+    if (!value || out.length >= MAX_TAB_TEXT) return;
+    out += value.slice(0, MAX_TAB_TEXT - out.length);
+  };
+
+  const read = (items: GoogleStructuralElement[] | undefined) => {
+    for (const item of items ?? []) {
+      if (out.length >= MAX_TAB_TEXT) break;
+      if (item.paragraph) {
+        const text = (item.paragraph.elements ?? [])
+          .map((element) => element.textRun?.content ?? element.autoText?.content ?? "")
+          .join("")
+          .replace(/\n+$/, "")
+          .trimEnd();
+        if (text) append(`${item.paragraph.bullet ? "• " : ""}${text}\n`);
+        continue;
+      }
+
+      if (item.table) {
+        for (const row of item.table.tableRows ?? []) {
+          const cells = (row.tableCells ?? []).map((cell) =>
+            googleStructuralElementsToText(cell.content)
+              .replace(/\s*\n\s*/g, " ")
+              .trim(),
+          );
+          if (cells.some(Boolean)) append(`${cells.join("\t")}\n`);
+        }
+        continue;
+      }
+
+      if (item.tableOfContents) read(item.tableOfContents.content);
+    }
+  };
+
+  read(elements);
+  return out.trim();
+}
 
 /** ID из обычной ссылки на документ или ссылки на активную вкладку. */
 export function googleDocumentId(raw: string): string | null {
@@ -88,6 +158,7 @@ export function googleTabsToImportNodes(value: unknown): {
 
         seen++;
         const children = convert(tab.childTabs);
+        const content = googleStructuralElementsToText(tab.documentTab?.body?.content);
         return [
           {
             name,
@@ -95,6 +166,7 @@ export function googleTabsToImportNodes(value: unknown): {
             // В Docs раскрывашка есть именно тогда, когда у вкладки есть дети.
             kind: children.length > 0 ? "FOLDER" : "FILE",
             children,
+            content: content || null,
           } satisfies ImportNode,
         ];
       });
@@ -105,12 +177,14 @@ export function googleTabsToImportNodes(value: unknown): {
 }
 
 /**
- * Читает только свойства вкладок, без текста и изображений документа.
+ * Читает свойства вкладок и, по опции, их текст. Текст сохраняется только в
+ * предпросмотре; в базу он попадёт позже и только если учитель включил опцию.
  * Google Docs поддерживает максимум три уровня, поэтому field mask конечный.
  */
 export async function readGoogleDocumentTabs(
   rawUrl: string,
   accessToken: string,
+  includeContent = false,
 ): Promise<GoogleTabsResult> {
   const id = googleDocumentId(rawUrl);
   if (!id) return { error: "Нужна ссылка на документ Google Docs." };
@@ -120,14 +194,20 @@ export async function readGoogleDocumentTabs(
     return { error: "Google не выдал доступ к документу. Подключись ещё раз." };
   }
 
-  const fields = [
-    "tabs(",
-    "tabProperties(title,iconEmoji,index),",
-    "childTabs(tabProperties(title,iconEmoji,index),",
-    "childTabs(tabProperties(title,iconEmoji,index)))",
-    ")",
-  ].join("");
-  const query = new URLSearchParams({ includeTabsContent: "true", fields });
+  const query = new URLSearchParams({ includeTabsContent: "true" });
+  // Без разбора текста сохраняем прежний лёгкий запрос. Когда текст нужен,
+  // просим полный Tab resource: так таблицы и вложенные элементы не потеряются
+  // из-за слишком узкой partial-response маски.
+  if (!includeContent) {
+    const fields = [
+      "tabs(",
+      "tabProperties(title,iconEmoji,index),",
+      "childTabs(tabProperties(title,iconEmoji,index),",
+      "childTabs(tabProperties(title,iconEmoji,index)))",
+      ")",
+    ].join("");
+    query.set("fields", fields);
+  }
 
   try {
     const response = await fetch(

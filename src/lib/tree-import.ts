@@ -23,6 +23,8 @@ export type ImportNode = {
   icon: string | null;
   kind: ImportKind;
   children: ImportNode[];
+  /** Текст одноимённой вкладки Google Docs. В базу идёт только по явной опции. */
+  content?: string | null;
 };
 
 /** Строка до сборки в дерево. */
@@ -257,6 +259,39 @@ export function countNodes(nodes: ImportNode[]): number {
   return nodes.reduce((sum, n) => sum + 1 + countNodes(n.children), 0);
 }
 
+/**
+ * Готовит безопасный payload для Server Action. Без опции текст вообще не
+ * отправляется. С опцией каждый файл передаётся целиком, пока не исчерпан
+ * общий лимит; обрезанный посередине материал парсеру не отдаём.
+ */
+export function prepareImportContentPayload(
+  nodes: ImportNode[],
+  includeContent: boolean,
+  maxBytes = 4_000_000,
+): { nodes: ImportNode[]; omitted: number } {
+  let remaining = Math.max(0, maxBytes);
+  let omitted = 0;
+  const encoder = new TextEncoder();
+
+  const copy = (items: ImportNode[]): ImportNode[] =>
+    items.map((node) => {
+      const raw = includeContent && typeof node.content === "string" ? node.content.trim() : "";
+      let content: string | null = null;
+      if (raw) {
+        const size = encoder.encode(raw).byteLength;
+        if (size <= remaining) {
+          content = raw;
+          remaining -= size;
+        } else {
+          omitted++;
+        }
+      }
+      return { ...node, content, children: copy(node.children) };
+    });
+
+  return { nodes: copy(nodes), omitted };
+}
+
 /** Имя узла внутри одного родителя: регистр и лишние пробелы не различаем. */
 function mergeKey(node: Pick<ImportNode, "name" | "icon">): string {
   const name = node.icon ? node.name : splitIcon(node.name).name;
@@ -290,6 +325,10 @@ export function mergeImportTrees(...forests: ImportNode[][]): ImportNode[] {
         kind:
           children.length > 0 || source.kind === "FOLDER" ? "FOLDER" : "FILE",
         children,
+        content:
+          typeof source.content === "string"
+            ? source.content.trim().slice(0, 200_000) || null
+            : null,
       };
       const key = mergeKey(incoming);
       const current = byName.get(key);
@@ -301,6 +340,7 @@ export function mergeImportTrees(...forests: ImportNode[][]): ImportNode[] {
       }
 
       current.icon ??= incoming.icon;
+      current.content ??= incoming.content;
       current.children = mergeImportTrees(current.children, incoming.children);
       if (
         current.children.length > 0 ||
