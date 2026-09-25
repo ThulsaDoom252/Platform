@@ -1255,6 +1255,7 @@ export function MaterialsExplorer({
         ref={panelRef}
         className={cn(
           "materials-tree-panel scroll-mt-20 flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4 lg:sticky lg:top-20",
+          pathOpen && "lg:h-[calc(100dvh-6rem)]",
           !pathOpen && "sticky top-16 z-[9] lg:top-20",
         )}
       >
@@ -1276,7 +1277,7 @@ export function MaterialsExplorer({
         </button>
 
         {pathOpen && (
-          <div className="materials-tree-scroll max-h-[70vh] overflow-y-auto pr-1">
+          <div className="materials-tree-scroll min-h-0 flex-1 max-h-[70vh] overflow-y-auto pr-1 lg:max-h-none">
             {tree.map(renderCategory)}
           </div>
         )}
