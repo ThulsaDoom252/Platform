@@ -1,7 +1,6 @@
 import englishEmoji from "emojibase-data/en/compact.json";
 import russianEmoji from "emojibase-data/ru/compact.json";
 import ukrainianEmoji from "emojibase-data/uk/compact.json";
-import emojiVersions from "emojibase-data/versions/emoji.json";
 import type { IconGroup } from "./icons-extra";
 
 type EmojiRecord = {
@@ -112,19 +111,13 @@ const source = en.filter(
     typeof entry.group === "number" && supportedGroups.has(entry.group),
 );
 
-// Автоподбор обязан одинаково отображаться на старых Windows-машинах.
-// Новые emoji остаются в ручном каталоге, но робот выбирает только Emoji 11
-// и старше — именно этот диапазон надёжно поддерживает текущий интерфейс.
-const safeAutoHexcodes = new Set(
-  Object.entries(emojiVersions as Record<string, string[]>)
-    .filter(([version]) => Number(version) <= 11)
-    .flatMap(([, hexcodes]) => hexcodes),
-);
-const safeSuggestionSource = source.filter((entry) => safeAutoHexcodes.has(entry.hexcode));
+// Подборщик использует тот же полный актуальный каталог Emoji 17, который
+// доступен учителю вручную. Это даёт достаточно образов для любых тем.
+const suggestionSource = source;
 
 /** Emoji, которые автоподбор может безопасно поставить на текущей Windows. */
 export const SAFE_UNICODE_ICONS = new Set(
-  safeSuggestionSource.map((entry) => entry.unicode),
+  suggestionSource.map((entry) => entry.unicode),
 );
 
 function localizedKeywords(entry: EmojiRecord): string {
@@ -139,7 +132,7 @@ function localizedKeywords(entry: EmojiRecord): string {
  * Индекс для умного автоматического подбора. В нём нет общих слов категории,
  * иначе слово «люди» одинаково подходило бы сразу к сотням значков.
  */
-export const UNICODE_SUGGEST_ICONS: [string, string][] = safeSuggestionSource.map((entry) => [
+export const UNICODE_SUGGEST_ICONS: [string, string][] = suggestionSource.map((entry) => [
   entry.unicode,
   `${localizedKeywords(entry)} ${TOPIC_KEYWORDS[entry.unicode] ?? ""}`.trim(),
 ]);

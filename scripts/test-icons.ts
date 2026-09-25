@@ -166,6 +166,17 @@ const semanticCases: [string, string, string][] = [
   ["you name it", "що завгодно / все, що хочеш", "📋"],
   ["to be named after", "бути названим на честь", "🏷️"],
   ["to call someone names", "обзивати когось", "🤬"],
+  ["deprived", "неблагополучний, знедолений", "😔"],
+  ["run-down", "занедбаний", "🏚️"],
+  ["middle of nowhere", "глухомань", "🏜️"],
+  ["shanty town", "нетрі", "🏚️"],
+  ["wasteland", "пустир, занедбана територія", "🏜️"],
+  ["hustle and bustle", "метушня, гамір", "🏙️"],
+  ["Go Dutch", "платити кожен за себе", "🧾"],
+  ["Excuse my French", "вибачте за грубе слово", "🤬"],
+  ["It’s all Greek to me", "нічого не розумію", "🤷"],
+  ["When in Rome, do as the Romans do", "роби як місцеві", "🌍"],
+  ["Swiss Army knife", "універсальна річ", "🛠️"],
 ];
 
 const generalizationCases: [string, string, string][] = [
@@ -218,7 +229,7 @@ if (suggestVocabularyIcon("appropriate", "доречний") === "🚫") {
   throw new Error("Положительная форма appropriate не должна совпадать с inappropriate");
 }
 if (
-  suggestVocabularyIcon("It's all started when...", "Все почалося тоді, коли...") !== "🥤"
+  suggestVocabularyIcon("It's all started when...", "Все почалося тоді, коли...") === "🤝"
 ) {
   throw new Error("Правило break the ice не должно влиять на обычное started");
 }

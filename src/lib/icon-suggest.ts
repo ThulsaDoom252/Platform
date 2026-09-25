@@ -101,6 +101,10 @@ const STOP = new Set([
 
 /** Частые смысловые связи, которых нет в официальных названиях emoji. */
 const CONCEPT_ALIASES: [string, string][] = [
+  ["😔", "deprived disadvantaged underprivileged destitute lacking needy неблагополучный обездоленный лишенный знедолений неблагополучний позбавлений"],
+  ["🏚️", "run down run-down dilapidated shabby decrepit neglected shanty town slum занедбаний ветхий обветшалый трущобы нетрі халупи"],
+  ["🏜️", "middle of nowhere remote wilderness wasteland barren deserted пустошь глушь глухомань пустырь безлюдный глухомань пустир занедбана територія безлюдний"],
+  ["🏙️", "hustle and bustle busy city commotion hubbub crowded lively метушня гамір суета шум оживленный город жваве місто"],
   ["🧾", "split bill split the bill pay separately separate checks go dutch each pays their own разделить счет каждый платит за себя окремий рахунок кожен платить за себе"],
   ["🤬", "swear swearing profanity curse rude language bad word excuse my french ругательство брань грубое слово лайка матюки грубе слово"],
   ["🤷", "do not understand incomprehensible confusing gibberish greek to me over my head ничего не понимаю непонятно темный лес нічого не розумію незрозуміло темний ліс"],
@@ -212,6 +216,10 @@ const EXACT_PHRASE_OVERRIDES = new Map<string, string>([["oi", "👋"]]);
  * Правила охватывают варианты местоимений и слова внутри конструкции.
  */
 const PHRASE_ICON_RULES: [RegExp, string][] = [
+  [/\bbecause cause\b/u, "🔗"],
+  [/\bmiddle of nowhere\b/u, "🏜️"],
+  [/\bshanty town\b/u, "🏚️"],
+  [/\bhustle and bustle\b/u, "🏙️"],
   [/\b(?:go|going|went) dutch\b|\bsplit(?:ting)? the bill\b/u, "🧾"],
   [/\b(?:excuse|pardon) my french\b/u, "🤬"],
   [/\b(?:its|it is|thats|that is) all greek to me\b/u, "🤷"],
@@ -363,9 +371,17 @@ const SUGGESTION_INDEX = [...merged].map(([icon, keywordLists]) => {
   };
 });
 
-type WeightedField = { text: string | null | undefined; weight: number };
+type WeightedField = {
+  text: string | null | undefined;
+  weight: number;
+  role?: "source" | "translation" | "context";
+};
 
-function bestIcon(fields: WeightedField[], preferLearnedConcepts = false): string | null {
+function bestIcon(
+  fields: WeightedField[],
+  preferLearnedConcepts = false,
+  requireBilingualAgreement = false,
+): string | null {
   const prepared = fields
     .map((field) => ({
       ...field,
@@ -381,6 +397,8 @@ function bestIcon(fields: WeightedField[], preferLearnedConcepts = false): strin
     let score = 0;
     let coverage = 0;
     let matchedFields = 0;
+    let sourceMatched = false;
+    let translationMatched = false;
 
     for (const field of prepared) {
       const matched = new Set<string>();
@@ -398,10 +416,12 @@ function bestIcon(fields: WeightedField[], preferLearnedConcepts = false): strin
       }
 
       // Полное словосочетание заметно сильнее случайного совпадения одного слова.
+      let phraseMatched = false;
       if (
         field.normalized.length >= 4 &&
         containsWholePhrase(candidate.keywords, field.normalized)
       ) {
+        phraseMatched = true;
         score += 16 * field.weight;
         if (
           preferLearnedConcepts &&
@@ -413,13 +433,24 @@ function bestIcon(fields: WeightedField[], preferLearnedConcepts = false): strin
       }
 
       coverage += matched.size;
-      if (matched.size > 0) matchedFields++;
+      if (matched.size > 0 || phraseMatched) {
+        matchedFields++;
+        if (field.role === "source") sourceMatched = true;
+        if (field.role === "translation") translationMatched = true;
+      }
       if (matched.size > 1) score += matched.size * 3 * field.weight;
     }
 
     // Совпадение и по английскому слову, и по переводу намного надёжнее
     // одиночной ассоциации вроде mate → напиток или «гей» → радуга.
     if (matchedFields > 1) score += (matchedFields - 1) * 24;
+
+    // У многословной единицы одиночное буквальное совпадение в английском
+    // недостаточно. Если перевод не подтверждает этот образ, кандидат почти
+    // наверняка относится к отдельному слову, а не к смыслу всей фразы.
+    if (requireBilingualAgreement && sourceMatched && !translationMatched) {
+      score *= 0.25;
+    }
 
     if (
       score > 0 &&
@@ -458,16 +489,18 @@ export function suggestVocabularyIcon(
   const multiword = normalizedPhrase.includes(" ") && !!translation?.trim();
 
   return bestIcon([
-    { text: phrase, weight: multiword ? 1.5 : 5 },
-    { text: translation, weight: multiword ? 6 : 3 },
-    { text: section, weight: 0.35 },
+    { text: phrase, weight: multiword ? 1.5 : 5, role: "source" },
+    { text: translation, weight: multiword ? 6 : 3, role: "translation" },
+    { text: section, weight: 0.35, role: "context" },
     {
       text: examples.map((example) => example.en).filter(Boolean).join(" "),
       weight: multiword ? 0.5 : 0.2,
+      role: "context",
     },
     {
       text: examples.map((example) => example.tr).filter(Boolean).join(" "),
       weight: multiword ? 1.2 : 0.2,
+      role: "context",
     },
-  ], true);
+  ], true, multiword);
 }

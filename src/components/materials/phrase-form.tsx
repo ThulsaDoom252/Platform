@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Modal } from "@/components/modal";
 import { IconPicker } from "./icon-picker";
 import { parseMaterial } from "@/lib/materials-parser";
@@ -292,6 +292,7 @@ export function WordAdder({
     newDraft(sections[0]?.name ?? "", sections[0]?.icon ?? "💬"),
   ]);
   const [iconFor, setIconFor] = useState<string | null>(null);
+  const manualIconKeys = useRef(new Set<string>());
   const [raw, setRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
@@ -314,7 +315,10 @@ export function WordAdder({
 
     const patch: Partial<Draft> = {};
     const sectionIcon = iconOf(d.section) ?? "💬";
-    if (!d.icon || d.icon === "💬" || d.icon === sectionIcon) {
+    if (
+      !manualIconKeys.current.has(d.key) &&
+      (!d.icon || d.icon === "💬" || d.icon === sectionIcon)
+    ) {
       const icon = suggestVocabularyIcon(word, d.translation, d.section, d.examples);
       if (icon) patch.icon = icon;
     }
@@ -342,7 +346,19 @@ export function WordAdder({
     if (result.error) setError(result.error);
     setDrafts((current) =>
       current.map((item) =>
-        item.key === d.key ? mergeAutomaticTranslation(item, d, result) : item,
+        item.key === d.key
+          ? (() => {
+              const merged = mergeAutomaticTranslation(item, d, result);
+              if (manualIconKeys.current.has(item.key)) return merged;
+              const icon = suggestVocabularyIcon(
+                merged.phrase,
+                merged.translation,
+                merged.section,
+                merged.examples,
+              );
+              return icon ? { ...merged, icon } : merged;
+            })()
+          : item,
       ),
     );
   }
@@ -456,9 +472,12 @@ export function WordAdder({
                 <p className="mb-1.5 text-sm font-medium text-content">Иконка записи</p>
                 <IconPicker
                   value={drafts.find((d) => d.key === iconFor)?.icon ?? null}
-                  onChange={(icon) =>
-                    setDrafts((p) => p.map((x) => (x.key === iconFor ? { ...x, icon } : x)))
-                  }
+                  onChange={(icon) => {
+                    manualIconKeys.current.add(iconFor);
+                    setDrafts((p) =>
+                      p.map((x) => (x.key === iconFor ? { ...x, icon } : x)),
+                    );
+                  }}
                 />
               </div>
             )}
