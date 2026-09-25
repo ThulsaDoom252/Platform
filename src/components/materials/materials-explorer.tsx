@@ -50,6 +50,7 @@ import {
   deleteNodeAction,
   deleteNodesAction,
   moveNodeAction,
+  reformatMaterialPageAction,
   repairPhraseIconsAction,
   reorderNodeAction,
   setMaterialsNeedsFixAction,
@@ -636,6 +637,33 @@ export function MaterialsExplorer({
         setMoveError(res.error);
       } else {
         setNotice(res.message ?? "Иконки исправлены");
+      }
+    });
+  }
+
+  /** Заново применить актуальный парсер к сохранённому исходнику страницы. */
+  function reformatPage(node: MaterialNode) {
+    const kind = pageKind(node);
+    if (!kind) return;
+    const label = kind === "RULE" ? "правило" : "словарь";
+    if (
+      !confirm(
+        `Переформатировать ${label} «${node.name}» из сохранённого исходника?\n\n` +
+          "Слова или блоки будут заново разобраны актуальным парсером. " +
+          "Если новый разбор найдёт меньше данных, замена автоматически остановится.",
+      )
+    ) {
+      return;
+    }
+
+    setNotice(`Переформатирую ${label}…`);
+    startMove(async () => {
+      const res = await reformatMaterialPageAction(node.id);
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? "Переформатирование завершено");
       }
     });
   }
@@ -1367,6 +1395,7 @@ export function MaterialsExplorer({
           editable && selected?.needsFix && "ring-2 ring-rose-400",
         )}
       >
+        <div className="relative z-[8] lg:sticky lg:top-16 lg:-mx-6 lg:-mt-6 lg:mb-5 lg:border-b lg:border-line lg:bg-surface/95 lg:px-6 lg:pt-6 lg:pb-1 lg:backdrop-blur-md">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
             {breadcrumb.map((b, i) => (
@@ -1604,6 +1633,22 @@ export function MaterialsExplorer({
                   </button>
                 )}
 
+                {(pageKind(selected) === "VOCAB" || pageKind(selected) === "RULE") && (
+                  <button
+                    type="button"
+                    onClick={() => reformatPage(selected)}
+                    disabled={moving || !selected.sourceText?.trim()}
+                    className={pageBtn}
+                    title={
+                      selected.sourceText?.trim()
+                        ? `Заново разобрать исходник как ${pageKind(selected) === "RULE" ? "правило" : "словарь"}`
+                        : "У файла не сохранён исходный текст"
+                    }
+                  >
+                    <span aria-hidden>↻</span> Переформатировать
+                  </button>
+                )}
+
                 {pageKind(selected) !== "VOCAB" && (
                   <button
                     type="button"
@@ -1682,26 +1727,29 @@ export function MaterialsExplorer({
                 </button>
               </div>
             )}
-            {selected.blocks.length > 0 ? (
-              <RuleReader
-                title={selected.name}
-                icon={selected.icon}
-                description={selected.description}
-                blocks={selected.blocks}
-              />
-            ) : (
-              <PhraseReader
-                title={selected.name}
-                icon={selected.icon}
-                description={selected.description}
-                coverImageUrl={selected.imageUrl}
-                phrases={selected.phrases}
-                nodeId={selected.id}
-                onEditPhrase={editable ? setEditPhrase : undefined}
-              />
-            )}
           </>
         )}
+        </div>
+
+        {isPhrasePage && selected &&
+          (selected.blocks.length > 0 ? (
+            <RuleReader
+              title={selected.name}
+              icon={selected.icon}
+              description={selected.description}
+              blocks={selected.blocks}
+            />
+          ) : (
+            <PhraseReader
+              title={selected.name}
+              icon={selected.icon}
+              description={selected.description}
+              coverImageUrl={selected.imageUrl}
+              phrases={selected.phrases}
+              nodeId={selected.id}
+              onEditPhrase={editable ? setEditPhrase : undefined}
+            />
+          ))}
 
         {!isPhrasePage && !contentNode && (
           <p className="py-16 text-center text-sm text-faint">{t.materials.selectFolder}</p>

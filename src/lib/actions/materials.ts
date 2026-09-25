@@ -24,6 +24,7 @@ import {
 } from "@/lib/materials";
 import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
+import { parseRuleText } from "@/lib/rule-parser";
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
 import { mergeImportTrees, splitIcon, type ImportNode } from "@/lib/tree-import";
@@ -1014,6 +1015,156 @@ export async function repairPhraseIconAction(phraseId: string): Promise<BulkStat
 
   revalidateMaterials();
   return { ok: true, message: `Иконка исправлена: ${icon}` };
+}
+
+/**
+ * Заново разобрать сохранённый исходник страницы актуальным парсером.
+ * Существующие строки обновляются на месте, поэтому их id и картинки остаются.
+ * Автоматически уменьшать число записей нельзя: это могло бы скрыть данные.
+ */
+export async function reformatMaterialPageAction(nodeId: string): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+
+  const [node] = await db
+    .select({
+      id: materialNodes.id,
+      type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
+      sourceText: materialNodes.sourceText,
+    })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Файл не найден" };
+
+  const source = node.sourceText?.trim() ?? "";
+  if (!source) return { error: "У файла не сохранён исходный текст" };
+
+  let kind = node.pageKind;
+  if (kind !== "RULE" && kind !== "VOCAB") {
+    const [firstBlock] = await db
+      .select({ id: materialBlocks.id })
+      .from(materialBlocks)
+      .where(eq(materialBlocks.nodeId, id))
+      .limit(1);
+    const [firstPhrase] = firstBlock
+      ? []
+      : await db
+          .select({ id: materialPhrases.id })
+          .from(materialPhrases)
+          .where(eq(materialPhrases.nodeId, id))
+          .limit(1);
+    kind = firstBlock ? "RULE" : firstPhrase ? "VOCAB" : kind;
+  }
+
+  if (kind === "RULE") {
+    const parsed = parseRuleText(source);
+    const blocks = sanitizeBlocks(parsed.blocks);
+    if (blocks.length === 0) {
+      return { error: parsed.warnings[0] ?? "Не удалось заново разобрать правило" };
+    }
+
+    const current = await db
+      .select({ id: materialBlocks.id })
+      .from(materialBlocks)
+      .where(eq(materialBlocks.nodeId, id))
+      .orderBy(asc(materialBlocks.sortOrder));
+    if (blocks.length < current.length) {
+      return {
+        error:
+          `Новый разбор нашёл меньше блоков: ${blocks.length} вместо ${current.length}. ` +
+          "Автоматическая замена остановлена — открой редактирование и проверь результат.",
+      };
+    }
+
+    await db.transaction(async (tx) => {
+      for (let index = 0; index < current.length; index++) {
+        const block = blocks[index];
+        await tx
+          .update(materialBlocks)
+          .set({ sortOrder: index + 1, type: block.type, data: block })
+          .where(eq(materialBlocks.id, current[index].id));
+      }
+      if (blocks.length > current.length) {
+        await tx.insert(materialBlocks).values(
+          blocks.slice(current.length).map((block, offset) => ({
+            nodeId: id,
+            sortOrder: current.length + offset + 1,
+            type: block.type,
+            data: block,
+          })),
+        );
+      }
+    });
+
+    revalidateMaterials();
+    return {
+      ok: true,
+      message: `Правило переформатировано: ${blocks.length} блоков`,
+    };
+  }
+
+  if (kind !== "VOCAB") {
+    return { error: "Сначала выбери тип содержимого: словарь или правило" };
+  }
+
+  const parsed = parseMaterial(source, "vocabulary");
+  if (parsed.phrases.length === 0) {
+    return { error: parsed.warnings[0] ?? "Не удалось заново разобрать словарь" };
+  }
+
+  const current = await loadPhrases(id);
+  if (parsed.phrases.length < current.length) {
+    return {
+      error:
+        `Новый разбор нашёл меньше записей: ${parsed.phrases.length} вместо ${current.length}. ` +
+        "Автоматическая замена остановлена — открой редактирование и проверь результат.",
+    };
+  }
+
+  await db.transaction(async (tx) => {
+    for (let index = 0; index < current.length; index++) {
+      const phrase = parsed.phrases[index];
+      await tx
+        .update(materialPhrases)
+        .set({
+          sortOrder: index + 1,
+          icon: phrase.icon,
+          phrase: phrase.phrase,
+          transcription: phrase.transcription,
+          translation: phrase.translation,
+          section: phrase.section,
+          kind: phrase.kind,
+          examples: phrase.examples,
+        })
+        .where(eq(materialPhrases.id, current[index].id));
+    }
+    if (parsed.phrases.length > current.length) {
+      await tx.insert(materialPhrases).values(
+        parsed.phrases.slice(current.length).map((phrase, offset) => ({
+          nodeId: id,
+          sortOrder: current.length + offset + 1,
+          icon: phrase.icon,
+          phrase: phrase.phrase,
+          transcription: phrase.transcription,
+          translation: phrase.translation,
+          section: phrase.section,
+          kind: phrase.kind,
+          examples: phrase.examples,
+        })),
+      );
+    }
+  });
+
+  const words = parsed.phrases.filter((phrase) => phrase.kind === "PHRASE").length;
+  const notes = parsed.phrases.length - words;
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: `Словарь переформатирован: ${words} записей${notes ? `, ${notes} заметок` : ""}`,
+  };
 }
 
 /** Перевести целиком открытую страницу словаря или правила. */
