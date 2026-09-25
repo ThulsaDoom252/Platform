@@ -5,11 +5,14 @@ import { Modal } from "@/components/modal";
 import {
   saveVocabularyEditAction,
   transcribeAction,
+  translateVocabularyDraftAction,
   type VocabularyEditInput,
 } from "@/lib/actions/materials";
 import { parseMaterial, type ParsedPhrase } from "@/lib/materials-parser";
 import {
   DraftFields,
+  englishDraftKey,
+  mergeAutomaticTranslation,
   newDraft,
   toInput,
   type Draft,
@@ -38,6 +41,7 @@ type VocabularyNode = {
   imageUrl: string | null;
   description: string | null;
   sourceText: string | null;
+  translationLang: "RU" | "UK";
   phrases: MaterialPhrase[];
 };
 
@@ -134,6 +138,25 @@ export function VocabularyEditor({
         item.phrase.trim() === word &&
         !item.transcription.trim()
           ? { ...item, transcription: ipa ?? "" }
+          : item,
+      ),
+    );
+  }
+
+  async function refreshTranslation(key: string, draft: Draft) {
+    if (!draft.phrase.trim()) return;
+    const needsTranslation =
+      !draft.translation.trim() ||
+      draft.examples.some((example) => example.en.trim() && !example.tr.trim());
+    if (!needsTranslation) return;
+
+    const requestedKey = englishDraftKey(draft);
+    const result = await translateVocabularyDraftAction(draft, node!.translationLang);
+    if (result.error) setError(result.error);
+    setItems((current) =>
+      current.map((item) =>
+        item.key === key && englishDraftKey(item) === requestedKey
+          ? { ...item, ...mergeAutomaticTranslation(item, draft, result) }
           : item,
       ),
     );
@@ -304,6 +327,9 @@ export function VocabularyEditor({
                       onPickIcon={() => setIconFor(iconFor === item.key ? null : item.key)}
                       onChange={(next) => update(item.key, { ...item, ...next })}
                       onWordEntered={(draft) => refreshTranscription(item.key, draft)}
+                      onTranslationRequested={(draft) =>
+                        refreshTranslation(item.key, draft)
+                      }
                     />
                   ) : (
                     <div className="flex flex-col gap-2">

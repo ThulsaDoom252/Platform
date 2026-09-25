@@ -33,6 +33,13 @@ import {
   vocabularyFallbackIcon,
 } from "@/lib/icon-suggest";
 import { suggestVocabularyIconsWithAi } from "@/lib/vocabulary-icon-ai";
+import {
+  translateMaterialTextWithAi,
+  translateRuleBlocksWithAi,
+  translateVocabularyWithAi,
+  type MaterialTranslationLang,
+  type VocabularyTranslationInput,
+} from "@/lib/material-translation-ai";
 
 export type { Misspelling };
 
@@ -454,6 +461,63 @@ export async function transcribeAction(phrase: string): Promise<string | null> {
   return transcribe(String(phrase ?? "").slice(0, 120));
 }
 
+export type DraftTranslationState = {
+  translation: string | null;
+  examples: string[];
+  error?: string;
+};
+
+/** Контекстный автоперевод одной редактируемой словарной карточки. */
+export async function translateVocabularyDraftAction(
+  draft: {
+    phrase: string;
+    section?: string | null;
+    translation?: string | null;
+    examples?: { en: string; tr?: string | null }[];
+  },
+  target: MaterialTranslationLang,
+): Promise<DraftTranslationState> {
+  await requireTeacher();
+  const phrase = String(draft?.phrase ?? "").trim().slice(0, 500);
+  const lang: MaterialTranslationLang = target === "RU" ? "RU" : "UK";
+  if (!phrase) return { translation: null, examples: [] };
+
+  const examples = (Array.isArray(draft?.examples) ? draft.examples : [])
+    .map((example) => ({
+      en: String(example?.en ?? "").trim().slice(0, 800),
+      currentTranslation: String(example?.tr ?? "").trim().slice(0, 800),
+    }))
+    .filter((example) => example.en)
+    .slice(0, 10);
+
+  try {
+    const translated = await translateVocabularyWithAi(
+      [
+        {
+          id: "draft",
+          phrase,
+          section: String(draft?.section ?? "").trim().slice(0, 240),
+          currentTranslation: String(draft?.translation ?? "").trim().slice(0, 800),
+          examples,
+        },
+      ],
+      lang,
+    );
+    const item = translated.get("draft");
+    return {
+      translation: item?.translation ?? null,
+      examples: item?.examples ?? [],
+    };
+  } catch (error) {
+    console.error("Автоперевод карточки недоступен:", error);
+    return {
+      translation: null,
+      examples: [],
+      error: error instanceof Error ? error.message : "Переводчик недоступен",
+    };
+  }
+}
+
 export type PhraseInput = {
   section: string | null;
   icon: string | null;
@@ -501,6 +565,55 @@ function cleanVocabularyEditItem(p: VocabularyEditInput): VocabularyEditInput | 
 function ensureTranscription<T extends PhraseInput>(phrase: T): T {
   if (phrase.transcription) return phrase;
   return { ...phrase, transcription: transcribe(phrase.phrase) };
+}
+
+/** Заполняет только пустые переводы, не затирая ручную правку учителя. */
+async function fillMissingTranslations<T extends PhraseInput & { kind?: "PHRASE" | "NOTE" }>(
+  items: T[],
+  target: MaterialTranslationLang,
+): Promise<T[]> {
+  const missing = items.filter(
+    (item) =>
+      item.kind !== "NOTE" &&
+      (!item.translation?.trim() || item.examples.some((example) => example.en && !example.tr)),
+  );
+  if (missing.length === 0) return items;
+
+  try {
+    const translated = await translateVocabularyWithAi(
+      missing.map((item, index): VocabularyTranslationInput => ({
+        id: `save-${index}`,
+        phrase: item.phrase,
+        section: item.section,
+        currentTranslation: item.translation,
+        examples: item.examples.map((example) => ({
+          en: example.en,
+          currentTranslation: example.tr,
+        })),
+      })),
+      target,
+    );
+    const resultByPhrase = new Map(
+      missing.map((item, index) => [item, translated.get(`save-${index}`)]),
+    );
+
+    return items.map((item) => {
+      const result = resultByPhrase.get(item);
+      if (!result) return item;
+      return {
+        ...item,
+        translation: item.translation?.trim() ? item.translation : result.translation,
+        examples: item.examples.map((example, index) => ({
+          ...example,
+          tr: example.tr?.trim() ? example.tr : (result.examples[index] ?? ""),
+        })),
+      };
+    });
+  } catch (error) {
+    // Сохранение не блокируем из-за внешнего сервиса: ручные данные важнее.
+    console.error("Не удалось дополнить пустые переводы при сохранении:", error);
+    return items;
+  }
 }
 
 type PhraseRow = typeof materialPhrases.$inferSelect;
@@ -566,11 +679,19 @@ export async function addPhrasesAction(
   await requireTeacher();
   if (!nodeId) return { error: "Не выбрана страница" };
 
-  const clean = (items ?? [])
+  let clean = (items ?? [])
     .map(cleanPhrase)
     .filter((p): p is PhraseInput => !!p)
     .map(ensureTranscription);
   if (clean.length === 0) return { error: "Нечего добавлять: пустое слово" };
+
+  const [node] = await db
+    .select({ translationLang: materialNodes.translationLang })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, nodeId))
+    .limit(1);
+  if (!node) return { error: "Страница не найдена" };
+  clean = await fillMissingTranslations(clean, node.translationLang);
 
   const [{ value: last } = { value: 0 }] = await db
     .select({ value: max(materialPhrases.sortOrder) })
@@ -601,14 +722,22 @@ export async function updatePhraseAction(
   if (!phraseId) return { error: "Не выбрана запись" };
 
   const prepared = cleanPhrase(data);
-  const clean = prepared ? ensureTranscription(prepared) : null;
+  let clean = prepared ? ensureTranscription(prepared) : null;
   if (!clean) return { error: "Слово не может быть пустым" };
 
   const [before] = await db
-    .select({ section: materialPhrases.section })
+    .select({ section: materialPhrases.section, nodeId: materialPhrases.nodeId })
     .from(materialPhrases)
     .where(eq(materialPhrases.id, phraseId))
     .limit(1);
+  if (!before) return { error: "Запись не найдена" };
+
+  const [node] = await db
+    .select({ translationLang: materialNodes.translationLang })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, before.nodeId))
+    .limit(1);
+  clean = (await fillMissingTranslations([clean], node?.translationLang ?? "UK"))[0];
 
   const [row] = await db
     .update(materialPhrases)
@@ -636,18 +765,23 @@ export async function saveVocabularyEditAction(
   if (!Array.isArray(items)) return { error: "Некорректный список записей" };
 
   const [node] = await db
-    .select({ type: materialNodes.type, pageKind: materialNodes.pageKind })
+    .select({
+      type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
+      translationLang: materialNodes.translationLang,
+    })
     .from(materialNodes)
     .where(eq(materialNodes.id, nodeId))
     .limit(1);
   if (!node || node.type !== "FILE") return { error: "Файл словаря не найден" };
 
-  const clean = (items as VocabularyEditInput[])
+  let clean = (items as VocabularyEditInput[])
     .slice(0, 2_000)
     .map(cleanVocabularyEditItem)
     .filter((item): item is VocabularyEditInput => !!item)
     .map((item) => (item.kind === "PHRASE" ? ensureTranscription(item) : item));
   if (clean.length === 0) return { error: "Пустой словарь — нечего сохранять" };
+  clean = await fillMissingTranslations(clean, node.translationLang);
 
   await db.transaction(async (tx) => {
     await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, nodeId));
@@ -759,6 +893,122 @@ export async function repairPhraseIconsAction(nodeId: string): Promise<BulkState
         : kept
           ? `Точных новых совпадений нет · сохранены прежние: ${kept}`
           : "Все иконки уже подобраны правильно",
+  };
+}
+
+/** Перевести целиком открытую страницу словаря или правила. */
+export async function translateMaterialPageAction(
+  nodeId: string,
+  target: MaterialTranslationLang,
+): Promise<BulkState> {
+  await requireTeacher();
+  if (!nodeId) return { error: "Не выбрана страница" };
+  const lang: MaterialTranslationLang = target === "RU" ? "RU" : "UK";
+
+  const [node] = await db
+    .select({
+      id: materialNodes.id,
+      type: materialNodes.type,
+      description: materialNodes.description,
+    })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, nodeId))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Страница не найдена" };
+
+  const [phrases, blockRows] = await Promise.all([
+    loadPhrases(nodeId),
+    db
+      .select()
+      .from(materialBlocks)
+      .where(eq(materialBlocks.nodeId, nodeId))
+      .orderBy(asc(materialBlocks.sortOrder)),
+  ]);
+  if (phrases.length === 0 && blockRows.length === 0) {
+    await db
+      .update(materialNodes)
+      .set({ translationLang: lang })
+      .where(eq(materialNodes.id, nodeId));
+    revalidateMaterials();
+    return {
+      ok: true,
+      message: `Язык будущих переводов: ${lang === "UK" ? "украинский" : "русский"}`,
+    };
+  }
+
+  try {
+    const [phraseTranslations, translatedBlocks, description] = await Promise.all([
+      phrases.length
+        ? translateVocabularyWithAi(
+            phrases.map((phrase) => ({
+              id: phrase.id,
+              kind: phrase.kind === "NOTE" ? "NOTE" : "PHRASE",
+              phrase: phrase.phrase,
+              section: phrase.section,
+              currentTranslation: phrase.translation,
+              examples: (phrase.examples ?? []).map((example) => ({
+                en: example.en,
+                currentTranslation: example.tr,
+              })),
+            })),
+            lang,
+          )
+        : Promise.resolve(new Map()),
+      blockRows.length
+        ? translateRuleBlocksWithAi(
+            blockRows.map((row) => row.data as RuleBlock),
+            lang,
+          )
+        : Promise.resolve([] as RuleBlock[]),
+      node.description
+        ? translateMaterialTextWithAi(node.description, lang)
+        : Promise.resolve(node.description),
+    ]);
+
+    await db.transaction(async (tx) => {
+      for (const phrase of phrases) {
+        const translated = phraseTranslations.get(phrase.id);
+        if (!translated) continue;
+        const examples = (phrase.examples ?? []).map((example, index) => ({
+          ...example,
+          tr: translated.examples[index] ?? example.tr,
+        }));
+        await tx
+          .update(materialPhrases)
+          .set({
+            phrase: phrase.kind === "NOTE" ? translated.phrase : phrase.phrase,
+            translation: translated.translation,
+            examples,
+          })
+          .where(eq(materialPhrases.id, phrase.id));
+      }
+
+      for (let index = 0; index < blockRows.length; index++) {
+        const block = translatedBlocks[index];
+        if (!block) continue;
+        await tx
+          .update(materialBlocks)
+          .set({ type: block.type, data: block })
+          .where(eq(materialBlocks.id, blockRows[index].id));
+      }
+
+      await tx
+        .update(materialNodes)
+        .set({ translationLang: lang, description })
+        .where(eq(materialNodes.id, nodeId));
+    });
+  } catch (error) {
+    console.error("Не удалось перевести страницу:", error);
+    return {
+      error: error instanceof Error ? error.message : "Переводчик временно недоступен",
+    };
+  }
+
+  revalidateMaterials();
+  const label = lang === "UK" ? "украинский" : "русский";
+  return {
+    ok: true,
+    message: `Страница переведена на ${label}: ${phrases.length || blockRows.length} элементов`,
   };
 }
 
@@ -1756,6 +2006,7 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
         category: src.category,
         sizeLabel: src.sizeLabel,
         pageKind: src.pageKind,
+        translationLang: src.translationLang,
         sourceText: src.sourceText,
         sortOrder: await nextOrder(parentId),
       })

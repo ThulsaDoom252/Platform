@@ -52,6 +52,7 @@ import {
   moveNodeAction,
   repairPhraseIconsAction,
   reorderNodeAction,
+  translateMaterialPageAction,
 } from "@/lib/actions/materials";
 
 /** Есть ли на странице что чистить: словник или разобранное правило. */
@@ -94,6 +95,7 @@ export type MaterialNode = {
   category: string | null;
   sizeLabel: string | null;
   pageKind: string | null;
+  translationLang: "RU" | "UK";
   sourceText: string | null;
   phrases: MaterialPhrase[];
   blocks: RuleBlock[];
@@ -150,7 +152,11 @@ export function MaterialsExplorer({
     name: string;
     icon: string | null;
   } | null>(null);
-  const [addWordsTo, setAddWordsTo] = useState<{ id: string; name: string } | null>(null);
+  const [addWordsTo, setAddWordsTo] = useState<{
+    id: string;
+    name: string;
+    translationLang: "RU" | "UK";
+  } | null>(null);
   const [ruleEditNode, setRuleEditNode] = useState<MaterialNode | null>(null);
   const [vocabularyEditNode, setVocabularyEditNode] = useState<MaterialNode | null>(null);
   const [copyNodes, setCopyNodes] = useState<MaterialNode[] | null>(null);
@@ -225,13 +231,13 @@ export function MaterialsExplorer({
   }, [menu]);
 
   useEffect(() => {
-    if (!moveError && !notice) return;
+    if (moving || (!moveError && !notice)) return;
     const t = setTimeout(() => {
       setMoveError(null);
       setNotice(null);
     }, 4000);
     return () => clearTimeout(t);
-  }, [moveError, notice]);
+  }, [moveError, moving, notice]);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -581,6 +587,37 @@ export function MaterialsExplorer({
         setMoveError(res.error);
       } else {
         setNotice(res.message ?? "Иконки исправлены");
+      }
+    });
+  }
+
+  function translatePage(node: MaterialNode, target: "RU" | "UK") {
+    const language = target === "UK" ? "украинский" : "русский";
+    const again = node.translationLang === target ? " заново" : "";
+    const containsMaterial = hasContent(node);
+    if (
+      !confirm(
+        containsMaterial
+          ? `Перевести${again} всю страницу «${node.name}» на ${language}?\n\n` +
+              "Будут обработаны слова, фразы, примеры и объяснения. После перевода всё можно править вручную."
+          : `Использовать ${language} для будущих переводов на странице «${node.name}»?`,
+      )
+    ) {
+      return;
+    }
+
+    setNotice(
+      containsMaterial
+        ? `Перевожу всю страницу на ${language}…`
+        : `Выбираю язык: ${language}…`,
+    );
+    startMove(async () => {
+      const result = await translateMaterialPageAction(node.id, target);
+      if (result.error) {
+        setNotice(null);
+        setMoveError(result.error);
+      } else {
+        setNotice(result.message ?? `Страница переведена на ${language}`);
       }
     });
   }
@@ -1390,7 +1427,13 @@ export function MaterialsExplorer({
                 {pageKind(selected) === "VOCAB" && (
                   <button
                     type="button"
-                    onClick={() => setAddWordsTo({ id: selected.id, name: selected.name })}
+                    onClick={() =>
+                      setAddWordsTo({
+                        id: selected.id,
+                        name: selected.name,
+                        translationLang: selected.translationLang,
+                      })
+                    }
                     className={pageBtn}
                   >
                     <IconPlus className="h-4 w-4" /> Дополнить
@@ -1473,6 +1516,31 @@ export function MaterialsExplorer({
                     {pageKind(selected) === "RULE" ? "Вставить заново" : "Вставить правило"}
                   </button>
                 )}
+
+                <div className="flex h-10 items-center gap-1 rounded-xl border border-line px-1.5">
+                    <span className="px-1.5 text-[11px] font-semibold text-faint">Перевод</span>
+                    {(["UK", "RU"] as const).map((language) => (
+                      <button
+                        key={language}
+                        type="button"
+                        onClick={() => translatePage(selected, language)}
+                        disabled={moving}
+                        title={
+                          selected.translationLang === language
+                            ? "Перевести страницу заново"
+                            : `Перевести всю страницу на ${language === "UK" ? "украинский" : "русский"}`
+                        }
+                        className={cn(
+                          "h-7 rounded-lg px-2 text-xs font-bold transition disabled:opacity-50",
+                          selected.translationLang === language
+                            ? "bg-accent text-white"
+                            : "text-muted hover:bg-surface-2 hover:text-content",
+                        )}
+                      >
+                        {language === "UK" ? "🇺🇦 UA" : "🇷🇺 RU"}
+                      </button>
+                    ))}
+                </div>
 
                 {hasContent(selected) && (
                   <button
@@ -1694,6 +1762,7 @@ export function MaterialsExplorer({
             key={editPhrase ? `phrase-${editPhrase.id}` : "phrase-idle"}
             phrase={editPhrase}
             sections={pageSections}
+            translationLang={selected?.translationLang ?? "UK"}
             onClose={() => setEditPhrase(null)}
           />
           <RuleEditor

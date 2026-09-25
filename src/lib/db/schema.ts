@@ -164,6 +164,8 @@ export const materialNodes = pgTable("material_nodes", {
    * чем она была, и предлагала соответствующие действия.
    */
   pageKind: text("page_kind"),
+  /** Язык переводов и пояснений на странице: русский или украинский. */
+  translationLang: vocabLangEnum("translation_lang").notNull().default("UK"),
   /**
    * Исходный текст правила или словаря, как его вставили. Нужен, чтобы
    * «Редактировать» показывало и разобранное содержимое, и оригинал.

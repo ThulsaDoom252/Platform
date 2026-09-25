@@ -37,6 +37,8 @@ export type MaterialNode = {
   sizeLabel: string | null;
   /** VOCAB | RULE | MISTAKE — чем страницу заполняли в прошлый раз. */
   pageKind: string | null;
+  /** Язык активного перевода и пояснений страницы. */
+  translationLang: "RU" | "UK";
   /** Исходный текст правила или словаря, как его вставили. */
   sourceText: string | null;
   phrases: MaterialPhrase[];
@@ -99,6 +101,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       category: r.category,
       sizeLabel: r.sizeLabel,
       pageKind: r.pageKind,
+      translationLang: r.translationLang,
       sourceText: r.sourceText,
       phrases: phrasesByNode.get(r.id) ?? [],
       blocks: blocksByNode.get(r.id) ?? [],

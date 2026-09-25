@@ -9,6 +9,7 @@ import {
   updatePhraseAction,
   deletePhraseAction,
   transcribeAction,
+  translateVocabularyDraftAction,
   type PhraseInput,
 } from "@/lib/actions/materials";
 import { IconPlus, IconPencil, IconX, IconCheck } from "@/components/icons";
@@ -61,11 +62,14 @@ export function DraftFields({
   onPickIcon,
   iconActive,
   onWordEntered,
+  onTranslationRequested,
 }: {
   draft: Draft;
   sections: SectionHint[];
   /** Слово введено — можно подтянуть транскрипцию и иконку. */
   onWordEntered?: (draft: Draft) => void;
+  /** Английский текст изменён — можно пересчитать контекстный перевод. */
+  onTranslationRequested?: (draft: Draft) => void;
   onChange: (next: Draft) => void;
   onPickIcon: () => void;
   iconActive: boolean;
@@ -92,7 +96,21 @@ export function DraftFields({
 
         <input
           value={draft.section}
-          onChange={(e) => set({ section: e.target.value })}
+          onChange={(e) =>
+            set({
+              section: e.target.value,
+              translation:
+                e.target.value === draft.section ? draft.translation : "",
+            })
+          }
+          onBlur={(e) =>
+            onTranslationRequested?.({
+              ...draft,
+              section: e.currentTarget.value,
+              translation:
+                e.currentTarget.value === draft.section ? draft.translation : "",
+            })
+          }
           list="phrase-sections"
           placeholder="Тип речи — Nouns, Verbs…"
           className={inputCls}
@@ -109,16 +127,22 @@ export function DraftFields({
               // После его изменения старое значение уже недостоверно.
               transcription:
                 e.target.value === draft.phrase ? draft.transcription : "",
+              translation:
+                e.target.value === draft.phrase ? draft.translation : "",
             })
           }
-          onBlur={(e) =>
-            onWordEntered?.({
+          onBlur={(e) => {
+            const next = {
               ...draft,
               phrase: e.currentTarget.value,
               transcription:
                 e.currentTarget.value === draft.phrase ? draft.transcription : "",
-            })
-          }
+              translation:
+                e.currentTarget.value === draft.phrase ? draft.translation : "",
+            };
+            onWordEntered?.(next);
+            onTranslationRequested?.(next);
+          }}
           placeholder="Слово или фраза"
           className={cn(inputCls, "sm:flex-[2]")}
         />
@@ -144,7 +168,38 @@ export function DraftFields({
             <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row">
               <input
                 value={ex.en}
-                onChange={(e) => setExample(i, { en: e.target.value })}
+                onChange={(e) =>
+                  set({
+                    translation:
+                      e.target.value === ex.en ? draft.translation : "",
+                    examples: draft.examples.map((example, index) =>
+                      index === i
+                        ? {
+                            ...example,
+                            en: e.target.value,
+                            tr: e.target.value === ex.en ? ex.tr : "",
+                          }
+                        : example,
+                    ),
+                  })
+                }
+                onBlur={(e) => {
+                  const examples = draft.examples.map((example, index) =>
+                    index === i
+                      ? {
+                          ...example,
+                          en: e.currentTarget.value,
+                          tr: e.currentTarget.value === ex.en ? ex.tr : "",
+                        }
+                      : example,
+                  );
+                  onTranslationRequested?.({
+                    ...draft,
+                    translation:
+                      e.currentTarget.value === ex.en ? draft.translation : "",
+                    examples,
+                  });
+                }}
                 placeholder={`Пример ${i + 1} — на английском`}
                 className={cn(inputCls, "h-9 sm:flex-1")}
               />
@@ -186,6 +241,34 @@ export function DraftFields({
   );
 }
 
+export const englishDraftKey = (draft: Draft) =>
+  JSON.stringify({
+    phrase: draft.phrase.trim(),
+    section: draft.section.trim(),
+    examples: draft.examples.map((example) => example.en.trim()),
+  });
+
+export function mergeAutomaticTranslation(
+  current: Draft,
+  requested: Draft,
+  result: { translation: string | null; examples: string[] },
+): Draft {
+  if (englishDraftKey(current) !== englishDraftKey(requested)) return current;
+
+  let translatedExample = 0;
+  return {
+    ...current,
+    translation: current.translation.trim()
+      ? current.translation
+      : (result.translation ?? ""),
+    examples: current.examples.map((example) => {
+      if (!example.en.trim()) return example;
+      const translated = result.examples[translatedExample++] ?? "";
+      return example.tr.trim() ? example : { ...example, tr: translated };
+    }),
+  };
+}
+
 // ---------------------------------------------------------------- добавление
 
 /**
@@ -197,7 +280,7 @@ export function WordAdder({
   sections,
   onClose,
 }: {
-  node: { id: string; name: string } | null;
+  node: { id: string; name: string; translationLang: "RU" | "UK" } | null;
   sections: SectionHint[];
   onClose: () => void;
 }) {
@@ -243,6 +326,22 @@ export function WordAdder({
     setDrafts((p) =>
       p.map((x) =>
         x.key === d.key && x.phrase.trim() === word ? { ...x, ...patch } : x,
+      ),
+    );
+  }
+
+  async function fillTranslation(d: Draft) {
+    if (!d.phrase.trim()) return;
+    const needsTranslation =
+      !d.translation.trim() ||
+      d.examples.some((example) => example.en.trim() && !example.tr.trim());
+    if (!needsTranslation) return;
+
+    const result = await translateVocabularyDraftAction(d, node!.translationLang);
+    if (result.error) setError(result.error);
+    setDrafts((current) =>
+      current.map((item) =>
+        item.key === d.key ? mergeAutomaticTranslation(item, d, result) : item,
       ),
     );
   }
@@ -317,6 +416,7 @@ export function WordAdder({
                     sections={sections}
                     iconActive={iconFor === d.key}
                     onWordEntered={fillFromWord}
+                    onTranslationRequested={fillTranslation}
                     onPickIcon={() => setIconFor(iconFor === d.key ? null : d.key)}
                     onChange={(next) =>
                       setDrafts((p) =>
@@ -416,6 +516,7 @@ export function WordAdder({
 export function PhraseEditor({
   phrase,
   sections,
+  translationLang,
   onClose,
 }: {
   phrase:
@@ -430,6 +531,7 @@ export function PhraseEditor({
       }
     | null;
   sections: SectionHint[];
+  translationLang: "RU" | "UK";
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<Draft | null>(() =>
@@ -484,6 +586,20 @@ export function PhraseEditor({
     );
   }
 
+  async function refreshTranslation(d: Draft) {
+    if (!d.phrase.trim()) return;
+    const needsTranslation =
+      !d.translation.trim() ||
+      d.examples.some((example) => example.en.trim() && !example.tr.trim());
+    if (!needsTranslation) return;
+
+    const result = await translateVocabularyDraftAction(d, translationLang);
+    if (result.error) setError(result.error);
+    setDraft((current) =>
+      current ? mergeAutomaticTranslation(current, d, result) : current,
+    );
+  }
+
   return (
     <Modal
       open
@@ -500,6 +616,7 @@ export function PhraseEditor({
           onPickIcon={() => setShowIcons((v) => !v)}
           onChange={setDraft}
           onWordEntered={refreshTranscription}
+          onTranslationRequested={refreshTranslation}
         />
 
         {showIcons && (
