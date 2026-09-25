@@ -6,7 +6,12 @@ import { createStudentAction } from "@/lib/actions/teacher";
 import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { Avatar } from "@/components/avatar";
-import { IconChevronRight, IconLayers } from "@/components/icons";
+import {
+  IconChevronRight,
+  IconLayers,
+  IconMaterials,
+  IconVideo,
+} from "@/components/icons";
 
 const inputCls =
   "h-10 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
@@ -116,7 +121,9 @@ export default async function TeacherStudentsPage({
             <span className="grad-accent flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm">
               <IconLayers className="h-6 w-6" />
             </span>
-            <div className="min-w-0 flex-1">
+            {/* Без нижней границы текст сжимался до одного слова в строке:
+                плашка с остатком отбирала всю ширину. Теперь она переносится. */}
+            <div className="min-w-[10rem] flex-1">
               <p className="font-semibold text-content">{t.studentsPage.packageTitle}</p>
               <p className="mt-0.5 text-sm text-muted">
                 {fmt(t.studentsPage.packageShared, {
@@ -169,9 +176,11 @@ export default async function TeacherStudentsPage({
               key={s.id}
               className="flex flex-wrap items-center gap-3 py-3.5 first:pt-0 last:pb-0"
             >
+              {/* На телефоне имя занимает всю строку, а плашка с кнопками
+                  переносится вниз — иначе от имени остаётся «A…». */}
               <Link
                 href={`/teacher/students/${s.id}`}
-                className="group flex min-w-0 flex-1 items-center gap-4"
+                className="group flex w-full min-w-0 items-center gap-4 sm:w-auto sm:flex-1"
               >
                 <Avatar name={s.name} src={s.avatarUrl} className="h-11 w-11 text-sm" />
                 <span className="min-w-0 flex-1">
@@ -191,28 +200,35 @@ export default async function TeacherStudentsPage({
                 {fmt(t.studentsPage.balanceLabel, { n: s.lessons })}
               </span>
 
-              {/* Живого урока ещё нет — кнопка стоит на своём месте,
-                  но честно говорит, что не работает. */}
+              {/* На узком экране подписи не помещаются — остаются одни
+                  значки, поэтому кнопка там квадратная. */}
               <button
                 type="button"
                 disabled
                 title={t.studentsPage.toClassSoon}
-                className="h-9 shrink-0 cursor-not-allowed rounded-xl border border-line px-3.5 text-[13px] font-semibold text-faint opacity-60"
+                aria-label={t.studentsPage.toClass}
+                className="flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-line text-[13px] font-semibold text-faint opacity-60 sm:w-auto sm:px-3.5"
               >
-                {t.studentsPage.toClass}
+                <IconVideo className="h-4 w-4 sm:hidden" />
+                <span className="hidden sm:inline">{t.studentsPage.toClass}</span>
               </button>
 
               <Link
                 href={`/teacher/students/${s.id}/materials`}
-                className="flex h-9 shrink-0 items-center rounded-xl border border-line px-3.5 text-[13px] font-semibold text-content transition hover:border-accent hover:text-accent"
+                title={t.nav.materials}
+                aria-label={t.nav.materials}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line text-[13px] font-semibold text-content transition hover:border-accent hover:text-accent sm:w-auto sm:px-3.5"
               >
-                {t.nav.materials}
+                <IconMaterials className="h-4 w-4 sm:hidden" />
+                <span className="hidden sm:inline">{t.nav.materials}</span>
               </Link>
 
+              {/* Стрелка нужна только там, где строка не переносится:
+                  на телефоне её роль играет само имя. */}
               <Link
                 href={`/teacher/students/${s.id}`}
                 aria-label={s.name}
-                className="flex h-9 w-6 shrink-0 items-center justify-center text-faint transition hover:text-accent"
+                className="hidden h-9 w-6 shrink-0 items-center justify-center text-faint transition hover:text-accent sm:flex"
               >
                 <IconChevronRight className="h-4 w-4" />
               </Link>
