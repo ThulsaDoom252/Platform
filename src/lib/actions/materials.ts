@@ -497,6 +497,12 @@ function cleanVocabularyEditItem(p: VocabularyEditInput): VocabularyEditInput | 
   };
 }
 
+/** Не даёт сохранить слово без новой транскрипции из-за быстрого клика по кнопке. */
+function ensureTranscription<T extends PhraseInput>(phrase: T): T {
+  if (phrase.transcription) return phrase;
+  return { ...phrase, transcription: transcribe(phrase.phrase) };
+}
+
 type PhraseRow = typeof materialPhrases.$inferSelect;
 
 /** Записи страницы по порядку. */
@@ -560,7 +566,10 @@ export async function addPhrasesAction(
   await requireTeacher();
   if (!nodeId) return { error: "Не выбрана страница" };
 
-  const clean = (items ?? []).map(cleanPhrase).filter((p): p is PhraseInput => !!p);
+  const clean = (items ?? [])
+    .map(cleanPhrase)
+    .filter((p): p is PhraseInput => !!p)
+    .map(ensureTranscription);
   if (clean.length === 0) return { error: "Нечего добавлять: пустое слово" };
 
   const [{ value: last } = { value: 0 }] = await db
@@ -591,7 +600,8 @@ export async function updatePhraseAction(
   await requireTeacher();
   if (!phraseId) return { error: "Не выбрана запись" };
 
-  const clean = cleanPhrase(data);
+  const prepared = cleanPhrase(data);
+  const clean = prepared ? ensureTranscription(prepared) : null;
   if (!clean) return { error: "Слово не может быть пустым" };
 
   const [before] = await db
@@ -635,7 +645,8 @@ export async function saveVocabularyEditAction(
   const clean = (items as VocabularyEditInput[])
     .slice(0, 2_000)
     .map(cleanVocabularyEditItem)
-    .filter((item): item is VocabularyEditInput => !!item);
+    .filter((item): item is VocabularyEditInput => !!item)
+    .map((item) => (item.kind === "PHRASE" ? ensureTranscription(item) : item));
   if (clean.length === 0) return { error: "Пустой словарь — нечего сохранять" };
 
   await db.transaction(async (tx) => {

@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Modal } from "@/components/modal";
 import {
   saveVocabularyEditAction,
+  transcribeAction,
   type VocabularyEditInput,
 } from "@/lib/actions/materials";
 import { parseMaterial, type ParsedPhrase } from "@/lib/materials-parser";
@@ -121,6 +122,22 @@ export function VocabularyEditor({
 
   const update = (key: string, next: EditableItem) =>
     setItems((current) => current.map((item) => (item.key === key ? next : item)));
+
+  async function refreshTranscription(key: string, draft: Draft) {
+    const word = draft.phrase.trim();
+    if (!word || draft.transcription.trim()) return;
+
+    const ipa = await transcribeAction(word);
+    setItems((current) =>
+      current.map((item) =>
+        item.key === key &&
+        item.phrase.trim() === word &&
+        !item.transcription.trim()
+          ? { ...item, transcription: ipa ?? "" }
+          : item,
+      ),
+    );
+  }
 
   const move = (index: number, delta: number) =>
     setItems((current) => {
@@ -286,6 +303,7 @@ export function VocabularyEditor({
                       iconActive={iconFor === item.key}
                       onPickIcon={() => setIconFor(iconFor === item.key ? null : item.key)}
                       onChange={(next) => update(item.key, { ...item, ...next })}
+                      onWordEntered={(draft) => refreshTranscription(item.key, draft)}
                     />
                   ) : (
                     <div className="flex flex-col gap-2">

@@ -102,8 +102,23 @@ export function DraftFields({
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
           value={draft.phrase}
-          onChange={(e) => set({ phrase: e.target.value })}
-          onBlur={() => onWordEntered?.(draft)}
+          onChange={(e) =>
+            set({
+              phrase: e.target.value,
+              // Транскрипция относится к конкретному английскому тексту.
+              // После его изменения старое значение уже недостоверно.
+              transcription:
+                e.target.value === draft.phrase ? draft.transcription : "",
+            })
+          }
+          onBlur={(e) =>
+            onWordEntered?.({
+              ...draft,
+              phrase: e.currentTarget.value,
+              transcription:
+                e.currentTarget.value === draft.phrase ? draft.transcription : "",
+            })
+          }
           placeholder="Слово или фраза"
           className={cn(inputCls, "sm:flex-[2]")}
         />
@@ -225,7 +240,11 @@ export function WordAdder({
     }
     if (Object.keys(patch).length === 0) return;
 
-    setDrafts((p) => p.map((x) => (x.key === d.key ? { ...x, ...patch } : x)));
+    setDrafts((p) =>
+      p.map((x) =>
+        x.key === d.key && x.phrase.trim() === word ? { ...x, ...patch } : x,
+      ),
+    );
   }
 
   function save() {
@@ -450,6 +469,21 @@ export function PhraseEditor({
     });
   }
 
+  async function refreshTranscription(d: Draft) {
+    const word = d.phrase.trim();
+    if (!word || d.transcription.trim()) return;
+
+    const ipa = await transcribeAction(word);
+    setDraft((current) =>
+      current &&
+      current.key === d.key &&
+      current.phrase.trim() === word &&
+      !current.transcription.trim()
+        ? { ...current, transcription: ipa ?? "" }
+        : current,
+    );
+  }
+
   return (
     <Modal
       open
@@ -465,6 +499,7 @@ export function PhraseEditor({
           iconActive={showIcons}
           onPickIcon={() => setShowIcons((v) => !v)}
           onChange={setDraft}
+          onWordEntered={refreshTranscription}
         />
 
         {showIcons && (
