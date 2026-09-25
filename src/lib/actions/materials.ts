@@ -34,12 +34,12 @@ import {
 } from "@/lib/icon-suggest";
 import { suggestVocabularyIconsWithAi } from "@/lib/vocabulary-icon-ai";
 import {
-  translateMaterialTextWithAi,
-  translateRuleBlocksWithAi,
-  translateVocabularyWithAi,
+  translateMaterialText,
+  translateRuleBlocks,
+  translateVocabulary,
   type MaterialTranslationLang,
   type VocabularyTranslationInput,
-} from "@/lib/material-translation-ai";
+} from "@/lib/material-translation";
 
 export type { Misspelling };
 
@@ -491,7 +491,7 @@ export async function translateVocabularyDraftAction(
     .slice(0, 10);
 
   try {
-    const translated = await translateVocabularyWithAi(
+    const translated = await translateVocabulary(
       [
         {
           id: "draft",
@@ -501,6 +501,7 @@ export async function translateVocabularyDraftAction(
           examples,
         },
       ],
+      lang,
       lang,
     );
     const item = translated.get("draft");
@@ -580,7 +581,7 @@ async function fillMissingTranslations<T extends PhraseInput & { kind?: "PHRASE"
   if (missing.length === 0) return items;
 
   try {
-    const translated = await translateVocabularyWithAi(
+    const translated = await translateVocabulary(
       missing.map((item, index): VocabularyTranslationInput => ({
         id: `save-${index}`,
         phrase: item.phrase,
@@ -591,6 +592,7 @@ async function fillMissingTranslations<T extends PhraseInput & { kind?: "PHRASE"
           currentTranslation: example.tr,
         })),
       })),
+      target,
       target,
     );
     const resultByPhrase = new Map(
@@ -910,11 +912,19 @@ export async function translateMaterialPageAction(
       id: materialNodes.id,
       type: materialNodes.type,
       description: materialNodes.description,
+      translationLang: materialNodes.translationLang,
     })
     .from(materialNodes)
     .where(eq(materialNodes.id, nodeId))
     .limit(1);
   if (!node || node.type !== "FILE") return { error: "Страница не найдена" };
+
+  if (node.translationLang === lang) {
+    return {
+      ok: true,
+      message: `На странице уже выбран ${lang === "UK" ? "украинский" : "русский"} язык`,
+    };
+  }
 
   const [phrases, blockRows] = await Promise.all([
     loadPhrases(nodeId),
@@ -939,7 +949,7 @@ export async function translateMaterialPageAction(
   try {
     const [phraseTranslations, translatedBlocks, description] = await Promise.all([
       phrases.length
-        ? translateVocabularyWithAi(
+        ? translateVocabulary(
             phrases.map((phrase) => ({
               id: phrase.id,
               kind: phrase.kind === "NOTE" ? "NOTE" : "PHRASE",
@@ -952,16 +962,18 @@ export async function translateMaterialPageAction(
               })),
             })),
             lang,
+            node.translationLang,
           )
         : Promise.resolve(new Map()),
       blockRows.length
-        ? translateRuleBlocksWithAi(
+        ? translateRuleBlocks(
             blockRows.map((row) => row.data as RuleBlock),
             lang,
+            node.translationLang,
           )
         : Promise.resolve([] as RuleBlock[]),
       node.description
-        ? translateMaterialTextWithAi(node.description, lang)
+        ? translateMaterialText(node.description, lang, node.translationLang)
         : Promise.resolve(node.description),
     ]);
 

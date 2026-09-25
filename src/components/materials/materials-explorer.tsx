@@ -593,13 +593,13 @@ export function MaterialsExplorer({
 
   function translatePage(node: MaterialNode, target: "RU" | "UK") {
     const language = target === "UK" ? "украинский" : "русский";
-    const again = node.translationLang === target ? " заново" : "";
+    if (node.translationLang === target) return;
     const containsMaterial = hasContent(node);
     if (
       !confirm(
         containsMaterial
-          ? `Перевести${again} всю страницу «${node.name}» на ${language}?\n\n` +
-              "Будут обработаны слова, фразы, примеры и объяснения. После перевода всё можно править вручную."
+          ? `Заменить перевод всей страницы «${node.name}» на ${language}?\n\n` +
+              "DeepL переведёт существующие переводы и объяснения. Английский текст не изменится."
           : `Использовать ${language} для будущих переводов на странице «${node.name}»?`,
       )
     ) {
@@ -1524,11 +1524,11 @@ export function MaterialsExplorer({
                         key={language}
                         type="button"
                         onClick={() => translatePage(selected, language)}
-                        disabled={moving}
+                        disabled={moving || selected.translationLang === language}
                         title={
                           selected.translationLang === language
-                            ? "Перевести страницу заново"
-                            : `Перевести всю страницу на ${language === "UK" ? "украинский" : "русский"}`
+                            ? "Текущий язык перевода"
+                            : `Заменить перевод всей страницы на ${language === "UK" ? "украинский" : "русский"}`
                         }
                         className={cn(
                           "h-7 rounded-lg px-2 text-xs font-bold transition disabled:opacity-50",
