@@ -101,6 +101,11 @@ const STOP = new Set([
 
 /** Частые смысловые связи, которых нет в официальных названиях emoji. */
 const CONCEPT_ALIASES: [string, string][] = [
+  ["🧾", "split bill split the bill pay separately separate checks go dutch each pays their own разделить счет каждый платит за себя окремий рахунок кожен платить за себе"],
+  ["🤬", "swear swearing profanity curse rude language bad word excuse my french ругательство брань грубое слово лайка матюки грубе слово"],
+  ["🤷", "do not understand incomprehensible confusing gibberish greek to me over my head ничего не понимаю непонятно темный лес нічого не розумію незрозуміло темний ліс"],
+  ["🌍", "local customs adapt fit in behave like locals when in rome местные обычаи поступать как местные чужой монастырь місцеві звичаї робити як місцеві чужий монастир"],
+  ["🛠️", "versatile all purpose multipurpose multi tool swiss army knife jack of all trades universal універсальний на все руки многофункциональный багатофункціональний"],
   ["😈", "devil demon daemon hell hellraiser fiend evil черт чёрт демон дьявол бес диявол демон чорт дідько"],
   ["🤝", "deal agreement contract bargain negotiation сделка договор соглашение контракт угода домовленість згода"],
   ["💔", "adultery adulterer adulterers infidelity cheating betrayal affair прелюбодеяние прелюбодеи измена зрада перелюб невірність"],
@@ -207,6 +212,11 @@ const EXACT_PHRASE_OVERRIDES = new Map<string, string>([["oi", "👋"]]);
  * Правила охватывают варианты местоимений и слова внутри конструкции.
  */
 const PHRASE_ICON_RULES: [RegExp, string][] = [
+  [/\b(?:go|going|went) dutch\b|\bsplit(?:ting)? the bill\b/u, "🧾"],
+  [/\b(?:excuse|pardon) my french\b/u, "🤬"],
+  [/\b(?:its|it is|thats|that is) all greek to me\b/u, "🤷"],
+  [/\bwhen in rome(?: do as the romans do)?\b/u, "🌍"],
+  [/\bswiss army knife\b|\bjack of all trades\b/u, "🛠️"],
   [/\b(?:something|somethings|what) (?:is )?going on\b/u, "🔄"],
   [/\bwork(?:ed|ing)? (?:my|your|his|her|our|their) ass off\b/u, "🥵"],
   [
@@ -443,11 +453,21 @@ export function suggestVocabularyIcon(
   const learnedPhrase = PHRASE_ICON_RULES.find(([pattern]) => pattern.test(normalizedPhrase));
   if (learnedPhrase) return learnedPhrase[1];
 
+  // Для выражения из нескольких слов перевод и примеры надёжнее отдельных
+  // буквальных токенов: French в идиоме не должен превращаться в круассан.
+  const multiword = normalizedPhrase.includes(" ") && !!translation?.trim();
+
   return bestIcon([
-    { text: phrase, weight: 5 },
-    { text: translation, weight: 3 },
+    { text: phrase, weight: multiword ? 1.5 : 5 },
+    { text: translation, weight: multiword ? 6 : 3 },
     { text: section, weight: 0.35 },
-    { text: examples.map((example) => example.en).filter(Boolean).join(" "), weight: 0.2 },
-    { text: examples.map((example) => example.tr).filter(Boolean).join(" "), weight: 0.2 },
+    {
+      text: examples.map((example) => example.en).filter(Boolean).join(" "),
+      weight: multiword ? 0.5 : 0.2,
+    },
+    {
+      text: examples.map((example) => example.tr).filter(Boolean).join(" "),
+      weight: multiword ? 1.2 : 0.2,
+    },
   ], true);
 }

@@ -13,7 +13,7 @@ import {
   type PhraseInput,
 } from "@/lib/actions/materials";
 import { IconPlus, IconPencil, IconX, IconCheck } from "@/components/icons";
-import { suggestIcon } from "@/lib/icon-suggest";
+import { suggestVocabularyIcon } from "@/lib/icon-suggest";
 import { cn } from "@/lib/utils";
 
 const inputCls =
@@ -313,8 +313,9 @@ export function WordAdder({
     if (!word) return;
 
     const patch: Partial<Draft> = {};
-    if (!d.icon || d.icon === "💬") {
-      const icon = suggestIcon(word);
+    const sectionIcon = iconOf(d.section) ?? "💬";
+    if (!d.icon || d.icon === "💬" || d.icon === sectionIcon) {
+      const icon = suggestVocabularyIcon(word, d.translation, d.section, d.examples);
       if (icon) patch.icon = icon;
     }
     if (!d.transcription.trim()) {
