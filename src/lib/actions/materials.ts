@@ -1477,6 +1477,115 @@ export async function repairPhraseIconAction(phraseId: string): Promise<BulkStat
 }
 
 /**
+ * Меняет тип страницы. Если выбран повторный разбор, старое разобранное
+ * содержимое заменяется только после успешного разбора сохранённого исходника.
+ */
+export async function changeMaterialPageKindAction(
+  nodeId: string,
+  nextKind: "VOCAB" | "RULE",
+  reparse: boolean,
+): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(nodeId ?? "");
+  const kind = nextKind === "RULE" ? "RULE" : "VOCAB";
+  if (!id) return { error: "Не выбран файл" };
+
+  const [node] = await db
+    .select({
+      type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
+      sourceText: materialNodes.sourceText,
+    })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Файл не найден" };
+
+  if (!reparse) {
+    const [[phrase], [block]] = await Promise.all([
+      db
+        .select({ id: materialPhrases.id })
+        .from(materialPhrases)
+        .where(eq(materialPhrases.nodeId, id))
+        .limit(1),
+      db
+        .select({ id: materialBlocks.id })
+        .from(materialBlocks)
+        .where(eq(materialBlocks.nodeId, id))
+        .limit(1),
+    ]);
+    if (phrase || block) {
+      return {
+        error:
+          "Заполненный файл нельзя просто переименовать в другой тип. " +
+          "Перепарси сохранённый исходник или вставь содержимое заново.",
+      };
+    }
+    await db.update(materialNodes).set({ pageKind: kind }).where(eq(materialNodes.id, id));
+    revalidateMaterials();
+    return { ok: true, message: `Тип файла: ${kind === "RULE" ? "Правило" : "Словарь"}` };
+  }
+
+  const source = node.sourceText?.trim() ?? "";
+  if (!source) return { error: "У файла не сохранён исходный текст для перепарсинга" };
+
+  if (kind === "RULE") {
+    const parsed = parseRuleText(source);
+    const blocks = sanitizeBlocks(parsed.blocks);
+    if (blocks.length === 0) {
+      return { error: parsed.warnings[0] ?? "Исходник не удалось разобрать как правило" };
+    }
+    await db.transaction(async (tx) => {
+      await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, id));
+      await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, id));
+      await tx.insert(materialBlocks).values(
+        blocks.map((block, index) => ({
+          nodeId: id,
+          sortOrder: index + 1,
+          type: block.type,
+          data: block,
+        })),
+      );
+      await tx
+        .update(materialNodes)
+        .set({ pageKind: "RULE", formattingIssue: parsed.warnings.length > 0 })
+        .where(eq(materialNodes.id, id));
+    });
+    revalidateMaterials();
+    return { ok: true, message: `Тип изменён на «Правило»: ${blocks.length} блоков` };
+  }
+
+  const parsed = parseMaterial(source, "vocabulary");
+  if (parsed.phrases.length === 0) {
+    return { error: parsed.warnings[0] ?? "Исходник не удалось разобрать как словарь" };
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, id));
+    await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, id));
+    await tx.insert(materialPhrases).values(
+      parsed.phrases.map((phrase, index) => ({
+        nodeId: id,
+        sortOrder: index + 1,
+        icon: phrase.icon,
+        phrase: phrase.phrase,
+        transcription: phrase.transcription,
+        translation: phrase.translation,
+        section: phrase.section,
+        kind: phrase.kind,
+        examples: phrase.examples,
+      })),
+    );
+    await tx
+      .update(materialNodes)
+      .set({ pageKind: "VOCAB", formattingIssue: parsed.warnings.length > 0 })
+      .where(eq(materialNodes.id, id));
+  });
+  revalidateMaterials();
+  const words = parsed.phrases.filter((phrase) => phrase.kind === "PHRASE").length;
+  return { ok: true, message: `Тип изменён на «Словарь»: ${words} записей` };
+}
+
+/**
  * Заново разобрать сохранённый исходник страницы актуальным парсером.
  * Существующие строки обновляются на месте, поэтому их id и картинки остаются.
  * Автоматически уменьшать число записей нельзя: это могло бы скрыть данные.

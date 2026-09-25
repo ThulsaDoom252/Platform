@@ -46,6 +46,7 @@ const toCopySource = (n: MaterialNode): CopySource => ({
   children: n.children.map(toCopySource),
 });
 import {
+  changeMaterialPageKindAction,
   clearTreeFormattingMarksAction,
   clearPagesAction,
   deleteNodeAction,
@@ -75,6 +76,9 @@ const pageKind = (n: MaterialNode): "VOCAB" | "RULE" | null =>
       : n.phrases.length > 0
         ? "VOCAB"
         : null;
+
+const pageKindLabel = (kind: "VOCAB" | "RULE") =>
+  kind === "RULE" ? "Правило" : "Словарь";
 
 const pageBtn =
   "flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 text-sm font-semibold text-muted transition hover:border-accent hover:text-accent";
@@ -172,6 +176,10 @@ export function MaterialsExplorer({
   const [importTree, setImportTree] = useState<ImportTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
+  const [kindChange, setKindChange] = useState<{
+    node: MaterialNode;
+    next: "VOCAB" | "RULE";
+  } | null>(null);
 
   const { byId, pathById } = useMemo(() => {
     const byId = new Map<string, MaterialNode>();
@@ -718,6 +726,27 @@ export function MaterialsExplorer({
     });
   }
 
+  /** Применить подтверждённую смену типа и, по возможности, перепарсить исходник. */
+  function applyKindChange(reparse: boolean) {
+    if (!kindChange) return;
+    const { node, next } = kindChange;
+    setKindChange(null);
+    setNotice(
+      reparse
+        ? `Перепарсирую «${node.name}» как ${pageKindLabel(next).toLowerCase()}…`
+        : `Меняю тип «${node.name}»…`,
+    );
+    startMove(async () => {
+      const res = await changeMaterialPageKindAction(node.id, next, reparse);
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? "Тип файла изменён");
+      }
+    });
+  }
+
   function translatePage(node: MaterialNode, target: "RU" | "UK") {
     const language = target === "UK" ? "украинский" : "русский";
     if (node.translationLang === target) return;
@@ -933,6 +962,24 @@ export function MaterialsExplorer({
 
   const mergedHighlight = (n: MaterialNode) =>
     editable && n.type === "FILE" && n.mergeCount > 1;
+
+  /** Тип содержимого виден прямо в дереве, но только в редакторе учителя. */
+  const pageTypeMarker = (n: MaterialNode) => {
+    if (!editable || n.type !== "FILE") return null;
+    const kind = pageKind(n);
+    if (!kind) return null;
+    return (
+      <span
+        title={`Тип файла: ${pageKindLabel(kind)}`}
+        className={cn(
+          "shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide",
+          kind === "RULE" ? "tint-violet" : "tint-sky",
+        )}
+      >
+        {pageKindLabel(kind)}
+      </span>
+    );
+  };
 
   if (tree.length === 0) {
     return (
@@ -1279,6 +1326,7 @@ export function MaterialsExplorer({
             >
               {n.name}
             </span>
+            {pageTypeMarker(n)}
             {mergedMarker(n)}
             {formattingMarker(n)}
             {fixMarker(n)}
@@ -1371,6 +1419,7 @@ export function MaterialsExplorer({
                 {n.description || fmt(t.materials.itemsCount, { n: countFiles(n) })}
               </span>
             </span>
+            {pageTypeMarker(n)}
             {mergedMarker(n)}
             {formattingMarker(n)}
             {fixMarker(n)}
@@ -1715,6 +1764,26 @@ export function MaterialsExplorer({
             )}
             {editable && (
               <div className="mb-4 flex flex-wrap gap-2">
+                {scope !== "MISTAKE" && (
+                  <label className="flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 text-sm">
+                    <span className="text-[11px] font-semibold text-faint">Тип файла</span>
+                    <select
+                      value={pageKind(selected) ?? ""}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        if (next === "VOCAB" || next === "RULE") {
+                          setKindChange({ node: selected, next });
+                        }
+                      }}
+                      disabled={moving}
+                      className="h-7 rounded-lg bg-surface-2 px-2 text-xs font-bold text-content outline-none ring-1 ring-line focus:ring-accent disabled:opacity-50"
+                    >
+                      <option value="" disabled>Не определён</option>
+                      <option value="VOCAB">Словарь</option>
+                      <option value="RULE">Правило</option>
+                    </select>
+                  </label>
+                )}
                 {/* Пока страница пустая — предлагаем оба способа наполнения.
                     Дальше она помнит, чем стала, и показывает своё. */}
                 {pageKind(selected) === "VOCAB" && (
@@ -1975,6 +2044,7 @@ export function MaterialsExplorer({
                 <span className="mt-3 w-full truncate text-sm font-bold text-content">
                   {n.name}
                 </span>
+                {pageTypeMarker(n)}
                 {editable && (n.formattingIssue || n.formattingScanIgnored || n.needsFix) && (
                   <span className="mt-1 flex w-full items-center justify-between gap-2">
                     {formattingMarker(n)}
@@ -2031,6 +2101,7 @@ export function MaterialsExplorer({
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-content">
                   {n.name}
                 </span>
+                {pageTypeMarker(n)}
                 {mergedMarker(n)}
                 {formattingMarker(n)}
                 {fixMarker(n)}
@@ -2119,6 +2190,65 @@ export function MaterialsExplorer({
             node={vocabularyEditNode}
             onClose={() => setVocabularyEditNode(null)}
           />
+
+          {kindChange && (
+            <Modal
+              open
+              onClose={() => setKindChange(null)}
+              title={`Изменить тип на «${pageKindLabel(kindChange.next)}»?`}
+              icon={<IconMaterials className="h-5 w-5" />}
+            >
+              <div className="flex flex-col gap-4">
+                <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-sm text-content">
+                  {kindChange.node.icon} <b>{kindChange.node.name}</b>
+                  <span className="mt-1 block text-xs text-muted">
+                    Сейчас: {pageKind(kindChange.node) ? pageKindLabel(pageKind(kindChange.node)!) : "тип не определён"}
+                    {" → "}{pageKindLabel(kindChange.next)}
+                  </span>
+                </p>
+
+                {kindChange.node.sourceText?.trim() ? (
+                  <p className="text-sm leading-relaxed text-muted">
+                    Сохранённый исходник будет заново разобран как {pageKindLabel(kindChange.next).toLowerCase()}.
+                    Текущее разобранное содержимое заменится только после успешного результата;
+                    сам исходник останется сохранён.
+                  </p>
+                ) : hasContent(kindChange.node) ? (
+                  <p className="rounded-xl bg-amber-500/10 px-3.5 py-3 text-sm text-amber-700">
+                    У заполненного файла нет сохранённого исходника, поэтому безопасно
+                    перепарсить его в другой тип сейчас нельзя. Сначала вставь исходный текст заново.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted">
+                    Файл пустой, поэтому будет изменён только его тип.
+                  </p>
+                )}
+
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setKindChange(null)}
+                    disabled={moving}
+                    className="h-11 flex-1 rounded-xl border border-line text-sm font-semibold text-muted transition hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    Отмена
+                  </button>
+                  {(kindChange.node.sourceText?.trim() || !hasContent(kindChange.node)) && (
+                    <button
+                      type="button"
+                      onClick={() => applyKindChange(!!kindChange.node.sourceText?.trim())}
+                      disabled={moving}
+                      className="h-11 flex-1 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {kindChange.node.sourceText?.trim()
+                        ? "Сменить и перепарсить"
+                        : "Сменить тип"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </Modal>
+          )}
 
           {copyNodes && copyNodes.length > 0 && (
             <CopyDialog
