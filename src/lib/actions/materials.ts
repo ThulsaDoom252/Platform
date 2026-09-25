@@ -975,6 +975,47 @@ export async function repairPhraseIconsAction(nodeId: string): Promise<BulkState
   };
 }
 
+/** Подобрать и заменить иконку ровно у одной словарной записи. */
+export async function repairPhraseIconAction(phraseId: string): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(phraseId ?? "");
+  if (!id) return { error: "Не выбрана запись" };
+
+  const [row] = await db
+    .select()
+    .from(materialPhrases)
+    .where(eq(materialPhrases.id, id))
+    .limit(1);
+  if (!row || row.kind === "NOTE") return { error: "Словарная запись не найдена" };
+
+  const input = {
+    id: row.id,
+    phrase: row.phrase,
+    translation: row.translation,
+    section: row.section,
+    examples: row.examples ?? [],
+  };
+  const aiIcons = await suggestVocabularyIconsWithAi([input]);
+  const icon =
+    aiIcons.get(row.id) ??
+    suggestVocabularyIcon(
+      row.phrase,
+      row.translation,
+      row.section,
+      row.examples ?? [],
+    );
+
+  if (!icon) return { error: "Не удалось подобрать подходящую иконку" };
+
+  await db
+    .update(materialPhrases)
+    .set({ icon: icon.slice(0, 64) })
+    .where(eq(materialPhrases.id, row.id));
+
+  revalidateMaterials();
+  return { ok: true, message: `Иконка исправлена: ${icon}` };
+}
+
 /** Перевести целиком открытую страницу словаря или правила. */
 export async function translateMaterialPageAction(
   nodeId: string,

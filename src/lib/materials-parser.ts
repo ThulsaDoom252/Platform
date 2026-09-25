@@ -44,9 +44,14 @@ const NOTE_LEAD = /^\s*(?:💡|⚠️?|📌|📍|❗)\s*/u;
 /** Стрелка «значит / получается»: отделяет пояснение от примера. */
 const TO = /\s*[→⟶➜➔]\s*/;
 
-/** Ведущие эмодзи и значок динамика, которые копируются вместе с текстом. */
-const LEADING_ICONS =
-  /^\s*(?:[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}\u{20E3}]+\s*)+/u;
+/**
+ * Один emoji целиком. Unicode-свойство покрывает и стрелки вроде ↩️/⬅️,
+ * которые лежат вне старых диапазонов и раньше оставались частью слова.
+ */
+const LEADING_EMOJI_SOURCE =
+  "(?:\\p{Regional_Indicator}{2}|\\p{Extended_Pictographic}(?:\\uFE0F|\\uFE0E|\\p{Emoji_Modifier})*(?:\\u200D\\p{Extended_Pictographic}(?:\\uFE0F|\\p{Emoji_Modifier})*)*)";
+const LEADING_ICONS = new RegExp(`^\\s*(?:${LEADING_EMOJI_SOURCE}\\s*)+`, "u");
+const LEADING_ICON_PARTS = new RegExp(LEADING_EMOJI_SOURCE, "gu");
 
 /**
  * Транскрипция в слешах. Пробел сразу после открывающего слеша или перед
@@ -54,6 +59,24 @@ const LEADING_ICONS =
  * «fortunately / unfortunately /ˈfɔː.tʃənətli/» — тут нужен только последний.
  */
 const IPA = /\/(?:[^/\s]|[^/\s][^/]{0,58}[^/\s])\//;
+const IPA_GLOBAL = new RegExp(IPA.source, "gu");
+
+/** Снимает одну или несколько транскрипций, не оставляя «; /другая/» в слове. */
+function extractTranscriptions(text: string): {
+  phrase: string;
+  transcription: string | null;
+} {
+  const matches = text.match(IPA_GLOBAL) ?? [];
+  const phrase = text
+    .replace(IPA_GLOBAL, " ")
+    .replace(/\s*;\s*$/u, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return {
+    phrase,
+    transcription: matches.length > 0 ? matches.join("; ") : null,
+  };
+}
 
 /** Значок озвучки в начале строки и подпись рядом с ним. */
 const SPEAKER = /^\s*[\u{1F50A}\u{1F508}\u{1F509}\u{1F3A7}\u{25B6}\u{23F5}]️?\s*/u;
@@ -83,13 +106,21 @@ function stripBullet(line: string) {
   return line.replace(BULLET, "");
 }
 
+const SPEAKER_ICONS = new Set(["🔊", "🔈", "🔉", "🎧", "▶", "⏵"]);
+const normalizeEmoji = (icon: string) => icon.replace(/[\uFE0E\uFE0F]/g, "");
+const isSpeakerIcon = (icon: string) => SPEAKER_ICONS.has(normalizeEmoji(icon));
+
+function leadingIcons(line: string): string[] {
+  const match = line.match(LEADING_ICONS);
+  return match?.[0].match(LEADING_ICON_PARTS) ?? [];
+}
+
 /** Отделяет ведущий эмодзи от текста строки. */
 function takeLeadingIcon(line: string): { icon: string | null; rest: string } {
   const m = line.match(LEADING_ICONS);
   if (!m) return { icon: null, rest: line };
   // Берём только первый «смысловой» символ, отбрасывая 🔊 и подобные служебные.
-  const chars = Array.from(m[0].trim());
-  const icon = chars.filter((c) => c !== "🔊" && c !== "🔈" && c !== "🔉")[0] ?? null;
+  const icon = leadingIcons(m[0]).find((candidate) => !isSpeakerIcon(candidate)) ?? null;
   return { icon: icon ?? null, rest: line.slice(m[0].length) };
 }
 
@@ -490,10 +521,11 @@ function parseVocabulary(raw: string): ParseResult {
     }
 
     const hadBullet = BULLET.test(original);
-    const withoutBullet = stripSpeaker(stripBullet(original));
-    // В новых словниках статус стоит перед динамиком: «✅ 🔊 Exactly! — Саме так!».
-    // Обычный stripSpeaker его не видит, поэтому запоминаем комбинацию до снятия emoji.
-    const hasEntrySpeaker = SPEAKER.test(withoutBullet.replace(VERDICT_ICON, ""));
+    const bulletFree = stripBullet(original);
+    // Смысловой emoji может стоять перед динамиком: «📌 🔊 to assign to».
+    // Наличие динамика однозначно делает строку словарной записью, а не заметкой.
+    const hasEntrySpeaker = leadingIcons(bulletFree).some(isSpeakerIcon);
+    const withoutBullet = stripSpeaker(bulletFree);
     const { icon, rest } = takeLeadingIcon(withoutBullet);
     const line = rest.trim();
     if (!line) continue;
@@ -523,7 +555,11 @@ function parseVocabulary(raw: string): ParseResult {
     }
 
     // Заметка: 💡 подсказка, ⚠️ предупреждение, 📌 важное замечание
-    if (!isDecoratedHeading && (NOTE_ICONS.includes(icon ?? "") || NOTE_LEAD.test(withoutBullet))) {
+    if (
+      !hasEntrySpeaker &&
+      !isDecoratedHeading &&
+      (NOTE_ICONS.includes(icon ?? "") || NOTE_LEAD.test(withoutBullet))
+    ) {
       flush();
       const body = line.replace(NOTE_LEAD, "").trim();
       // Первое предложение — заголовок заметки, остальное — пояснение.
@@ -590,11 +626,7 @@ function parseVocabulary(raw: string): ParseResult {
 
     // Новая запись
     flush();
-    const ipaMatch = left.match(IPA);
-    const transcription = ipaMatch ? ipaMatch[0] : null;
-    const phrase = (transcription ? left.replace(transcription, "") : left)
-      .replace(/\s{2,}/g, " ")
-      .trim();
+    const { phrase, transcription } = extractTranscriptions(left);
 
     // «надягати (дія) → She PUT ON her coat.» — после стрелки идёт пример.
     const arrow = right.search(TO);

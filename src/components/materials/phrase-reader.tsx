@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import {
   movePhraseAction,
+  repairPhraseIconAction,
   renameSectionAction,
   deleteSectionAction,
 } from "@/lib/actions/materials";
@@ -124,18 +125,46 @@ function EditBadge({ onEdit }: { onEdit?: () => void }) {
   );
 }
 
+/** Точечный подбор иконки виден только учителю. */
+function RepairIconBadge({
+  onRepair,
+  busy,
+}: {
+  onRepair?: () => void;
+  busy?: boolean;
+}) {
+  if (!onRepair) return null;
+  return (
+    <button
+      type="button"
+      draggable={false}
+      disabled={busy}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={onRepair}
+      title="Исправить иконку только этой записи"
+      className="absolute right-11 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-sm text-amber-500 opacity-70 transition hover:bg-amber-500/25 hover:opacity-100 disabled:cursor-wait disabled:opacity-40"
+    >
+      <span aria-hidden>{busy ? "…" : "✨"}</span>
+    </button>
+  );
+}
+
 function PhraseCard({
   p,
   index,
   showTranslation,
   speech,
   onEdit,
+  onRepairIcon,
+  repairBusy,
 }: {
   p: MaterialPhrase;
   index: number;
   showTranslation: boolean;
   speech: ReturnType<typeof useSpeech>;
   onEdit?: () => void;
+  onRepairIcon?: () => void;
+  repairBusy?: boolean;
 }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
@@ -146,6 +175,7 @@ function PhraseCard({
   return (
     <article className="group relative overflow-hidden rounded-2xl bg-surface ring-1 ring-line transition hover:ring-accent/40">
       <EditBadge onEdit={onEdit} />
+      <RepairIconBadge onRepair={onRepairIcon} busy={repairBusy} />
       <div className="flex gap-3.5 p-4 sm:gap-4 sm:p-5">
         {/* Картинка-образ */}
         {p.imageUrl ? (
@@ -563,6 +593,10 @@ export function PhraseReader({
                     showTranslation={showTranslation}
                     speech={speech}
                     onEdit={onEditPhrase && (() => onEditPhrase(p))}
+                    onRepairIcon={
+                      editable ? () => run(() => repairPhraseIconAction(p.id)) : undefined
+                    }
+                    repairBusy={busy}
                   />
                 )}
               </div>
