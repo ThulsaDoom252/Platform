@@ -9,7 +9,11 @@
     "lint": "eslint",
     "db:backup": "tsx scripts/backup-db.ts",
     "db:seed": "tsx src/lib/db/seed.ts",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "test": "npm run test:unit && npm run test:parsers",
+    "test:unit": "tsx --test \"tests/**/*.test.ts\"",
+    "test:parsers": "tsx scripts/run-parser-checks.ts",
+    "check": "tsc --noEmit && eslint . && npm test"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

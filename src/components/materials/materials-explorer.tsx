@@ -47,6 +47,7 @@ const toCopySource = (n: MaterialNode): CopySource => ({
 });
 import {
   changeMaterialPageKindAction,
+  restoreMaterialContentAction,
   clearTreeFormattingMarksAction,
   clearPagesAction,
   deleteNodeAction,
@@ -110,6 +111,8 @@ export type MaterialNode = {
   formattingScanIgnored: boolean;
   mergeCount: number;
   sourceText: string | null;
+  /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
+  contentBackupAt: string | null;
   phrases: MaterialPhrase[];
   blocks: RuleBlock[];
   children: MaterialNode[];
@@ -722,6 +725,22 @@ export function MaterialsExplorer({
         setMoveError(res.error);
       } else {
         setNotice(res.message ?? "Переформатирование завершено");
+      }
+    });
+  }
+
+  /** Вернуть содержимое страницы к снимку, снятому перед перестройкой. */
+  function restorePage(node: MaterialNode) {
+    if (!confirm(`Вернуть «${node.name}» к содержимому до перестройки?`)) return;
+
+    setNotice(`Возвращаю «${node.name}»…`);
+    startMove(async () => {
+      const res = await restoreMaterialContentAction(node.id);
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? "Содержимое возвращено");
       }
     });
   }
@@ -1875,6 +1894,22 @@ export function MaterialsExplorer({
                     }
                   >
                     <span aria-hidden>↻</span> Переформатировать
+                  </button>
+                )}
+
+                {/* Снимок появляется, когда страницу перестроили из исходника.
+                    Он и есть защита от потери ручных правок. */}
+                {selected.contentBackupAt && (
+                  <button
+                    type="button"
+                    onClick={() => restorePage(selected)}
+                    disabled={moving}
+                    className={pageBtn}
+                    title={`Вернуть содержимое, каким оно было до перестройки ${new Date(
+                      selected.contentBackupAt,
+                    ).toLocaleString("ru")}`}
+                  >
+                    <span aria-hidden>⎌</span> Вернуть прежнее
                   </button>
                 )}
 

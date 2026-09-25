@@ -179,8 +179,36 @@ export const materialNodes = pgTable("material_nodes", {
    * «Редактировать» показывало и разобранное содержимое, и оригинал.
    */
   sourceText: text("source_text"),
+  /**
+   * Снимок содержимого перед перестройкой из исходника.
+   *
+   * Перепарсинг восстанавливает страницу из sourceText, а правки, сделанные
+   * руками после импорта, туда не попадают — без снимка они исчезали молча.
+   * Сюда кладётся то, что было до перестройки, чтобы её можно было отменить.
+   */
+  contentBackup: jsonb("content_backup").$type<ContentBackup>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+/** Что именно сохраняется перед перестройкой страницы. */
+export type ContentBackup = {
+  /** Когда сняли — показывается в кнопке отмены. */
+  savedAt: string;
+  /** Чем страница была до перестройки. */
+  pageKind: string | null;
+  phrases: {
+    sortOrder: number;
+    icon: string | null;
+    imageUrl: string | null;
+    phrase: string;
+    transcription: string | null;
+    translation: string | null;
+    section: string | null;
+    kind: string;
+    examples: PhraseExample[];
+  }[];
+  blocks: { sortOrder: number; type: string; data: RuleBlock }[];
+};
 
 export const materialNodesRelations = relations(
   materialNodes,

@@ -14,6 +14,7 @@ import {
   users,
   lessons,
   type RuleBlock,
+  type ContentBackup,
   type RuleBlockVariant,
 } from "@/lib/db/schema";
 import {
@@ -1477,6 +1478,101 @@ export async function repairPhraseIconAction(phraseId: string): Promise<BulkStat
 }
 
 /**
+ * Снять снимок содержимого перед тем, как его перестроят.
+ *
+ * Перепарсинг берёт текст из sourceText, а слова, добавленные, удалённые или
+ * переставленные руками после импорта, туда не попадают — без снимка они
+ * исчезали бы молча. Вызывается внутри той же транзакции, что и замена.
+ */
+async function snapshotContent(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  nodeId: string,
+  pageKind: string | null,
+) {
+  const [phrases, blocks] = await Promise.all([
+    tx
+      .select()
+      .from(materialPhrases)
+      .where(eq(materialPhrases.nodeId, nodeId))
+      .orderBy(asc(materialPhrases.sortOrder)),
+    tx
+      .select()
+      .from(materialBlocks)
+      .where(eq(materialBlocks.nodeId, nodeId))
+      .orderBy(asc(materialBlocks.sortOrder)),
+  ]);
+
+  // Пустую страницу сохранять незачем — и затирать прошлый снимок тоже.
+  if (phrases.length === 0 && blocks.length === 0) return;
+
+  const backup: ContentBackup = {
+    savedAt: new Date().toISOString(),
+    pageKind,
+    phrases: phrases.map((p) => ({
+      sortOrder: p.sortOrder,
+      icon: p.icon,
+      imageUrl: p.imageUrl,
+      phrase: p.phrase,
+      transcription: p.transcription,
+      translation: p.translation,
+      section: p.section,
+      kind: p.kind,
+      examples: p.examples ?? [],
+    })),
+    blocks: blocks.map((b) => ({ sortOrder: b.sortOrder, type: b.type, data: b.data })),
+  };
+
+  await tx
+    .update(materialNodes)
+    .set({ contentBackup: backup })
+    .where(eq(materialNodes.id, nodeId));
+}
+
+/**
+ * Вернуть содержимое, каким оно было до последней перестройки.
+ * Снимок после восстановления снимается — второй отмены не будет.
+ */
+export async function restoreMaterialContentAction(nodeId: string): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбран файл" };
+
+  const [node] = await db
+    .select({ contentBackup: materialNodes.contentBackup })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+
+  const backup = node?.contentBackup;
+  if (!backup) return { error: "Для этого файла нет сохранённого снимка" };
+
+  await db.transaction(async (tx) => {
+    await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, id));
+    await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, id));
+
+    if (backup.phrases.length > 0) {
+      await tx.insert(materialPhrases).values(
+        backup.phrases.map((p) => ({ ...p, nodeId: id })),
+      );
+    }
+    if (backup.blocks.length > 0) {
+      await tx.insert(materialBlocks).values(
+        backup.blocks.map((b) => ({ ...b, nodeId: id })),
+      );
+    }
+
+    await tx
+      .update(materialNodes)
+      .set({ pageKind: backup.pageKind, contentBackup: null })
+      .where(eq(materialNodes.id, id));
+  });
+
+  revalidateMaterials();
+  const count = backup.phrases.length || backup.blocks.length;
+  return { ok: true, message: `Содержимое возвращено: ${count}` };
+}
+
+/**
  * Меняет тип страницы. Если выбран повторный разбор, старое разобранное
  * содержимое заменяется только после успешного разбора сохранённого исходника.
  */
@@ -1536,6 +1632,7 @@ export async function changeMaterialPageKindAction(
       return { error: parsed.warnings[0] ?? "Исходник не удалось разобрать как правило" };
     }
     await db.transaction(async (tx) => {
+      await snapshotContent(tx, id, node.pageKind);
       await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, id));
       await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, id));
       await tx.insert(materialBlocks).values(
@@ -1560,6 +1657,7 @@ export async function changeMaterialPageKindAction(
     return { error: parsed.warnings[0] ?? "Исходник не удалось разобрать как словарь" };
   }
   await db.transaction(async (tx) => {
+    await snapshotContent(tx, id, node.pageKind);
     await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, id));
     await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, id));
     await tx.insert(materialPhrases).values(

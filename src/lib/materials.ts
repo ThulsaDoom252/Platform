@@ -50,6 +50,8 @@ export type MaterialNode = {
   mergeCount: number;
   /** Исходный текст правила или словаря, как его вставили. */
   sourceText: string | null;
+  /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
+  contentBackupAt: string | null;
   phrases: MaterialPhrase[];
   /** Блоки правила. Страница — либо словник (phrases), либо правило (blocks). */
   blocks: RuleBlock[];
@@ -121,6 +123,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       formattingScanIgnored: r.formattingScanIgnored,
       mergeCount: r.mergeCount,
       sourceText: r.sourceText,
+      contentBackupAt: r.contentBackup?.savedAt ?? null,
       phrases: phrasesByNode.get(r.id) ?? [],
       blocks: blocksByNode.get(r.id) ?? [],
       children: [],
