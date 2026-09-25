@@ -59,6 +59,7 @@ export default async function StudentMaterialsForTeacherPage({
         .where(eq(studentMaterials.studentId, student.id))
     )[0]?.n ?? 0,
   };
+  const visibleSectionCount = tree.length + sharedTree.length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,6 +94,16 @@ export default async function StudentMaterialsForTeacherPage({
         </form>
       </div>
 
+      <div className="rounded-2xl bg-surface px-4 py-3 ring-1 ring-line shadow-sm sm:px-5">
+        <p className="text-sm font-bold text-content">
+          {student.name} сейчас видит разделов: {visibleSectionCount}
+        </p>
+        <p className="mt-1 text-[12px] text-muted">
+          Из общей базы: {sharedTree.length} · личных: {tree.length}. Перенос и
+          сортировка материалов больше не снимают доступ.
+        </p>
+      </div>
+
       <div>
         <h2 className="mb-2 text-sm font-bold text-content">
           Личные материалы {student.name}
@@ -110,7 +121,12 @@ export default async function StudentMaterialsForTeacherPage({
         />
       </div>
 
-      <SharedAccess studentId={student.id} sections={sections} granted={granted} />
+      <SharedAccess
+        key={student.id}
+        studentId={student.id}
+        sections={sections}
+        granted={granted}
+      />
 
       {sharedTree.length > 0 && (
         <div>

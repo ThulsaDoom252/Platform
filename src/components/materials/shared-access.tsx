@@ -5,7 +5,12 @@ import { setAssignmentsAction } from "@/lib/actions/materials";
 import { IconCheck } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
-export type SharedSection = { id: string; name: string; icon: string | null };
+export type SharedSection = {
+  id: string;
+  name: string;
+  icon: string | null;
+  nested: boolean;
+};
 
 /**
  * Какие разделы общей базы открыты ученику.
@@ -76,7 +81,14 @@ export function SharedAccess({
                 )}
               >
                 <span className="text-base leading-none">{s.icon ?? "📁"}</span>
-                {s.name}
+                <span>
+                  {s.name}
+                  {s.nested && (
+                    <span className="ml-1 text-[11px] font-medium opacity-70">
+                      · перемещён внутрь папки
+                    </span>
+                  )}
+                </span>
               </button>
             );
           })}

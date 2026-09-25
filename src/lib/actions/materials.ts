@@ -58,15 +58,6 @@ function revalidateMaterials() {
   revalidatePath("/teacher/students", "layout");
 }
 
-/**
- * Снимает выдачу узла ученикам.
- * Ученику открывается корневой раздел целиком, поэтому уехавший внутрь
- * папки узел не должен оставаться выданным отдельно.
- */
-async function dropAssignments(nodeId: string) {
-  await db.delete(studentMaterials).where(eq(studentMaterials.materialNodeId, nodeId));
-}
-
 export type NodeState = { ok?: boolean; error?: string; nodeId?: string };
 
 export type NewNode = { name: string; icon: string | null; description?: string | null };
@@ -1219,21 +1210,8 @@ export async function updateNodeIconsAction(
 export type MoveState = { ok?: boolean; error?: string };
 
 /**
- * Ученику выдаётся корневая ветка целиком, поэтому узел, уехавший внутрь
- * папки, не должен оставаться назначенным отдельно — иначе покажется дважды.
- */
-async function syncRootAssignment(
-  nodeId: string,
-  parentId: string | null,
-  scope: string,
-) {
-  if (scope === "MATERIAL" && parentId) await dropAssignments(nodeId);
-}
-
-/**
  * Перенести папку или страницу в другую папку либо в корень.
- * Ученику выдаётся корневая ветка целиком, поэтому назначения
- * пересобираем при каждом переносе — иначе узел покажется дважды.
+ * Выданный ученику раздел остаётся выданным при любом переносе.
  */
 export async function moveNodeAction(
   nodeId: string,
@@ -1291,8 +1269,6 @@ export async function moveNodeAction(
     .update(materialNodes)
     .set({ parentId, sortOrder: (lastOrder ?? 0) + 1 })
     .where(eq(materialNodes.id, nodeId));
-
-  await syncRootAssignment(nodeId, parentId, node.scope);
 
   revalidateMaterials();
   return { ok: true };
@@ -1367,10 +1343,6 @@ export async function reorderNodeAction(
         .set({ sortOrder: order })
         .where(eq(materialNodes.id, r.id));
     }
-  }
-
-  if ((node.parentId ?? null) !== newParent) {
-    await syncRootAssignment(nodeId, newParent, node.scope);
   }
 
   revalidateMaterials();
@@ -2136,7 +2108,8 @@ export async function setAssignmentsAction(
 
   const wanted = new Set((nodeIds ?? []).filter(Boolean));
 
-  // Выдавать можно только корневые разделы общей базы.
+  // Новую выдачу можно создать для корневого раздела. Уже выданный раздел
+  // остаётся управляемым и после переноса внутрь другой папки.
   const roots = await db
     .select({ id: materialNodes.id })
     .from(materialNodes)
@@ -2147,13 +2120,12 @@ export async function setAssignmentsAction(
         isNull(materialNodes.ownerId),
       ),
     );
-  const allowed = new Set(roots.map((r) => r.id));
-
   const current = await db
     .select({ nodeId: studentMaterials.materialNodeId })
     .from(studentMaterials)
     .where(eq(studentMaterials.studentId, studentId));
   const have = new Set(current.map((c) => c.nodeId));
+  const allowed = new Set([...roots.map((r) => r.id), ...have]);
 
   const toAdd = [...wanted].filter((id) => allowed.has(id) && !have.has(id));
   const toDrop = [...have].filter((id) => allowed.has(id) && !wanted.has(id));

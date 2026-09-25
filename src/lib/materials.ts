@@ -8,6 +8,7 @@ import {
   materialBlocks,
   type RuleBlock,
 } from "@/lib/db/schema";
+import { getVisibleGrantIds } from "@/lib/material-grants";
 
 export type { RuleBlock };
 
@@ -141,12 +142,10 @@ export async function getMaterialsTree(studentId?: string): Promise<MaterialNode
     .from(studentMaterials)
     .where(eq(studentMaterials.studentId, studentId));
 
-  const result: MaterialNode[] = [];
-  for (const { nodeId } of assigned) {
-    const n = byId.get(nodeId);
-    if (n) result.push(n);
-  }
-  return result;
+  return getVisibleGrantIds(
+    rows.map((row) => ({ id: row.id, parentId: row.parentId })),
+    assigned.map(({ nodeId }) => nodeId),
+  ).map((nodeId) => byId.get(nodeId)!);
 }
 
 /** Дерево, принадлежащее одному человеку: ошибки ученика или личные материалы. */
@@ -168,22 +167,22 @@ export async function getOwnedTree(
 export const getMistakesTree = (studentId: string) =>
   getOwnedTree("MISTAKE", studentId);
 
-/** Корневые разделы общей базы и те из них, что открыты ученику. */
+/** Корневые разделы общей базы и ранее выданные ветки после их переноса. */
 export async function getSharedSections(studentId: string): Promise<{
-  sections: { id: string; name: string; icon: string | null }[];
+  sections: { id: string; name: string; icon: string | null; nested: boolean }[];
   granted: string[];
 }> {
-  const sections = await db
+  const available = await db
     .select({
       id: materialNodes.id,
       name: materialNodes.name,
       icon: materialNodes.icon,
+      parentId: materialNodes.parentId,
     })
     .from(materialNodes)
     .where(
       and(
         eq(materialNodes.scope, "MATERIAL"),
-        isNull(materialNodes.parentId),
         isNull(materialNodes.ownerId),
       ),
     )
@@ -194,7 +193,18 @@ export async function getSharedSections(studentId: string): Promise<{
     .from(studentMaterials)
     .where(eq(studentMaterials.studentId, studentId));
 
-  return { sections, granted: rows.map((r) => r.nodeId) };
+  const granted = rows.map((row) => row.nodeId);
+  const grantedSet = new Set(granted);
+  const sections = available
+    .filter((node) => node.parentId === null || grantedSet.has(node.id))
+    .map((node) => ({
+      id: node.id,
+      name: node.name,
+      icon: node.icon,
+      nested: node.parentId !== null,
+    }));
+
+  return { sections, granted };
 }
 
 /**
