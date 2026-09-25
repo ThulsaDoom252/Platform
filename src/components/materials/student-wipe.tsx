@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Полная очистка материалов ученика.
+ * Очистка активных материалов ученика с сохранением личного дерева в архиве.
  *
- * Действие необратимое, поэтому: сначала видно, сколько чего уедет,
+ * Сначала видно, сколько чего уедет,
  * галочки сняты по умолчанию для всего, кроме личного дерева, и внизу
  * надо набрать слово-подтверждение. Общая база не трогается — у ученика
  * забирается только доступ к её разделам.
@@ -60,7 +60,7 @@ export function StudentWipe({
         return;
       }
       setDone(
-        `Удалено: ${res.nodes} ${res.nodes === 1 ? "материал" : "материалов"}` +
+        `В архиве: ${res.nodes} ${res.nodes === 1 ? "материал" : "материалов"}` +
           (res.grants > 0 ? `, снято доступов: ${res.grants}` : ""),
       );
       close();
@@ -101,7 +101,7 @@ export function StudentWipe({
     <div className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
       <h2 className="text-sm font-bold text-content">Очистить материалы</h2>
       <p className="mt-1 text-[12px] text-muted">
-        Снести всё, что накопилось у {studentName}, и начать с чистого листа.
+        Убрать всё, что накопилось у {studentName}, из активного дерева.
         Общая база не пострадает — у ученика заберётся только доступ к её
         разделам.
       </p>
@@ -126,7 +126,7 @@ export function StudentWipe({
             : "text-rose-500 hover:border-rose-400 hover:bg-rose-500/10",
         )}
       >
-        {nothing ? "Удалять нечего" : "Удалить материалы ученика"}
+        {nothing ? "Убирать нечего" : "Очистить активные материалы"}
       </button>
 
       {open && (
@@ -135,10 +135,10 @@ export function StudentWipe({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="font-semibold text-content">
-                  Удалить материалы: {studentName}
+                  Очистить материалы: {studentName}
                 </h3>
                 <p className="mt-1 text-sm text-muted">
-                  Это не отменить. Отметь, что именно снести.
+                  Личные материалы сохранятся в архиве. Отметь, что именно убрать.
                 </p>
               </div>
               <button
@@ -175,8 +175,8 @@ export function StudentWipe({
             </div>
 
             <p className="mt-3 text-[12px] text-faint">
-              Уедет записей: {picked}. Перед большой чисткой можно снять копию
-              базы — <code className="text-muted">npm run db:backup</code>.
+              Личные материалы останутся в базе и их можно будет восстановить.
+              Уедет из активного дерева: {picked}.
             </p>
 
             <label className="mt-4 block">
@@ -204,7 +204,7 @@ export function StudentWipe({
                 disabled={!ready || busy}
                 className="h-10 rounded-xl bg-rose-500 px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
               >
-                {busy ? "Удаляю…" : "Удалить навсегда"}
+                {busy ? "Перемещаю…" : "Убрать из активных"}
               </button>
               <button
                 type="button"

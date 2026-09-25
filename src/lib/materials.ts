@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
@@ -57,9 +57,13 @@ async function buildTree(rows: NodeRow[]): Promise<{
   roots: MaterialNode[];
   byId: Map<string, MaterialNode>;
 }> {
+  if (rows.length === 0) return { roots: [], byId: new Map() };
+
+  const nodeIds = rows.map((row) => row.id);
   const phraseRows = await db
     .select()
     .from(materialPhrases)
+    .where(inArray(materialPhrases.nodeId, nodeIds))
     .orderBy(asc(materialPhrases.sortOrder));
 
   const phrasesByNode = new Map<string, MaterialPhrase[]>();
@@ -82,6 +86,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
   const blockRows = await db
     .select()
     .from(materialBlocks)
+    .where(inArray(materialBlocks.nodeId, nodeIds))
     .orderBy(asc(materialBlocks.sortOrder));
 
   const blocksByNode = new Map<string, RuleBlock[]>();

@@ -12,6 +12,7 @@ import { StudentWipe } from "@/components/materials/student-wipe";
 import { Avatar } from "@/components/avatar";
 import { IconChevronLeft, IconUser } from "@/components/icons";
 import { viewAsStudentAction } from "@/lib/actions/auth";
+import { restoreStudentMaterialsAction } from "@/lib/actions/materials";
 
 export default async function StudentMaterialsForTeacherPage({
   params,
@@ -59,6 +60,18 @@ export default async function StudentMaterialsForTeacherPage({
         .where(eq(studentMaterials.studentId, student.id))
     )[0]?.n ?? 0,
   };
+  const archivedPersonal =
+    (
+      await db
+        .select({ n: count() })
+        .from(materialNodes)
+        .where(
+          and(
+            eq(materialNodes.ownerId, student.id),
+            eq(materialNodes.scope, "ARCHIVED_STUDENT"),
+          ),
+        )
+    )[0]?.n ?? 0;
   const visibleSectionCount = tree.length + sharedTree.length;
 
   return (
@@ -112,6 +125,22 @@ export default async function StudentMaterialsForTeacherPage({
           Своё дерево ученика: структура какая угодно, на других учеников и на
           твою базу не влияет.
         </p>
+        {archivedPersonal > 0 && (
+          <form
+            action={restoreStudentMaterialsAction.bind(null, student.id)}
+            className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3"
+          >
+            <p className="min-w-0 flex-1 text-sm text-content">
+              В архиве сохранено материалов: <b>{archivedPersonal}</b>
+            </p>
+            <button
+              type="submit"
+              className="h-9 rounded-lg bg-amber-500 px-3.5 text-sm font-bold text-white transition hover:opacity-90"
+            >
+              Восстановить всё
+            </button>
+          </form>
+        )}
         <MaterialsExplorer
           tree={tree}
           editable

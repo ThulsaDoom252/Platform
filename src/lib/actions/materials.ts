@@ -73,6 +73,12 @@ export type NewNode = { name: string; icon: string | null; description?: string 
  */
 export type NodeScope = "MATERIAL" | "PERSONAL" | "STUDENT" | "MISTAKE";
 
+/**
+ * Удаление материалов всегда обратимое: узлы остаются в базе вместе со
+ * словами, правилами и структурой, но пропадают из активного дерева.
+ */
+const archivedScope = (scope: NodeScope) => `ARCHIVED_${scope}`;
+
 /** У личных деревьев есть владелец, у общей базы — нет. */
 const isOwned = (scope: NodeScope) => scope !== "MATERIAL";
 
@@ -345,15 +351,38 @@ async function withDescendants(ids: string[]): Promise<string[]> {
   return [...found];
 }
 
-/** Удалить узел вместе со всем содержимым. */
+/** Спрятать узлы в архив, не удаляя их содержимое из базы. */
+async function archiveNodes(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+
+  const rows = await db
+    .select({ id: materialNodes.id, scope: materialNodes.scope })
+    .from(materialNodes)
+    .where(inArray(materialNodes.id, ids));
+
+  let archived = 0;
+  for (const scope of ["MATERIAL", "PERSONAL", "STUDENT", "MISTAKE"] as const) {
+    const scopeIds = rows.filter((row) => row.scope === scope).map((row) => row.id);
+    if (scopeIds.length === 0) continue;
+
+    const changed = await db
+      .update(materialNodes)
+      .set({ scope: archivedScope(scope) })
+      .where(inArray(materialNodes.id, scopeIds))
+      .returning({ id: materialNodes.id });
+    archived += changed.length;
+  }
+
+  return archived;
+}
+
+/** Убрать узел и всё его содержимое в восстанавливаемый архив. */
 export async function deleteNodeAction(formData: FormData) {
   await requireTeacher();
   const nodeId = String(formData.get("nodeId") || "");
   if (!nodeId) return;
 
-  await db
-    .delete(materialNodes)
-    .where(inArray(materialNodes.id, await withDescendants([nodeId])));
+  await archiveNodes(await withDescendants([nodeId]));
   revalidateMaterials();
 }
 
@@ -393,7 +422,7 @@ export async function setMaterialsNeedsFixAction(
   };
 }
 
-/** Удалить несколько выбранных узлов разом, каждый со своим содержимым. */
+/** Убрать выбранные ветки в восстанавливаемый архив. */
 export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
   await requireTeacher();
 
@@ -401,23 +430,24 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
   if (clean.length === 0) return { error: "Ничего не выбрано" };
 
   const all = await withDescendants(clean);
-  await db.delete(materialNodes).where(inArray(materialNodes.id, all));
+  const archived = await archiveNodes(all);
 
   revalidateMaterials();
-  return { ok: true, message: `Удалено: ${clean.length}` };
+  return { ok: true, message: `В архиве: ${archived}` };
 }
 
 export type WipeWhat = { personal?: boolean; mistakes?: boolean; access?: boolean };
 export type WipeSummary = { nodes: number; grants: number; error?: string };
 
 /**
- * Стереть материалы ученика подчистую.
+ * Убрать материалы ученика из активного дерева.
  *
  * Выбирается, что именно сносить: личное дерево, ошибки, выданные
  * разделы общей базы. Сама общая база не трогается никогда — у ученика
  * забирается только доступ к ней.
  *
- * Фразы, блоки правил и выдачи уезжают вместе с узлами по каскаду.
+ * Личные узлы не удаляются физически: они переходят в архив и могут быть
+ * восстановлены. Доступ к общей базе можно выдать заново в любой момент.
  */
 export async function wipeStudentMaterialsAction(
   studentId: string,
@@ -449,14 +479,13 @@ export async function wipeStudentMaterialsAction(
   }
 
   let nodes = 0;
-  if (scopes.length > 0) {
-    const gone = await db
-      .delete(materialNodes)
-      .where(
-        and(eq(materialNodes.ownerId, id), inArray(materialNodes.scope, scopes)),
-      )
+  for (const scope of scopes) {
+    const archived = await db
+      .update(materialNodes)
+      .set({ scope: archivedScope(scope) })
+      .where(and(eq(materialNodes.ownerId, id), eq(materialNodes.scope, scope)))
       .returning({ id: materialNodes.id });
-    nodes = gone.length;
+    nodes += archived.length;
   }
 
   let grants = 0;
@@ -472,6 +501,29 @@ export async function wipeStudentMaterialsAction(
   revalidatePath(`/teacher/students/${id}/materials`);
   revalidatePath(`/teacher/students/${id}/mistakes`);
   return { nodes, grants };
+}
+
+/** Вернуть всё личное дерево ученика из архива одним действием. */
+export async function restoreStudentMaterialsAction(
+  studentId: string,
+): Promise<void> {
+  await requireTeacher();
+
+  const id = String(studentId ?? "");
+  if (!id) return;
+
+  await db
+    .update(materialNodes)
+    .set({ scope: "STUDENT" })
+    .where(
+      and(
+        eq(materialNodes.ownerId, id),
+        eq(materialNodes.scope, archivedScope("STUDENT")),
+      ),
+    );
+
+  revalidateMaterials();
+  revalidatePath(`/teacher/students/${id}/materials`);
 }
 
 /** Орфография названия. Словари лежат на сервере, в браузер не уезжают. */
