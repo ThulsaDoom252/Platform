@@ -1254,9 +1254,9 @@ export function MaterialsExplorer({
       <aside
         ref={panelRef}
         className={cn(
-          "materials-tree-panel scroll-mt-20 flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4 lg:sticky lg:top-20",
-          pathOpen && "lg:h-[calc(100dvh-6rem)]",
-          !pathOpen && "sticky top-16 z-[9] lg:top-20",
+          "materials-tree-panel scroll-mt-20 flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4",
+          pathOpen && "lg:max-h-[calc(100dvh-6rem)]",
+          !pathOpen && "is-collapsed",
         )}
       >
         <button

@@ -571,6 +571,21 @@
     inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
 }
 
+/* На адаптиве закрепляется только свёрнутый заголовок. На десктопе вся
+   панель остаётся в окне и доходит ровно до границы своего блока. */
+.materials-tree-panel.is-collapsed {
+  position: sticky;
+  top: 4rem;
+  z-index: 9;
+}
+
+@media (min-width: 64rem) {
+  .materials-tree-panel {
+    position: sticky;
+    top: 5rem;
+  }
+}
+
 .materials-tree-panel::before {
   position: absolute;
   inset: 18px auto 18px 0;
