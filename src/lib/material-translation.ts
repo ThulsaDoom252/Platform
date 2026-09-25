@@ -31,10 +31,10 @@ const BATCH_SIZE = 50;
 const CYRILLIC = /[\u0400-\u04ff]/;
 
 function deepLSettings() {
-  const key = process.env.DEEPL_AUTH_KEY?.trim();
+  const key = (process.env.DEEPL_AUTH_KEY ?? process.env.DEEPL_KEY)?.trim();
   if (!key) {
     throw new Error(
-      "Не задан DEEPL_AUTH_KEY. Создайте ключ DeepL API и добавьте его в файл .env, затем перезапустите приложение.",
+      "Не задан DEEPL_AUTH_KEY или DEEPL_KEY. Добавьте ключ DeepL API в файл .env и перезапустите приложение.",
     );
   }
 
