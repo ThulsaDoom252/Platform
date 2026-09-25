@@ -58,12 +58,15 @@ function fromStored(phrase: MaterialPhrase): EditableItem {
     phrase: phrase.phrase,
     transcription: phrase.transcription ?? "",
     translation: phrase.translation ?? "",
-    examples: phrase.examples.length ? phrase.examples : [{ en: "", tr: "" }],
+    examples: phrase.examples.map((example) => ({ ...example })),
   };
 }
 
 function fromParsed(phrase: ParsedPhrase): EditableItem {
-  const draft = newDraft(phrase.section ?? "", phrase.icon ?? (phrase.kind === "NOTE" ? "💡" : "💬"), 1);
+  const draft = newDraft(
+    phrase.section ?? "",
+    phrase.icon ?? (phrase.kind === "NOTE" ? "💡" : "💬"),
+  );
   return {
     ...draft,
     kind: phrase.kind,
@@ -71,7 +74,7 @@ function fromParsed(phrase: ParsedPhrase): EditableItem {
     phrase: phrase.phrase,
     transcription: phrase.transcription ?? "",
     translation: phrase.translation,
-    examples: phrase.examples.length ? phrase.examples : [{ en: "", tr: "" }],
+    examples: phrase.examples.map((example) => ({ ...example })),
   };
 }
 
@@ -395,7 +398,7 @@ export function VocabularyEditor({
                 onClick={() =>
                   setItems((current) => [
                     ...current,
-                    { ...newDraft("", "💡", 1), kind: "NOTE", imageUrl: null },
+                    { ...newDraft("", "💡"), kind: "NOTE", imageUrl: null },
                   ])
                 }
                 className="flex h-9 items-center gap-2 rounded-xl border border-dashed border-line px-3 text-xs font-semibold text-muted transition hover:border-accent hover:text-accent"

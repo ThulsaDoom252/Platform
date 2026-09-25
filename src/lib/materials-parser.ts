@@ -37,6 +37,43 @@ const DASH = /\s+[—–]\s+|\s+-{1,2}\s+/;
 /** Маркеры списка в начале строки. */
 const BULLET = /^\s*[•●▪‣·*\-–]\s+/;
 
+/**
+ * Google Docs иногда отдаёт переносы внутри вкладки как vertical tab/form
+ * feed, а вставленный целиком блок может быть обёрнут в квадратные скобки.
+ */
+function normalizeDocumentText(raw: string): string {
+  let text = String(raw ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u000B\u000C\u0085\u2028\u2029]+/g, "\n")
+    // Табуляции по краям могут обозначать пустую первую/последнюю ячейку.
+    .replace(/^[ \n]+|[ \n]+$/g, "");
+  if (text.startsWith("[") && text.endsWith("]")) {
+    text = text.slice(1, -1).replace(/^[ \n]+|[ \n]+$/g, "");
+  }
+  return text;
+}
+
+/** Склеивает диалог и его перевод, если Google вынес их на разные строки. */
+function joinSplitExampleTranslations(lines: string[]): string[] {
+  const joined: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const current = lines[i];
+    const next = lines[i + 1] ?? "";
+    if (
+      BULLET.test(current) &&
+      /\p{Script=Latin}/u.test(current) &&
+      !/\p{Script=Cyrillic}/u.test(current) &&
+      /^\s*[—–-]\s*\p{Script=Cyrillic}/u.test(next)
+    ) {
+      joined.push(`${current} — ${next.replace(/^\s*[—–-]\s*/, "")}`);
+      i++;
+      continue;
+    }
+    joined.push(current);
+  }
+  return joined;
+}
+
 /** Значки, которыми в документах помечают пояснения и предупреждения. */
 const NOTE_ICONS = ["💡", "⚠️", "⚠", "📌", "📍", "❗"];
 const NOTE_LEAD = /^\s*(?:💡|⚠️?|📌|📍|❗)\s*/u;
@@ -373,10 +410,12 @@ function parseVocabulary(raw: string): ParseResult {
   const warnings: string[] = [];
   // У строк таблицы табуляция значима: пустая первая ячейка (колонка с
   // динамиком) держит нумерацию колонок. Поэтому у них срезаем только пробелы.
-  const lines = raw
-    .split(/\r?\n/)
-    .map((l) => (l.includes("\t") ? l.replace(/^ +| +$/g, "") : l.trim()))
-    .filter((l) => l.trim());
+  const lines = joinSplitExampleTranslations(
+    normalizeDocumentText(raw)
+      .split("\n")
+      .map((l) => (l.includes("\t") ? l.replace(/^ +| +$/g, "") : l.trim()))
+      .filter((l) => l.trim()),
+  );
 
   let title: string | null = null;
   let description: string | null = null;
@@ -444,7 +483,10 @@ function parseVocabulary(raw: string): ParseResult {
         continue;
       }
 
-      if (wordExamplesColumns && filled.length >= 2) {
+      if (
+        wordExamplesColumns &&
+        (raw[wordExamplesColumns.word] ?? "").trim()
+      ) {
         const entry = parseWordExamplesEntry(raw[wordExamplesColumns.word] ?? "");
         if (!entry) {
           warnings.push(
@@ -476,9 +518,6 @@ function parseVocabulary(raw: string): ParseResult {
         phrases.push(phrase);
         lastPhrase = phrase;
         if (!entry.icon) autoIconPhrases.add(phrase);
-        if (examples.length === 0) {
-          warnings.push(`Строка ${i + 1}: у «${entry.phrase}» не удалось разобрать примеры`);
-        }
         continue;
       }
 
@@ -605,7 +644,16 @@ function parseVocabulary(raw: string): ParseResult {
     const englishSide = languagePair?.[0] ?? left;
 
     const owner = current ?? lastPhrase;
-    if (looksLikeExample(englishSide, hadBullet, owner?.phrase)) {
+    // Полное предложение тоже может быть самой словарной фразой. Явный
+    // смысловой emoji/IPA отличает такую запись от следующего за ней примера.
+    const explicitEntry =
+      !hadBullet &&
+      (hasEntrySpeaker || IPA.test(left) || (!!icon && !NOTE_ICONS.includes(icon)));
+    if (
+      !explicitEntry &&
+      looksLikeExample(englishSide, hadBullet, owner?.phrase) &&
+      (owner || hadBullet)
+    ) {
       if (!owner) {
         warnings.push(`Строка ${i + 1}: пример без записи — «${englishSide.slice(0, 50)}»`);
         continue;
@@ -688,8 +736,8 @@ const ARROW = /\s*(?:→|⟶|=>|->)\s*/;
  */
 function parseMistakes(raw: string): ParseResult {
   const warnings: string[] = [];
-  const lines = raw
-    .split(/\r?\n/)
+  const lines = normalizeDocumentText(raw)
+    .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
 

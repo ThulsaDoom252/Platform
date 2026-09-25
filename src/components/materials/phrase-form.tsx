@@ -32,7 +32,7 @@ export type Draft = {
 };
 
 let seq = 0;
-export const newDraft = (section = "", icon = "💬", examples = 2): Draft => ({
+export const newDraft = (section = "", icon = "💬", examples = 0): Draft => ({
   key: `d${seq++}`,
   section,
   icon,
@@ -215,9 +215,8 @@ export function DraftFields({
               onClick={() =>
                 set({ examples: draft.examples.filter((_, j) => j !== i) })
               }
-              disabled={draft.examples.length <= 1}
               title="Убрать пример"
-              className="mt-0.5 flex h-9 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content disabled:opacity-30"
+              className="mt-0.5 flex h-9 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content"
             >
               <IconX className="h-3.5 w-3.5" />
             </button>
@@ -563,7 +562,7 @@ export function PhraseEditor({
           phrase: phrase.phrase,
           transcription: phrase.transcription ?? "",
           translation: phrase.translation ?? "",
-          examples: phrase.examples.length ? phrase.examples : [{ en: "", tr: "" }],
+          examples: phrase.examples.map((example) => ({ ...example })),
         }
       : null,
   );
