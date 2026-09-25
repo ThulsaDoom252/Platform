@@ -127,13 +127,50 @@ function splitExampleByLanguage(text: string): [string, string] | null {
   return [parts[0], parts.slice(1).join(" — ")];
 }
 
+/** Слова записи, по которым короткий пример связывается с владельцем. */
+function entryWords(text: string): string[] {
+  const service = new Set([
+    "a", "an", "the", "to", "of", "for", "with", "in", "on", "at", "and", "or", "not",
+    "somebody", "someone", "something", "smbd", "smth",
+  ]);
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length >= 3 && !service.has(word));
+}
+
+/** Упоминает ли короткое предложение разбираемое слово или фразу. */
+function referencesEntry(sentence: string, phrase: string): boolean {
+  const sentenceWords = entryWords(sentence);
+  return entryWords(phrase).some((wanted) =>
+    sentenceWords.some(
+      (actual) =>
+        actual === wanted ||
+        (wanted.length >= 5 && actual.length >= 5 &&
+          (actual.startsWith(wanted) || wanted.startsWith(actual))),
+    ),
+  );
+}
+
 /** Похоже ли, что левая часть строки — пример, а не термин. */
-function looksLikeExample(left: string, hadBullet: boolean): boolean {
+function looksLikeExample(
+  left: string,
+  hadBullet: boolean,
+  ownerPhrase?: string | null,
+): boolean {
   if (hadBullet) return true;
   if (IPA.test(left)) return false;
   const words = left.split(/\s+/).length;
   const endsAsSentence = /[.!?]$/.test(left);
   if (endsAsSentence && words >= 4) return true;
+  // В обычных словниках бывают очень короткие примеры: «The blister hurts.»,
+  // «I feel fatigue.», «Use this ointment.». Если предложение прямо называет
+  // текущую запись, это пример, даже когда в нём всего два-три слова.
+  if (endsAsSentence && ownerPhrase && words >= 2 && referencesEntry(left, ownerPhrase)) {
+    return true;
+  }
   return false;
 }
 
@@ -324,6 +361,8 @@ function parseVocabulary(raw: string): ParseResult {
   let columns: ColumnMap | null = null;
   let wordExamplesColumns: WordExamplesColumnMap | null = null;
   let vocabularyFormat: VocabularyParserFormat = "standard";
+  /** Записи без собственной emoji пересчитаем после присоединения примеров. */
+  const autoIconPhrases = new Set<ParsedPhrase>();
 
   const flush = () => {
     if (current) {
@@ -405,6 +444,7 @@ function parseVocabulary(raw: string): ParseResult {
         };
         phrases.push(phrase);
         lastPhrase = phrase;
+        if (!entry.icon) autoIconPhrases.add(phrase);
         if (examples.length === 0) {
           warnings.push(`Строка ${i + 1}: у «${entry.phrase}» не удалось разобрать примеры`);
         }
@@ -440,6 +480,7 @@ function parseVocabulary(raw: string): ParseResult {
         };
         phrases.push(phrase);
         lastPhrase = phrase;
+        autoIconPhrases.add(phrase);
         continue;
       }
 
@@ -503,6 +544,11 @@ function parseVocabulary(raw: string): ParseResult {
     const parts = dashParts;
 
     if (!parts) {
+      // Авторский комментарий между записью и примерами не является новой
+      // секцией и не должен разрывать их связь: «(залишаю написання як у тебе)».
+      if (/^\([^()]{2,200}\)$/.test(line) && (current || lastPhrase)) {
+        continue;
+      }
       if (looksLikeSection(line)) {
         flush();
         currentSection = line;
@@ -522,8 +568,8 @@ function parseVocabulary(raw: string): ParseResult {
     const languagePair = splitExampleByLanguage(line);
     const englishSide = languagePair?.[0] ?? left;
 
-    if (looksLikeExample(englishSide, hadBullet)) {
-      const owner = current ?? lastPhrase;
+    const owner = current ?? lastPhrase;
+    if (looksLikeExample(englishSide, hadBullet, owner?.phrase)) {
       if (!owner) {
         warnings.push(`Строка ${i + 1}: пример без записи — «${englishSide.slice(0, 50)}»`);
         continue;
@@ -572,10 +618,24 @@ function parseVocabulary(raw: string): ParseResult {
       translation,
       examples,
     };
+    if (!icon) autoIconPhrases.add(current);
     lastPhrase = current;
   }
 
   flush();
+
+  // У стандартного построчного формата примеры идут после записи. Первый
+  // выбор иконки делается раньше, поэтому повторяем его с полным контекстом.
+  // Явно заданные в исходнике emoji остаются нетронутыми.
+  for (const phrase of autoIconPhrases) {
+    phrase.icon =
+      suggestVocabularyIcon(
+        phrase.phrase,
+        phrase.translation,
+        phrase.section,
+        phrase.examples,
+      ) ?? phrase.icon;
+  }
 
   if (phrases.length === 0) {
     warnings.push(

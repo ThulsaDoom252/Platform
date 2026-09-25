@@ -183,6 +183,43 @@ const semanticCases: [string, string, string][] = [
   ["to confess", "зізнаватися", "🙋"],
   ["to insist on smth", "наполягати на чомусь", "☝️"],
   ["to threaten", "погрожувати", "⚠️"],
+  ["to make time for", "знаходити час для", "⏱️"],
+  ["to make sure", "переконатися", "✅"],
+  ["to make an effort", "докласти зусиль", "💪"],
+  ["to make a decision", "приймати рішення", "🤔"],
+  ["to make it right", "виправити ситуацію", "🛠️"],
+  ["concesness", "свідомість", "🧠"],
+  ["sub-concsness", "підсвідомість", "🧠"],
+  ["artificial", "штучний", "🤖"],
+  ["cutting-edge", "передовий", "🚀"],
+  ["decent", "пристойний", "👍"],
+  ["faulty", "несправний", "⚠️"],
+  ["fragile", "крихкий", "🥚"],
+  ["rough", "жорсткий / грубий (відчувається тактильно)", "🧱"],
+  ["smooth", "гладкий", "🧼"],
+  ["sophisticated", "складний / витончений", "🎩"],
+  ["trivial", "дріб’язковий / неважливий", "🐜"],
+  ["not a big deal", "нічого страшного / не проблема", "🤷"],
+  ["here’s the deal", "ось у чому справа / слухай умову", "☝️"],
+  ["backache", "біль у спині", "🦴"],
+  ["blister", "пухир", "💧"],
+  ["bruise", "синець", "🤕"],
+  ["fainting", "непритомність", "😵"],
+  ["food poisoning", "харчове отруєння", "🤢"],
+  ["fracture", "перелом", "🦴"],
+  ["rash", "висип", "🔴"],
+  ["stomach bug", "шлункова інфекція", "🦠"],
+  ["wound", "рана", "🤕"],
+  ["symptom", "симптом", "🤒"],
+  ["first aid kit", "аптечка", "⛑️"],
+  ["ointment", "мазь", "🧴"],
+  ["painkillers", "знеболювальні", "💊"],
+  ["sedatives", "заспокійливі", "😴"],
+  ["side effect", "побічний ефект", "⚠️"],
+  ["surgery", "операція", "🏥"],
+  ["ultrasound diagnostic", "ультразвукова діагностика", "📡"],
+  ["welfare", "добробут", "🌱"],
+  ["X-ray", "рентген", "☢️"],
 ];
 
 const generalizationCases: [string, string, string][] = [
@@ -207,6 +244,10 @@ const generalizationCases: [string, string, string][] = [
   ["giving the profession a bad name", "псувати репутацію професії", "👎"],
   ["named after her grandmother", "названа на честь бабусі", "🏷️"],
   ["They called him names", "вони його обзивали", "🤬"],
+  ["ensure everything is ready", "переконайся, що все готово", "✅"],
+  ["a minor issue", "незначна проблема", "🐜"],
+  ["an adverse reaction", "побічний ефект лікування", "⚠️"],
+  ["radiograph", "рентгенівський знімок", "☢️"],
 ];
 
 for (const [phrase, translation, expected] of semanticCases) {
@@ -247,6 +288,9 @@ if (suggestVocabularyIcon("to lie in the report", "лгать в отчёте") 
 }
 if (suggestVocabularyIcon("a phone call", "телефонный звонок") === "🤬") {
   throw new Error("Обычный call не должен считаться выражением call someone names");
+}
+if (suggestVocabularyIcon("a big deal", "важное дело") === "🤷") {
+  throw new Error("Положительное a big deal не должно считаться not a big deal");
 }
 
 if (suggestIcon("Phrases with make") !== "🔨") {
