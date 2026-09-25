@@ -186,6 +186,8 @@ export function MaterialsExplorer({
   const [selectedId, setSelectedId] = useState<string | null>(tree[0]?.id ?? null);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [pathOpen, setPathOpen] = useState(true);
+  const panelRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLElement>(null);
 
   /** Контекстное меню: открывается у курсора, поэтому хранит координаты. */
   const [menu, setMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
@@ -250,9 +252,36 @@ export function MaterialsExplorer({
     });
   }
 
+  const isAdaptiveLayout = () =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches;
+
+  function togglePathPanel() {
+    const willOpen = !pathOpen;
+    setPathOpen(willOpen);
+
+    if (willOpen && isAdaptiveLayout()) {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    }
+  }
+
   function openNode(node: MaterialNode) {
     setSelectedId(node.id);
     if (node.type === "FOLDER") setExpanded((prev) => new Set(prev).add(node.id));
+
+    // На узком экране дерево стоит над содержимым. После выбора файла
+    // оставляем от панели только заголовок и сразу показываем сам материал.
+    if (node.type === "FILE" && isAdaptiveLayout()) {
+      setPathOpen(false);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          contentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    }
   }
 
   /** Открывает меню у курсора, не давая ему вылезти за край окна. */
@@ -1220,12 +1249,18 @@ export function MaterialsExplorer({
   };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
+    <div className="grid items-start gap-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
       {/* ---------- Путь обучения ---------- */}
-      <aside className="materials-tree-panel flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4">
+      <aside
+        ref={panelRef}
+        className={cn(
+          "materials-tree-panel scroll-mt-20 flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4 lg:sticky lg:top-20",
+          !pathOpen && "sticky top-16 z-[9] lg:top-20",
+        )}
+      >
         <button
           type="button"
-          onClick={() => setPathOpen((v) => !v)}
+          onClick={togglePathPanel}
           className="flex items-center gap-2 px-1"
         >
           <IconSprout className="h-4.5 w-4.5 text-accent" />
@@ -1246,7 +1281,7 @@ export function MaterialsExplorer({
           </div>
         )}
 
-        {editable && selection.size > 0 && (
+        {pathOpen && editable && selection.size > 0 && (
           <button
             type="button"
             onClick={() => setSelection(new Set())}
@@ -1258,7 +1293,7 @@ export function MaterialsExplorer({
 
         {/* Зона появляется только во время перетаскивания — иначе она
             занимала бы место впустую. */}
-        {editable && canDropRoot && (
+        {pathOpen && editable && canDropRoot && (
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -1301,7 +1336,7 @@ export function MaterialsExplorer({
           </button>
         )}
 
-        {typeof progress === "number" && (
+        {pathOpen && typeof progress === "number" && (
           <div className="rounded-2xl bg-accent-soft p-3.5">
             <p className="flex items-center gap-2 text-sm font-semibold text-content">
               <IconSprout className="h-4 w-4 text-accent" />
@@ -1325,8 +1360,9 @@ export function MaterialsExplorer({
 
       {/* ---------- Содержимое ---------- */}
       <section
+        ref={contentRef}
         className={cn(
-          "rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6",
+          "scroll-mt-36 rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6 lg:scroll-mt-20",
           editable && selected?.needsFix && "ring-2 ring-rose-400",
         )}
       >
