@@ -42,6 +42,10 @@ export type MaterialNode = {
   translationLang: "RU" | "UK";
   /** Служебная красная отметка, видимая только в редакторе учителя. */
   needsFix: boolean;
+  /** Автоматический сканер нашёл проблему форматирования. */
+  formattingIssue: boolean;
+  /** Файл вручную исключён учителем из следующих проверок. */
+  formattingScanIgnored: boolean;
   /** Исходный текст правила или словаря, как его вставили. */
   sourceText: string | null;
   phrases: MaterialPhrase[];
@@ -111,6 +115,8 @@ async function buildTree(rows: NodeRow[]): Promise<{
       pageKind: r.pageKind,
       translationLang: r.translationLang,
       needsFix: r.needsFix,
+      formattingIssue: r.formattingIssue,
+      formattingScanIgnored: r.formattingScanIgnored,
       sourceText: r.sourceText,
       phrases: phrasesByNode.get(r.id) ?? [],
       blocks: blocksByNode.get(r.id) ?? [],

@@ -25,6 +25,10 @@ import {
 import { getSession } from "@/lib/session";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { parseRuleText } from "@/lib/rule-parser";
+import {
+  ruleHasFormattingIssue,
+  vocabularyHasFormattingIssue,
+} from "@/lib/material-formatting";
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
 import { mergeImportTrees, splitIcon, type ImportNode } from "@/lib/tree-import";
@@ -420,6 +424,236 @@ export async function setMaterialsNeedsFixAction(
       : updated.length === 1
         ? "Красная отметка снята"
         : `Красных отметок снято: ${updated.length}`,
+  };
+}
+
+type FormattingTarget = { scope: NodeScope; ownerId: string | null };
+
+/**
+ * Сервер сам фиксирует точную базу, которую разрешено проверять. Это не даёт
+ * подменённому запросу случайно просканировать другое дерево ученика.
+ */
+async function formattingTarget(
+  rawScope: unknown,
+  rawOwnerId?: unknown,
+): Promise<FormattingTarget | null> {
+  const session = await requireTeacher();
+  const scope = String(rawScope);
+  if (!(["MATERIAL", "PERSONAL", "STUDENT", "MISTAKE"] as string[]).includes(scope)) {
+    return null;
+  }
+
+  if (scope === "MATERIAL") return { scope, ownerId: null };
+  if (scope === "PERSONAL") return { scope, ownerId: session.userId };
+
+  const ownerId = String(rawOwnerId ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ownerId)) {
+    return null;
+  }
+  const [student] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, ownerId), eq(users.role, "STUDENT")))
+    .limit(1);
+  return student ? { scope: scope as NodeScope, ownerId } : null;
+}
+
+const formattingTreeWhere = ({ scope, ownerId }: FormattingTarget) =>
+  and(
+    eq(materialNodes.scope, scope),
+    ownerId ? eq(materialNodes.ownerId, ownerId) : isNull(materialNodes.ownerId),
+  );
+
+export type FormattingScanState = BulkState & {
+  checked?: number;
+  issues?: number;
+  ignored?: number;
+};
+
+/**
+ * Пройти по всем страницам ровно одного дерева и сохранить результат.
+ * Содержимое материалов здесь только читается; меняются лишь жёлтые отметки.
+ */
+export async function scanTreeFormattingAction(
+  scope: NodeScope,
+  ownerId?: string | null,
+): Promise<FormattingScanState> {
+  const target = await formattingTarget(scope, ownerId);
+  if (!target) return { error: "Не удалось определить дерево для проверки" };
+
+  const nodes = await db
+    .select({
+      id: materialNodes.id,
+      pageKind: materialNodes.pageKind,
+      sourceText: materialNodes.sourceText,
+      fileKind: materialNodes.fileKind,
+      ignored: materialNodes.formattingScanIgnored,
+    })
+    .from(materialNodes)
+    .where(and(formattingTreeWhere(target), eq(materialNodes.type, "FILE")));
+
+  const active = nodes.filter((node) => !node.ignored);
+  const ignored = nodes.length - active.length;
+  if (active.length === 0) {
+    return {
+      ok: true,
+      checked: 0,
+      issues: 0,
+      ignored,
+      message: ignored
+        ? `Проверять нечего · исключено: ${ignored}`
+        : "В этом дереве пока нет файлов для проверки",
+    };
+  }
+
+  const ids = active.map((node) => node.id);
+  const [phraseRows, blockRows] = await Promise.all([
+    db
+      .select()
+      .from(materialPhrases)
+      .where(inArray(materialPhrases.nodeId, ids))
+      .orderBy(asc(materialPhrases.sortOrder)),
+    db
+      .select()
+      .from(materialBlocks)
+      .where(inArray(materialBlocks.nodeId, ids))
+      .orderBy(asc(materialBlocks.sortOrder)),
+  ]);
+
+  const phrases = new Map<string, typeof phraseRows>();
+  for (const row of phraseRows) {
+    const list = phrases.get(row.nodeId) ?? [];
+    list.push(row);
+    phrases.set(row.nodeId, list);
+  }
+  const blocks = new Map<string, RuleBlock[]>();
+  for (const row of blockRows) {
+    const list = blocks.get(row.nodeId) ?? [];
+    list.push(row.data as RuleBlock);
+    blocks.set(row.nodeId, list);
+  }
+
+  const issueIds: string[] = [];
+  const cleanIds: string[] = [];
+  let checked = 0;
+
+  for (const node of active) {
+    const nodePhrases = phrases.get(node.id) ?? [];
+    const nodeBlocks = blocks.get(node.id) ?? [];
+    const kind =
+      node.pageKind === "RULE" || node.pageKind === "VOCAB" || node.pageKind === "MISTAKE"
+        ? node.pageKind
+        : nodeBlocks.length > 0
+          ? "RULE"
+          : nodePhrases.length > 0
+            ? "VOCAB"
+            : null;
+
+    // Загруженные PDF/DOC и ещё не наполненные страницы форматировать нечем.
+    if (!kind || (node.fileKind && nodePhrases.length === 0 && nodeBlocks.length === 0)) {
+      cleanIds.push(node.id);
+      continue;
+    }
+
+    checked++;
+    const issue =
+      kind === "RULE"
+        ? ruleHasFormattingIssue(node.sourceText, nodeBlocks)
+        : vocabularyHasFormattingIssue(
+            node.sourceText,
+            nodePhrases.map((row) => ({
+              phrase: row.phrase,
+              transcription: row.transcription,
+              translation: row.translation,
+              section: row.section,
+              kind: row.kind,
+              examples: row.examples ?? [],
+            })),
+            kind === "MISTAKE" ? "mistake" : "vocabulary",
+          );
+    (issue ? issueIds : cleanIds).push(node.id);
+  }
+
+  await db.transaction(async (tx) => {
+    if (issueIds.length > 0) {
+      await tx
+        .update(materialNodes)
+        .set({ formattingIssue: true })
+        .where(inArray(materialNodes.id, issueIds));
+    }
+    if (cleanIds.length > 0) {
+      await tx
+        .update(materialNodes)
+        .set({ formattingIssue: false })
+        .where(inArray(materialNodes.id, cleanIds));
+    }
+  });
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    checked,
+    issues: issueIds.length,
+    ignored,
+    message: issueIds.length
+      ? `Проверено: ${checked} · найдено проблем: ${issueIds.length}${ignored ? ` · исключено: ${ignored}` : ""}`
+      : `Проверено: ${checked} · проблем не найдено${ignored ? ` · исключено: ${ignored}` : ""}`,
+  };
+}
+
+/** Снять все жёлтые результаты в одном дереве, не меняя список исключений. */
+export async function clearTreeFormattingMarksAction(
+  scope: NodeScope,
+  ownerId?: string | null,
+): Promise<BulkState> {
+  const target = await formattingTarget(scope, ownerId);
+  if (!target) return { error: "Не удалось определить дерево" };
+
+  const cleared = await db
+    .update(materialNodes)
+    .set({ formattingIssue: false })
+    .where(and(formattingTreeWhere(target), eq(materialNodes.formattingIssue, true)))
+    .returning({ id: materialNodes.id });
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: cleared.length ? `Жёлтых отметок снято: ${cleared.length}` : "Жёлтых отметок нет",
+  };
+}
+
+/**
+ * Робот у файла — постоянное исключение из сканирования. Повторный клик
+ * возвращает файл в будущие проверки. Уже найденная жёлтая отметка остаётся,
+ * пока учитель отдельно не снимет результаты проверки.
+ */
+export async function toggleFormattingScanIgnoredAction(nodeId: string): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Файл не выбран" };
+
+  const [node] = await db
+    .select({
+      type: materialNodes.type,
+      ignored: materialNodes.formattingScanIgnored,
+    })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Файл не найден" };
+
+  const ignored = !node.ignored;
+  await db
+    .update(materialNodes)
+    .set({ formattingScanIgnored: ignored })
+    .where(eq(materialNodes.id, id));
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: ignored
+      ? "Файл исключён из будущих проверок"
+      : "Файл возвращён в будущие проверки",
   };
 }
 

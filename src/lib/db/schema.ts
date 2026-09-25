@@ -168,6 +168,10 @@ export const materialNodes = pgTable("material_nodes", {
   translationLang: vocabLangEnum("translation_lang").notNull().default("UK"),
   /** Служебная отметка учителя: материал нужно исправить. Ученику не показывается. */
   needsFix: boolean("needs_fix").notNull().default(false),
+  /** Автоматическая проверка нашла проблему форматирования. */
+  formattingIssue: boolean("formatting_issue").notNull().default(false),
+  /** Учитель исключил файл из последующих автоматических проверок. */
+  formattingScanIgnored: boolean("formatting_scan_ignored").notNull().default(false),
   /**
    * Исходный текст правила или словаря, как его вставили. Нужен, чтобы
    * «Редактировать» показывало и разобранное содержимое, и оригинал.
