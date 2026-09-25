@@ -491,20 +491,20 @@ export function MaterialsExplorer({
    * Системный маркер типа не заменяет пользовательский emoji: в дереве
    * emoji всегда идёт первым, а папка / файл читаются вторым знаком.
    */
-  const kindMarker = (n: MaterialNode, compact = false) => (
+  const kindMarker = (n: MaterialNode) => (
     <span
       title={n.type === "FOLDER" ? "Папка" : "Файл"}
       aria-hidden="true"
       className={cn(
         "material-kind-marker",
         n.type === "FOLDER" ? "material-kind-folder" : "material-kind-file",
-        compact ? "h-6 w-6 rounded-lg" : "h-8 w-8 rounded-xl",
+        "h-8 w-8 rounded-xl",
       )}
     >
       {n.type === "FOLDER" ? (
-        <IconFolder className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        <IconFolder className="h-4 w-4" />
       ) : (
-        <IconFile className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        <IconFile className="h-4 w-4" />
       )}
     </span>
   );
@@ -1060,12 +1060,12 @@ export function MaterialsExplorer({
     const hasChildren = n.children.length > 0;
 
     return (
-      <div key={n.id}>
+      <div key={n.id} className="py-0.5">
         <div
           {...menuHandlers(n)}
           {...dragProps(n)}
           className={cn(
-            "material-tree-row group relative flex items-center gap-1 rounded-xl pr-1 transition",
+            "material-tree-row group relative flex items-center gap-1.5 rounded-xl px-1.5 transition",
             n.type === "FOLDER" ? "material-tree-row-folder" : "material-tree-row-file",
             isSelected ? "is-selected" : "",
             editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
@@ -1079,11 +1079,11 @@ export function MaterialsExplorer({
           <button
             type="button"
             onClick={(e) => handleOpenClick(e, n, treeOrder)}
-            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-1 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left"
           >
             <span
               className={cn(
-                "material-tree-dot h-2.5 w-2.5 shrink-0 rounded-full border-2 transition",
+                "material-tree-dot h-3 w-3 shrink-0 rounded-full border-2 transition",
                 isSelected
                   ? "border-accent bg-accent"
                   : "border-line bg-surface group-hover:border-faint",
@@ -1092,13 +1092,13 @@ export function MaterialsExplorer({
             {n.icon &&
               iconSlot(
                 n,
-                "material-node-emoji flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-sm leading-none",
+                "material-node-emoji flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg leading-none",
               )}
-            {kindMarker(n, true)}
+            {kindMarker(n)}
             <span
               className={cn(
-                "truncate text-[13px] transition",
-                isSelected ? "font-semibold text-accent" : "text-muted",
+                "truncate text-[15px] font-semibold leading-5 transition",
+                isSelected ? "text-accent" : "text-content",
               )}
             >
               {n.name}
@@ -1111,10 +1111,10 @@ export function MaterialsExplorer({
               type="button"
               onClick={() => toggle(n.id)}
               aria-label={n.name}
-              className="flex h-7 w-5 shrink-0 items-center justify-center text-faint transition hover:text-content"
+              className="flex h-8 w-6 shrink-0 items-center justify-center text-faint transition hover:text-content"
             >
               <IconChevronRight
-                className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-90")}
+                className={cn("h-4 w-4 transition-transform", isOpen && "rotate-90")}
               />
             </button>
           )}
@@ -1123,7 +1123,7 @@ export function MaterialsExplorer({
         </div>
 
         {hasChildren && isOpen && (
-          <div className="ml-[13px] border-l border-line pl-3">
+          <div className="ml-4 mt-1 border-l border-line pl-3">
             {n.children.map(renderSub)}
           </div>
         )}
@@ -1211,7 +1211,7 @@ export function MaterialsExplorer({
         </div>
 
         {hasChildren && isOpen && (
-          <div className="material-tree-branch ml-5 mt-1 border-l border-line pl-3">
+          <div className="material-tree-branch ml-5 mt-2 border-l border-line pl-3">
             {n.children.map(renderSub)}
           </div>
         )}

@@ -656,11 +656,14 @@
   border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
 }
 .material-tree-row {
-  min-height: 38px;
-  border: 1px solid transparent;
+  min-height: 48px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
 }
 .material-tree-row-folder {
-  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+.material-tree-row-file {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
 }
 .material-tree-row:hover {
   border-color: color-mix(in srgb, var(--accent) 18%, var(--line));
