@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   movePhraseAction,
   repairPhraseIconAction,
@@ -9,8 +9,8 @@ import {
 } from "@/lib/actions/materials";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
+import { useSpeech } from "./speech";
 import { cn } from "@/lib/utils";
-import { speakableText } from "@/lib/speech";
 import {
   IconVolume,
   IconChevronDown,
@@ -34,61 +34,6 @@ export type MaterialPhrase = {
   examples: PhraseExample[];
 };
 
-/** Произношение через Web Speech API — без серверов и без платных API. */
-/** Синтез речи в браузере, если он вообще есть. */
-function synthesizer() {
-  return typeof window === "undefined" ? undefined : window.speechSynthesis;
-}
-
-/**
- * Голоса подгружаются не сразу, поэтому браузер сообщает о них событием.
- * Это внешнее состояние, а не состояние компонента: читаем его напрямую,
- * иначе после монтирования получаем лишний каскад рендеров.
- */
-function subscribeVoices(listener: () => void) {
-  const synth = synthesizer();
-  synth?.addEventListener?.("voiceschanged", listener);
-  return () => synth?.removeEventListener?.("voiceschanged", listener);
-}
-
-const readSupported = () => !!synthesizer();
-
-const readUkVoice = () =>
-  (synthesizer()?.getVoices() ?? []).some(
-    (voice) => voice.lang.replace("_", "-") === "en-GB",
-  );
-
-function useSpeech() {
-  const supported = useSyncExternalStore(subscribeVoices, readSupported, () => false);
-  const ukAvailable = useSyncExternalStore(subscribeVoices, readUkVoice, () => false);
-  const [speaking, setSpeaking] = useState<string | null>(null);
-
-  // Уходим со страницы — обрываем чтение, иначе голос продолжит говорить.
-  useEffect(() => () => synthesizer()?.cancel(), []);
-
-  function speak(key: string, text: string, lang: "en-US" | "en-GB") {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    const spoken = speakableText(text);
-    if (!spoken) return;
-    synth.cancel();
-
-    const u = new SpeechSynthesisUtterance(spoken);
-    u.lang = lang;
-    const voices = synth.getVoices();
-    const exact = voices.find((v) => v.lang.replace("_", "-") === lang);
-    const fallback = voices.find((v) => v.lang.toLowerCase().startsWith("en"));
-    if (exact ?? fallback) u.voice = exact ?? fallback!;
-    u.rate = 0.95;
-    u.onend = () => setSpeaking(null);
-    u.onerror = () => setSpeaking(null);
-
-    setSpeaking(key);
-    synth.speak(u);
-  }
-
-  return { speak, ukAvailable, supported, speaking };
-}
 
 function SpeakButton({
   label,

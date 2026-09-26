@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { speakableText } from "@/lib/speech";
-import { IconVolume } from "@/components/icons";
+import { useSpeech, SpeakPair } from "./speech";
 import type { RuleBlock } from "@/lib/rule-parser";
 
 const TONE: Record<string, string> = {
@@ -37,30 +35,17 @@ function mistakeParts(text: string): { wrong: string; right: string | null } {
       };
 }
 
-function useSpeak() {
-  const [active, setActive] = useState<string | null>(null);
-
-  function speak(key: string, text: string) {
-    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
-    if (!synth) return;
-    const spoken = speakableText(text);
-    if (!spoken) return;
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(spoken);
-    u.lang = "en-US";
-    const voices = synth.getVoices();
-    const v =
-      voices.find((x) => x.lang.replace("_", "-") === "en-US") ??
-      voices.find((x) => x.lang.toLowerCase().startsWith("en"));
-    if (v) u.voice = v;
-    u.rate = 0.95;
-    u.onend = () => setActive(null);
-    u.onerror = () => setActive(null);
-    setActive(key);
-    synth.speak(u);
-  }
-
-  return { speak, active, supported: typeof window !== "undefined" && !!window.speechSynthesis };
+/**
+ * Ячейка, которую есть смысл озвучить: одно английское слово.
+ *
+ * Транскрипции вроде «work/t/» и звуки «/ɪd/» отсеиваются по косой черте,
+ * перечисления и пояснения — по пробелам и кириллице. В таблице про -ed
+ * кнопки появляются ровно у слов, а не у каждой клетки.
+ */
+function speakableWord(cell: string): string | null {
+  const word = cell.trim();
+  if (word.length < 2 || word.length > 40) return null;
+  return /^[A-Za-z][A-Za-z'’-]*$/.test(word) ? word : null;
 }
 
 /** Страница-правило: заголовки, врезки, формулы, таблицы и примеры. */
@@ -75,7 +60,7 @@ export function RuleReader({
   description: string | null;
   blocks: RuleBlock[];
 }) {
-  const s = useSpeak();
+  const s = useSpeech();
   const isStudySheet = blocks.some((block) => isSheetVariant(block.variant));
 
   return (
@@ -218,21 +203,7 @@ export function RuleReader({
               <div key={i} className="rounded-xl bg-surface-2 px-4 py-3">
                 <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-content">
                   {b.en}
-                  {s.supported && (
-                    <button
-                      type="button"
-                      onClick={() => s.speak(key, b.en)}
-                      aria-label="Произнести"
-                      className={cn(
-                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition",
-                        s.active === key
-                          ? "bg-accent text-white"
-                          : "text-faint hover:bg-accent-soft hover:text-accent",
-                      )}
-                    >
-                      <IconVolume className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                  <SpeakPair text={b.en} id={key} speech={s} />
                 </p>
                 {b.tr && <p className="mt-0.5 text-[13px] italic text-muted">{b.tr}</p>}
               </div>
@@ -295,7 +266,21 @@ export function RuleReader({
                     <tbody>
                       {b.rows.map((row, ri) => (
                         <tr key={ri}>
-                          {row.map((cell, ci) => <td key={ci}>{cell}</td>)}
+                          {row.map((cell, ci) => {
+                            const word = speakableWord(cell);
+                            return (
+                              <td key={ci}>
+                                {cell}
+                                {word && (
+                                  <SpeakPair
+                                    text={word}
+                                    id={`t${i}-${ri}-${ci}`}
+                                    speech={s}
+                                  />
+                                )}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -333,17 +318,29 @@ export function RuleReader({
                           ri % 2 ? "bg-surface-2" : "bg-surface",
                         )}
                       >
-                        {row.map((cell, ci) => (
-                          <td
-                            key={ci}
-                            className={cn(
-                              "px-3.5 py-2.5 align-top",
-                              ci === 0 ? "font-semibold text-content" : "text-muted",
-                            )}
-                          >
-                            {cell}
-                          </td>
-                        ))}
+                        {row.map((cell, ci) => {
+                          const word = speakableWord(cell);
+                          return (
+                            <td
+                              key={ci}
+                              className={cn(
+                                "px-3.5 py-2.5 align-top",
+                                ci === 0 ? "font-semibold text-content" : "text-muted",
+                              )}
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                {cell}
+                                {word && (
+                                  <SpeakPair
+                                    text={word}
+                                    id={`t${i}-${ri}-${ci}`}
+                                    speech={s}
+                                  />
+                                )}
+                              </span>
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
