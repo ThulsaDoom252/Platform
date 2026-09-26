@@ -133,6 +133,10 @@ function splitExample(s: string): { en: string; tr: string } | null {
   const tr = cleanText(m.slice(1).join(" — "));
   if (!en || !tr) return null;
   if (!hasLatin(en)) return null;
+  // Слева от тире должен быть английский, а не строка вроде
+  // «-ed читається /t/ — після глухих»: там кириллица, и это заголовок
+  // раздела, а не пример с переводом.
+  if (hasCyrillic(en)) return null;
   if (!hasCyrillic(tr)) return null;
   return { en, tr };
 }
@@ -669,6 +673,72 @@ export function parseRuleHtml(html: string): RuleParseResult {
 
 // ---------------------------------------------------------------- Текст
 
+/** Ячейка целиком в верхнем регистре — похоже на шапку таблицы. */
+function isHeaderCell(cell: string): boolean {
+  return /\p{L}/u.test(cell) && cell === cell.toUpperCase();
+}
+
+/**
+ * Расклеивает таблицу, приехавшую одной строкой.
+ *
+ * Google Docs иногда отдаёт таблицу без переносов: ячейки разделены
+ * табуляциями, а последняя ячейка строки слипается с первой ячейкой
+ * следующей через пробел — «ОСТАННЯ ЛІТЕРА worked». Число колонок берём
+ * из шапки: сколько ячеек подряд написано капсом, столько колонок минус
+ * та, что слиплась.
+ *
+ * Возвращает null, если хоть одна проверка не сошлась: лучше оставить
+ * строку как есть, чем нарезать её наугад.
+ */
+function ungluedRows(cells: string[]): string[][] | null {
+  const upper = cells.findIndex((c) => !isHeaderCell(c));
+  // Нужна шапка хотя бы из одной целой ячейки и одной слипшейся.
+  if (upper < 1 || upper >= cells.length) return null;
+
+  const columns = upper + 1;
+  if (columns < 2) return null;
+
+  // Слиплись все строки, кроме последней: ячеек на (rows-1) меньше полного.
+  const rest = cells.length - 1;
+  if (rest % (columns - 1) !== 0) return null;
+  const rows = rest / (columns - 1);
+  if (rows < 2) return null;
+
+  const out: string[][] = [];
+  let row: string[] = [];
+
+  for (let i = 0; i < cells.length; i++) {
+    const last = row.length === columns - 1 && out.length < rows - 1;
+    if (!last) {
+      row.push(cells[i]);
+      if (row.length === columns) {
+        out.push(row);
+        row = [];
+      }
+      continue;
+    }
+
+    // Хвост ячейки — начало следующей строки. Режем по последнему пробелу:
+    // первая колонка в таких таблицах всегда одно слово.
+    const at = cells[i].lastIndexOf(" ");
+    if (at <= 0) return null;
+    const head = cells[i].slice(0, at).trim();
+    const tail = cells[i].slice(at + 1).trim();
+    if (!head || !tail || /\s/.test(tail)) return null;
+
+    row.push(head);
+    out.push(row);
+    row = [tail];
+  }
+
+  if (row.length > 0) {
+    if (row.length !== columns) return null;
+    out.push(row);
+  }
+
+  return out.length === rows ? out : null;
+}
+
 /** Запасной разбор, когда вставили обычный текст: таблицы — по табуляциям. */
 export function parseRuleText(raw: string): RuleParseResult {
   const warnings: string[] = [];
@@ -695,13 +765,55 @@ export function parseRuleText(raw: string): RuleParseResult {
     tableBuffer = [];
   };
 
-  for (const line of lines) {
+  /** Идёт ли дальше таблица — по ней узнаём заголовок раздела. */
+  const tableFollows = (from: number) => {
+    for (let j = from; j < lines.length; j++) {
+      if (!lines[j].trim()) continue;
+      return lines[j].includes("\t");
+    }
+    return false;
+  };
+
+  let first = true;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (line.includes("\t")) {
-      tableBuffer.push(line.split("\t").map(cleanText));
+      const cells = line.split("\t").map(cleanText);
+      const unglued = ungluedRows(cells);
+      if (unglued) tableBuffer.push(...unglued);
+      else tableBuffer.push(cells);
+      first = false;
       continue;
     }
     flushTable();
-    const b = lineToBlock(line);
+
+    const s = cleanText(line);
+    if (!s) continue;
+
+    // Шапка правила: первая же строка, если она не предложение.
+    if (first && s.length <= 100 && !/[.!]$/.test(s) && !detectCallout(s)) {
+      blocks.push({ type: "heading", text: s });
+      first = false;
+      continue;
+    }
+    first = false;
+
+    // «Заголовок раздела — пояснение», а сразу за ним таблица: режем по
+    // тире, иначе вся строка уезжает в обычный абзац над таблицей.
+    const parts = s.split(DASH);
+    if (parts.length >= 2 && tableFollows(i + 1)) {
+      const head = cleanText(parts[0]);
+      const rest = cleanText(parts.slice(1).join(" — "));
+      if (head && rest && looksLikeHeading(head)) {
+        blocks.push({ type: "heading", text: head });
+        const note = lineToBlock(rest);
+        if (note) blocks.push(note);
+        continue;
+      }
+    }
+
+    const b = lineToBlock(s);
     if (b) blocks.push(b);
   }
   flushTable();
