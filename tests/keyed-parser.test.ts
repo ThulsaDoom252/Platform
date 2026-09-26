@@ -123,6 +123,24 @@ test("лексика разбирается в карточки слов", () =>
   assert.equal(traps.length, 2);
 });
 
+test("ссылка на разбор необязательна и принимается всеми тремя типами", () => {
+  // Правило, лексика и время — один набор ключей: место для ссылки
+  // должно работать одинаково, а без неё материал остаётся целым.
+  for (const name of ["keyed-rule.txt", "keyed-lexis.txt", "keyed-tense.txt"]) {
+    const r = parseKeyed(fixture(name));
+    assert.ok(r && r.type !== "VOCAB", name);
+    const last = r.blocks.at(-1);
+    assert.ok(last?.type === "link", `${name}: ссылка не разобралась`);
+  }
+
+  const without = parseKeyed(
+    ["TYPE: LEXIS", "TITLE: t", "ITEM: say", "EX: Say it. | Скажи це."].join("\n"),
+  );
+  assert.ok(without && without.type !== "VOCAB");
+  assert.ok(!without.blocks.some((b) => b.type === "link"));
+  assert.deepEqual(without.warnings, []);
+});
+
 test("время разбирается в построение, сетки, маркеры и разбор примеров", () => {
   const r = parse("keyed-tense.txt", "TENSE");
   if (r.type === "VOCAB") return;

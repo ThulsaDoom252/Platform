@@ -51,3 +51,5 @@ CONTRAST: say | tell | что сказано | кому сказано
 CONTRAST: speak | talk | формально, про язык | по-дружески, обмен репликами
 TRAP: ❌ He said me the truth. ✅ He told me the truth.
 TRAP: ❌ I talk English. ✅ I speak English.
+
+LINK: https://grammarway.com/ru/say-tell | https://grammarway.com/ua/say-tell
