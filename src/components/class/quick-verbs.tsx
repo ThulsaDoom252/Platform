@@ -3,9 +3,10 @@
 /**
  * Табличка неправильных глаголов под рукой.
  *
- * Берёт то, что учитель уже завёл в материалах, и даёт искать по любой
- * из трёх форм и по переводу — на уроке обычно вспоминают именно форму,
- * а не начальный вид глагола.
+ * Показывает полный справочник, поверх которого лежат списки учителя;
+ * свои глаголы помечены точкой. Искать можно по любой из трёх форм и по
+ * переводу — на уроке обычно вспоминают именно форму, а не начальный
+ * вид глагола.
  */
 import { useEffect, useMemo, useState } from "react";
 import { quickVerbsAction, type QuickVerb } from "@/lib/actions/class";
@@ -52,11 +53,7 @@ export function QuickVerbs() {
         {verbs === null && <p className="p-3 text-[13px] text-faint">Загружаю…</p>}
 
         {verbs !== null && shown.length === 0 && (
-          <p className="p-3 text-[13px] text-faint">
-            {verbs.length === 0
-              ? "Глаголы появятся, когда заведёшь их в материалах."
-              : "Ничего не нашлось."}
-          </p>
+          <p className="p-3 text-[13px] text-faint">Ничего не нашлось.</p>
         )}
 
         {shown.length > 0 && (
@@ -75,7 +72,15 @@ export function QuickVerbs() {
                   title={v.translation ?? undefined}
                   className="border-t border-line"
                 >
-                  <td className="px-2.5 py-1.5 font-semibold text-content">{v.base}</td>
+                  <td className="px-2.5 py-1.5 font-semibold text-content">
+                    {v.own && (
+                      <span
+                        title="Из твоих материалов"
+                        className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle"
+                      />
+                    )}
+                    {v.base}
+                  </td>
                   <td className="px-2.5 py-1.5 text-accent">{v.past}</td>
                   <td className="px-2.5 py-1.5 text-accent">{v.participle}</td>
                 </tr>

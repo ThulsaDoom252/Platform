@@ -9,10 +9,11 @@
  * человек в уроке.
  */
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, classMessages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { IRREGULAR_VERBS_BASE, verbKey } from "@/lib/irregular-verbs-base";
 
 /** Сколько отметка держится за «онлайн». */
 const ONLINE_WINDOW_MS = 75_000;
@@ -344,13 +345,17 @@ export type QuickVerb = {
   past: string;
   participle: string;
   translation: string | null;
+  /** Глагол взят из списков учителя, а не из общего справочника. */
+  own: boolean;
 };
 
 /**
  * Табличка неправильных глаголов для быстрой подсказки.
  *
- * Берём то, что учитель уже завёл в материалах, а не отдельный
- * справочник: это те же формы, с которыми он работает на уроке.
+ * Основа — полный справочник: на уроке нужное слово должно находиться
+ * всегда, а не только если учитель успел завести его в материалах.
+ * Поверх ложатся собственные списки: там, где формы совпали, побеждает
+ * свой вариант — в нём может быть уточнённый перевод.
  */
 export async function quickVerbsAction(): Promise<QuickVerb[]> {
   await requireUser();
@@ -367,5 +372,24 @@ export async function quickVerbsAction(): Promise<QuickVerb[]> {
     order by lower(base), lower(past), lower(participle)
   `);
 
-  return [...rows.rows].sort((a, b) => a.base.localeCompare(b.base, "en"));
+  const byKey = new Map<string, QuickVerb>();
+  for (const v of IRREGULAR_VERBS_BASE) {
+    byKey.set(verbKey(v), { ...v, own: false });
+  }
+  for (const v of rows.rows) {
+    const key = verbKey(v);
+    byKey.set(key, {
+      base: v.base,
+      past: v.past,
+      participle: v.participle,
+      translation: v.translation ?? byKey.get(key)?.translation ?? null,
+      own: true,
+    });
+  }
+
+  return [...byKey.values()].sort(
+    (a, b) =>
+      a.base.localeCompare(b.base, "en") ||
+      a.past.localeCompare(b.past, "en"),
+  );
 }
