@@ -6,11 +6,11 @@ import { createStudentAction } from "@/lib/actions/teacher";
 import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { Avatar } from "@/components/avatar";
+import { ToClassButton } from "@/components/class/to-class-button";
 import {
   IconChevronRight,
   IconLayers,
   IconMaterials,
-  IconVideo,
 } from "@/components/icons";
 
 const inputCls =
@@ -200,18 +200,7 @@ export default async function TeacherStudentsPage({
                 {fmt(t.studentsPage.balanceLabel, { n: s.lessons })}
               </span>
 
-              {/* На узком экране подписи не помещаются — остаются одни
-                  значки, поэтому кнопка там квадратная. */}
-              <button
-                type="button"
-                disabled
-                title={t.studentsPage.toClassSoon}
-                aria-label={t.studentsPage.toClass}
-                className="flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-line text-[13px] font-semibold text-faint opacity-60 sm:w-auto sm:px-3.5"
-              >
-                <IconVideo className="h-4 w-4 sm:hidden" />
-                <span className="hidden sm:inline">{t.studentsPage.toClass}</span>
-              </button>
+              <ToClassButton studentId={s.id} label={t.studentsPage.toClass} />
 
               <Link
                 href={`/teacher/students/${s.id}/materials`}

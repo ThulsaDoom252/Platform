@@ -65,6 +65,13 @@ export const users = pgTable("users", {
   lessonsBefore: integer("lessons_before").notNull().default(0),
   /** Начало занятий. Пусто — берём дату первого урока на платформе. */
   startedAt: timestamp("started_at"),
+  /** Последний признак жизни в браузере — по нему считается «онлайн». */
+  lastSeenAt: timestamp("last_seen_at"),
+  /**
+   * С кем учитель сейчас в классе. У ученика поле пустое: его класс —
+   * это тот учитель, который выбрал именно его.
+   */
+  classWithId: uuid("class_with_id"),
   /** Цифры за весь период показывать как приблизительные. */
   statsApproximate: boolean("stats_approximate").notNull().default(false),
   /** Что из баланса и статистики видит сам ученик. */
@@ -290,6 +297,33 @@ export const materialBlocks = pgTable("material_blocks", {
   /** Содержимое блока — форма зависит от типа (см. RuleBlock). */
   data: jsonb("data").$type<RuleBlock>().notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ---------- Класс: переписка учителя с учеником ----------
+
+/**
+ * Сообщение в чате урока.
+ *
+ * Переписка привязана к ученику, а не к занятию: она продолжается от
+ * урока к уроку, и учитель может вернуться к старому разговору.
+ * Удаление и архивация — пометки, строки остаются на месте.
+ */
+export const classMessages = pgTable("class_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  authorId: uuid("author_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  text: text("text").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  editedAt: timestamp("edited_at"),
+  /** Убрано из ленты, но сохранено: учитель может вернуть. */
+  archivedAt: timestamp("archived_at"),
+  deletedAt: timestamp("deleted_at"),
+  /** Прочитано другой стороной — по этому считается значок с числом. */
+  readAt: timestamp("read_at"),
 });
 
 // ---------- Неправильные глаголы ----------

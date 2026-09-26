@@ -5,9 +5,9 @@ import { users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { ClassRoom } from "@/components/class/class-room";
 
-export default async function StudentClassPage() {
+export default async function TeacherClassPage() {
   const session = await getSession();
-  if (!session || session.role !== "STUDENT") redirect("/login");
+  if (!session || session.role !== "TEACHER") redirect("/login");
 
   const [me] = await db
     .select({ name: users.name })
@@ -15,5 +15,5 @@ export default async function StudentClassPage() {
     .where(eq(users.id, session.userId))
     .limit(1);
 
-  return <ClassRoom role="STUDENT" selfId={session.userId} selfName={me?.name ?? "Ученик"} />;
+  return <ClassRoom role="TEACHER" selfId={session.userId} selfName={me?.name ?? "Учитель"} />;
 }

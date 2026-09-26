@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n-provider";
 import {
+  IconCap,
   IconHome,
   IconUsers,
   IconCalendar,
@@ -17,6 +18,7 @@ export function MobileNav() {
   const { t } = useT();
 
   const items = [
+    { href: "/teacher/class", label: t.nav.myClass, Icon: IconCap },
     { href: "/teacher", label: t.nav.home, Icon: IconHome, exact: true },
     { href: "/teacher/students", label: t.nav.students, Icon: IconUsers },
     { href: "/teacher/schedule", label: t.nav.shortLessons, Icon: IconCalendar },
