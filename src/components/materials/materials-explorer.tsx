@@ -31,6 +31,7 @@ import { NodeCreator } from "./node-creator";
 import { TreeImporter, type ImportTarget } from "./tree-importer";
 import { FillFromDialog, type FillTarget } from "./fill-from-dialog";
 import { VerbsReader } from "./verbs-reader";
+import { VerbsShareDialog, type ShareVerbsTarget } from "./verbs-share-dialog";
 import { VerbsFiller, type VerbsTarget } from "./verbs-filler";
 import { ContentImporter } from "./content-importer";
 import { VocabularyCoverActions } from "./vocabulary-cover";
@@ -194,6 +195,7 @@ export function MaterialsExplorer({
   const [importTree, setImportTree] = useState<ImportTarget | null>(null);
   const [fillFrom, setFillFrom] = useState<FillTarget | null>(null);
   const [fillVerbs, setFillVerbs] = useState<VerbsTarget | null>(null);
+  const [shareVerbs, setShareVerbs] = useState<ShareVerbsTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
   const [kindChange, setKindChange] = useState<{
@@ -1900,6 +1902,16 @@ export function MaterialsExplorer({
             onTranslate={editable ? (language) => translatePage(selected, language) : undefined}
             onReorder={editable ? (order) => reorderVerbGroups(selected, order) : undefined}
             onFillIcons={editable ? (category) => fillVerbIcons(selected, category) : undefined}
+            onShare={
+              editable
+                ? () =>
+                    setShareVerbs({
+                      id: selected.id,
+                      name: selected.name,
+                      verbs: selected.verbs,
+                    })
+                : undefined
+            }
             onEdit={
               editable
                 ? (category) =>
@@ -2389,6 +2401,12 @@ export function MaterialsExplorer({
             target={importTree}
             onClose={() => setImportTree(null)}
             onDone={setNotice}
+          />
+          <VerbsShareDialog
+            key={shareVerbs ? "verbs-share-" + shareVerbs.id : "verbs-share-idle"}
+            target={shareVerbs}
+            onClose={() => setShareVerbs(null)}
+            onDone={(message) => setNotice(message)}
           />
           <VerbsFiller
             key={fillVerbs ? "verbs-" + fillVerbs.id : "verbs-idle"}

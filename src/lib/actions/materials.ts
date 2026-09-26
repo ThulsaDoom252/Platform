@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
@@ -1327,6 +1327,172 @@ export async function fillVerbIconsAction(
 }
 
 /** Убрать со страницы все глаголы. */
+/** Страница, куда можно передать глаголы. */
+export type VerbsPage = { id: string; name: string; path: string; verbs: number };
+export type VerbsPlace = { key: string; label: string; pages: VerbsPage[] };
+
+/**
+ * Куда можно передать глаголы.
+ *
+ * Берём только страницы глаголов и пустые файлы: в словник или правило
+ * их класть некуда, а пустая страница станет списком глаголов сама.
+ */
+export async function listVerbsPagesAction(): Promise<VerbsPlace[]> {
+  const session = await requireTeacher();
+
+  const rows = await db
+    .select({
+      id: materialNodes.id,
+      parentId: materialNodes.parentId,
+      name: materialNodes.name,
+      icon: materialNodes.icon,
+      type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
+      scope: materialNodes.scope,
+      ownerId: materialNodes.ownerId,
+    })
+    .from(materialNodes)
+    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+
+  const counts = await db
+    .select({ nodeId: irregularVerbs.nodeId, n: count() })
+    .from(irregularVerbs)
+    .groupBy(irregularVerbs.nodeId);
+  const verbsOf = new Map(counts.map((c) => [c.nodeId, Number(c.n)]));
+
+  const phrases = await db
+    .select({ nodeId: materialPhrases.nodeId })
+    .from(materialPhrases)
+    .groupBy(materialPhrases.nodeId);
+  const blocks = await db
+    .select({ nodeId: materialBlocks.nodeId })
+    .from(materialBlocks)
+    .groupBy(materialBlocks.nodeId);
+  const busy = new Set([...phrases, ...blocks].map((r) => r.nodeId));
+
+  const students = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.role, "STUDENT"));
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const pathOf = (row: (typeof rows)[number]) => {
+    const parts: string[] = [];
+    let cur = row.parentId ? byId.get(row.parentId) : undefined;
+    for (let i = 0; cur && i < 12; i++) {
+      parts.unshift(cur.name);
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    return parts.join(" / ");
+  };
+
+  const pick = (scope: string, ownerId: string | null): VerbsPage[] =>
+    rows
+      .filter((r) => r.scope === scope && (r.ownerId ?? null) === ownerId)
+      .filter((r) => r.type === "FILE")
+      .filter((r) => (verbsOf.get(r.id) ?? 0) > 0 || (!busy.has(r.id) && !r.pageKind))
+      .map((r) => ({
+        id: r.id,
+        name: `${r.icon ?? ""} ${r.name}`.trim(),
+        path: pathOf(r),
+        verbs: verbsOf.get(r.id) ?? 0,
+      }));
+
+  return [
+    { key: "material", label: "Общая библиотека", pages: pick("MATERIAL", null) },
+    { key: "personal", label: "Мои материалы", pages: pick("PERSONAL", session.userId) },
+    ...students.map((st) => ({
+      key: `student-${st.id}`,
+      label: st.name,
+      pages: pick("STUDENT", st.id),
+    })),
+  ].filter((place) => place.pages.length > 0);
+}
+
+/**
+ * Передать выбранные глаголы на другую страницу.
+ *
+ * Копия самостоятельная, как и везде: правки у себя до неё не доходят.
+ * Категории переезжают вместе с глаголами, повторы по трём формам
+ * пропускаются.
+ */
+export async function shareVerbsAction(
+  targetId: string,
+  verbIds: string[],
+): Promise<BulkState> {
+  await requireTeacher();
+
+  const target = String(targetId ?? "");
+  const ids = [...new Set((verbIds ?? []).filter(Boolean))];
+  if (!target) return { error: "Не выбрана страница" };
+  if (ids.length === 0) return { error: "Не отмечено ни одного глагола" };
+
+  const [page] = await db
+    .select({ id: materialNodes.id, name: materialNodes.name, type: materialNodes.type })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, target))
+    .limit(1);
+  if (!page || page.type !== "FILE") return { error: "Страница не найдена" };
+
+  const source = await db
+    .select()
+    .from(irregularVerbs)
+    .where(inArray(irregularVerbs.id, ids))
+    .orderBy(asc(irregularVerbs.sortOrder));
+  if (source.length === 0) return { error: "Глаголы не найдены" };
+
+  const existing = await db
+    .select({
+      base: irregularVerbs.base,
+      past: irregularVerbs.past,
+      participle: irregularVerbs.participle,
+      sortOrder: irregularVerbs.sortOrder,
+    })
+    .from(irregularVerbs)
+    .where(eq(irregularVerbs.nodeId, target));
+
+  const key = (v: { base: string; past: string; participle: string }) =>
+    [v.base, v.past, v.participle].map((x) => x.trim().toLowerCase()).join("|");
+
+  const known = new Set(existing.map(key));
+  const fresh = source.filter((v) => {
+    if (known.has(key(v))) return false;
+    known.add(key(v));
+    return true;
+  });
+  if (fresh.length === 0) return { error: `В «${page.name}» это всё уже есть` };
+
+  let order = existing.reduce((max, v) => Math.max(max, v.sortOrder), 0);
+
+  await db.transaction(async (tx) => {
+    await tx.insert(irregularVerbs).values(
+      fresh.map((v) => ({
+        nodeId: target,
+        category: v.category,
+        sortOrder: ++order,
+        icon: v.icon,
+        base: v.base,
+        baseIpa: v.baseIpa,
+        past: v.past,
+        pastIpa: v.pastIpa,
+        participle: v.participle,
+        participleIpa: v.participleIpa,
+        translation: v.translation,
+      })),
+    );
+    await tx.update(materialNodes).set({ pageKind: "VERBS" }).where(eq(materialNodes.id, target));
+  });
+
+  revalidateMaterials();
+  const skipped = source.length - fresh.length;
+  return {
+    ok: true,
+    message:
+      `Передано в «${page.name}»: ${fresh.length}` +
+      (skipped > 0 ? `, пропущено повторов: ${skipped}` : ""),
+  };
+}
+
 export async function clearVerbsAction(nodeId: string): Promise<BulkState> {
   await requireTeacher();
 

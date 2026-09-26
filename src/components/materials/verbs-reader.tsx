@@ -53,6 +53,7 @@ function group(verbs: MaterialVerb[], order: string[] | null) {
 export function VerbsReader({
   verbs,
   onEdit,
+  onShare,
   onReorder,
   onFillIcons,
   lang,
@@ -62,6 +63,8 @@ export function VerbsReader({
   verbs: MaterialVerb[];
   /** Открыть правку. Аргумент — группа, с которой открыть; null — «без категории». */
   onEdit?: (category: string | null) => void;
+  /** Открыть выбор глаголов для передачи на другую страницу. */
+  onShare?: () => void;
   /** Сохранить новый порядок групп. null — «без категории». */
   onReorder?: (order: (string | null)[]) => void;
   /** Подобрать иконки, где их нет: всем (undefined) или одной группе. */
@@ -212,7 +215,7 @@ export function VerbsReader({
     <div className="flex flex-col gap-4">
       {/* Панель липнет к верху: по ней прыгают между группами. */}
       <div className="sticky top-16 z-[7] -mx-2 rounded-2xl bg-surface/95 px-2 py-2 backdrop-blur-md ring-1 ring-line">
-        {(onEdit || onTranslate || onFillIcons) && (
+        {(onEdit || onTranslate || onFillIcons || onShare) && (
           <div className="mb-2 flex flex-wrap items-center justify-end gap-1.5 border-b border-line pb-2">
             {onTranslate && (
               <div className="flex h-8 items-center gap-1 rounded-lg border border-line px-1">
@@ -254,6 +257,16 @@ export function VerbsReader({
               >
                 <span aria-hidden>✨</span> Иконки
                 {missingIcons > 0 && <span className="text-faint">{missingIcons}</span>}
+              </button>
+            )}
+            {onShare && (
+              <button
+                type="button"
+                onClick={onShare}
+                title="Передать выбранные глаголы на другую страницу"
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] font-semibold text-content transition hover:border-accent hover:text-accent"
+              >
+                <span aria-hidden>↗</span> Поделиться
               </button>
             )}
             {onEdit && (
