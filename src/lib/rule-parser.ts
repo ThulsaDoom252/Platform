@@ -121,7 +121,9 @@ function looksLikeHeading(s: string): boolean {
   // Вопрос может быть заголовком («IT чи THEY?», «3. IF ЧИ WHEN?»),
   // а вот точка в конце — почти всегда обычное предложение.
   if (/[.!]$/.test(s)) return false;
-  if (DASH.test(s)) return false;
+  // Тире обычно значит «пример — перевод», но не когда слева капс:
+  // «📍 МІСЦЕЗНАХОДЖЕННЯ — де знаходиться» — это заголовок раздела.
+  if (DASH.test(s)) return isMostlyUpper(s.split(DASH)[0] ?? "");
   return /^\d+[.)]\s/.test(s) || isMostlyUpper(s) || s.split(/\s+/).length <= 6;
 }
 
@@ -695,8 +697,11 @@ function ungluedRows(cells: string[]): string[][] | null {
   // Нужна шапка хотя бы из одной целой ячейки и одной слипшейся.
   if (upper < 1 || upper >= cells.length) return null;
 
+  // Две колонки не берём: строка вроде «I → AM ⇥ He → IS ⇥ You → ARE» тоже
+  // начинается с капса, и её бы нарезало пополам. Склеенные таблицы, ради
+  // которых всё затевалось, всегда шире.
   const columns = upper + 1;
-  if (columns < 2) return null;
+  if (columns < 3) return null;
 
   // Слиплись все строки, кроме последней: ячеек на (rows-1) меньше полного.
   const rest = cells.length - 1;
@@ -739,6 +744,65 @@ function ungluedRows(cells: string[]): string[][] | null {
   return out.length === rows ? out : null;
 }
 
+/**
+ * Строка похожа на ячейку шапки: коротка, начинается словом из заглавных
+ * или вовсе без букв («"="», «✓ СТВЕРДЖЕННЯ»).
+ *
+ * Одиночная буква не считается: иначе «I (тільки я)» из первой колонки
+ * приняли бы за продолжение шапки.
+ */
+function looksLikeHeaderLine(line: string): boolean {
+  const s = line.trim();
+  if (!s || s.length > 40 || /[.!]$/.test(s)) return false;
+
+  const word = s.split(/\s+/)[0];
+  const letters = word.replace(/\P{L}/gu, "");
+  if (letters.length === 0) return true;
+  return letters.length >= 2 && word === word.toUpperCase();
+}
+
+/**
+ * Таблица, приехавшая по одной ячейке на строку.
+ *
+ * Google Docs так отдаёт таблицу, когда в ячейках нет переносов: сначала
+ * идёт шапка — несколько коротких строк капсом, потом подряд все ячейки
+ * построчно. Число колонок берём из длины шапки и проверяем делением;
+ * если первая колонка без заголовка (строки-подписи слева), шапка
+ * оказывается на одну короче — такой случай дополняем пустой ячейкой.
+ *
+ * Возвращает null, если хоть что-то не сошлось: лучше оставить абзацами,
+ * чем собрать таблицу наугад.
+ */
+function tableFromLines(run: string[]): RuleBlock | null {
+  if (run.length < 6) return null;
+
+  let head = 0;
+  while (head < run.length && looksLikeHeaderLine(run[head])) head++;
+  if (head < 2) return null;
+
+  let columns = head;
+  let headers = run.slice(0, head);
+
+  if (run.length % columns !== 0) {
+    // Шапка короче на одну — первая колонка без заголовка.
+    const wider = head + 1;
+    if ((run.length - head) % wider !== 0) return null;
+    columns = wider;
+    headers = ["", ...headers];
+  }
+
+  const body = run.slice(head);
+  if (body.length % columns !== 0) return null;
+
+  const rows: string[][] = [];
+  for (let i = 0; i < body.length; i += columns) {
+    rows.push(body.slice(i, i + columns).map(cleanText));
+  }
+  if (rows.length < 2) return null;
+
+  return { type: "table", headers: headers.map(cleanText), rows };
+}
+
 /** Запасной разбор, когда вставили обычный текст: таблицы — по табуляциям. */
 export function parseRuleText(raw: string): RuleParseResult {
   const warnings: string[] = [];
@@ -774,9 +838,41 @@ export function parseRuleText(raw: string): RuleParseResult {
     return false;
   };
 
+  /*
+   * Заранее находим таблицы, приехавшие построчно: их видно только целой
+   * пачкой строк, а построчный разбор превратил бы каждую ячейку в
+   * отдельный заголовок или абзац.
+   */
+  const lineTables = new Map<number, RuleBlock>();
+  const eaten = new Set<number>();
+  for (let i = 0; i < lines.length; ) {
+    if (!lines[i].trim() || lines[i].includes("\t")) {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (end < lines.length && lines[end].trim() && !lines[end].includes("\t")) end++;
+
+    const table = tableFromLines(lines.slice(i, end));
+    if (table) {
+      lineTables.set(i, table);
+      for (let j = i; j < end; j++) eaten.add(j);
+    }
+    i = end;
+  }
+
   let first = true;
 
   for (let i = 0; i < lines.length; i++) {
+    const table = lineTables.get(i);
+    if (table) {
+      flushTable();
+      blocks.push(table);
+      first = false;
+      continue;
+    }
+    if (eaten.has(i)) continue;
+
     const line = lines[i];
     if (line.includes("\t")) {
       const cells = line.split("\t").map(cleanText);
