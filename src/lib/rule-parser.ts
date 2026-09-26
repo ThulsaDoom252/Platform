@@ -140,6 +140,9 @@ function splitExample(s: string): { en: string; tr: string } | null {
   // раздела, а не пример с переводом.
   if (hasCyrillic(en)) return null;
   if (!hasCyrillic(tr)) return null;
+  // Длинный хвост — это уже не перевод, а пояснение: «SAY TO — якщо все ж
+  // хочемо вказати особу…». Такую строку разбирать как пример нельзя.
+  if (tr.length > 120) return null;
   return { en, tr };
 }
 
@@ -708,6 +711,52 @@ function withoutFlattenedCopy(cells: string[]): string[] {
   return head === bare(cells.slice(1).join("")) ? cells.slice(1) : cells;
 }
 
+/**
+ * Режет ячейку там, где кончается украинский текст и начинается
+ * английский: «Вона привіталась. He said that he was tired.»
+ */
+function splitAtLanguageBreak(cell: string): [string, string] | null {
+  const m = cell.match(
+    /^(.*[Ѐ-ӿ][^A-Za-zЀ-ӿ]*?)\s+([^Ѐ-ӿ]*[A-Za-z][^Ѐ-ӿ]*)$/u,
+  );
+  if (!m) return null;
+
+  const head = cleanText(m[1]);
+  const tail = cleanText(m[2]);
+  return head && tail ? [head, tail] : null;
+}
+
+/**
+ * Расклеивает таблицу «англійська / переклад», приехавшую одной строкой.
+ *
+ * Отличается от {@link ungluedRows} тем, что в первой колонке тут целое
+ * предложение, а не одно слово, поэтому резать по последнему пробелу
+ * нельзя. Зато колонки на разных языках: граница строки проходит там,
+ * где перевод сменяется следующим английским предложением.
+ *
+ * Крайние ячейки должны быть чисто украинскими — это шапка слева и
+ * последний перевод справа. Если это не так, за таблицу не считаем.
+ */
+function ungluedBilingualRows(cells: string[]): string[][] | null {
+  if (cells.length < 4) return null;
+
+  const onlyCyrillic = (s: string) => /[Ѐ-ӿ]/.test(s) && !/[A-Za-z]/.test(s);
+  if (!onlyCyrillic(cells[0]) || !onlyCyrillic(cells[cells.length - 1])) return null;
+
+  const split = cells.slice(1, -1).map(splitAtLanguageBreak);
+  if (split.some((part) => !part)) return null;
+
+  const parts = split as [string, string][];
+  const out: string[][] = [[cells[0], parts[0][0]]];
+
+  for (let i = 0; i < parts.length; i++) {
+    const next = i + 1 < parts.length ? parts[i + 1][0] : cleanText(cells[cells.length - 1]);
+    out.push([parts[i][1], next]);
+  }
+
+  return out.length >= 3 ? out : null;
+}
+
 /** Ячейка целиком в верхнем регистре — похоже на шапку таблицы. */
 function isHeaderCell(cell: string): boolean {
   return /\p{L}/u.test(cell) && cell === cell.toUpperCase();
@@ -911,7 +960,7 @@ export function parseRuleText(raw: string): RuleParseResult {
     const line = lines[i];
     if (line.includes("\t")) {
       const cells = withoutFlattenedCopy(line.split("\t").map(cleanText));
-      const unglued = ungluedRows(cells);
+      const unglued = ungluedRows(cells) ?? ungluedBilingualRows(cells);
 
       if (unglued) {
         tableBuffer.push(...unglued);
@@ -921,7 +970,14 @@ export function parseRuleText(raw: string): RuleParseResult {
         const same = prev && prev.length === cells.length && prev.every((c, k) => c === cells[k]);
         if (!same) {
           // Сменилось число колонок — значит, началась другая таблица.
-          if (prev && prev.length !== cells.length) flushTable();
+          // Новая шапка посреди данных означает то же самое: в документе
+          // таблицы идут подряд, разделителя между ними нет.
+          const headerAgain =
+            tableBuffer.length >= 2 &&
+            cells.length === prev?.length &&
+            cells.every((c) => c && isMostlyUpper(c));
+
+          if ((prev && prev.length !== cells.length) || headerAgain) flushTable();
           tableBuffer.push(cells);
         }
       }
