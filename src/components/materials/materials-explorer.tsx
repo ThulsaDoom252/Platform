@@ -23,12 +23,16 @@ import {
 import { Modal } from "@/components/modal";
 
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
+import type { MaterialVerb } from "@/lib/materials";
 import { RuleReader } from "./rule-reader";
 import type { RuleBlock } from "@/lib/rule-parser";
 import { NodeEditor, type EditorTarget, type TreeScope } from "./node-editor";
 import { NodeCreator } from "./node-creator";
 import { TreeImporter, type ImportTarget } from "./tree-importer";
 import { FillFromDialog, type FillTarget } from "./fill-from-dialog";
+import { VerbsReader } from "./verbs-reader";
+import { VerbsFiller, type VerbsTarget } from "./verbs-filler";
+import { VerbsEditor } from "./verbs-editor";
 import { ContentImporter } from "./content-importer";
 import { VocabularyCoverActions } from "./vocabulary-cover";
 import { RuleImporter } from "./rule-importer";
@@ -51,6 +55,7 @@ import {
   changeMaterialPageKindAction,
   restoreMaterialContentAction,
   clearFolderAction,
+  clearVerbsAction,
   clearTreeFormattingMarksAction,
   clearPagesAction,
   deleteNodeAction,
@@ -72,6 +77,14 @@ const hasContent = (n: MaterialNode) => n.phrases.length > 0 || n.blocks.length 
  * Чем страница была заполнена. У страниц, созданных до появления поля,
  * тип выводим из содержимого — переносить данные ради этого не нужно.
  */
+/** Страница неправильных глаголов — по типу или по уже залитым глаголам. */
+const isVerbsPage = (n: MaterialNode) =>
+  n.type === "FILE" && (n.pageKind === "VERBS" || n.verbs.length > 0);
+
+/** Категории, уже заведённые на странице, — для подсказки в окне. */
+const verbCategories = (n: MaterialNode) =>
+  [...new Set(n.verbs.map((v) => v.category?.trim()).filter(Boolean))] as string[];
+
 const pageKind = (n: MaterialNode): "VOCAB" | "RULE" | null =>
   n.pageKind === "RULE" || n.pageKind === "VOCAB"
     ? n.pageKind
@@ -116,6 +129,8 @@ export type MaterialNode = {
   sourceText: string | null;
   /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
   contentBackupAt: string | null;
+  /** Неправильные глаголы, если страница про них. */
+  verbs: MaterialVerb[];
   phrases: MaterialPhrase[];
   blocks: RuleBlock[];
   children: MaterialNode[];
@@ -181,6 +196,8 @@ export function MaterialsExplorer({
   const [copyNodes, setCopyNodes] = useState<MaterialNode[] | null>(null);
   const [importTree, setImportTree] = useState<ImportTarget | null>(null);
   const [fillFrom, setFillFrom] = useState<FillTarget | null>(null);
+  const [fillVerbs, setFillVerbs] = useState<VerbsTarget | null>(null);
+  const [editVerbs, setEditVerbs] = useState<MaterialNode | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
   const [kindChange, setKindChange] = useState<{
@@ -733,6 +750,22 @@ export function MaterialsExplorer({
         setMoveError(res.error);
       } else {
         setNotice(res.message ?? "Переформатирование завершено");
+      }
+    });
+  }
+
+  /** Убрать со страницы все глаголы. */
+  function clearVerbs(node: MaterialNode) {
+    if (!confirm(`Убрать все глаголы со страницы «${node.name}»? Это не отменить.`)) return;
+
+    setNotice(`Очищаю «${node.name}»…`);
+    startMove(async () => {
+      const res = await clearVerbsAction(node.id);
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? "Глаголы убраны");
       }
     });
   }
@@ -1841,7 +1874,11 @@ export function MaterialsExplorer({
           </div>
         )}
 
-        {isPhrasePage && selected && (
+        {isPhrasePage && selected && selected.verbs.length > 0 && (
+          <VerbsReader verbs={selected.verbs} />
+        )}
+
+        {isPhrasePage && selected && selected.verbs.length === 0 && (
           <>
             {/* Выгрузка доступна и учителю, и ученику — если она ему открыта. */}
             {(editable || canExport) && hasContent(selected) && (
@@ -1877,6 +1914,44 @@ export function MaterialsExplorer({
                       <option value="RULE">Правило</option>
                     </select>
                   </label>
+                )}
+                {/* Страница глаголов: всего три кнопки, как договаривались. */}
+                {isVerbsPage(selected) && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFillVerbs({
+                          id: selected.id,
+                          name: selected.name,
+                          categories: verbCategories(selected),
+                        })
+                      }
+                      className={pageBtn}
+                      title="Вставить таблицу глаголов из Google Docs"
+                    >
+                      <IconPlus className="h-4 w-4" /> Заполнить
+                    </button>
+                    {selected.verbs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setEditVerbs(selected)}
+                        className={pageBtn}
+                      >
+                        <IconPencil className="h-4 w-4" /> Редактировать
+                      </button>
+                    )}
+                    {selected.verbs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => clearVerbs(selected)}
+                        disabled={moving}
+                        className={pageBtn}
+                      >
+                        <IconTrash className="h-4 w-4" /> Очистить
+                      </button>
+                    )}
+                  </>
                 )}
                 {/* Пока страница пустая — предлагаем оба способа наполнения.
                     Дальше она помнит, чем стала, и показывает своё. */}
@@ -2282,6 +2357,18 @@ export function MaterialsExplorer({
             target={importTree}
             onClose={() => setImportTree(null)}
             onDone={setNotice}
+          />
+          <VerbsEditor
+            key={editVerbs ? "verbs-edit-" + editVerbs.id : "verbs-edit-idle"}
+            node={editVerbs}
+            onClose={() => setEditVerbs(null)}
+            onDone={(message) => setNotice(message)}
+          />
+          <VerbsFiller
+            key={fillVerbs ? "verbs-" + fillVerbs.id : "verbs-idle"}
+            target={fillVerbs}
+            onClose={() => setFillVerbs(null)}
+            onDone={(message) => setNotice(message)}
           />
           <FillFromDialog
             key={fillFrom ? `fill-${fillFrom.id}` : "fill-idle"}

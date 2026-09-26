@@ -15,7 +15,7 @@ const inputCls =
 
 export type CreateTarget = {
   parentId: string | null;
-  kind: "FOLDER" | "PAGE";
+  kind: "FOLDER" | "PAGE" | "VERBS";
   scope?: TreeScope;
   ownerId?: string;
 };
@@ -35,8 +35,13 @@ export function NodeCreator({
   target: CreateTarget | null;
   onClose: () => void;
 }) {
-  const isPage = target?.kind === "PAGE";
-  const defaultIcon = isPage ? "📄" : "📁";
+  /*
+   * Вид выбирается прямо в окне: из дерева сюда приходят и «Новый
+   * раздел», и «+ Файл», а передумать хочется уже после открытия.
+   */
+  const [kind, setKind] = useState<"FOLDER" | "PAGE" | "VERBS">(target?.kind ?? "FOLDER");
+  const isPage = kind !== "FOLDER";
+  const defaultIcon = kind === "VERBS" ? "⚡" : kind === "PAGE" ? "📄" : "📁";
 
   // Счётчик крутится только в обработчиках. Трогать его во время рендера
   // нельзя, поэтому первая строка получает готовый ключ.
@@ -134,7 +139,7 @@ export function NodeCreator({
         })),
         {
           parentId: target!.parentId,
-          kind: target!.kind,
+          kind,
           scope: target!.scope,
           ownerId: target!.ownerId ?? null,
         },
@@ -155,10 +160,39 @@ export function NodeCreator({
       open
       onClose={onClose}
       wide
-      title={isPage ? "Новые страницы" : "Новые папки"}
+      title={
+        kind === "VERBS"
+          ? "Новые списки глаголов"
+          : kind === "PAGE"
+            ? "Новые страницы"
+            : "Новые папки"
+      }
       icon={<IconPlus className="h-5 w-5" />}
     >
       <div className="flex flex-col gap-4">
+        {/* Что именно создаём. Папка — по умолчанию. */}
+        <div className="flex flex-wrap gap-1.5">
+          {([
+            ["FOLDER", "📁", "Папка"],
+            ["PAGE", "📄", "Файл"],
+            ["VERBS", "⚡", "Неправильные глаголы"],
+          ] as const).map(([value, icon, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setKind(value)}
+              className={cn(
+                "flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition",
+                kind === value
+                  ? "bg-accent text-white"
+                  : "bg-surface-2 text-muted hover:text-content",
+              )}
+            >
+              <span aria-hidden>{icon}</span> {label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex gap-2">
           <button type="button" onClick={() => setTab("all")} className={tabCls(tab === "all")}>
             <span className="block text-sm font-semibold text-content">Одна иконка на всех</span>

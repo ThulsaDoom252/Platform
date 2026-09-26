@@ -292,6 +292,33 @@ export const materialBlocks = pgTable("material_blocks", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// ---------- Неправильные глаголы ----------
+
+/**
+ * Страница неправильных глаголов: три формы, транскрипции и перевод.
+ *
+ * Категории учитель придумывает сам, чтобы легче запоминалось, поэтому
+ * это просто текст, а не справочник. Пустая категория означает «без
+ * категории» — такие глаголы показываются первыми.
+ */
+export const irregularVerbs = pgTable("irregular_verbs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nodeId: uuid("node_id")
+    .notNull()
+    .references(() => materialNodes.id, { onDelete: "cascade" }),
+  category: text("category"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  icon: text("icon"),
+  base: text("base").notNull(),
+  baseIpa: text("base_ipa"),
+  past: text("past").notNull(),
+  pastIpa: text("past_ipa"),
+  participle: text("participle").notNull(),
+  participleIpa: text("participle_ipa"),
+  translation: text("translation"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const materialBlocksRelations = relations(materialBlocks, ({ one }) => ({
   node: one(materialNodes, {
     fields: [materialBlocks.nodeId],

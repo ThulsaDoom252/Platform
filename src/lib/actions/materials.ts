@@ -10,6 +10,7 @@ import {
   materialNodes,
   materialPhrases,
   materialBlocks,
+  irregularVerbs,
   studentMaterials,
   users,
   lessons,
@@ -33,6 +34,7 @@ import {
 import { transcribe } from "@/lib/transcription";
 import { checkSpelling, type Misspelling } from "@/lib/spellcheck";
 import { mergeImportTrees, splitIcon, type ImportNode } from "@/lib/tree-import";
+import { parseIrregularVerbs, type IrregularVerb } from "@/lib/verbs-parser";
 import { parseImportedFileContent } from "@/lib/material-import-content";
 import {
   isSafeAutomaticIcon,
@@ -97,7 +99,8 @@ function asScope(value: unknown): NodeScope {
 
 export type CreateOptions = {
   parentId: string | null;
-  kind: "FOLDER" | "PAGE";
+  /** VERBS — страница неправильных глаголов, тоже файл. */
+  kind: "FOLDER" | "PAGE" | "VERBS";
   scope?: NodeScope;
   ownerId?: string | null;
 };
@@ -116,7 +119,8 @@ export async function createNodesAction(
   const parentId = opts.parentId || null;
   const scope = asScope(opts.scope);
   const ownerId = isOwned(scope) ? opts.ownerId || null : null;
-  const type: "FOLDER" | "FILE" = opts.kind === "PAGE" ? "FILE" : "FOLDER";
+  const type: "FOLDER" | "FILE" = opts.kind === "FOLDER" ? "FOLDER" : "FILE";
+  const pageKind = opts.kind === "VERBS" ? "VERBS" : null;
 
   const clean = (items ?? [])
     .map((i) => ({
@@ -155,6 +159,7 @@ export async function createNodesAction(
         ownerId,
         // «Страница» — это FILE без fileKind: её открывает читалка.
         type,
+        pageKind,
         sortOrder: (lastOrder ?? 0) + idx + 1,
       })),
     )
@@ -903,6 +908,188 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
  * Как и обычное удаление, это архивация: узлы никуда не деваются, просто
  * уходят из активного дерева, и их можно вернуть кнопкой восстановления.
  */
+// ---------------------------------------------------- Неправильные глаголы
+
+export type VerbsFillResult = { added?: number; error?: string; warnings?: string[] };
+
+/** Причёсывает категорию: пустая строка значит «без категории». */
+function verbCategory(raw: unknown): string | null {
+  const name = String(raw ?? "").trim().slice(0, 80);
+  return name || null;
+}
+
+/**
+ * Добавить глаголы на страницу.
+ *
+ * Кнопка «Заполнить» одна на всё: уже заведённые глаголы остаются, новые
+ * дописываются в конец под своей категорией. Повторы по трём формам
+ * пропускаются — так один и тот же список можно вставить дважды без вреда.
+ */
+export async function fillVerbsAction(
+  nodeId: string,
+  category: string,
+  text: string,
+): Promise<VerbsFillResult> {
+  await requireTeacher();
+
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+
+  const [node] = await db
+    .select({ id: materialNodes.id, type: materialNodes.type })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Страница не найдена" };
+
+  const parsed = parseIrregularVerbs(String(text ?? ""));
+  if (parsed.verbs.length === 0) {
+    return { error: parsed.warnings[0] ?? "Не нашлось ни одного глагола" };
+  }
+
+  const existing = await db
+    .select({
+      base: irregularVerbs.base,
+      past: irregularVerbs.past,
+      participle: irregularVerbs.participle,
+      sortOrder: irregularVerbs.sortOrder,
+    })
+    .from(irregularVerbs)
+    .where(eq(irregularVerbs.nodeId, id));
+
+  const key = (v: { base: string; past: string; participle: string }) =>
+    [v.base, v.past, v.participle].map((s) => s.trim().toLowerCase()).join(" ");
+
+  const known = new Set(existing.map(key));
+  const fresh: IrregularVerb[] = [];
+  for (const verb of parsed.verbs) {
+    if (known.has(key(verb))) continue;
+    known.add(key(verb));
+    fresh.push(verb);
+  }
+
+  if (fresh.length === 0) return { error: "Все эти глаголы уже есть на странице" };
+
+  const last = existing.reduce((max, v) => Math.max(max, v.sortOrder), 0);
+  const name = verbCategory(category) ?? verbCategory(parsed.title);
+
+  await db.transaction(async (tx) => {
+    await tx.insert(irregularVerbs).values(
+      fresh.map((v, index) => ({
+        nodeId: id,
+        category: name,
+        sortOrder: last + index + 1,
+        icon: v.icon,
+        base: v.base,
+        baseIpa: v.baseIpa,
+        past: v.past,
+        pastIpa: v.pastIpa,
+        participle: v.participle,
+        participleIpa: v.participleIpa,
+        translation: v.translation,
+      })),
+    );
+    await tx
+      .update(materialNodes)
+      .set({ pageKind: "VERBS" })
+      .where(eq(materialNodes.id, id));
+  });
+
+  revalidateMaterials();
+  return { added: fresh.length, warnings: parsed.warnings };
+}
+
+export type VerbEdit = {
+  id: string;
+  category: string | null;
+  icon: string | null;
+  base: string;
+  baseIpa: string | null;
+  past: string;
+  pastIpa: string | null;
+  participle: string;
+  participleIpa: string | null;
+  translation: string | null;
+};
+
+/** Сохранить правки списка: изменения, порядок и удаление лишних. */
+export async function saveVerbsAction(
+  nodeId: string,
+  verbs: VerbEdit[],
+): Promise<BulkState> {
+  await requireTeacher();
+
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+
+  const clean = (verbs ?? [])
+    .filter((v) => v && String(v.base ?? "").trim())
+    .slice(0, 2000);
+  if (clean.length === 0) return { error: "Пустой список — нечего сохранять" };
+
+  const mine = await db
+    .select({ id: irregularVerbs.id })
+    .from(irregularVerbs)
+    .where(eq(irregularVerbs.nodeId, id));
+  const allowed = new Set(mine.map((v) => v.id));
+
+  const text = (v: unknown, limit = 200) => {
+    const s = String(v ?? "").trim().slice(0, limit);
+    return s || null;
+  };
+
+  await db.transaction(async (tx) => {
+    const keep = new Set(clean.map((v) => v.id).filter((v) => allowed.has(v)));
+    const gone = [...allowed].filter((v) => !keep.has(v));
+    if (gone.length > 0) {
+      await tx.delete(irregularVerbs).where(inArray(irregularVerbs.id, gone));
+    }
+
+    for (const [index, v] of clean.entries()) {
+      const row = {
+        category: text(v.category, 80),
+        sortOrder: index + 1,
+        icon: text(v.icon, 16),
+        base: String(v.base).trim().slice(0, 200),
+        baseIpa: text(v.baseIpa),
+        past: text(v.past) ?? "",
+        pastIpa: text(v.pastIpa),
+        participle: text(v.participle) ?? "",
+        participleIpa: text(v.participleIpa),
+        translation: text(v.translation, 400),
+      };
+
+      if (allowed.has(v.id)) {
+        await tx.update(irregularVerbs).set(row).where(eq(irregularVerbs.id, v.id));
+      } else {
+        await tx.insert(irregularVerbs).values({ ...row, nodeId: id });
+      }
+    }
+  });
+
+  revalidateMaterials();
+  return { ok: true, message: `Сохранено глаголов: ${clean.length}` };
+}
+
+/** Убрать со страницы все глаголы. */
+export async function clearVerbsAction(nodeId: string): Promise<BulkState> {
+  await requireTeacher();
+
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+
+  const gone = await db
+    .delete(irregularVerbs)
+    .where(eq(irregularVerbs.nodeId, id))
+    .returning({ id: irregularVerbs.id });
+
+  if (gone.length === 0) return { error: "На странице и так пусто" };
+
+  revalidateMaterials();
+  return { ok: true, message: `Удалено глаголов: ${gone.length}` };
+}
+
+
 export async function clearFolderAction(nodeId: string): Promise<BulkState> {
   await requireTeacher();
 

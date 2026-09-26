@@ -6,6 +6,7 @@ import {
   studentMaterials,
   materialPhrases,
   materialBlocks,
+  irregularVerbs,
   type RuleBlock,
 } from "@/lib/db/schema";
 import { getVisibleGrantIds } from "@/lib/material-grants";
@@ -13,6 +14,21 @@ import { getVisibleGrantIds } from "@/lib/material-grants";
 export type { RuleBlock };
 
 export type PhraseExample = { en: string; tr: string };
+
+/** Запись в списке неправильных глаголов. */
+export type MaterialVerb = {
+  id: string;
+  /** Пусто — «без категории», такие идут первыми. */
+  category: string | null;
+  icon: string | null;
+  base: string;
+  baseIpa: string | null;
+  past: string;
+  pastIpa: string | null;
+  participle: string;
+  participleIpa: string | null;
+  translation: string | null;
+};
 
 export type MaterialPhrase = {
   id: string;
@@ -52,6 +68,8 @@ export type MaterialNode = {
   sourceText: string | null;
   /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
   contentBackupAt: string | null;
+  /** Неправильные глаголы, если страница про них. */
+  verbs: MaterialVerb[];
   phrases: MaterialPhrase[];
   /** Блоки правила. Страница — либо словник (phrases), либо правило (blocks). */
   blocks: RuleBlock[];
@@ -104,6 +122,30 @@ async function buildTree(rows: NodeRow[]): Promise<{
     blocksByNode.set(b.nodeId, list);
   }
 
+  const verbRows = await db
+    .select()
+    .from(irregularVerbs)
+    .where(inArray(irregularVerbs.nodeId, nodeIds))
+    .orderBy(asc(irregularVerbs.sortOrder));
+
+  const verbsByNode = new Map<string, MaterialVerb[]>();
+  for (const v of verbRows) {
+    const list = verbsByNode.get(v.nodeId) ?? [];
+    list.push({
+      id: v.id,
+      category: v.category,
+      icon: v.icon,
+      base: v.base,
+      baseIpa: v.baseIpa,
+      past: v.past,
+      pastIpa: v.pastIpa,
+      participle: v.participle,
+      participleIpa: v.participleIpa,
+      translation: v.translation,
+    });
+    verbsByNode.set(v.nodeId, list);
+  }
+
   const byId = new Map<string, MaterialNode>();
   for (const r of rows) {
     byId.set(r.id, {
@@ -124,6 +166,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       mergeCount: r.mergeCount,
       sourceText: r.sourceText,
       contentBackupAt: r.contentBackup?.savedAt ?? null,
+      verbs: verbsByNode.get(r.id) ?? [],
       phrases: phrasesByNode.get(r.id) ?? [],
       blocks: blocksByNode.get(r.id) ?? [],
       children: [],
