@@ -33,7 +33,9 @@ export function SidebarShell({
         onClick={() => setCollapsed(false)}
         title={expandLabel}
         aria-label={expandLabel}
-        className="fixed bottom-6 left-6 z-30 hidden h-12 w-12 items-center justify-center rounded-full bg-accent text-white shadow-lg ring-1 ring-black/10 transition hover:opacity-90 lg:flex"
+        /* Сдвинут вправо: в левом нижнем углу в режиме разработки сидит
+           значок Next.js, и кружок оказывался прямо под ним. */
+        className="fixed bottom-6 left-20 z-30 hidden h-12 w-12 items-center justify-center rounded-full bg-accent text-white shadow-lg ring-1 ring-black/10 transition hover:opacity-90 lg:flex"
       >
         <IconCap className="h-6 w-6" />
       </button>
