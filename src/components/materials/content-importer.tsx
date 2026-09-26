@@ -22,12 +22,14 @@ export function ContentImporter({
   onClose,
   scope = "MATERIAL",
 }: {
-  node: { id: string; name: string } | null;
+  node: { id: string; name: string; sourceText?: string | null } | null;
   onClose: () => void;
   scope?: TreeScope;
 }) {
   const mode: ParserMode = scope === "MISTAKE" ? "mistake" : "vocabulary";
-  const [raw, setRaw] = useState("");
+  // Окно открывается с прежним исходником: «наполнить» второй раз — это
+  // почти всегда «поправить текст и разобрать заново».
+  const [raw, setRaw] = useState(node?.sourceText ?? "");
   const [applyTitle, setApplyTitle] = useState(false);
   const [state, formAction, pending] = useActionState<ParseState, FormData>(
     savePageContentAction,

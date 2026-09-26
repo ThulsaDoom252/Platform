@@ -75,6 +75,9 @@ import {
 /** Есть ли на странице что чистить: словник или разобранное правило. */
 const hasContent = (n: MaterialNode) => n.phrases.length > 0 || n.blocks.length > 0;
 
+/** То же, но с глаголами: у их страниц содержимое лежит отдельно. */
+const hasAnything = (n: MaterialNode) => hasContent(n) || n.verbs.length > 0;
+
 /**
  * Чем страница была заполнена. У страниц, созданных до появления поля,
  * тип выводим из содержимого — переносить данные ради этого не нужно.
@@ -199,11 +202,16 @@ export function MaterialsExplorer({
 }) {
   const { t } = useT();
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
-  const [importNode, setImportNode] = useState<{ id: string; name: string } | null>(null);
+  const [importNode, setImportNode] = useState<{
+    id: string;
+    name: string;
+    sourceText?: string | null;
+  } | null>(null);
   const [ruleNode, setRuleNode] = useState<{
     id: string;
     name: string;
     icon: string | null;
+    sourceText?: string | null;
   } | null>(null);
   const [addWordsTo, setAddWordsTo] = useState<{
     id: string;
@@ -219,6 +227,9 @@ export function MaterialsExplorer({
   const [shareVerbs, setShareVerbs] = useState<ShareVerbsTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
+  // Редкие действия свёрнуты: на панели должно остаться то, чем
+  // пользуются каждый урок.
+  const [moreTools, setMoreTools] = useState(false);
   const [kindChange, setKindChange] = useState<{
     node: MaterialNode;
     next: PageFlavour;
@@ -850,6 +861,48 @@ export function MaterialsExplorer({
         setNotice(res.message ?? "Содержимое возвращено");
       }
     });
+  }
+
+  /** Вставить исходник: окно зависит от того, чем страница является. */
+  function fillPage(node: MaterialNode) {
+    if (isVerbsPage(node)) {
+      setFillVerbs({ id: node.id, name: node.name, verbs: node.verbs });
+      return;
+    }
+    if (pageKind(node) === "VOCAB") {
+      setImportNode({ id: node.id, name: node.name, sourceText: node.sourceText });
+      return;
+    }
+    // Правило, лексика и время приходят одним окном: разбор выберет себя
+    // сам по первой строке исходника.
+    setRuleNode({
+      id: node.id,
+      name: node.name,
+      icon: node.icon,
+      sourceText: node.sourceText,
+    });
+  }
+
+  /** Править разобранное содержимое — тоже по виду страницы. */
+  function editPage(node: MaterialNode) {
+    if (isVerbsPage(node)) {
+      setFillVerbs({ id: node.id, name: node.name, verbs: node.verbs });
+      return;
+    }
+    if (pageKind(node) === "VOCAB") {
+      setVocabularyEditNode(node);
+      return;
+    }
+    setRuleEditNode(node);
+  }
+
+  /** Очистить содержимое, оставив саму страницу. */
+  function clearPage(node: MaterialNode) {
+    if (isVerbsPage(node)) {
+      clearVerbs(node);
+      return;
+    }
+    clearPages([node]);
   }
 
   /** Применить подтверждённую смену типа и, по возможности, перепарсить исходник. */
@@ -1986,59 +2039,23 @@ export function MaterialsExplorer({
                     </select>
                   </label>
                 )}
-                {/* Страница глаголов: всего три кнопки, как договаривались. */}
-                {isVerbsPage(selected) && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFillVerbs({
-                          id: selected.id,
-                          name: selected.name,
-                          verbs: selected.verbs,
-                        })
-                      }
-                      className={pageBtn}
-                      title={
-                        selected.verbs.length > 0
-                          ? "Править список и добавить новые"
-                          : "Вставить таблицу глаголов из Google Docs"
-                      }
-                    >
-                      <IconPlus className="h-4 w-4" />
-                      {selected.verbs.length > 0 ? "Редактировать" : "Заполнить"}
-                    </button>
-                    {selected.verbs.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => clearVerbs(selected)}
-                        disabled={moving}
-                        className={pageBtn}
-                      >
-                        <IconTrash className="h-4 w-4" /> Очистить
-                      </button>
-                    )}
-                  </>
-                )}
-                {/* Пока страница пустая — предлагаем оба способа наполнения.
-                    Дальше она помнит, чем стала, и показывает своё. */}
-                {pageKind(selected) === "VOCAB" && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAddWordsTo({
-                        id: selected.id,
-                        name: selected.name,
-                        translationLang: selected.translationLang,
-                      })
-                    }
-                    className={pageBtn}
-                  >
-                    <IconPlus className="h-4 w-4" /> Дополнить
-                  </button>
-                )}
+                {/* Один набор действий на все типы страниц: наполнить,
+                    взять готовое, править, перевести, переформатировать,
+                    очистить. Остальное живёт под «ещё» — редкое не должно
+                    мешать частому. */}
+                <button
+                  type="button"
+                  onClick={() => fillPage(selected)}
+                  className={pageBtn}
+                  title={
+                    selected.sourceText?.trim()
+                      ? "Вставить исходник заново — прежний текст уже в окне"
+                      : "Вставить исходник: он разберётся по типу файла"
+                  }
+                >
+                  <IconPlus className="h-4 w-4" /> Наполнить
+                </button>
 
-                {/* Взять готовое у себя, у общей базы или у другого ученика. */}
                 <button
                   type="button"
                   onClick={() =>
@@ -2048,182 +2065,177 @@ export function MaterialsExplorer({
                       kind: "PAGE",
                       scope,
                       ownerId: ownerId ?? null,
+                      pageKind: pageFlavour(selected),
                     })
                   }
                   className={pageBtn}
-                  title="Перенести сюда содержимое другой страницы"
+                  title="Перенести сюда содержимое страницы того же типа"
                 >
                   <IconPlus className="h-4 w-4" /> Наполнить из…
                 </button>
 
-                {pageKind(selected) !== "RULE" && (
-                  <button
-                    type="button"
-                    onClick={() => setImportNode({ id: selected.id, name: selected.name })}
-                    className={pageBtn}
-                    title={
-                      pageKind(selected) === "VOCAB"
-                        ? "Разобрать текст заново, заменив содержимое"
-                        : undefined
-                    }
-                  >
-                    {pageKind(selected) === "VOCAB" ? (
-                      "Заменить текстом"
-                    ) : (
-                      <>
-                        <IconPlus className="h-4 w-4" /> Словник из текста
-                      </>
-                    )}
-                  </button>
-                )}
-
-                {pageKind(selected) === "VOCAB" && (
-                  <button
-                    type="button"
-                    onClick={() => setVocabularyEditNode(selected)}
-                    className={pageBtn}
-                  >
-                    <IconPencil className="h-4 w-4" /> Редактировать
-                  </button>
-                )}
-
-                {pageKind(selected) === "VOCAB" && (
-                  <button
-                    type="button"
-                    onClick={() => repairPhraseIcons(selected)}
-                    disabled={moving || selected.phrases.length === 0}
-                    className={pageBtn}
-                    title="Подобрать каждой записи новую иконку по слову, переводу, категории и примерам"
-                  >
-                    <span aria-hidden>✨</span> Исправить иконки
-                  </button>
-                )}
-
-                {pageKind(selected) === "VOCAB" && (
-                  <VocabularyCoverActions
-                    nodeId={selected.id}
-                    currentUrl={selected.imageUrl}
-                  />
-                )}
-
-                {pageKind(selected) === "RULE" && (
-                  <button
-                    type="button"
-                    onClick={() => setRuleEditNode(selected)}
-                    className={pageBtn}
-                  >
-                    <IconPencil className="h-4 w-4" /> Редактировать
-                  </button>
-                )}
-
-                {(pageKind(selected) === "VOCAB" || pageKind(selected) === "RULE") && (
-                  <button
-                    type="button"
-                    onClick={() => reformatPage(selected)}
-                    disabled={moving || !selected.sourceText?.trim()}
-                    className={pageBtn}
-                    title={
-                      selected.sourceText?.trim()
-                        ? `Заново разобрать исходник как ${pageKind(selected) === "RULE" ? "правило" : "словарь"}`
-                        : "У файла не сохранён исходный текст"
-                    }
-                  >
-                    <span aria-hidden>↻</span> Переформатировать
-                  </button>
-                )}
-
-                {/* Снимок появляется, когда страницу перестроили из исходника.
-                    Он и есть защита от потери ручных правок. */}
-                {selected.contentBackupAt && (
-                  <button
-                    type="button"
-                    onClick={() => restorePage(selected)}
-                    disabled={moving}
-                    className={pageBtn}
-                    title={`Вернуть содержимое, каким оно было до перестройки ${new Date(
-                      selected.contentBackupAt,
-                    ).toLocaleString("ru")}`}
-                  >
-                    <span aria-hidden>⎌</span> Вернуть прежнее
-                  </button>
-                )}
-
-                {pageKind(selected) !== "VOCAB" && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setRuleNode({
-                        id: selected.id,
-                        name: selected.name,
-                        icon: selected.icon,
-                      })
-                    }
-                    className={pageBtn}
-                  >
-                    <IconPlus className="h-4 w-4" />
-                    {pageKind(selected) === "RULE" ? "Вставить заново" : "Вставить правило"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => editPage(selected)}
+                  disabled={moving || !hasAnything(selected)}
+                  className={pageBtn}
+                  title={
+                    hasAnything(selected)
+                      ? "Править разобранное содержимое"
+                      : "Сначала наполни страницу"
+                  }
+                >
+                  <IconPencil className="h-4 w-4" /> Редактировать
+                </button>
 
                 <div className="flex h-10 items-center gap-1 rounded-xl border border-line px-1.5">
-                    <span className="px-1.5 text-[11px] font-semibold text-faint">Перевод</span>
-                    {(["UK", "RU"] as const).map((language) => (
-                      <button
-                        key={language}
-                        type="button"
-                        onClick={() => translatePage(selected, language)}
-                        disabled={moving || selected.translationLang === language}
-                        title={
-                          selected.translationLang === language
-                            ? "Текущий язык перевода"
-                            : `Заменить перевод всей страницы на ${language === "UK" ? "украинский" : "русский"}`
-                        }
-                        className={cn(
-                          "h-7 rounded-lg px-2 text-xs font-bold transition disabled:opacity-50",
-                          selected.translationLang === language
-                            ? "bg-accent text-white"
-                            : "text-muted hover:bg-surface-2 hover:text-content",
-                        )}
-                      >
-                        {language === "UK" ? "🇺🇦 UA" : "🇷🇺 RU"}
-                      </button>
-                    ))}
+                  <span className="px-1.5 text-[11px] font-semibold text-faint">Перевод</span>
+                  {(["UK", "RU"] as const).map((language) => (
+                    <button
+                      key={language}
+                      type="button"
+                      onClick={() => translatePage(selected, language)}
+                      disabled={moving || selected.translationLang === language}
+                      title={
+                        selected.translationLang === language
+                          ? "Текущий язык перевода"
+                          : `Заменить перевод всей страницы на ${language === "UK" ? "украинский" : "русский"}`
+                      }
+                      className={cn(
+                        "h-7 rounded-lg px-2 text-xs font-bold transition disabled:opacity-50",
+                        selected.translationLang === language
+                          ? "bg-accent text-white"
+                          : "text-muted hover:bg-surface-2 hover:text-content",
+                      )}
+                    >
+                      {language === "UK" ? "🇺🇦 UA" : "🇷🇺 RU"}
+                    </button>
+                  ))}
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => setNeedsFix([selected], !selected.needsFix)}
-                  disabled={moving}
-                  className={cn(
-                    pageBtn,
-                    selected.needsFix
-                      ? "border-solid border-rose-400 bg-rose-500/10 text-rose-500"
-                      : "hover:border-rose-400 hover:text-rose-500",
-                  )}
+                  onClick={() => reformatPage(selected)}
+                  disabled={moving || !selected.sourceText?.trim()}
+                  className={pageBtn}
+                  title={
+                    selected.sourceText?.trim()
+                      ? `Заново разобрать сохранённый исходник как «${pageKindLabel(pageFlavour(selected) ?? "RULE")}»`
+                      : "У файла не сохранён исходный текст"
+                  }
                 >
-                  <span aria-hidden>🔴</span>
-                  {selected.needsFix ? "Снять отметку" : "Нужно исправить"}
+                  <span aria-hidden>↻</span> Переформатировать
                 </button>
-
-                {hasContent(selected) && (
-                  <button
-                    type="button"
-                    onClick={() => clearPages([selected])}
-                    title="Страница останется, содержимое пропадёт"
-                    className={cn(pageBtn, "hover:border-rose-400 hover:text-rose-500")}
-                  >
-                    <IconX className="h-4 w-4" /> Очистить
-                  </button>
-                )}
 
                 <button
                   type="button"
-                  onClick={() => deleteNodes([selected])}
-                  title="Удалить страницу целиком"
+                  onClick={() => clearPage(selected)}
+                  disabled={moving || !hasAnything(selected)}
+                  title="Страница останется, содержимое пропадёт"
                   className={cn(pageBtn, "hover:border-rose-400 hover:text-rose-500")}
                 >
-                  Удалить
+                  <IconX className="h-4 w-4" /> Очистить
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMoreTools((v) => !v)}
+                  className={cn(pageBtn, moreTools && "border-solid border-accent text-accent")}
+                  title="Редкие действия: обложка, иконки, выгрузка, удаление"
+                >
+                  <IconDots className="h-4 w-4" /> Ещё
+                </button>
+
+                {moreTools && (
+                  <>
+                    {(editable || canExport) && hasAnything(selected) && (
+                      <button
+                        type="button"
+                        onClick={() => setExportPage(selected)}
+                        className={pageBtn}
+                        title="Текстовая версия страницы: скопировать или скачать .docx"
+                      >
+                        <IconFile className="h-4 w-4" /> Выгрузить
+                      </button>
+                    )}
+
+                    {pageKind(selected) === "VOCAB" && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAddWordsTo({
+                            id: selected.id,
+                            name: selected.name,
+                            translationLang: selected.translationLang,
+                          })
+                        }
+                        className={pageBtn}
+                        title="Добавить слова, не трогая уже разобранные"
+                      >
+                        <IconPlus className="h-4 w-4" /> Дополнить
+                      </button>
+                    )}
+
+                    {pageKind(selected) === "VOCAB" && (
+                      <button
+                        type="button"
+                        onClick={() => repairPhraseIcons(selected)}
+                        disabled={moving || selected.phrases.length === 0}
+                        className={pageBtn}
+                        title="Подобрать каждой записи новую иконку по слову, переводу, категории и примерам"
+                      >
+                        <span aria-hidden>✨</span> Исправить иконки
+                      </button>
+                    )}
+
+                    {pageKind(selected) === "VOCAB" && (
+                      <VocabularyCoverActions
+                        nodeId={selected.id}
+                        currentUrl={selected.imageUrl}
+                      />
+                    )}
+
+                    {/* Снимок появляется, когда страницу перестроили из
+                        исходника. Он и есть защита от потери ручных правок. */}
+                    {selected.contentBackupAt && (
+                      <button
+                        type="button"
+                        onClick={() => restorePage(selected)}
+                        disabled={moving}
+                        className={pageBtn}
+                        title={`Вернуть содержимое, каким оно было до перестройки ${new Date(
+                          selected.contentBackupAt,
+                        ).toLocaleString("ru")}`}
+                      >
+                        <span aria-hidden>⎌</span> Вернуть прежнее
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setNeedsFix([selected], !selected.needsFix)}
+                      disabled={moving}
+                      className={cn(
+                        pageBtn,
+                        selected.needsFix
+                          ? "border-solid border-rose-400 bg-rose-500/10 text-rose-500"
+                          : "hover:border-rose-400 hover:text-rose-500",
+                      )}
+                    >
+                      <span aria-hidden>🔴</span>
+                      {selected.needsFix ? "Снять отметку" : "Нужно исправить"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => deleteNodes([selected])}
+                      title="Удалить страницу целиком"
+                      className={cn(pageBtn, "hover:border-rose-400 hover:text-rose-500")}
+                    >
+                      Удалить
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </>

@@ -29,7 +29,22 @@ export type FillTarget = {
   kind: "PAGE" | "FOLDER";
   scope: NodeScope;
   ownerId: string | null;
+  /** Вид страницы: источники другого вида в список не попадают. */
+  pageKind?: string | null;
 };
+
+/**
+ * Годится ли страница как источник.
+ *
+ * Переносить имеет смысл между однотипными страницами: словник в словник,
+ * время во время. Страницы без вида — наследие: их разбор неизвестен,
+ * поэтому прячем их только тогда, когда вид цели известен точно.
+ */
+function sameKind(node: CopyNode, target: FillTarget): boolean {
+  if (node.type === "FOLDER") return true;
+  if (!target.pageKind) return true;
+  return !node.pageKind || node.pageKind === target.pageKind;
+}
 
 /** Страница со своим путём — чтобы одинаковые названия не путались. */
 type Choice = { id: string; label: string; path: string };
@@ -114,7 +129,12 @@ export function FillFromDialog({
   if (!target) return null;
 
   const tree = trees?.find((t) => t.key === treeKey) ?? null;
-  const all = tree ? pages(tree.nodes) : [];
+  // Для страницы отбираем источники того же вида; для папки берём всё.
+  const sources =
+    tree && target
+      ? tree.nodes.filter((n) => target.kind === "FOLDER" || sameKind(n, target))
+      : [];
+  const all = pages(sources);
   const needle = query.trim().toLowerCase();
   const found = needle
     ? all.filter((p) => `${p.path} ${p.label}`.toLowerCase().includes(needle))

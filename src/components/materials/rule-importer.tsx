@@ -34,10 +34,21 @@ export function RuleImporter({
   node,
   onClose,
 }: {
-  node: { id: string; name: string; icon: string | null } | null;
+  node: {
+    id: string;
+    name: string;
+    icon: string | null;
+    sourceText?: string | null;
+  } | null;
   onClose: () => void;
 }) {
-  const [parsed, setParsed] = useState<Parsed | null>(null);
+  // Открываем с прежним исходником: «наполнить» второй раз — это почти
+  // всегда «разобрать заново». Новый текст вставляется поверх.
+  const [parsed, setParsed] = useState<Parsed | null>(() => {
+    const saved = node?.sourceText?.trim();
+    if (!saved) return null;
+    return { ...parseRuleText(saved), source: "text", sourceText: saved };
+  });
   const [applyTitle, setApplyTitle] = useState(true);
   const [state, formAction, pending] = useActionState<BlocksState, FormData>(
     saveRuleBlocksAction,

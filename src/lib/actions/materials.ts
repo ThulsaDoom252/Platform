@@ -3649,6 +3649,8 @@ export type CopyNode = {
   name: string;
   icon: string | null;
   type: "FOLDER" | "FILE";
+  /** Вид страницы: по нему отбираются источники того же типа. */
+  pageKind: string | null;
 };
 
 /** Дерево, в которое можно скопировать: общая библиотека или ошибки ученика. */
@@ -3673,6 +3675,7 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
       name: materialNodes.name,
       icon: materialNodes.icon,
       type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
       scope: materialNodes.scope,
       ownerId: materialNodes.ownerId,
       sortOrder: materialNodes.sortOrder,
@@ -3688,12 +3691,13 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
   const pick = (scope: string, ownerId: string | null) =>
     rows
       .filter((r) => r.scope === scope && (r.ownerId ?? null) === ownerId)
-      .map(({ id, parentId, name, icon, type }) => ({
+      .map(({ id, parentId, name, icon, type, pageKind }) => ({
         id,
         parentId,
         name,
         icon,
         type: type as "FOLDER" | "FILE",
+        pageKind,
       }));
 
   const [teacher] = await db
