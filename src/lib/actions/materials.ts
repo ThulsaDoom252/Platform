@@ -16,8 +16,8 @@ import {
   lessons,
   type RuleBlock,
   type ContentBackup,
-  type RuleBlockVariant,
 } from "@/lib/db/schema";
+import { sanitizeBlocks } from "@/lib/rule-blocks";
 import {
   getOwnedTree,
   getMaterialsTree,
@@ -3368,92 +3368,6 @@ export async function savePageContentAction(
     message: `Сохранено: ${count} записей${notes ? `, ${notes} заметок` : ""}`,
     warnings: result.warnings,
   };
-}
-
-const MAX_TEXT = 4000;
-const MAX_BLOCKS = 400;
-const RULE_BLOCK_VARIANTS: RuleBlockVariant[] = [
-  "sheet-text",
-  "sheet-lead",
-  "sheet-section",
-  "sheet-formula",
-  "sheet-formula-grid",
-  "sheet-table",
-  "sheet-mistake",
-  "sheet-quiz",
-  "sheet-answers",
-];
-
-function str(v: unknown): string {
-  return typeof v === "string" ? v.slice(0, MAX_TEXT) : "";
-}
-
-/**
- * Блоки приходят из браузера (там разбирается HTML буфера обмена),
- * поэтому форму данных проверяем на сервере, а не доверяем клиенту.
- */
-function sanitizeBlocks(input: unknown): RuleBlock[] {
-  if (!Array.isArray(input)) return [];
-  const out: RuleBlock[] = [];
-
-  for (const raw of input.slice(0, MAX_BLOCKS)) {
-    if (!raw || typeof raw !== "object") continue;
-    const b = raw as Record<string, unknown>;
-    const variant = RULE_BLOCK_VARIANTS.includes(String(b.variant) as RuleBlockVariant)
-      ? (String(b.variant) as RuleBlockVariant)
-      : undefined;
-    const styled = variant ? { variant } : {};
-
-    switch (b.type) {
-      case "heading":
-      case "formula":
-      case "text": {
-        const text = str(b.text);
-        if (text) out.push({ type: b.type, text, ...styled });
-        break;
-      }
-      case "callout": {
-        const text = str(b.text);
-        if (!text) break;
-        const tone = ["key", "warn", "tip", "info"].includes(String(b.tone))
-          ? (b.tone as "key" | "warn" | "tip" | "info")
-          : "info";
-        const label = str(b.label);
-        out.push({ type: "callout", text, tone, ...(label ? { label } : {}), ...styled });
-        break;
-      }
-      case "example": {
-        const en = str(b.en);
-        if (!en) break;
-        const tr = str(b.tr);
-        out.push({ type: "example", en, ...(tr ? { tr } : {}), ...styled });
-        break;
-      }
-      case "list": {
-        const items = Array.isArray(b.items)
-          ? b.items.map(str).filter(Boolean).slice(0, 100)
-          : [];
-        if (items.length) out.push({ type: "list", items, ...styled });
-        break;
-      }
-      case "table": {
-        const headers = Array.isArray(b.headers)
-          ? b.headers.map(str).slice(0, 10)
-          : [];
-        const rows = Array.isArray(b.rows)
-          ? b.rows
-              .filter(Array.isArray)
-              .map((r) => (r as unknown[]).map(str).slice(0, 10))
-              .slice(0, 200)
-          : [];
-        if (headers.length || rows.length) {
-          out.push({ type: "table", headers, rows, ...styled });
-        }
-        break;
-      }
-    }
-  }
-  return out;
 }
 
 export type BlocksState = { ok?: boolean; error?: string; message?: string };

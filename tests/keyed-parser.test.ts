@@ -182,12 +182,14 @@ test("кривые строки не роняют разбор, а попада�
   if (!r || r.type === "VOCAB") return;
 
   assert.equal(r.color, null, "негодный цвет не должен доезжать");
-  assert.equal(r.blocks.filter((b) => b.type === "form").length, 1);
+  // Непонятный знак не повод терять строку: обе формы доезжают, о второй
+  // сказано в замечаниях.
+  assert.equal(r.blocks.filter((b) => b.type === "form").length, 2);
 
   const said = r.warnings.join(" | ");
   assert.match(said, /неизвестный цвет/);
   assert.match(said, /вне формата/);
-  assert.match(said, /знак должен быть/);
+  assert.match(said, /непонятный знак/);
   assert.match(said, /5 частей/);
   assert.match(said, /перевод после/);
   assert.match(said, /UNKNOWN/);

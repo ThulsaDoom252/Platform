@@ -249,6 +249,26 @@ export async function translateRuleBlocks(
           row.forEach((text, cell) => add(`${index}.rows.${rowIndex}.${cell}`, text)),
         );
         break;
+      case "word":
+        // Само слово и схема употребления английские — их не переводим.
+        add(`${index}.tr`, block.tr);
+        add(`${index}.sense`, block.sense);
+        block.examples.forEach((example, exampleIndex) =>
+          add(`${index}.examples.${exampleIndex}`, example.tr || example.en,
+            example.tr ? sourceLanguage : "EN"),
+        );
+        block.notes.forEach((note, noteIndex) =>
+          add(`${index}.notes.${noteIndex}`, note),
+        );
+        break;
+      case "form":
+        add(`${index}.tr`, block.tr || block.en, block.tr ? sourceLanguage : "EN");
+        break;
+      case "marker":
+        add(`${index}.tr`, block.tr);
+        add(`${index}.ru`, block.ru || block.en, block.ru ? sourceLanguage : "EN");
+        add(`${index}.hintText`, block.hintText);
+        break;
     }
   });
 
@@ -285,6 +305,28 @@ export async function translateRuleBlocks(
           rows: block.rows.map((row, rowIndex) =>
             row.map((text, cell) => get(`${index}.rows.${rowIndex}.${cell}`, text)),
           ),
+        };
+      case "word":
+        return {
+          ...block,
+          ...(block.tr ? { tr: get(`${index}.tr`, block.tr) } : {}),
+          ...(block.sense ? { sense: get(`${index}.sense`, block.sense) } : {}),
+          examples: block.examples.map((example, exampleIndex) => ({
+            ...example,
+            tr: get(`${index}.examples.${exampleIndex}`, example.tr),
+          })),
+          notes: block.notes.map((note, noteIndex) =>
+            get(`${index}.notes.${noteIndex}`, note),
+          ),
+        };
+      case "form":
+        return { ...block, tr: get(`${index}.tr`, block.tr) };
+      case "marker":
+        return {
+          ...block,
+          tr: get(`${index}.tr`, block.tr),
+          ru: get(`${index}.ru`, block.ru),
+          hintText: get(`${index}.hintText`, block.hintText),
         };
     }
   });

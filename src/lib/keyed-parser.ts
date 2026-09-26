@@ -105,6 +105,40 @@ function exactly(
   return got;
 }
 
+/**
+ * Знак формы: утверждение, отрицание или вопрос.
+ *
+ * Модель пишет его по-разному — плюсом, длинным тире, галочкой, словом.
+ * Отбрасывать из-за этого целую строку нельзя: без построения время
+ * бесполезно. Поэтому непонятный знак выводим из самого предложения —
+ * вопрос виден по знаку в конце, отрицание по not и его сокращениям.
+ */
+function formSign(
+  raw: string,
+  en: string,
+): { sign: "+" | "-" | "?"; guessed: boolean } {
+  const token = raw.trim().toLowerCase();
+
+  if (/^[+➕✅]|^(plus|affirmative|утвержд|стверд|позитив)/u.test(token)) {
+    return { sign: "+", guessed: false };
+  }
+  if (/^[-–—−➖❌]|^(minus|negative|отриц|запереч)/u.test(token)) {
+    return { sign: "-", guessed: false };
+  }
+  if (/^[?？❓]|^(question|вопрос|питаль|запит)/u.test(token)) {
+    return { sign: "?", guessed: false };
+  }
+
+  const sentence = en.trim();
+  if (sentence.endsWith("?")) return { sign: "?", guessed: true };
+  // Сокращения вроде doesn't границей слова не ловятся: апостроф стоит
+  // внутри слова, поэтому ищем саму частицу.
+  if (/(n['’]t\b|\bnot\b|\bnever\b|\bno\b)/i.test(sentence)) {
+    return { sign: "-", guessed: true };
+  }
+  return { sign: "+", guessed: true };
+}
+
 function color(value: string, warnings: string[], line: number): string | null {
   const name = value.trim().toLowerCase();
   if (COLORS.includes(name)) return name;
@@ -423,7 +457,7 @@ function parseBlocks(
           blocks.push({
             type: "example",
             ...example,
-            why: got[2] || undefined,
+            ...(got[2] ? { why: got[2] } : {}),
           });
         }
         break;
@@ -451,7 +485,7 @@ function parseBlocks(
           type: "callout",
           tone: "warn",
           text: got[0],
-          label: got[1] || undefined,
+          ...(got[1] ? { label: got[1] } : {}),
           variant: "sheet-mistake",
         });
         break;
@@ -481,10 +515,11 @@ function parseBlocks(
         closeCompare();
         const got = exactly(field, 4, warnings);
         if (!got) break;
-        const sign = got[0];
-        if (sign !== "+" && sign !== "-" && sign !== "?") {
-          warnings.push(`Строка ${line}: у FORM знак должен быть +, - или ?`);
-          break;
+        const { sign, guessed } = formSign(got[0], got[2]);
+        if (guessed) {
+          warnings.push(
+            `Строка ${line}: непонятный знак «${short(got[0], 12)}» у FORM — взяли «${sign}» по самому предложению`,
+          );
         }
         blocks.push({
           type: "form",

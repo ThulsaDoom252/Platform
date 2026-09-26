@@ -8,65 +8,9 @@
  * оставлен запасной разбор по табуляциям.
  */
 import { parseKeyedBlocks } from "./keyed-parser";
+import type { RuleBlock, RuleBlockVariant } from "./rule-blocks";
 
-export type RuleBlockVariant =
-  | "sheet-text"
-  | "sheet-lead"
-  | "sheet-section"
-  | "sheet-formula"
-  | "sheet-formula-grid"
-  | "sheet-table"
-  | "sheet-mistake"
-  | "sheet-quiz"
-  | "sheet-answers";
-
-export type RuleBlock = (
-  | { type: "heading"; text: string }
-  | {
-      type: "callout";
-      label?: string;
-      text: string;
-      tone?: "key" | "warn" | "tip" | "info";
-      /** Дополнительная информация: прячется тумблером подсказок. */
-      hint?: boolean;
-    }
-  | { type: "formula"; text: string }
-  | { type: "text"; text: string }
-  /** why — почему здесь именно эта форма; есть у разобранных примеров. */
-  | { type: "example"; en: string; tr?: string; why?: string }
-  | { type: "list"; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] }
-  /** Карточка слова в лексике: чем оно отличается от соседних. */
-  | {
-      type: "word";
-      word: string;
-      icon?: string;
-      us?: string;
-      uk?: string;
-      tr?: string;
-      sense?: string;
-      pattern?: string;
-      examples: { en: string; tr: string }[];
-      notes: string[];
-    }
-  /** Строка построения времени: утверждение, отрицание или вопрос. */
-  | {
-      type: "form";
-      sign: "+" | "-" | "?";
-      formula: string;
-      en: string;
-      tr: string;
-    }
-  /** Ключевое слово времени вместе с его особенностью. */
-  | {
-      type: "marker";
-      word: string;
-      tr: string;
-      en: string;
-      ru: string;
-      hintText: string;
-    }
-) & { variant?: RuleBlockVariant };
+export type { RuleBlock, RuleBlockVariant };
 
 export type RuleParseResult = {
   title: string | null;

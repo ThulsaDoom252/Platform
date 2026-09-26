@@ -1,3 +1,4 @@
+import type { RuleBlock, RuleBlockVariant } from "@/lib/rule-blocks";
 import {
   pgTable,
   uuid,
@@ -272,26 +273,8 @@ export const materialPhrasesRelations = relations(materialPhrases, ({ one }) => 
 // ---------- Блоки страницы-правила ----------
 // Правило — это документ: заголовки, врезки, формулы, таблицы, примеры.
 // Список фраз (materialPhrases) такую структуру не вмещает.
-export type RuleBlockVariant =
-  | "sheet-text"
-  | "sheet-lead"
-  | "sheet-section"
-  | "sheet-formula"
-  | "sheet-formula-grid"
-  | "sheet-table"
-  | "sheet-mistake"
-  | "sheet-quiz"
-  | "sheet-answers";
-
-export type RuleBlock = (
-  | { type: "heading"; text: string }
-  | { type: "callout"; label?: string; text: string; tone?: "key" | "warn" | "tip" | "info" }
-  | { type: "formula"; text: string }
-  | { type: "text"; text: string }
-  | { type: "example"; en: string; tr?: string }
-  | { type: "list"; items: string[] }
-  | { type: "table"; headers: string[]; rows: string[][] }
-) & { variant?: RuleBlockVariant };
+// Описание блоков лежит в lib/rule-blocks — одно на схему, парсер и проверку.
+export type { RuleBlock, RuleBlockVariant };
 
 export const materialBlocks = pgTable("material_blocks", {
   id: uuid("id").primaryKey().defaultRandom(),
