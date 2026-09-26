@@ -188,10 +188,10 @@ export function VerbsReader({
       ) : (
         groups.map((g) => (
           <section key={g.id} id={g.id} className="scroll-mt-40">
-            <h3 className="mb-2 flex items-center gap-2 px-1">
-              <span className="h-4 w-1 shrink-0 rounded-full bg-accent" />
-              <span className="text-base font-bold text-content">{g.name}</span>
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-faint">
+            {/* Полоса во всю ширину цветом темы — так группы видно сразу. */}
+            <h3 className="mb-2 flex items-center gap-2 rounded-xl bg-accent px-3.5 py-2 text-white shadow-sm">
+              <span className="min-w-0 flex-1 truncate text-base font-bold">{g.name}</span>
+              <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">
                 {g.verbs.length}
               </span>
               {onEdit && (
@@ -200,7 +200,7 @@ export function VerbsReader({
                   onClick={() => onEdit(g.name === NO_CATEGORY ? null : g.name)}
                   title={`Править группу «${g.name}»`}
                   aria-label={`Править группу ${g.name}`}
-                  className="flex h-6 w-6 items-center justify-center rounded-lg text-faint transition hover:bg-accent-soft hover:text-accent"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-white/70 transition hover:bg-white/20 hover:text-white"
                 >
                   <IconPencil className="h-3.5 w-3.5" />
                 </button>
