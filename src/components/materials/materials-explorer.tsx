@@ -780,10 +780,14 @@ export function MaterialsExplorer({
   }
 
   /** Заново применить актуальный парсер к сохранённому исходнику страницы. */
+  /** Страницы, которые есть из чего пересобрать. */
+  const canReformat = (node: MaterialNode) =>
+    node.type === "FILE" && !!node.sourceText?.trim() && hasContent(node);
+
   function reformatPage(node: MaterialNode) {
-    const kind = pageKind(node);
+    const kind = pageFlavour(node);
     if (!kind) return;
-    const label = kind === "RULE" ? "правило" : "словарь";
+    const label = pageKindLabel(kind).toLowerCase();
     if (
       !confirm(
         `Переформатировать ${label} «${node.name}» из сохранённого исходника?\n\n` +
@@ -903,6 +907,54 @@ export function MaterialsExplorer({
       return;
     }
     clearPages([node]);
+  }
+
+  /**
+   * Переформатировать несколько страниц подряд.
+   *
+   * Тип каждой определяется её собственным содержимым, поэтому в одном
+   * заходе спокойно едут и словники, и правила. Идём по очереди: так
+   * понятно, на какой странице что пошло не так.
+   */
+  function reformatPages(nodes: MaterialNode[]) {
+    const pages = nodes.filter(canReformat);
+    if (pages.length === 0) return;
+
+    if (
+      !confirm(
+        [
+          `Переформатировать выбранные страницы (${pages.length}) из сохранённых исходников?`,
+          "",
+          "Каждая разбирается заново по своему типу. Если новый разбор найдёт " +
+            "меньше данных, эта страница пропускается без изменений.",
+        ].join("\n"),
+      )
+    ) {
+      return;
+    }
+
+    setNotice(`Переформатирую страницы (${pages.length})…`);
+    startMove(async () => {
+      const failed: string[] = [];
+      let done = 0;
+
+      for (const node of pages) {
+        const res = await reformatMaterialPageAction(node.id);
+        if (res.error) failed.push(`${node.name}: ${res.error}`);
+        else done++;
+      }
+
+      setNotice(done > 0 ? `Переформатировано: ${done}` : null);
+      if (failed.length > 0) {
+        setMoveError(
+          [
+            `Не переформатировано: ${failed.length}`,
+            ...failed.slice(0, 3),
+            ...(failed.length > 3 ? [`…и ещё ${failed.length - 3}`] : []),
+          ].join("\n"),
+        );
+      }
+    });
   }
 
   /** Применить подтверждённую смену типа и, по возможности, перепарсить исходник. */
@@ -2686,6 +2738,17 @@ export function MaterialsExplorer({
           >
             Наполнить ({fillablePages.length})
           </button>
+          {selectedNodes.some(canReformat) && (
+            <button
+              type="button"
+              onClick={() => reformatPages(selectedNodes)}
+              disabled={moving}
+              title="Каждая страница разбирается заново по своему типу"
+              className="h-9 rounded-xl border border-line px-3.5 text-sm font-semibold text-content transition hover:bg-surface-2 disabled:opacity-40"
+            >
+              ↻ Переформатировать ({selectedNodes.filter(canReformat).length})
+            </button>
+          )}
           {selectedNodes.some(hasContent) && (
             <button
               type="button"

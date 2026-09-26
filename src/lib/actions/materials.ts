@@ -2584,6 +2584,7 @@ export async function reformatMaterialPageAction(nodeId: string): Promise<BulkSt
   if (!source) return { error: "У файла не сохранён исходный текст" };
 
   let kind = node.pageKind;
+  if (kind === "LEXIS" || kind === "TENSE") kind = "RULE";
   if (kind !== "RULE" && kind !== "VOCAB") {
     const [firstBlock] = await db
       .select({ id: materialBlocks.id })
