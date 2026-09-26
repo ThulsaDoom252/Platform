@@ -1,0 +1,28 @@
+TYPE: RULE
+TITLE: Present Perfect vs Past Simple
+COLOR: violet
+INTRO: Оба про прошлое. Разница в том, важен результат сейчас или сам момент.
+
+SECTION: 🎯 Зачем это нужно
+TEXT: Past Simple ставит событие в точку на линии времени: было и прошло.
+TEXT: Present Perfect тянет ниточку из прошлого в настоящее: важен сегодняшний след.
+
+SECTION: 🧩 Формулы
+FORMULA: Present Perfect: have/has + V3
+FORMULA: Past Simple: V2 (или V + ed)
+EX: I have lost my keys. | Я потерял ключи.
+EX: I lost my keys yesterday. | Я потерял ключи вчера.
+NOTE: Появилось точное время — Present Perfect отпадает автоматически.
+
+SECTION: ⚖️ Как выбрать
+COMPARE: Present Perfect | Past Simple | важен результат сейчас | важен момент в прошлом
+COMPARE: ever, never, just, already, yet | yesterday, ago, in 2019, last week | маркеры связи с настоящим | маркеры завершённого прошлого
+TRAP: ❌ I have seen him yesterday. ✅ I saw him yesterday.
+
+SECTION: 🗣 Как это звучит в жизни
+EX: Have you finished? | Ты закончил?
+EX: Did you finish on time? | Ты успел вовремя?
+NOTE: Первый вопрос — про результат, второй — про тот самый случай.
+
+BONUS: Американцы часто говорят «Did you eat yet?» там, где британец скажет
+BONUS: «Have you eaten yet?». Обе фразы живые, просто разные берега.

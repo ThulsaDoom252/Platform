@@ -18,6 +18,9 @@ const TYPE_LABEL: Record<BlockType, string> = {
   example: "Пример",
   list: "Список",
   table: "Таблица",
+  word: "Слово",
+  form: "Построение",
+  marker: "Ключевое слово",
 };
 
 const TONE_LABEL: Record<string, string> = {
@@ -35,6 +38,9 @@ function textOf(b: RuleBlock): string {
   if (b.type === "example") return b.en;
   if (b.type === "list") return b.items.join(" ");
   if (b.type === "table") return "";
+  if (b.type === "word") return b.word;
+  if (b.type === "form") return b.en;
+  if (b.type === "marker") return b.word;
   return b.text;
 }
 
@@ -48,6 +54,12 @@ function emptyBlock(type: BlockType, text = ""): RuleBlock {
       return { type: "list", items: text ? [text] : [""] };
     case "table":
       return { type: "table", headers: [""], rows: [[""]] };
+    case "word":
+      return { type: "word", word: text, examples: [], notes: [] };
+    case "form":
+      return { type: "form", sign: "+", formula: text, en: "", tr: "" };
+    case "marker":
+      return { type: "marker", word: text, tr: "", en: "", ru: "", hintText: "" };
     default:
       return { type, text };
   }

@@ -1,0 +1,31 @@
+TYPE: TENSE
+TITLE: Present Perfect
+COLOR: sky
+WHY: Действие случилось в прошлом, но говорим мы о том, что оно изменило сейчас.
+WHY: Само время события неважно и не называется — важен сегодняшний результат.
+ANALOG: В русском ту же роль играют слова «уже», «только что», «ещё не».
+
+FORM: + | подлежащее + have/has + V3 | I have read it. | Я это прочитал.
+FORM: - | подлежащее + haven't/hasn't + V3 | I haven't read it. | Я это не прочитал.
+FORM: ? | Have/Has + подлежащее + V3 | Have you read it? | Ты это прочитал?
+
+MARKER: just | только что | I've just finished. | Я только что закончил. | стоит между have и V3
+MARKER: already | уже | She has already left. | Она уже ушла. | в утверждении между have и V3, в вопросе — для удивления
+MARKER: yet | ещё, уже | Have you eaten yet? | Ты уже поел? | только в вопросе и отрицании, всегда в конце
+MARKER: ever | когда-нибудь | Have you ever been to Rome? | Ты когда-нибудь был в Риме? | вопрос про жизненный опыт
+MARKER: never | никогда | I have never tried sushi. | Я никогда не пробовал суши. | само по себе отрицание, второе not не нужно
+MARKER: since | с (какого момента) | I've lived here since 2019. | Я живу здесь с 2019 года. | после since — точка отсчёта
+MARKER: for | в течение | I've known him for ten years. | Я знаю его десять лет. | после for — длительность
+
+EX: I have lost my keys. | Я потерял ключи. | ключей нет прямо сейчас — важен результат
+EX: She has broken her arm. | Она сломала руку. | рука до сих пор в гипсе
+EX: We have finished the project. | Мы закончили проект. | проект готов, можно сдавать
+
+NOTE: has — только для he, she, it. Для остальных have.
+NOTE: V3 — третья форма: read, seen, written. У правильных глаголов она совпадает с V2.
+
+TRAP: ❌ I have seen him yesterday. ✅ I saw him yesterday. | появилось точное время — нужен Past Simple
+TRAP: ❌ I have been in London last year. ✅ I was in London last year. | last year закрывает период
+
+BONUS: «I've got» — это не Present Perfect в смысле результата, а просто
+BONUS: британский способ сказать «у меня есть». Сравни: I've got a car.

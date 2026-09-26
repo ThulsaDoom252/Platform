@@ -84,6 +84,7 @@ for (const [i, block] of parsed.blocks.entries()) {
   } else if (block.type === "example") {
     console.log(`${n}. example ${block.en} || ${block.tr ?? ""}`.slice(0, 118));
   } else {
-    console.log(`${n}. ${block.type.padEnd(7)} ${String(block.text).slice(0, 100)}`);
+    const text = "text" in block ? block.text : JSON.stringify(block);
+    console.log(`${n}. ${block.type.padEnd(7)} ${String(text).slice(0, 100)}`);
   }
 }

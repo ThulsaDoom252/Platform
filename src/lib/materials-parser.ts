@@ -12,10 +12,17 @@ export type ParsedExample = { en: string; tr: string };
 export type ParsedPhrase = {
   icon: string | null;
   section: string | null;
+  /** Цвет категории из ключевого формата; иначе подбирается по имени. */
+  sectionColor?: string | null;
   kind: "PHRASE" | "NOTE";
   phrase: string;
   transcription: string | null;
+  /** Американский и британский варианты; у старых разборов их нет. */
+  transcriptionUs?: string | null;
+  transcriptionUk?: string | null;
   translation: string;
+  /** Заметка «что стоит знать» — прячется тумблером подсказок. */
+  note?: string | null;
   examples: ParsedExample[];
 };
 

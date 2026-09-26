@@ -1,0 +1,53 @@
+TYPE: LEXIS
+TITLE: say / tell / speak / talk
+COLOR: amber
+INTRO: Все четыре переводятся как «говорить». Выбор зависит от того, что важнее: что сказано, кому сказано или сам процесс.
+
+ITEM: say
+ICON: 💬
+US: /seɪ/
+UK: /seɪ/
+TR: сказать (что-то)
+SENSE: важно ЧТО сказано, слушатель второстепенен
+PATTERN: say something (to somebody)
+EX: She said nothing. | Она ничего не сказала.
+EX: He said to me that he was late. | Он сказал мне, что опаздывает.
+NOTE: Человек только через to. «Say me» не существует.
+
+ITEM: tell
+ICON: 👉
+US: /tel/
+UK: /tel/
+TR: сказать, рассказать (кому-то)
+SENSE: важно КОМУ сказано, адресат обязателен
+PATTERN: tell somebody something
+EX: Tell me the truth. | Скажи мне правду.
+EX: She told us a story. | Она рассказала нам историю.
+NOTE: Без адресата не живёт, кроме устойчивых: tell the truth, tell a lie, tell the time.
+
+ITEM: speak
+ICON: 🗣
+US: /spiːk/
+UK: /spiːk/
+TR: говорить (владеть языком, выступать)
+SENSE: сам факт речи, часто официально или про язык
+PATTERN: speak to somebody / speak English
+EX: Do you speak English? | Ты говоришь по-английски?
+EX: The director will speak at the meeting. | Директор выступит на собрании.
+NOTE: Про языки — всегда speak, не talk.
+
+ITEM: talk
+ICON: 💭
+US: /tɔːk/
+UK: /tɔːk/
+TR: разговаривать, болтать
+SENSE: живой обмен репликами, неформально
+PATTERN: talk to somebody about something
+EX: We talked all night. | Мы проговорили всю ночь.
+EX: Can we talk about it later? | Можем поговорить об этом позже?
+NOTE: Разговор вдвоём — talk. Речь со сцены — speak.
+
+CONTRAST: say | tell | что сказано | кому сказано
+CONTRAST: speak | talk | формально, про язык | по-дружески, обмен репликами
+TRAP: ❌ He said me the truth. ✅ He told me the truth.
+TRAP: ❌ I talk English. ✅ I speak English.

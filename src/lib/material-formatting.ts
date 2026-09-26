@@ -112,6 +112,12 @@ function hasEmptyRuleBlock(block: RuleBlock): boolean {
       return block.items.length === 0 || block.items.some((item) => !compact(item));
     case "table":
       return block.headers.length === 0 && block.rows.length === 0;
+    case "word":
+      return !compact(block.word);
+    case "form":
+      return !compact(block.en);
+    case "marker":
+      return !compact(block.word);
   }
 }
 

@@ -1,0 +1,36 @@
+TYPE: VOCAB
+TITLE: Food and cooking
+COLOR: green
+
+CATEGORY: Nouns
+COLOR: sky
+
+WORD: ingredient
+ICON: 🥕
+US: /ɪnˈɡriːdiənt/
+UK: /ɪnˈɡriːdiənt/
+TR: ингредиент, составляющая
+EX: Fresh ingredients make all the difference. | Свежие ингредиенты решают всё.
+EX: Check every ingredient on the label. | Проверь каждый ингредиент на этикетке.
+NOTE: В рецептах почти всегда во множественном: ingredients.
+
+WORD: leftovers
+ICON: 🍱
+US: /ˈleftoʊvərz/
+UK: /ˈleftəʊvəz/
+TR: остатки еды со вчера
+EX: We had leftovers for lunch. | Мы доели вчерашнее на обед.
+EX: Don't throw the leftovers away. | Не выбрасывай остатки.
+NOTE: Только множественное число. «A leftover» не говорят.
+
+CATEGORY: Verbs
+COLOR: amber
+
+WORD: simmer
+ICON: 🍲
+US: /ˈsɪmər/
+UK: /ˈsɪmə/
+TR: варить на медленном огне
+EX: Let it simmer for ten minutes. | Дай ему потомиться десять минут.
+EX: The soup simmered while we talked. | Суп томился, пока мы разговаривали.
+NOTE: Не кипит ключом — пузырьки еле идут. Кипит бурно — это boil.
