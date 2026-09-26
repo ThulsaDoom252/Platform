@@ -36,8 +36,14 @@ export type MaterialPhrase = {
   imageUrl: string | null;
   phrase: string;
   transcription: string | null;
+  /** Американский и британский варианты; у старых записей их нет. */
+  transcriptionUs: string | null;
+  transcriptionUk: string | null;
   translation: string | null;
+  /** Заметка «что стоит знать» под словом. */
+  note: string | null;
   section: string | null;
+  sectionColor: string | null;
   kind: string;
   examples: PhraseExample[];
 };
@@ -101,8 +107,12 @@ async function buildTree(rows: NodeRow[]): Promise<{
       imageUrl: p.imageUrl,
       phrase: p.phrase,
       transcription: p.transcription,
+      transcriptionUs: p.transcriptionUs,
+      transcriptionUk: p.transcriptionUk,
       translation: p.translation,
+      note: p.note,
       section: p.section,
+      sectionColor: p.sectionColor,
       kind: p.kind,
       examples: (p.examples ?? []) as PhraseExample[],
     });

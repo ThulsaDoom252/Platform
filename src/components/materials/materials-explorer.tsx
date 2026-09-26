@@ -83,17 +83,38 @@ const hasContent = (n: MaterialNode) => n.phrases.length > 0 || n.blocks.length 
 const isVerbsPage = (n: MaterialNode) =>
   n.type === "FILE" && (n.pageKind === "VERBS" || n.verbs.length > 0);
 
+/**
+ * Как страница устроена внутри: словником или блоками.
+ *
+ * Лексика и времена — это те же блоки, что и у правила: одно хранилище,
+ * одна читалка, один способ вставки. Отличается только разбор, поэтому
+ * здесь они и считаются правилом.
+ */
 const pageKind = (n: MaterialNode): "VOCAB" | "RULE" | null =>
-  n.pageKind === "RULE" || n.pageKind === "VOCAB"
-    ? n.pageKind
-    : n.blocks.length > 0
-      ? "RULE"
-      : n.phrases.length > 0
-        ? "VOCAB"
-        : null;
+  n.pageKind === "RULE" || n.pageKind === "LEXIS" || n.pageKind === "TENSE"
+    ? "RULE"
+    : n.pageKind === "VOCAB"
+      ? "VOCAB"
+      : n.blocks.length > 0
+        ? "RULE"
+        : n.phrases.length > 0
+          ? "VOCAB"
+          : null;
 
-const pageKindLabel = (kind: "VOCAB" | "RULE") =>
-  kind === "RULE" ? "Правило" : "Словарь";
+/** Чем страница является для учителя — это и пишем на бейдже. */
+const pageFlavour = (n: MaterialNode): PageFlavour | null =>
+  n.pageKind === "LEXIS" || n.pageKind === "TENSE" ? n.pageKind : pageKind(n);
+
+type PageFlavour = "VOCAB" | "RULE" | "LEXIS" | "TENSE";
+
+const FLAVOUR_LABEL: Record<PageFlavour, string> = {
+  VOCAB: "Словарь",
+  RULE: "Правило",
+  LEXIS: "Лексика",
+  TENSE: "Время",
+};
+
+const pageKindLabel = (kind: PageFlavour) => FLAVOUR_LABEL[kind];
 
 const pageBtn =
   "flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed border-line px-4 text-sm font-semibold text-muted transition hover:border-accent hover:text-accent";
@@ -1077,7 +1098,7 @@ export function MaterialsExplorer({
   /** Тип содержимого виден прямо в дереве, но только в редакторе учителя. */
   const pageTypeMarker = (n: MaterialNode) => {
     if (!editable || n.type !== "FILE") return null;
-    const kind = pageKind(n);
+    const kind = pageFlavour(n);
     if (!kind) return null;
     return (
       <span

@@ -28,8 +28,14 @@ export type MaterialPhrase = {
   imageUrl: string | null;
   phrase: string;
   transcription: string | null;
+  /** Американский и британский варианты; у старых записей их нет. */
+  transcriptionUs: string | null;
+  transcriptionUk: string | null;
   translation: string | null;
+  /** Заметка «что стоит знать» под словом. */
+  note: string | null;
   section: string | null;
+  sectionColor: string | null;
   kind: string;
   examples: PhraseExample[];
 };
@@ -107,6 +113,7 @@ function PhraseCard({
   p,
   index,
   showTranslation,
+  hints = true,
   speech,
   onEdit,
   onRepairIcon,
@@ -115,6 +122,8 @@ function PhraseCard({
   p: MaterialPhrase;
   index: number;
   showTranslation: boolean;
+  /** Показывать ли заметку «что стоит знать». */
+  hints?: boolean;
   speech: ReturnType<typeof useSpeech>;
   onEdit?: () => void;
   onRepairIcon?: () => void;
@@ -154,8 +163,17 @@ function PhraseCard({
           {/* Фраза + транскрипция + произношение */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h3 className="text-base font-bold text-content sm:text-lg">{p.phrase}</h3>
-            {p.transcription && (
-              <span className="font-mono text-xs text-faint">{p.transcription}</span>
+            {p.transcriptionUs || p.transcriptionUk ? (
+              <span className="flex flex-wrap gap-2 font-mono text-xs text-faint">
+                {p.transcriptionUs && <span>us {p.transcriptionUs}</span>}
+                {p.transcriptionUk && p.transcriptionUk !== p.transcriptionUs && (
+                  <span>uk {p.transcriptionUk}</span>
+                )}
+              </span>
+            ) : (
+              p.transcription && (
+                <span className="font-mono text-xs text-faint">{p.transcription}</span>
+              )
             )}
             {speech.supported && (
               <div className="flex items-center gap-1.5">
@@ -207,6 +225,12 @@ function PhraseCard({
                 ? t.phrases.hideExamples
                 : fmt(t.phrases.examples, { n: p.examples.length })}
             </button>
+          )}
+
+          {hints && p.note && (
+            <p className="mt-2.5 whitespace-pre-line rounded-xl tint-amber px-3 py-2 text-[13px] leading-snug">
+              {p.note}
+            </p>
           )}
         </div>
       </div>
@@ -283,6 +307,9 @@ export function PhraseReader({
 }) {
   const { t } = useT();
   const [showTranslation, setShowTranslation] = useState(true);
+  // Заметки под словами — то, что стоит знать, но не обязательно читать
+  // сразу. Учитель гасит их, когда хочет чистый список.
+  const [hints, setHints] = useState(true);
   const speech = useSpeech();
 
   const editable = !!onEditPhrase && !!nodeId;
@@ -466,6 +493,22 @@ export function PhraseReader({
           )}
           {showTranslation ? t.phrases.hideTranslations : t.phrases.showTranslations}
         </button>
+
+        {phrases.some((p) => p.note) && (
+          <button
+            type="button"
+            onClick={() => setHints((v) => !v)}
+            title="Заметки «что стоит знать» под словами"
+            className={cn(
+              "flex h-9 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition",
+              hints
+                ? "tint-amber"
+                : "bg-surface text-faint ring-1 ring-line hover:text-content",
+            )}
+          >
+            💡 подсказки
+          </button>
+        )}
       </div>
 
       {/* Секции с фразами */}
@@ -482,6 +525,15 @@ export function PhraseReader({
               <span className="h-4 w-1 shrink-0 rounded-full bg-accent" />
               <h3 className="flex-1 text-sm font-bold text-content">
                 {g.section ?? (editable ? "Без категории" : "")}
+                {g.items[0]?.sectionColor && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "ml-2 inline-block h-2 w-8 rounded-full align-middle",
+                      `tint-${g.items[0].sectionColor}`,
+                    )}
+                  />
+                )}
               </h3>
 
               {editable && (
@@ -545,6 +597,7 @@ export function PhraseReader({
                     p={p}
                     index={gi + i}
                     showTranslation={showTranslation}
+                    hints={hints}
                     speech={speech}
                     onEdit={onEditPhrase && (() => onEditPhrase(p))}
                     onRepairIcon={

@@ -99,8 +99,8 @@ function asScope(value: unknown): NodeScope {
 
 export type CreateOptions = {
   parentId: string | null;
-  /** VERBS — страница неправильных глаголов, тоже файл. */
-  kind: "FOLDER" | "PAGE" | "VERBS";
+  /** Всё, кроме папки, — файл; различаются они видом страницы. */
+  kind: "FOLDER" | "PAGE" | "VERBS" | "LEXIS" | "TENSE";
   scope?: NodeScope;
   ownerId?: string | null;
 };
@@ -120,7 +120,7 @@ export async function createNodesAction(
   const scope = asScope(opts.scope);
   const ownerId = isOwned(scope) ? opts.ownerId || null : null;
   const type: "FOLDER" | "FILE" = opts.kind === "FOLDER" ? "FOLDER" : "FILE";
-  const pageKind = opts.kind === "VERBS" ? "VERBS" : null;
+  const pageKind = opts.kind === "FOLDER" || opts.kind === "PAGE" ? null : opts.kind;
 
   const clean = (items ?? [])
     .map((i) => ({
@@ -3319,8 +3319,11 @@ export async function savePageContentAction(
       icon: p.icon,
       phrase: p.phrase,
       transcription: p.transcription,
-      translation: p.translation,
+      transcriptionUs: p.transcriptionUs ?? null,
+      transcriptionUk: p.transcriptionUk ?? null,
+      note: p.note ?? null,
       section: p.section,
+      sectionColor: p.sectionColor ?? null,
       kind: p.kind,
       examples: p.examples,
     })),
@@ -3438,6 +3441,12 @@ function sanitizeBlocks(input: unknown): RuleBlock[] {
 export type BlocksState = { ok?: boolean; error?: string; message?: string };
 
 /** Сохранить правило: блоки полностью заменяют прежнее содержимое страницы. */
+/** Вид страницы из формы; всё незнакомое считаем обычным правилом. */
+function pageKindFromForm(value: FormDataEntryValue | null): string {
+  const kind = String(value ?? "").toUpperCase();
+  return kind === "LEXIS" || kind === "TENSE" ? kind : "RULE";
+}
+
 export async function saveRuleBlocksAction(
   _prev: BlocksState,
   formData: FormData,
@@ -3472,7 +3481,9 @@ export async function saveRuleBlocksAction(
   await db
     .update(materialNodes)
     .set({
-      pageKind: "RULE",
+      // Лексика и время хранятся теми же блоками, но называться должны
+      // собой: по этому имени страница получает бейдж и оформление.
+      pageKind: pageKindFromForm(formData.get("kind")),
       sourceText: String(formData.get("sourceText") || "").slice(0, 200_000),
       ...(applyTitle && title ? { name: title } : {}),
       ...(applyTitle && subtitle ? { description: subtitle } : {}),

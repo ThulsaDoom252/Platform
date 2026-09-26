@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useSpeech, SpeakPair } from "./speech";
 import type { RuleBlock } from "@/lib/rule-parser";
@@ -63,6 +64,23 @@ export function RuleReader({
   const s = useSpeech();
   const isStudySheet = blocks.some((block) => isSheetVariant(block.variant));
 
+  // Подсказки — это то, что стоит знать, но не обязательно читать сразу.
+  // Учитель прячет их, когда объясняет основное, и возвращает для разбора.
+  const [hints, setHints] = useState(true);
+  const hasHints = blocks.some(
+    (block) =>
+      (block.type === "callout" && block.hint) ||
+      (block.type === "word" && block.notes.length > 0) ||
+      (block.type === "marker" && !!block.hintText),
+  );
+
+  // Оглавление имеет смысл, когда разделов больше двух: иначе это просто
+  // повтор того, что и так видно на экране.
+  const sections = blocks
+    .map((block, i) => ({ block, i }))
+    .filter(({ block }) => block.type === "heading")
+    .map(({ block, i }) => ({ id: `rule-section-${i}`, text: "text" in block ? block.text : "" }));
+
   return (
     <div className={cn("flex flex-col gap-4", isStudySheet && "rule-sheet")}>
       {/* Шапка правила */}
@@ -103,13 +121,42 @@ export function RuleReader({
         <div className="pointer-events-none absolute -right-8 -bottom-10 h-36 w-36 rounded-full bg-white/10" />
       </header>
 
+      {(sections.length > 2 || hasHints) && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-1.5 rounded-2xl bg-surface/95 p-2 ring-1 ring-line backdrop-blur-md">
+          {sections.length > 2 &&
+            sections.map((section) => (
+              <a
+                key={section.id}
+                href={`#${section.id}`}
+                className="rounded-lg bg-surface-2 px-2.5 py-1 text-[12px] font-semibold text-muted transition hover:text-accent"
+              >
+                {section.text}
+              </a>
+            ))}
+
+          {hasHints && (
+            <button
+              type="button"
+              onClick={() => setHints((v) => !v)}
+              title="Дополнительная информация под материалом"
+              className={cn(
+                "ml-auto rounded-lg px-2.5 py-1 text-[12px] font-semibold transition",
+                hints ? "tint-amber" : "bg-surface-2 text-faint hover:text-content",
+              )}
+            >
+              💡 подсказки
+            </button>
+          )}
+        </div>
+      )}
+
       {blocks.map((b, i) => {
         switch (b.type) {
           case "heading": {
             if (b.variant === "sheet-section") {
               const section = sectionParts(b.text);
               return (
-                <div key={i} className="rule-sheet-section">
+                <div key={i} id={`rule-section-${i}`} className="rule-sheet-section scroll-mt-20">
                   {section.number && (
                     <span className="rule-sheet-section-number">{section.number}</span>
                   )}
@@ -120,7 +167,8 @@ export function RuleReader({
             return (
               <h3
                 key={i}
-                className="mt-2 flex items-center gap-2 text-base font-bold text-content"
+                id={`rule-section-${i}`}
+                className="mt-2 flex scroll-mt-20 items-center gap-2 text-base font-bold text-content"
               >
                 <span className="h-5 w-1 rounded-full bg-accent" />
                 {b.text}
@@ -165,6 +213,7 @@ export function RuleReader({
               );
             }
 
+            if (b.hint && !hints) return null;
             return (
               <div
                 key={i}
@@ -206,6 +255,11 @@ export function RuleReader({
                   <SpeakPair text={b.en} id={key} speech={s} />
                 </p>
                 {b.tr && <p className="mt-0.5 text-[13px] italic text-muted">{b.tr}</p>}
+                {b.why && (
+                  <p className="mt-1.5 border-l-2 border-accent pl-2.5 text-[13px] text-muted">
+                    {b.why}
+                  </p>
+                )}
               </div>
             );
           }
@@ -349,6 +403,108 @@ export function RuleReader({
             );
           }
 
+          case "word":
+            return (
+              <article
+                key={i}
+                className="rounded-2xl bg-surface p-4 ring-1 ring-line"
+              >
+                <header className="flex flex-wrap items-baseline gap-2">
+                  {b.icon && <span className="text-xl">{b.icon}</span>}
+                  <h4 className="text-base font-bold text-content">{b.word}</h4>
+                  {b.tr && <span className="text-sm text-muted">{b.tr}</span>}
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <SpeakPair text={b.word} id={`w-${i}`} speech={s} />
+                  </span>
+                </header>
+
+                {(b.us || b.uk) && (
+                  <p className="mt-1 flex flex-wrap gap-3 font-mono text-[12px] text-faint">
+                    {b.us && <span>us {b.us}</span>}
+                    {b.uk && <span>uk {b.uk}</span>}
+                  </p>
+                )}
+
+                {b.sense && (
+                  <p className="mt-2 text-sm leading-snug text-content">{b.sense}</p>
+                )}
+
+                {b.pattern && (
+                  <p className="mt-2 inline-block rounded-lg bg-accent-soft px-2.5 py-1 font-mono text-[13px] font-semibold text-accent">
+                    {b.pattern}
+                  </p>
+                )}
+
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {b.examples.map((ex, j) => (
+                    <div key={j} className="rounded-xl bg-surface-2 px-3 py-2">
+                      <p className="flex flex-wrap items-center gap-2 text-sm text-content">
+                        {ex.en}
+                        <SpeakPair text={ex.en} id={`w-${i}-${j}`} speech={s} />
+                      </p>
+                      <p className="mt-0.5 text-[13px] italic text-muted">{ex.tr}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {hints &&
+                  b.notes.map((note, j) => (
+                    <p key={j} className="mt-2 rounded-xl tint-amber px-3 py-2 text-[13px]">
+                      {note}
+                    </p>
+                  ))}
+              </article>
+            );
+
+          case "form":
+            return (
+              <div
+                key={i}
+                className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-2 px-3.5 py-2.5"
+              >
+                <span
+                  className={cn(
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base font-bold",
+                    b.sign === "+" && "tint-green",
+                    b.sign === "-" && "tint-rose",
+                    b.sign === "?" && "tint-sky",
+                  )}
+                >
+                  {b.sign}
+                </span>
+                <span className="font-mono text-[13px] font-semibold text-accent">
+                  {b.formula}
+                </span>
+                <span className="flex w-full flex-wrap items-center gap-2 text-sm text-content sm:w-auto">
+                  {b.en}
+                  <SpeakPair text={b.en} id={`f-${i}`} speech={s} />
+                  <span className="text-[13px] italic text-muted">{b.tr}</span>
+                </span>
+              </div>
+            );
+
+          case "marker":
+            return (
+              <div key={i} className="rounded-xl bg-surface px-3.5 py-2.5 ring-1 ring-line">
+                <p className="flex flex-wrap items-baseline gap-2">
+                  <span className="rounded-lg bg-accent px-2 py-0.5 text-[13px] font-bold text-white">
+                    {b.word}
+                  </span>
+                  <span className="text-[13px] text-muted">{b.tr}</span>
+                </p>
+                <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-content">
+                  {b.en}
+                  <SpeakPair text={b.en} id={`m-${i}`} speech={s} />
+                </p>
+                <p className="text-[13px] italic text-muted">{b.ru}</p>
+                {hints && b.hintText && (
+                  <p className="mt-1.5 rounded-lg tint-amber px-2.5 py-1.5 text-[12px]">
+                    {b.hintText}
+                  </p>
+                )}
+              </div>
+            );
+
           default:
             return (
               <p
@@ -358,7 +514,7 @@ export function RuleReader({
                   b.variant === "sheet-text" && "rule-sheet-copy",
                 )}
               >
-                {(b as { text: string }).text}
+                {"text" in b ? b.text : ""}
               </p>
             );
         }

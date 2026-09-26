@@ -7,6 +7,8 @@
  */
 import { suggestVocabularyIcon } from "./icon-suggest";
 
+import { parseKeyedVocab } from "./keyed-parser";
+
 export type ParsedExample = { en: string; tr: string };
 
 export type ParsedPhrase = {
@@ -29,6 +31,8 @@ export type ParsedPhrase = {
 export type ParseResult = {
   title: string | null;
   description: string | null;
+  /** Цвет оформления из ключевого формата. */
+  color?: string | null;
   phrases: ParsedPhrase[];
   warnings: string[];
   /** Внутренний тип словарной разметки, выбранный автоматически. */
@@ -877,6 +881,11 @@ export function flattenClipboardHtml(html: string): string | null {
 }
 
 export function parseMaterial(raw: string, mode: ParserMode): ParseResult {
+  // Текст в ключевом формате писала модель по спецификации — гадать по нему
+  // не нужно, и попытка угадать только испортила бы разбор.
+  const keyed = parseKeyedVocab(raw);
+  if (keyed) return keyed;
+
   if (!raw.trim()) {
     return { title: null, description: null, phrases: [], warnings: ["Пустой текст."] };
   }

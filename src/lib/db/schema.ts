@@ -245,6 +245,13 @@ export const materialPhrases = pgTable("material_phrases", {
   phrase: text("phrase").notNull(),
   /** Транскрипция IPA, например /drɒpt/ */
   transcription: text("transcription"),
+  /** Американский и британский варианты — их озвучивают по отдельности. */
+  transcriptionUs: text("transcription_us"),
+  transcriptionUk: text("transcription_uk"),
+  /** Заметка «что стоит знать»; прячется тумблером подсказок. */
+  note: text("note"),
+  /** Цвет категории из ключевого формата. */
+  sectionColor: text("section_color"),
   translation: text("translation"),
   /** Заголовок секции внутри страницы, например "Single-word Verbs & Participles" */
   section: text("section"),

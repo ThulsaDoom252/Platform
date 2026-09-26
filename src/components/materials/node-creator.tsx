@@ -13,9 +13,28 @@ import { cn } from "@/lib/utils";
 const inputCls =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
+type NodeKind = "FOLDER" | "PAGE" | "VERBS" | "LEXIS" | "TENSE";
+
+/** Значок по умолчанию и заголовок окна — по виду создаваемого раздела. */
+const KIND_ICON: Record<NodeKind, string> = {
+  FOLDER: "📁",
+  PAGE: "📄",
+  VERBS: "⚡",
+  LEXIS: "🔀",
+  TENSE: "⏳",
+};
+
+const KIND_TITLE: Record<NodeKind, string> = {
+  FOLDER: "Новые папки",
+  PAGE: "Новые страницы",
+  VERBS: "Новые списки глаголов",
+  LEXIS: "Новые разборы лексики",
+  TENSE: "Новые времена",
+};
+
 export type CreateTarget = {
   parentId: string | null;
-  kind: "FOLDER" | "PAGE" | "VERBS";
+  kind: NodeKind;
   scope?: TreeScope;
   ownerId?: string;
 };
@@ -39,9 +58,9 @@ export function NodeCreator({
    * Вид выбирается прямо в окне: из дерева сюда приходят и «Новый
    * раздел», и «+ Файл», а передумать хочется уже после открытия.
    */
-  const [kind, setKind] = useState<"FOLDER" | "PAGE" | "VERBS">(target?.kind ?? "FOLDER");
+  const [kind, setKind] = useState<NodeKind>(target?.kind ?? "FOLDER");
   const isPage = kind !== "FOLDER";
-  const defaultIcon = kind === "VERBS" ? "⚡" : kind === "PAGE" ? "📄" : "📁";
+  const defaultIcon = KIND_ICON[kind];
 
   // Счётчик крутится только в обработчиках. Трогать его во время рендера
   // нельзя, поэтому первая строка получает готовый ключ.
@@ -160,13 +179,7 @@ export function NodeCreator({
       open
       onClose={onClose}
       wide
-      title={
-        kind === "VERBS"
-          ? "Новые списки глаголов"
-          : kind === "PAGE"
-            ? "Новые страницы"
-            : "Новые папки"
-      }
+      title={KIND_TITLE[kind]}
       icon={<IconPlus className="h-5 w-5" />}
     >
       <div className="flex flex-col gap-4">
@@ -176,6 +189,8 @@ export function NodeCreator({
             ["FOLDER", "📁", "Папка"],
             ["PAGE", "📄", "Файл"],
             ["VERBS", "⚡", "Неправильные глаголы"],
+            ["LEXIS", "🔀", "Лексика"],
+            ["TENSE", "⏳", "Времена"],
           ] as const).map(([value, icon, label]) => (
             <button
               key={value}

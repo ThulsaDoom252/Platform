@@ -118,7 +118,7 @@ type Head = { title: string | null; color: string | null };
 export type KeyedVocabResult = ParseResult & { color: string | null };
 export type KeyedBlocksResult = RuleParseResult & {
   color: string | null;
-  kind: KeyedType;
+  kind: "RULE" | "LEXIS" | "TENSE";
 };
 
 export type KeyedResult =
@@ -142,6 +142,18 @@ export function parseKeyed(raw: string): KeyedResult | null {
     return { type, ...parseVocab(fields, warnings) };
   }
   return { type, ...parseBlocks(type, fields, warnings) };
+}
+
+/** Словник в ключевом формате; иначе null — пусть разбирают эвристики. */
+export function parseKeyedVocab(raw: string): KeyedVocabResult | null {
+  const result = parseKeyed(raw);
+  return result?.type === "VOCAB" ? result : null;
+}
+
+/** Правило, лексика или время в ключевом формате; иначе null. */
+export function parseKeyedBlocks(raw: string): KeyedBlocksResult | null {
+  const result = parseKeyed(raw);
+  return result && result.type !== "VOCAB" ? result : null;
 }
 
 // ---------- VOCAB ----------
@@ -289,7 +301,7 @@ function fillWord(word: ParsedPhrase, field: Field, warnings: string[]) {
  * маркеры, у лексики — карточки слов, а оформление общее.
  */
 function parseBlocks(
-  kind: KeyedType,
+  kind: "RULE" | "LEXIS" | "TENSE",
   fields: Field[],
   warnings: string[],
 ): KeyedBlocksResult {

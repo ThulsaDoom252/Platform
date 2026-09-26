@@ -19,6 +19,8 @@ type Parsed = {
   blocks: RuleBlock[];
   warnings: string[];
   format: RuleParserFormat;
+  /** Правило, лексика или время — определяется при разборе. */
+  kind?: "RULE" | "LEXIS" | "TENSE";
   source: "html" | "text";
   /** Исходник в виде текста — его показывает «Редактировать». */
   sourceText: string;
@@ -88,6 +90,7 @@ export function RuleImporter({
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="nodeId" value={node.id} />
         <input type="hidden" name="blocks" value={JSON.stringify(parsed?.blocks ?? [])} />
+        <input type="hidden" name="kind" value={parsed?.kind ?? "RULE"} />
         <input type="hidden" name="title" value={parsed?.title ?? ""} />
         <input type="hidden" name="subtitle" value={parsed?.subtitle ?? ""} />
         <input type="hidden" name="sourceText" value={parsed?.sourceText ?? ""} />

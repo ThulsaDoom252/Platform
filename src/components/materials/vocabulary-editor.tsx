@@ -86,8 +86,12 @@ function toPreview(item: EditableItem): MaterialPhrase {
     imageUrl: item.imageUrl,
     phrase: clean.phrase,
     transcription: clean.transcription,
+    transcriptionUs: null,
+    transcriptionUk: null,
     translation: clean.translation || null,
+    note: null,
     section: clean.section,
+    sectionColor: null,
     kind: item.kind,
     examples: clean.examples,
   };

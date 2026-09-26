@@ -7,6 +7,7 @@
  * структуру по отступам не нужно. Для случая «вставили просто текст»
  * оставлен запасной разбор по табуляциям.
  */
+import { parseKeyedBlocks } from "./keyed-parser";
 
 export type RuleBlockVariant =
   | "sheet-text"
@@ -70,6 +71,10 @@ export type RuleBlock = (
 export type RuleParseResult = {
   title: string | null;
   subtitle: string | null;
+  /** Цвет оформления из ключевого формата. */
+  color?: string | null;
+  /** Какой именно материал разобран: правило, лексика или время. */
+  kind?: "RULE" | "LEXIS" | "TENSE";
   blocks: RuleBlock[];
   warnings: string[];
   /** Внутренний способ разбора. В интерфейсе по-прежнему один парсер правил. */
@@ -931,6 +936,9 @@ function tableFromLines(run: string[]): RuleBlock | null {
 
 /** Запасной разбор, когда вставили обычный текст: таблицы — по табуляциям. */
 export function parseRuleText(raw: string): RuleParseResult {
+  const keyed = parseKeyedBlocks(raw);
+  if (keyed) return keyed;
+
   const warnings: string[] = [];
   const lines = raw.split(/\r?\n/).map((l) => l.replace(/\s+$/, ""));
   const blocks: RuleBlock[] = [];
