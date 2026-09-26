@@ -2434,14 +2434,25 @@ export async function restoreMaterialContentAction(nodeId: string): Promise<Bulk
  * Меняет тип страницы. Если выбран повторный разбор, старое разобранное
  * содержимое заменяется только после успешного разбора сохранённого исходника.
  */
+/** Как называется вид страницы в сообщениях учителю. */
+const PAGE_KIND_LABEL: Record<string, string> = {
+  VOCAB: "Словарь",
+  RULE: "Правило",
+  LEXIS: "Лексика",
+  TENSE: "Время",
+};
+
 export async function changeMaterialPageKindAction(
   nodeId: string,
-  nextKind: "VOCAB" | "RULE",
+  nextKind: "VOCAB" | "RULE" | "LEXIS" | "TENSE",
   reparse: boolean,
 ): Promise<BulkState> {
   await requireTeacher();
   const id = String(nodeId ?? "");
-  const kind = nextKind === "RULE" ? "RULE" : "VOCAB";
+  // Лексика и время живут в блоках, как правило: разбор у них общий,
+  // отличается только имя, под которым страница сохраняется.
+  const kind = PAGE_KIND_LABEL[nextKind] ? nextKind : "VOCAB";
+  const blockKind = kind !== "VOCAB";
   if (!id) return { error: "Не выбран файл" };
 
   const [node] = await db
@@ -2477,13 +2488,13 @@ export async function changeMaterialPageKindAction(
     }
     await db.update(materialNodes).set({ pageKind: kind }).where(eq(materialNodes.id, id));
     revalidateMaterials();
-    return { ok: true, message: `Тип файла: ${kind === "RULE" ? "Правило" : "Словарь"}` };
+    return { ok: true, message: `Тип файла: ${PAGE_KIND_LABEL[kind]}` };
   }
 
   const source = node.sourceText?.trim() ?? "";
   if (!source) return { error: "У файла не сохранён исходный текст для перепарсинга" };
 
-  if (kind === "RULE") {
+  if (blockKind) {
     const parsed = parseRuleText(source);
     const blocks = sanitizeBlocks(parsed.blocks);
     if (blocks.length === 0) {
@@ -2503,11 +2514,14 @@ export async function changeMaterialPageKindAction(
       );
       await tx
         .update(materialNodes)
-        .set({ pageKind: "RULE", formattingIssue: parsed.warnings.length > 0 })
+        .set({ pageKind: kind, formattingIssue: parsed.warnings.length > 0 })
         .where(eq(materialNodes.id, id));
     });
     revalidateMaterials();
-    return { ok: true, message: `Тип изменён на «Правило»: ${blocks.length} блоков` };
+    return {
+      ok: true,
+      message: `Тип изменён на «${PAGE_KIND_LABEL[kind]}»: ${blocks.length} блоков`,
+    };
   }
 
   const parsed = parseMaterial(source, "vocabulary");
@@ -2525,8 +2539,12 @@ export async function changeMaterialPageKindAction(
         icon: phrase.icon,
         phrase: phrase.phrase,
         transcription: phrase.transcription,
+        transcriptionUs: phrase.transcriptionUs ?? null,
+        transcriptionUk: phrase.transcriptionUk ?? null,
         translation: phrase.translation,
+        note: phrase.note ?? null,
         section: phrase.section,
+        sectionColor: phrase.sectionColor ?? null,
         kind: phrase.kind,
         examples: phrase.examples,
       })),

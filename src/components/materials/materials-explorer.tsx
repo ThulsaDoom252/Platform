@@ -221,7 +221,7 @@ export function MaterialsExplorer({
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
   const [kindChange, setKindChange] = useState<{
     node: MaterialNode;
-    next: "VOCAB" | "RULE";
+    next: PageFlavour;
   } | null>(null);
 
   const { byId, pathById } = useMemo(() => {
@@ -1968,11 +1968,11 @@ export function MaterialsExplorer({
                   <label className="flex h-10 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 text-sm">
                     <span className="text-[11px] font-semibold text-faint">Тип файла</span>
                     <select
-                      value={pageKind(selected) ?? ""}
+                      value={pageFlavour(selected) ?? ""}
                       onChange={(event) => {
                         const next = event.target.value;
-                        if (next === "VOCAB" || next === "RULE") {
-                          setKindChange({ node: selected, next });
+                        if (next in FLAVOUR_LABEL) {
+                          setKindChange({ node: selected, next: next as PageFlavour });
                         }
                       }}
                       disabled={moving}
@@ -1981,6 +1981,8 @@ export function MaterialsExplorer({
                       <option value="" disabled>Не определён</option>
                       <option value="VOCAB">Словарь</option>
                       <option value="RULE">Правило</option>
+                      <option value="LEXIS">Лексика</option>
+                      <option value="TENSE">Время</option>
                     </select>
                   </label>
                 )}
@@ -2488,7 +2490,7 @@ export function MaterialsExplorer({
                 <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-sm text-content">
                   {kindChange.node.icon} <b>{kindChange.node.name}</b>
                   <span className="mt-1 block text-xs text-muted">
-                    Сейчас: {pageKind(kindChange.node) ? pageKindLabel(pageKind(kindChange.node)!) : "тип не определён"}
+                    Сейчас: {pageFlavour(kindChange.node) ? pageKindLabel(pageFlavour(kindChange.node)!) : "тип не определён"}
                     {" → "}{pageKindLabel(kindChange.next)}
                   </span>
                 </p>
