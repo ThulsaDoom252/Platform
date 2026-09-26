@@ -27,6 +27,7 @@ import type { RuleBlock } from "@/lib/rule-parser";
 import { NodeEditor, type EditorTarget, type TreeScope } from "./node-editor";
 import { NodeCreator } from "./node-creator";
 import { TreeImporter, type ImportTarget } from "./tree-importer";
+import { FillFromDialog, type FillTarget } from "./fill-from-dialog";
 import { ContentImporter } from "./content-importer";
 import { VocabularyCoverActions } from "./vocabulary-cover";
 import { RuleImporter } from "./rule-importer";
@@ -177,6 +178,7 @@ export function MaterialsExplorer({
   const [vocabularyEditNode, setVocabularyEditNode] = useState<MaterialNode | null>(null);
   const [copyNodes, setCopyNodes] = useState<MaterialNode[] | null>(null);
   const [importTree, setImportTree] = useState<ImportTarget | null>(null);
+  const [fillFrom, setFillFrom] = useState<FillTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
   const [kindChange, setKindChange] = useState<{
@@ -1842,6 +1844,16 @@ export function MaterialsExplorer({
                   </button>
                 )}
 
+                {/* Взять готовое у себя, у общей базы или у другого ученика. */}
+                <button
+                  type="button"
+                  onClick={() => setFillFrom({ id: selected.id, name: selected.name })}
+                  className={pageBtn}
+                  title="Перенести сюда содержимое другой страницы"
+                >
+                  <IconPlus className="h-4 w-4" /> Наполнить из…
+                </button>
+
                 {pageKind(selected) !== "RULE" && (
                   <button
                     type="button"
@@ -2210,6 +2222,12 @@ export function MaterialsExplorer({
             target={importTree}
             onClose={() => setImportTree(null)}
             onDone={setNotice}
+          />
+          <FillFromDialog
+            key={fillFrom ? `fill-${fillFrom.id}` : "fill-idle"}
+            target={fillFrom}
+            onClose={() => setFillFrom(null)}
+            onDone={(message) => setNotice(message)}
           />
           <ContentImporter
             key={importNode ? `import-${importNode.id}` : "import-idle"}

@@ -1529,6 +1529,137 @@ async function snapshotContent(
 }
 
 /**
+ * Наполнить страницу содержимым другой страницы.
+ *
+ * Источником может быть любое дерево: общая база, личные материалы
+ * учителя или материалы любого ученика. Копия самостоятельная — правки
+ * в источнике до неё не доходят, как и при обычном «Поделиться».
+ *
+ * Дописываем, а не заменяем: то, что уже есть на странице, остаётся, а
+ * точные повторы пропускаются — так одну и ту же страницу можно собрать
+ * из нескольких источников.
+ */
+export async function fillPageFromAction(
+  targetId: string,
+  sourceId: string,
+): Promise<BulkState> {
+  await requireTeacher();
+
+  const target = String(targetId ?? "");
+  const source = String(sourceId ?? "");
+  if (!target || !source) return { error: "Не выбрана страница" };
+  if (target === source) return { error: "Это одна и та же страница" };
+
+  const [to] = await db
+    .select({
+      id: materialNodes.id,
+      type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
+      sourceText: materialNodes.sourceText,
+    })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, target))
+    .limit(1);
+  if (!to || to.type !== "FILE") return { error: "Страница не найдена" };
+
+  const [from] = await db
+    .select({
+      id: materialNodes.id,
+      name: materialNodes.name,
+      type: materialNodes.type,
+      pageKind: materialNodes.pageKind,
+      sourceText: materialNodes.sourceText,
+    })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, source))
+    .limit(1);
+  if (!from || from.type !== "FILE") return { error: "Источник не найден" };
+
+  const [srcPhrases, srcBlocks, ownPhrases, ownBlocks] = await Promise.all([
+    db.select().from(materialPhrases).where(eq(materialPhrases.nodeId, source))
+      .orderBy(asc(materialPhrases.sortOrder)),
+    db.select().from(materialBlocks).where(eq(materialBlocks.nodeId, source))
+      .orderBy(asc(materialBlocks.sortOrder)),
+    db.select().from(materialPhrases).where(eq(materialPhrases.nodeId, target)),
+    db.select().from(materialBlocks).where(eq(materialBlocks.nodeId, target)),
+  ]);
+
+  if (srcPhrases.length === 0 && srcBlocks.length === 0) {
+    return { error: `Страница «${from.name}» пустая — копировать нечего` };
+  }
+
+  const phraseKey = (p: { phrase: string; transcription: string | null; translation: string | null; section: string | null; kind: string }) =>
+    [p.phrase, p.transcription, p.translation, p.section, p.kind]
+      .map((v) => (v ?? "").trim().toLowerCase())
+      .join("\u0000");
+
+  const knownPhrases = new Set(ownPhrases.map(phraseKey));
+  const knownBlocks = new Set(ownBlocks.map((b) => JSON.stringify(b.data)));
+
+  const freshPhrases = srcPhrases.filter((p) => !knownPhrases.has(phraseKey(p)));
+  const freshBlocks = srcBlocks.filter((b) => !knownBlocks.has(JSON.stringify(b.data)));
+
+  if (freshPhrases.length === 0 && freshBlocks.length === 0) {
+    return { error: "Всё это на странице уже есть" };
+  }
+
+  const lastPhrase = ownPhrases.reduce((max, p) => Math.max(max, p.sortOrder), 0);
+  const lastBlock = ownBlocks.reduce((max, b) => Math.max(max, b.sortOrder), 0);
+
+  await db.transaction(async (tx) => {
+    if (freshPhrases.length > 0) {
+      await tx.insert(materialPhrases).values(
+        freshPhrases.map((p, index) => ({
+          nodeId: target,
+          sortOrder: lastPhrase + index + 1,
+          icon: p.icon,
+          imageUrl: p.imageUrl,
+          phrase: p.phrase,
+          transcription: p.transcription,
+          translation: p.translation,
+          section: p.section,
+          kind: p.kind,
+          examples: p.examples ?? [],
+        })),
+      );
+    }
+
+    if (freshBlocks.length > 0) {
+      await tx.insert(materialBlocks).values(
+        freshBlocks.map((b, index) => ({
+          nodeId: target,
+          sortOrder: lastBlock + index + 1,
+          type: b.type,
+          data: b.data,
+        })),
+      );
+    }
+
+    // Пустая страница перенимает у источника вид и исходник: иначе
+    // «Переформатировать» ей потом не из чего собирать.
+    const patch: Record<string, string | null> = {};
+    if (!to.pageKind && from.pageKind) patch.pageKind = from.pageKind;
+    if (!to.sourceText?.trim() && from.sourceText?.trim()) {
+      patch.sourceText = from.sourceText;
+    }
+    if (Object.keys(patch).length > 0) {
+      await tx.update(materialNodes).set(patch).where(eq(materialNodes.id, target));
+    }
+  });
+
+  revalidateMaterials();
+  const added = freshPhrases.length + freshBlocks.length;
+  const skipped =
+    srcPhrases.length + srcBlocks.length - added;
+  return {
+    ok: true,
+    message:
+      `Добавлено из «${from.name}»: ${added}` +
+      (skipped > 0 ? `, пропущено повторов: ${skipped}` : ""),
+  };
+}
+
+/**
  * Вернуть содержимое, каким оно было до последней перестройки.
  * Снимок после восстановления снимается — второй отмены не будет.
  */
