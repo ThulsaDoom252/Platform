@@ -1162,7 +1162,7 @@ export async function saveVerbsAction(
       const row = {
         category: text(v.category, 80),
         sortOrder: index + 1,
-        icon: text(v.icon, 16),
+        icon: text(v.icon, 64),
         base: String(v.base).trim().slice(0, 200),
         baseIpa: text(v.baseIpa),
         past: text(v.past) ?? "",
@@ -1182,6 +1182,148 @@ export async function saveVerbsAction(
 
   revalidateMaterials();
   return { ok: true, message: `Сохранено глаголов: ${clean.length}` };
+}
+
+/**
+ * Переставить группы глаголов. Порядок групп — это порядок первых
+ * глаголов в них, поэтому переписываем sortOrder целиком: группы идут
+ * в заданном порядке, внутри группы глаголы сохраняют прежний.
+ * null — «без категории».
+ */
+export async function reorderVerbGroupsAction(
+  nodeId: string,
+  order: (string | null)[],
+): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+
+  const rows = await db
+    .select({ id: irregularVerbs.id, category: irregularVerbs.category })
+    .from(irregularVerbs)
+    .where(eq(irregularVerbs.nodeId, id))
+    .orderBy(asc(irregularVerbs.sortOrder));
+  if (rows.length === 0) return { error: "На странице нет глаголов" };
+
+  const name = (v: string | null | undefined) => v?.trim() || null;
+  const rank = new Map<string | null, number>();
+  for (const g of order ?? []) {
+    const n = name(g);
+    if (!rank.has(n)) rank.set(n, rank.size);
+  }
+
+  // Группы, которых нет в присланном порядке, остаются в конце как были.
+  const sorted = rows
+    .map((row, index) => ({ ...row, index }))
+    .sort((a, b) => {
+      const ra = rank.get(name(a.category)) ?? rank.size;
+      const rb = rank.get(name(b.category)) ?? rank.size;
+      return ra - rb || a.index - b.index;
+    });
+
+  await db.transaction(async (tx) => {
+    for (const [index, row] of sorted.entries()) {
+      await tx
+        .update(irregularVerbs)
+        .set({ sortOrder: index + 1 })
+        .where(eq(irregularVerbs.id, row.id));
+    }
+  });
+
+  revalidateMaterials();
+  return { ok: true, message: "Порядок групп сохранён" };
+}
+
+export type VerbIconInput = { id: string; base: string; past?: string; participle?: string; translation: string | null };
+
+/**
+ * Иконки для глаголов: сперва смысловой разбор моделью, если задан
+ * ключ, иначе — локальный подбор по слову и переводу.
+ */
+async function pickVerbIcons(items: VerbIconInput[]): Promise<Map<string, string>> {
+  const ai = await suggestVocabularyIconsWithAi(
+    items.map((v) => ({
+      id: v.id,
+      phrase: [v.base, v.past, v.participle].filter(Boolean).join(" – "),
+      translation: v.translation,
+      section: "Irregular verbs",
+    })),
+  );
+
+  const result = new Map<string, string>();
+  for (const v of items) {
+    const icon = ai.get(v.id) ?? suggestVocabularyIcon(v.base, v.translation, "verb");
+    if (icon) result.set(v.id, icon);
+  }
+  return result;
+}
+
+/** Подобрать иконки для правки — ничего не сохраняет. */
+export async function suggestVerbIconsAction(
+  items: VerbIconInput[],
+): Promise<Record<string, string>> {
+  await requireTeacher();
+  const clean = (items ?? [])
+    .filter((v) => v && String(v.base ?? "").trim())
+    .slice(0, 500)
+    .map((v) => ({
+      id: String(v.id),
+      base: String(v.base).trim().slice(0, 200),
+      past: String(v.past ?? "").trim().slice(0, 200),
+      participle: String(v.participle ?? "").trim().slice(0, 200),
+      translation: v.translation ? String(v.translation).slice(0, 400) : null,
+    }));
+  return Object.fromEntries(await pickVerbIcons(clean));
+}
+
+/**
+ * Подобрать иконки глаголам, у которых их нет: всей странице или одной
+ * группе. Уже назначенные иконки не трогаем — их учитель мог выбрать сам.
+ * category: undefined — вся страница, null — «без категории».
+ */
+export async function fillVerbIconsAction(
+  nodeId: string,
+  category?: string | null,
+): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+
+  const rows = await db
+    .select()
+    .from(irregularVerbs)
+    .where(eq(irregularVerbs.nodeId, id))
+    .orderBy(asc(irregularVerbs.sortOrder));
+
+  const wanted = category === undefined ? undefined : category?.trim() || null;
+  const missing = rows.filter(
+    (v) =>
+      !v.icon?.trim() &&
+      (wanted === undefined || (v.category?.trim() || null) === wanted),
+  );
+  if (missing.length === 0) return { ok: true, message: "Иконки уже есть у всех глаголов" };
+
+  const icons = await pickVerbIcons(missing);
+  if (icons.size > 0) {
+    await db.transaction(async (tx) => {
+      for (const [verbId, icon] of icons) {
+        await tx
+          .update(irregularVerbs)
+          .set({ icon: icon.slice(0, 64) })
+          .where(eq(irregularVerbs.id, verbId));
+      }
+    });
+    revalidateMaterials();
+  }
+
+  const left = missing.length - icons.size;
+  return {
+    ok: true,
+    message:
+      icons.size > 0
+        ? `Иконки подобраны: ${icons.size}${left ? ` · не нашлось: ${left}` : ""}`
+        : "Подходящих иконок не нашлось — их можно назначить вручную",
+  };
 }
 
 /** Убрать со страницы все глаголы. */
@@ -2321,15 +2463,20 @@ export async function translateMaterialPageAction(
     };
   }
 
-  const [phrases, blockRows] = await Promise.all([
+  const [phrases, blockRows, verbRows] = await Promise.all([
     loadPhrases(nodeId),
     db
       .select()
       .from(materialBlocks)
       .where(eq(materialBlocks.nodeId, nodeId))
       .orderBy(asc(materialBlocks.sortOrder)),
+    db
+      .select()
+      .from(irregularVerbs)
+      .where(eq(irregularVerbs.nodeId, nodeId))
+      .orderBy(asc(irregularVerbs.sortOrder)),
   ]);
-  if (phrases.length === 0 && blockRows.length === 0) {
+  if (phrases.length === 0 && blockRows.length === 0 && verbRows.length === 0) {
     await db
       .update(materialNodes)
       .set({ translationLang: lang })
@@ -2342,7 +2489,7 @@ export async function translateMaterialPageAction(
   }
 
   try {
-    const [phraseTranslations, translatedBlocks, description] = await Promise.all([
+    const [phraseTranslations, translatedBlocks, description, verbTranslations] = await Promise.all([
       phrases.length
         ? translateVocabulary(
             phrases.map((phrase) => ({
@@ -2370,6 +2517,19 @@ export async function translateMaterialPageAction(
       node.description
         ? translateMaterialText(node.description, lang, node.translationLang)
         : Promise.resolve(node.description),
+      // Глаголы: переводим текущий перевод, а где его нет — сам глагол.
+      verbRows.length
+        ? translateVocabulary(
+            verbRows.map((verb) => ({
+              id: verb.id,
+              phrase: `to ${verb.base}`,
+              section: `Irregular verb: ${verb.base} – ${verb.past} – ${verb.participle}`,
+              currentTranslation: verb.translation,
+            })),
+            lang,
+            node.translationLang,
+          )
+        : Promise.resolve(new Map()),
     ]);
 
     await db.transaction(async (tx) => {
@@ -2399,6 +2559,15 @@ export async function translateMaterialPageAction(
           .where(eq(materialBlocks.id, blockRows[index].id));
       }
 
+      for (const verb of verbRows) {
+        const translated = verbTranslations.get(verb.id);
+        if (!translated) continue;
+        await tx
+          .update(irregularVerbs)
+          .set({ translation: translated.translation.slice(0, 400) })
+          .where(eq(irregularVerbs.id, verb.id));
+      }
+
       await tx
         .update(materialNodes)
         .set({ translationLang: lang, description })
@@ -2415,7 +2584,7 @@ export async function translateMaterialPageAction(
   const label = lang === "UK" ? "украинский" : "русский";
   return {
     ok: true,
-    message: `Страница переведена на ${label}: ${phrases.length || blockRows.length} элементов`,
+    message: `Страница переведена на ${label}: ${phrases.length || blockRows.length || verbRows.length} элементов`,
   };
 }
 

@@ -7,7 +7,7 @@
  * своя копия, и они успели разойтись — в правилах говорил только
  * американский голос.
  */
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { speakableText } from "@/lib/speech";
 import { IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -41,32 +41,63 @@ export function useSpeech() {
   const supported = useSyncExternalStore(subscribeVoices, readSupported, () => false);
   const ukAvailable = useSyncExternalStore(subscribeVoices, readUkVoice, () => false);
   const [speaking, setSpeaking] = useState<string | null>(null);
+  /** Какая по счёту часть звучит сейчас — для подсветки слова в ряду. */
+  const [part, setPart] = useState<number | null>(null);
+  /*
+   * Номер текущего чтения. cancel() прерванного чтения присылает end и
+   * error уже после того, как запустили новое, — без номера они гасили бы
+   * подсветку только что начатого.
+   */
+  const run = useRef(0);
 
   // Уходим со страницы — обрываем чтение, иначе голос продолжит говорить.
   useEffect(() => () => synthesizer()?.cancel(), []);
 
-  function speak(key: string, text: string, lang: Accent) {
+  /**
+   * Прочитать несколько частей подряд, отдельными фразами. Так браузер
+   * сообщает, какая из них звучит, — события о границах слов приходят
+   * не от всех голосов.
+   */
+  function speakParts(key: string, parts: string[], lang: Accent) {
     const synth = synthesizer();
     if (!synth) return;
-    const spoken = speakableText(text);
-    if (!spoken) return;
+    const spoken = parts.map(speakableText).filter(Boolean);
+    if (spoken.length === 0) return;
     synth.cancel();
 
-    const u = new SpeechSynthesisUtterance(spoken);
-    u.lang = lang;
+    const id = ++run.current;
     const voices = synth.getVoices();
     const exact = voices.find((v) => v.lang.replace("_", "-") === lang);
     const fallback = voices.find((v) => v.lang.toLowerCase().startsWith("en"));
-    if (exact ?? fallback) u.voice = exact ?? fallback!;
-    u.rate = 0.95;
-    u.onend = () => setSpeaking(null);
-    u.onerror = () => setSpeaking(null);
+
+    const finish = () => {
+      if (run.current !== id) return;
+      setSpeaking(null);
+      setPart(null);
+    };
+
+    spoken.forEach((text, index) => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = lang;
+      if (exact ?? fallback) u.voice = exact ?? fallback!;
+      u.rate = 0.95;
+      u.onstart = () => {
+        if (run.current === id) setPart(index);
+      };
+      if (index === spoken.length - 1) u.onend = finish;
+      u.onerror = finish;
+      synth.speak(u);
+    });
 
     setSpeaking(key);
-    synth.speak(u);
+    setPart(0);
   }
 
-  return { speak, ukAvailable, supported, speaking };
+  function speak(key: string, text: string, lang: Accent) {
+    speakParts(key, [text], lang);
+  }
+
+  return { speak, speakParts, ukAvailable, supported, speaking, part };
 }
 
 /**

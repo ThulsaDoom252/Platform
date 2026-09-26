@@ -59,10 +59,12 @@ import {
   clearPagesAction,
   deleteNodeAction,
   deleteNodesAction,
+  fillVerbIconsAction,
   moveNodeAction,
   reformatMaterialPageAction,
   repairPhraseIconsAction,
   reorderNodeAction,
+  reorderVerbGroupsAction,
   scanTreeFormattingAction,
   setMaterialsNeedsFixAction,
   toggleFormattingScanIgnoredAction,
@@ -697,6 +699,28 @@ export function MaterialsExplorer({
   }
 
   /** Заново подобрать смысловые иконки всем словам открытого словаря. */
+  /** Сохранить порядок групп неправильных глаголов после перетаскивания. */
+  function reorderVerbGroups(node: MaterialNode, order: (string | null)[]) {
+    startMove(async () => {
+      const res = await reorderVerbGroupsAction(node.id, order);
+      if (res.error) setMoveError(res.error);
+    });
+  }
+
+  /** Подобрать иконки глаголам без них: всей странице или одной группе. */
+  function fillVerbIcons(node: MaterialNode, category?: string | null) {
+    setNotice("Подбираю иконки глаголам…");
+    startMove(async () => {
+      const res = await fillVerbIconsAction(node.id, category);
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? "Иконки подобраны");
+      }
+    });
+  }
+
   function repairPhraseIcons(node: MaterialNode) {
     const count = node.phrases.filter((phrase) => phrase.kind !== "NOTE").length;
     if (count === 0) return;
@@ -829,7 +853,7 @@ export function MaterialsExplorer({
   function translatePage(node: MaterialNode, target: "RU" | "UK") {
     const language = target === "UK" ? "украинский" : "русский";
     if (node.translationLang === target) return;
-    const containsMaterial = hasContent(node);
+    const containsMaterial = hasContent(node) || node.verbs.length > 0;
     if (
       !confirm(
         containsMaterial
@@ -1871,6 +1895,11 @@ export function MaterialsExplorer({
         {isPhrasePage && selected && selected.verbs.length > 0 && (
           <VerbsReader
             verbs={selected.verbs}
+            busy={moving}
+            lang={selected.translationLang}
+            onTranslate={editable ? (language) => translatePage(selected, language) : undefined}
+            onReorder={editable ? (order) => reorderVerbGroups(selected, order) : undefined}
+            onFillIcons={editable ? (category) => fillVerbIcons(selected, category) : undefined}
             onEdit={
               editable
                 ? (category) =>

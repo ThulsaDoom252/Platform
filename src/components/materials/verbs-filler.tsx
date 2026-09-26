@@ -13,11 +13,16 @@
  * другом.
  */
 import { useMemo, useState, useTransition } from "react";
-import { saveVerbsAction, type VerbEdit } from "@/lib/actions/materials";
+import {
+  saveVerbsAction,
+  suggestVerbIconsAction,
+  type VerbEdit,
+} from "@/lib/actions/materials";
 import { parseIrregularVerbs } from "@/lib/verbs-parser";
 import type { MaterialVerb } from "@/lib/materials";
 import { IconX, IconPlus, IconTrash } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { IconPicker } from "./icon-picker";
 
 export type VerbsTarget = {
   id: string;
@@ -67,21 +72,18 @@ function toGroups(verbs: MaterialVerb[]): Group[] {
     ]);
   }
 
-  const named = [...byName.keys()].filter((n) => n !== NO_NAME).sort();
-  const groups: Group[] = named.map((name, i) => ({
-    key: `g${i}`,
+  // Порядок групп — как на странице: его задают перетаскиванием.
+  const groups: Group[] = [...byName.keys()].map((name, i) => ({
+    key: name === NO_NAME ? "plain" : `g${i}`,
     name,
     rows: byName.get(name)!,
     text: "",
   }));
 
   // Без категории — всегда отдельная группа, даже пустая.
-  groups.unshift({
-    key: "plain",
-    name: NO_NAME,
-    rows: byName.get(NO_NAME) ?? [],
-    text: "",
-  });
+  if (!byName.has(NO_NAME)) {
+    groups.unshift({ key: "plain", name: NO_NAME, rows: [], text: "" });
+  }
 
   if (groups.length === 1) {
     groups.push({ key: "g0", name: ordinal(1), rows: [], text: "" });
@@ -108,6 +110,10 @@ export function VerbsFiller({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
+  /** Строка, у которой открыт выбор иконки. */
+  const [picking, setPicking] = useState<{ group: string; row: string } | null>(null);
+  /** Группа, для которой сейчас подбираются иконки. */
+  const [suggesting, setSuggesting] = useState<string | null>(null);
 
   const shown = useMemo(
     () => groups.filter((g) => (mode === "plain" ? g.key === "plain" : g.key !== "plain")),
@@ -115,6 +121,10 @@ export function VerbsFiller({
   );
 
   if (!target) return null;
+
+  const pickingRow = picking
+    ? groups.find((g) => g.key === picking.group)?.rows.find((r) => r.key === picking.row) ?? null
+    : null;
 
   const patchGroup = (key: string, part: Partial<Group>) =>
     setGroups((prev) => prev.map((g) => (g.key === key ? { ...g, ...part } : g)));
@@ -127,6 +137,43 @@ export function VerbsFiller({
           : g,
       ),
     );
+
+  /** Подобрать иконки строкам группы, у которых их нет. */
+  async function suggestIcons(g: Group) {
+    const empty = g.rows.filter((r) => !r.icon?.trim() && r.base.trim());
+    if (empty.length === 0) return;
+    setError(null);
+    setSuggesting(g.key);
+    try {
+      const icons = await suggestVerbIconsAction(
+        empty.map((r) => ({
+          id: r.key,
+          base: r.base,
+          past: r.past,
+          participle: r.participle,
+          translation: r.translation,
+        })),
+      );
+      const found = Object.keys(icons).length;
+      setGroups((prev) =>
+        prev.map((x) =>
+          x.key === g.key
+            ? {
+                ...x,
+                rows: x.rows.map((r) => (!r.icon?.trim() && icons[r.key] ? { ...r, icon: icons[r.key] } : r)),
+              }
+            : x,
+        ),
+      );
+      if (found < empty.length) {
+        setError(`Не нашлось иконок: ${empty.length - found}. Их можно выбрать вручную.`);
+      }
+    } catch {
+      setError("Не удалось подобрать иконки");
+    } finally {
+      setSuggesting(null);
+    }
+  }
 
   const found = (text: string) => (text.trim() ? parseIrregularVerbs(text).verbs.length : 0);
 
@@ -193,13 +240,18 @@ export function VerbsFiller({
   /** Одна заведённая запись: правится и удаляется на месте. */
   const row = (g: Group, r: Row) => (
     <div key={r.key} className="flex flex-wrap items-center gap-1">
-      <input
-        value={r.icon ?? ""}
-        onChange={(e) => patchRow(g.key, r.key, { icon: [...e.target.value][0] ?? null })}
-        placeholder="—"
-        title="Значок"
-        className={cn(cell, "w-9 shrink-0 text-center")}
-      />
+      <button
+        type="button"
+        onClick={() => setPicking({ group: g.key, row: r.key })}
+        title={r.icon ? `Иконка ${r.icon} — нажми, чтобы сменить` : "Выбрать иконку"}
+        className={cn(
+          cell,
+          "flex w-9 shrink-0 items-center justify-center px-0 text-base hover:border-accent",
+          !r.icon && "text-faint",
+        )}
+      >
+        {r.icon || "＋"}
+      </button>
       <input
         value={r.base}
         onChange={(e) => patchRow(g.key, r.key, { base: e.target.value })}
@@ -308,6 +360,19 @@ export function VerbsFiller({
                     />
                   )}
 
+                  {g.rows.some((r) => !r.icon?.trim()) && (
+                    <button
+                      type="button"
+                      onClick={() => suggestIcons(g)}
+                      disabled={suggesting !== null}
+                      title="Подобрать иконки глаголам группы, у которых их нет"
+                      className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-line bg-surface px-2.5 text-[12px] font-semibold text-muted transition hover:border-accent hover:text-accent disabled:opacity-60"
+                    >
+                      <span aria-hidden>✨</span>
+                      {suggesting === g.key ? "Подбираю…" : "Иконки"}
+                    </button>
+                  )}
+
                   <span className="shrink-0 text-[11px] text-faint">
                     {g.rows.length}
                     {fresh > 0 ? ` + ${fresh}` : ""}
@@ -365,6 +430,58 @@ export function VerbsFiller({
           <p className="mt-3 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-500">
             {error}
           </p>
+        )}
+
+        {pickingRow && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setPicking(null)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl bg-surface p-4 shadow-xl ring-1 ring-line"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-2xl">
+                  {pickingRow.icon || <span className="text-sm text-faint">нет</span>}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-content">
+                    {pickingRow.base} → {pickingRow.past} → {pickingRow.participle}
+                  </p>
+                  <p className="truncate text-[12px] text-muted">
+                    {pickingRow.translation || "Текущая иконка слева"}
+                  </p>
+                </div>
+                {pickingRow.icon && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      patchRow(picking!.group, picking!.row, { icon: null });
+                      setPicking(null);
+                    }}
+                    className="h-8 shrink-0 rounded-lg px-2.5 text-[12px] text-faint transition hover:text-rose-500"
+                  >
+                    Убрать
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPicking(null)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition hover:text-content"
+                >
+                  <IconX className="h-4 w-4" />
+                </button>
+              </div>
+              <IconPicker
+                value={pickingRow.icon}
+                onChange={(icon) => {
+                  patchRow(picking!.group, picking!.row, { icon });
+                  setPicking(null);
+                }}
+              />
+            </div>
+          </div>
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
