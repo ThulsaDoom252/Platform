@@ -1759,6 +1759,22 @@ export function MaterialsExplorer({
             </button>
             <button
               type="button"
+              onClick={() =>
+                setFillFrom({
+                  id: contentNode.id,
+                  name: contentNode.name,
+                  kind: "FOLDER",
+                  scope,
+                  ownerId: ownerId ?? null,
+                })
+              }
+              className={toolBtn}
+              title="Скопировать сюда файлы и папки из материалов ученика"
+            >
+              <IconPlus className="h-4 w-4" /> Наполнить из…
+            </button>
+            <button
+              type="button"
               onClick={() => openEditor(contentNode)}
               className={toolBtn}
             >
@@ -1847,7 +1863,15 @@ export function MaterialsExplorer({
                 {/* Взять готовое у себя, у общей базы или у другого ученика. */}
                 <button
                   type="button"
-                  onClick={() => setFillFrom({ id: selected.id, name: selected.name })}
+                  onClick={() =>
+                    setFillFrom({
+                      id: selected.id,
+                      name: selected.name,
+                      kind: "PAGE",
+                      scope,
+                      ownerId: ownerId ?? null,
+                    })
+                  }
                   className={pageBtn}
                   title="Перенести сюда содержимое другой страницы"
                 >

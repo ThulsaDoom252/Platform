@@ -11,13 +11,25 @@ import { useEffect, useState, useTransition } from "react";
 import {
   listCopyTargetsAction,
   fillPageFromAction,
+  copyNodesAction,
   type CopyTree,
   type CopyNode,
+  type NodeScope,
 } from "@/lib/actions/materials";
 import { IconX, IconSearch } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
-export type FillTarget = { id: string; name: string };
+/**
+ * Куда наполняем. Для страницы забираем содержимое одной чужой страницы,
+ * для папки — копируем в неё выбранные файлы и ветки целиком.
+ */
+export type FillTarget = {
+  id: string;
+  name: string;
+  kind: "PAGE" | "FOLDER";
+  scope: NodeScope;
+  ownerId: string | null;
+};
 
 /** Страница со своим путём — чтобы одинаковые названия не путались. */
 type Choice = { id: string; label: string; path: string };
@@ -72,7 +84,10 @@ export function FillFromDialog({
   const [trees, setTrees] = useState<CopyTree[] | null>(null);
   const [treeKey, setTreeKey] = useState<string>("");
   const [query, setQuery] = useState("");
+  /** Выбор для страницы — ровно один источник. */
   const [picked, setPicked] = useState<string | null>(null);
+  /** Выбор для папки — сколько угодно файлов и веток. */
+  const [marked, setMarked] = useState<Set<string>>(new Set());
   /** Свёрнутые папки. По умолчанию дерево раскрыто целиком. */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -112,56 +127,114 @@ export function FillFromDialog({
     const isOpen = !collapsed.has(node.id);
     const isSelf = node.id === target.id;
 
+    const active = intoFolder ? marked.has(node.id) : picked === node.id;
+
+    const toggleMark = () =>
+      setMarked((prev) => {
+        const next = new Set(prev);
+        if (next.has(node.id)) next.delete(node.id);
+        else next.add(node.id);
+        return next;
+      });
+
     return (
       <div key={node.id}>
-        <button
-          type="button"
-          onClick={() =>
-            isFolder
-              ? setCollapsed((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(node.id)) next.delete(node.id);
-                  else next.add(node.id);
-                  return next;
-                })
-              : setPicked(node.id)
-          }
-          disabled={isSelf}
+        <div
           style={{ paddingLeft: `${depth * 16 + 10}px` }}
           className={cn(
-            "flex w-full items-center gap-2 rounded-lg py-1.5 pr-2.5 text-left transition",
+            "flex items-center gap-2 rounded-lg pr-2.5 transition",
             isSelf && "opacity-40",
-            picked === node.id ? "bg-accent text-white" : "hover:bg-surface",
+            active ? "bg-accent text-white" : "hover:bg-surface",
           )}
         >
-          <span
-            className={cn(
-              "w-3 shrink-0 text-[10px]",
-              picked === node.id ? "text-white/70" : "text-faint",
-            )}
+          {/* В папку можно забрать сразу несколько веток, поэтому галочки. */}
+          {intoFolder && (
+            <input
+              type="checkbox"
+              checked={marked.has(node.id)}
+              disabled={isSelf}
+              onChange={toggleMark}
+              title={isFolder ? "Скопировать папку со всем внутри" : "Скопировать файл"}
+              className="h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
+            />
+          )}
+          <button
+            type="button"
+            onClick={() =>
+              isFolder
+                ? setCollapsed((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(node.id)) next.delete(node.id);
+                    else next.add(node.id);
+                    return next;
+                  })
+                : intoFolder
+                  ? toggleMark()
+                  : setPicked(node.id)
+            }
+            disabled={isSelf}
+            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
           >
-            {isFolder ? (isOpen ? "▾" : "▸") : ""}
-          </span>
-          <span
-            className={cn(
-              "truncate",
-              isFolder ? "text-sm font-semibold" : "text-[13px]",
-            )}
-          >
-            {withIcon(node)}
-          </span>
-        </button>
+            <span
+              className={cn(
+                "w-3 shrink-0 text-[10px]",
+                active ? "text-white/70" : "text-faint",
+              )}
+            >
+              {isFolder ? (isOpen ? "▾" : "▸") : ""}
+            </span>
+            <span
+              className={cn(
+                "truncate",
+                isFolder ? "text-sm font-semibold" : "text-[13px]",
+              )}
+            >
+              {withIcon(node)}
+            </span>
+          </button>
+        </div>
 
         {isFolder && isOpen && node.children.map((c) => branch(c, depth + 1))}
       </div>
     );
   };
 
+  const intoFolder = target.kind === "FOLDER";
+  const ready = intoFolder ? marked.size > 0 : !!picked;
+
   function fill() {
-    if (!picked) return;
+    if (!ready) return;
     setError(null);
+
     startBusy(async () => {
-      const res = await fillPageFromAction(target!.id, picked);
+      if (intoFolder) {
+        // Верхними берём только те, у кого не отмечен родитель: остальные
+        // и так приедут внутри своей ветки.
+        const nodes = tree?.nodes ?? [];
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        const ids = [...marked].filter((id) => {
+          const parent = byId.get(id)?.parentId;
+          return !parent || !marked.has(parent);
+        });
+
+        const res = await copyNodesAction({
+          ids,
+          includeIds: [...marked],
+          targetParentId: target!.id,
+          targetScope: target!.scope,
+          targetOwnerId: target!.ownerId,
+          keepPath: false,
+        });
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+        onDone(res.message ?? "Папка наполнена");
+        onClose();
+        return;
+      }
+
+      const res = await fillPageFromAction(target!.id, picked!);
       if (res.error) {
         setError(res.error);
         return;
@@ -176,10 +249,13 @@ export function FillFromDialog({
       <div className="w-full max-w-2xl rounded-2xl bg-surface p-5 shadow-xl ring-1 ring-line sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="font-semibold text-content">Наполнить из другой страницы</h2>
+            <h2 className="font-semibold text-content">
+              {intoFolder ? "Наполнить папку" : "Наполнить из другой страницы"}
+            </h2>
             <p className="mt-1 text-sm text-muted">
-              Содержимое добавится в «{target.name}». То, что там уже есть,
-              останется; точные повторы пропускаются.
+              {intoFolder
+                ? `Отметь файлы и папки — копии лягут в «${target.name}». Оригиналы останутся на месте.`
+                : `Содержимое добавится в «${target.name}». То, что там уже есть, останется; точные повторы пропускаются.`}
             </p>
           </div>
           <button
@@ -244,12 +320,23 @@ export function FillFromDialog({
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setPicked(p.id)}
+                    onClick={() =>
+                      intoFolder
+                        ? setMarked((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(p.id)) next.delete(p.id);
+                            else next.add(p.id);
+                            return next;
+                          })
+                        : setPicked(p.id)
+                    }
                     disabled={p.id === target.id}
                     className={cn(
                       "flex w-full flex-col items-start rounded-lg px-2.5 py-2 text-left transition",
                       p.id === target.id && "opacity-40",
-                      picked === p.id ? "bg-accent text-white" : "hover:bg-surface",
+                      (intoFolder ? marked.has(p.id) : picked === p.id)
+                        ? "bg-accent text-white"
+                        : "hover:bg-surface",
                     )}
                   >
                     <span className="text-sm font-semibold">{p.label}</span>
@@ -257,7 +344,9 @@ export function FillFromDialog({
                       <span
                         className={cn(
                           "text-[11px]",
-                          picked === p.id ? "text-white/70" : "text-faint",
+                          (intoFolder ? marked.has(p.id) : picked === p.id)
+                            ? "text-white/70"
+                            : "text-faint",
                         )}
                       >
                         {p.path}
@@ -279,10 +368,14 @@ export function FillFromDialog({
           <button
             type="button"
             onClick={fill}
-            disabled={!picked || busy}
+            disabled={!ready || busy}
             className="h-10 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
           >
-            {busy ? "Переношу…" : "Наполнить"}
+            {busy
+              ? "Переношу…"
+              : intoFolder && marked.size > 0
+                ? `Наполнить (${marked.size})`
+                : "Наполнить"}
           </button>
           <button
             type="button"
