@@ -187,7 +187,16 @@ export function VerbsShareDialog({
           })}
         </div>
 
-        <p className="mt-4 text-[12px] font-semibold text-muted">Куда передать</p>
+        <p className="mt-4 flex items-center gap-2 text-[12px] font-semibold text-muted">
+          Куда передать
+          {/* Кнопка ждёт двух выборов, и второй легко пропустить —
+              поэтому недостающий шаг называем прямо здесь. */}
+          {!pageId && picked.size > 0 && (
+            <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent">
+              выбери страницу
+            </span>
+          )}
+        </p>
 
         {!places && !error && <p className="mt-2 text-sm text-faint">Загружаю…</p>}
 
@@ -280,9 +289,22 @@ export function VerbsShareDialog({
             type="button"
             onClick={share}
             disabled={busy || picked.size === 0 || !pageId}
+            title={
+              picked.size === 0
+                ? "Отметь хотя бы один глагол"
+                : !pageId
+                  ? "Выбери страницу, куда передать"
+                  : undefined
+            }
             className="h-10 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
           >
-            {busy ? "Передаю…" : `Поделиться (${picked.size})`}
+            {busy
+              ? "Передаю…"
+              : picked.size === 0
+                ? "Отметь глаголы"
+                : !pageId
+                  ? "Выбери страницу"
+                  : `Поделиться (${picked.size})`}
           </button>
           <button
             type="button"
