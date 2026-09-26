@@ -143,6 +143,22 @@ function splitExample(s: string): { en: string; tr: string } | null {
   return { en, tr };
 }
 
+/**
+ * «I am eating right now. Я зараз їм.» — пример с переводом без тире.
+ *
+ * Строка должна начинаться латиницей и переключиться на кириллицу ровно
+ * после конца предложения: так обычный абзац, где английское слово стоит
+ * в середине, под правило не попадает.
+ */
+function splitBilingual(s: string): { en: string; tr: string } | null {
+  const m = s.match(/^([A-Za-z][^Ѐ-ӿ]*?[.!?])\s+([Ѐ-ӿ][\s\S]*)$/u);
+  if (!m) return null;
+
+  const en = cleanText(m[1]);
+  const tr = cleanText(m[2]);
+  return en && tr ? { en, tr } : null;
+}
+
 function detectCallout(
   s: string,
 ): Extract<RuleBlock, { type: "callout" }> | null {
@@ -182,7 +198,7 @@ function lineToBlock(raw: string): RuleBlock | null {
 
   if (looksLikeFormula(s)) return { type: "formula", text: s };
 
-  const ex = splitExample(s);
+  const ex = splitExample(s) ?? splitBilingual(s);
   if (ex) return { type: "example", en: ex.en, tr: ex.tr };
 
   if (looksLikeHeading(s)) return { type: "heading", text: s };
@@ -675,6 +691,23 @@ export function parseRuleHtml(html: string): RuleParseResult {
 
 // ---------------------------------------------------------------- Текст
 
+/**
+ * Убирает первую ячейку, если она — расплющенная копия всей строки.
+ *
+ * Схемы предложений из Google Docs приезжают так: сначала вся схема одной
+ * строкой, а следом те же куски по ячейкам. Первая ячейка ничего не
+ * добавляет и только ломает ширину таблицы.
+ */
+function withoutFlattenedCopy(cells: string[]): string[] {
+  if (cells.length < 3) return cells;
+
+  const bare = (s: string) => s.replace(/\s+/gu, "");
+  const head = bare(cells[0]);
+  if (head.length < 8) return cells;
+
+  return head === bare(cells.slice(1).join("")) ? cells.slice(1) : cells;
+}
+
 /** Ячейка целиком в верхнем регистре — похоже на шапку таблицы. */
 function isHeaderCell(cell: string): boolean {
   return /\p{L}/u.test(cell) && cell === cell.toUpperCase();
@@ -818,9 +851,11 @@ export function parseRuleText(raw: string): RuleParseResult {
       while (c.length < width) c.push("");
       return c;
     });
-    const firstIsHeader = norm[0].every(
-      (c) => !c || isMostlyUpper(c) || c.split(/\s+/).length <= 3,
-    );
+    // Одна-единственная строка шапкой быть не может: это схема или
+    // строка-подсказка, и без данных под ней таблица выглядит пустой.
+    const firstIsHeader =
+      norm.length >= 2 &&
+      norm[0].every((c) => !c || isMostlyUpper(c) || c.split(/\s+/).length <= 3);
     blocks.push({
       type: "table",
       headers: firstIsHeader ? norm[0] : [],
@@ -875,10 +910,21 @@ export function parseRuleText(raw: string): RuleParseResult {
 
     const line = lines[i];
     if (line.includes("\t")) {
-      const cells = line.split("\t").map(cleanText);
+      const cells = withoutFlattenedCopy(line.split("\t").map(cleanText));
       const unglued = ungluedRows(cells);
-      if (unglued) tableBuffer.push(...unglued);
-      else tableBuffer.push(cells);
+
+      if (unglued) {
+        tableBuffer.push(...unglued);
+      } else {
+        // Схема предложения приезжает дважды подряд — второй раз лишний.
+        const prev = tableBuffer[tableBuffer.length - 1];
+        const same = prev && prev.length === cells.length && prev.every((c, k) => c === cells[k]);
+        if (!same) {
+          // Сменилось число колонок — значит, началась другая таблица.
+          if (prev && prev.length !== cells.length) flushTable();
+          tableBuffer.push(cells);
+        }
+      }
       first = false;
       continue;
     }
