@@ -57,6 +57,21 @@ test("проверка знает про каждый вид блока", () => 
       ru: "Я только что поел.",
       hintText: "между have и V3",
     },
+    {
+      type: "grid",
+      title: "Вопросы",
+      headers: ["Вспомогательный", "Кто", "Действие"],
+      rows: [
+        ["Do", "I / you / we / they", "dance?"],
+        ["Does", "he / she / it", "play?"],
+      ],
+    },
+    {
+      type: "link",
+      label: "Подробный разбор",
+      ru: "https://grammarway.com/ru/present-simple",
+      uk: "https://grammarway.com/ua/present-simple",
+    },
   ];
 
   assert.equal(every.length, RULE_BLOCK_TYPES.length, "проверены не все виды блоков");

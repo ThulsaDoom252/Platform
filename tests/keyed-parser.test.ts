@@ -73,7 +73,7 @@ test("правило разбирается в секции, формулы и �
   ]);
 
   assert.ok(
-    r.blocks.some((b) => b.type === "formula" && b.text.includes("have/has + V3")),
+    r.blocks.some((b) => b.type === "formula" && b.text.includes("have / has + V3")),
     "потерялась формула",
   );
 
@@ -123,31 +123,43 @@ test("лексика разбирается в карточки слов", () =>
   assert.equal(traps.length, 2);
 });
 
-test("время разбирается в построение, маркеры и разобранные примеры", () => {
+test("время разбирается в построение, сетки, маркеры и разбор примеров", () => {
   const r = parse("keyed-tense.txt", "TENSE");
   if (r.type === "VOCAB") return;
 
-  assert.equal(r.title, "Present Perfect");
+  assert.equal(r.title, "Present Simple");
   assert.deepEqual(r.warnings, []);
 
+  // Формулы короткие: одна подгруппа подлежащих на строку.
   const forms = r.blocks.filter((b) => b.type === "form");
-  assert.equal(forms.length, 3);
+  assert.equal(forms.length, 4);
   assert.deepEqual(
     forms.map((b) => (b.type === "form" ? b.sign : "")),
-    ["+", "-", "?"],
+    ["+", "+", "-", "?"],
   );
-  if (forms[2].type === "form") {
-    assert.equal(forms[2].en, "Have you read it?");
-    assert.equal(forms[2].tr, "Ты это прочитал?");
+  for (const form of forms) {
+    if (form.type === "form") {
+      assert.ok(form.formula.length <= 40, `формула длинновата: ${form.formula}`);
+    }
+  }
+
+  // Сетки подстановки — то, что в одну строку не помещается.
+  const grids = r.blocks.filter((b) => b.type === "grid");
+  assert.equal(grids.length, 3);
+  const questions = grids.find((b) => b.type === "grid" && b.title === "Питання");
+  assert.ok(questions, "нет сетки вопросов");
+  if (questions.type === "grid") {
+    assert.deepEqual(questions.headers, ["Допоміжне", "Хто", "Дія"]);
+    assert.deepEqual(questions.rows[1], ["Does", "he / she / it", "play?"]);
   }
 
   const markers = r.blocks.filter((b) => b.type === "marker");
-  assert.equal(markers.length, 7);
+  assert.equal(markers.length, 6);
   const never = markers.find((b) => b.type === "marker" && b.word === "never");
   assert.ok(never, "потерялся маркер never");
   if (never.type === "marker") {
-    assert.equal(never.tr, "никогда");
-    assert.match(never.hintText, /второе not не нужно/);
+    assert.equal(never.tr, "ніколи");
+    assert.match(never.hintText, /not не потрібне/);
   }
 
   // Третья часть примера — разбор: ради него формат и заведён.
@@ -157,10 +169,55 @@ test("время разбирается в построение, маркеры 
     if (ex.type === "example") assert.ok(ex.why, `${ex.en}: нет разбора`);
   }
 
+  // Сравнений языков в материале больше нет.
   assert.ok(
-    r.blocks.some((b) => b.type === "callout" && b.label === "По-нашему"),
-    "потерялась аналогия с русским",
+    !r.blocks.some((b) => b.type === "callout" && b.label === "По-нашему"),
+    "вернулось сравнение языков",
   );
+
+  // Ссылка всегда последняя и знает обе языковые версии.
+  const last = r.blocks.at(-1);
+  assert.ok(last && last.type === "link");
+  if (last.type === "link") {
+    assert.ok(last.ru.includes("/ru/"), last.ru);
+    assert.ok(last.uk.includes("/ua/"), last.uk);
+  }
+});
+
+test("одна ссылка разворачивается в две языковые версии", () => {
+  const make = (link: string) =>
+    parseKeyed(["TYPE: RULE", "TITLE: t", "TEXT: описание", link].join("\n"));
+
+  const path = make("LINK: https://grammarway.com/ru/present-simple");
+  assert.ok(path && path.type !== "VOCAB");
+  {
+    const block = path.blocks.at(-1);
+    if (block?.type === "link") {
+      assert.equal(block.ru, "https://grammarway.com/ru/present-simple");
+      assert.equal(block.uk, "https://grammarway.com/uk/present-simple");
+    } else assert.fail("ссылка не разобралась");
+  }
+
+  const query = make("LINK: https://site.com/rule?lang=uk");
+  if (query && query.type !== "VOCAB") {
+    const block = query.blocks.at(-1);
+    if (block?.type === "link") {
+      assert.equal(block.ru, "https://site.com/rule?lang=ru");
+      assert.equal(block.uk, "https://site.com/rule?lang=uk");
+    } else assert.fail("ссылка с параметром не разобралась");
+  }
+
+  // Непонятный адрес не ломает разбор: отдаём как есть на обоих языках.
+  const plain = make("LINK: https://site.com/present-simple");
+  if (plain && plain.type !== "VOCAB") {
+    const block = plain.blocks.at(-1);
+    if (block?.type === "link") assert.equal(block.ru, block.uk);
+  }
+
+  const broken = make("LINK: grammarway.com/present-simple");
+  assert.ok(broken && broken.type !== "VOCAB");
+  assert.ok(!broken.blocks.some((b) => b.type === "link"));
+  assert.match(broken.warnings.join(" "), /должен начинаться с http/);
 });
 
 test("кривые строки не роняют разбор, а попадают в замечания", () => {

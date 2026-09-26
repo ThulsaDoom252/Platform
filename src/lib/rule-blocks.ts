@@ -69,6 +69,25 @@ export type RuleBlock = (
       ru: string;
       hintText: string;
     }
+  /**
+   * Сетка подстановки: кто — чем — что получается.
+   *
+   * Длинная формула в одну строку читается плохо. Разложенная по
+   * колонкам, она показывает ровно то, что нужно подставить.
+   */
+  | {
+      type: "grid";
+      title?: string;
+      headers: string[];
+      rows: string[][];
+    }
+  /** Ссылка на подробный разбор; хранит обе языковые версии. */
+  | {
+      type: "link";
+      label: string;
+      ru: string;
+      uk: string;
+    }
 ) & { variant?: RuleBlockVariant };
 
 /** Все виды блоков — чтобы проверка на сервере не забыла ни одного. */
@@ -83,6 +102,8 @@ export const RULE_BLOCK_TYPES = [
   "word",
   "form",
   "marker",
+  "grid",
+  "link",
 ] as const satisfies readonly RuleBlock["type"][];
 
 const MAX_TEXT = 4000;
@@ -211,6 +232,39 @@ export function sanitizeBlocks(input: unknown): RuleBlock[] {
           en: str(b.en),
           ru: str(b.ru),
           hintText: str(b.hintText),
+          ...styled,
+        });
+        break;
+      }
+      case "grid": {
+        const headers = Array.isArray(b.headers) ? b.headers.map(str).slice(0, 8) : [];
+        const rows = Array.isArray(b.rows)
+          ? b.rows
+              .filter(Array.isArray)
+              .map((r) => (r as unknown[]).map(str).slice(0, 8))
+              .filter((r) => r.some(Boolean))
+              .slice(0, 60)
+          : [];
+        if (rows.length === 0) break;
+        const title = str(b.title);
+        out.push({
+          type: "grid",
+          ...(title ? { title } : {}),
+          headers,
+          rows,
+          ...styled,
+        });
+        break;
+      }
+      case "link": {
+        const ru = str(b.ru);
+        const uk = str(b.uk);
+        if (!ru && !uk) break;
+        out.push({
+          type: "link",
+          label: str(b.label) || "Подробный разбор",
+          ru: ru || uk,
+          uk: uk || ru,
           ...styled,
         });
         break;

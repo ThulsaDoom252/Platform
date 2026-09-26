@@ -55,11 +55,14 @@ export function RuleReader({
   icon,
   description,
   blocks,
+  lang = "UK",
 }: {
   title: string;
   icon: string | null;
   description: string | null;
   blocks: RuleBlock[];
+  /** Язык страницы: по нему выбирается версия внешней ссылки. */
+  lang?: "UK" | "RU";
 }) {
   const s = useSpeech();
   const isStudySheet = blocks.some((block) => isSheetVariant(block.variant));
@@ -458,10 +461,7 @@ export function RuleReader({
 
           case "form":
             return (
-              <div
-                key={i}
-                className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-2 px-3.5 py-2.5"
-              >
+              <div key={i} className="flex gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
                 <span
                   className={cn(
                     "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base font-bold",
@@ -472,16 +472,92 @@ export function RuleReader({
                 >
                   {b.sign}
                 </span>
-                <span className="font-mono text-[13px] font-semibold text-accent">
-                  {b.formula}
-                </span>
-                <span className="flex w-full flex-wrap items-center gap-2 text-sm text-content sm:w-auto">
-                  {b.en}
-                  <SpeakPair text={b.en} id={`f-${i}`} speech={s} />
-                  <span className="text-[13px] italic text-muted">{b.tr}</span>
-                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-[13px] font-semibold text-accent">
+                    {b.formula}
+                  </p>
+                  <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm font-medium text-content">
+                    {b.en}
+                    <SpeakPair text={b.en} id={`f-${i}`} speech={s} />
+                  </p>
+                  <p className="text-[13px] italic text-muted">{b.tr}</p>
+                </div>
               </div>
             );
+
+          case "grid": {
+            // Первая колонка — то, что меняется: её и выделяем.
+            return (
+              <div key={i} className="overflow-hidden rounded-2xl ring-1 ring-line">
+                {b.title && (
+                  <p className="bg-accent px-3.5 py-2 text-[13px] font-bold text-white">
+                    {b.title}
+                  </p>
+                )}
+                <table className="w-full border-collapse text-sm">
+                  {b.headers.length > 0 && (
+                    <thead>
+                      <tr className="bg-surface-2">
+                        {b.headers.map((h, j) => (
+                          <th
+                            key={j}
+                            className="px-3.5 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-faint"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                  )}
+                  <tbody>
+                    {b.rows.map((row, ri) => (
+                      <tr key={ri} className="border-t border-line">
+                        {row.map((cell, ci) => (
+                          <td
+                            key={ci}
+                            className={cn(
+                              "px-3.5 py-2 align-middle",
+                              ci === 0
+                                ? "w-px whitespace-nowrap font-mono font-bold text-accent"
+                                : "text-content",
+                            )}
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              {cell}
+                              {speakableWord(cell) && (
+                                <SpeakPair
+                                  text={cell}
+                                  id={`g${i}-${ri}-${ci}`}
+                                  speech={s}
+                                />
+                              )}
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          }
+
+          case "link": {
+            const href = lang === "RU" ? b.ru : b.uk;
+            return (
+              <a
+                key={i}
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="flex items-center gap-2.5 rounded-2xl bg-accent-soft px-4 py-3 text-sm font-semibold text-accent transition hover:opacity-80"
+              >
+                <span aria-hidden>📖</span>
+                {b.label}
+                <span aria-hidden className="ml-auto">→</span>
+              </a>
+            );
+          }
 
           case "marker":
             return (

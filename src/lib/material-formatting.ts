@@ -118,6 +118,10 @@ function hasEmptyRuleBlock(block: RuleBlock): boolean {
       return !compact(block.en);
     case "marker":
       return !compact(block.word);
+    case "grid":
+      return block.rows.length === 0;
+    case "link":
+      return !compact(block.ru) && !compact(block.uk);
   }
 }
 

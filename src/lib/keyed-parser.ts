@@ -139,6 +139,21 @@ function formSign(
   return { sign: "+", guessed: true };
 }
 
+/**
+ * Та же ссылка, но на нужном языке.
+ *
+ * Справочники обычно различают язык куском пути или поддоменом. Если
+ * узнаём такой кусок — подменяем, не узнаём — отдаём как есть: лучше
+ * открыть чужой язык, чем никуда.
+ */
+function localized(url: string, lang: "ru" | "uk"): string {
+  const other = lang === "ru" ? "uk" : "ru";
+  return url
+    .replace(new RegExp(`/${other}/`, "i"), `/${lang}/`)
+    .replace(new RegExp(`([?&](?:lang|locale)=)${other}(?![a-z])`, "i"), `$1${lang}`)
+    .replace(new RegExp(`^(https?://)${other}[.]`, "i"), `$1${lang}.`);
+}
+
 function color(value: string, warnings: string[], line: number): string | null {
   const name = value.trim().toLowerCase();
   if (COLORS.includes(name)) return name;
@@ -347,6 +362,10 @@ function parseBlocks(
   let item: Extract<RuleBlock, { type: "word" }> | null = null;
   /** Копим подряд идущие сравнения в одну таблицу. */
   let compare: string[][] = [];
+  /** Открытая сетка подстановки. */
+  let grid: Extract<RuleBlock, { type: "grid" }> | null = null;
+  /** Ссылка на подробный разбор — всегда последней. */
+  let link: Extract<RuleBlock, { type: "link" }> | null = null;
 
   const closeItem = () => {
     if (!item) return;
@@ -368,9 +387,17 @@ function parseBlocks(
     compare = [];
   };
 
+  const closeGrid = () => {
+    if (!grid) return;
+    if (grid.rows.length > 0) blocks.push(grid);
+    else warnings.push(`Сетка «${grid.title ?? "без названия"}» осталась пустой`);
+    grid = null;
+  };
+
   const flush = () => {
     closeItem();
     closeCompare();
+    closeGrid();
   };
 
   for (const field of fields) {
@@ -412,20 +439,49 @@ function parseBlocks(
 
       case "TEXT":
       case "WHY":
-        closeCompare();
+        flush();
         blocks.push({ type: "text", text: value, variant: "sheet-text" });
         break;
 
-      case "ANALOG":
-        closeCompare();
-        blocks.push({
-          type: "callout",
-          tone: "key",
-          label: "По-нашему",
-          text: value,
-          variant: "sheet-lead",
-        });
+      case "GRID":
+        flush();
+        grid = { type: "grid", title: value, headers: [], rows: [] };
         break;
+
+      case "HEAD":
+        if (!grid) {
+          warnings.push(`Строка ${line}: HEAD вне сетки (GRID) — пропущено`);
+          break;
+        }
+        grid.headers = parts(value);
+        break;
+
+      case "ROW":
+        if (!grid) {
+          warnings.push(`Строка ${line}: ROW вне сетки (GRID) — пропущено`);
+          break;
+        }
+        grid.rows.push(parts(value));
+        break;
+
+      case "LINK": {
+        const got = parts(value);
+        // Одна ссылка или сразу две: русская и украинская.
+        const ru = got[0] ?? "";
+        const uk = got[1] ?? "";
+        if (!ru.toLowerCase().startsWith("http")) {
+          warnings.push(`Строка ${line}: LINK должен начинаться с http`);
+          break;
+        }
+        link = {
+          type: "link",
+          label: "Подробный разбор",
+          ru,
+          uk: uk || localized(ru, "uk"),
+        };
+        if (!uk) link.ru = localized(ru, "ru");
+        break;
+      }
 
       case "FORMULA":
         closeCompare();
@@ -560,6 +616,7 @@ function parseBlocks(
     }
   }
   flush();
+  if (link) blocks.push(link);
 
   if (blocks.length === 0) warnings.push("В материале не нашлось содержимого");
   if (kind === "LEXIS" && !blocks.some((b) => b.type === "word")) {

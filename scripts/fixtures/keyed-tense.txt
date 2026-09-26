@@ -1,31 +1,47 @@
 TYPE: TENSE
-TITLE: Present Perfect
+TITLE: Present Simple
 COLOR: sky
-WHY: Действие случилось в прошлом, но говорим мы о том, что оно изменило сейчас.
-WHY: Само время события неважно и не называется — важен сегодняшний результат.
-ANALOG: В русском ту же роль играют слова «уже», «только что», «ещё не».
+WHY: Дія відбувається регулярно, завжди або взагалі: звички, розклад, факти.
+WHY: Час самої дії не важливий — важливо, що так буває зазвичай.
 
-FORM: + | подлежащее + have/has + V3 | I have read it. | Я это прочитал.
-FORM: - | подлежащее + haven't/hasn't + V3 | I haven't read it. | Я это не прочитал.
-FORM: ? | Have/Has + подлежащее + V3 | Have you read it? | Ты это прочитал?
+FORM: + | I / you / we / they + V | I work in a bank. | Я працюю в банку.
+FORM: + | he / she / it + V-s | She works in a bank. | Вона працює в банку.
+FORM: - | підмет + don't / doesn't + V | He doesn't eat meat. | Він не їсть м'яса.
+FORM: ? | Do / Does + підмет + V | Do you speak English? | Ти розмовляєш англійською?
 
-MARKER: just | только что | I've just finished. | Я только что закончил. | стоит между have и V3
-MARKER: already | уже | She has already left. | Она уже ушла. | в утверждении между have и V3, в вопросе — для удивления
-MARKER: yet | ещё, уже | Have you eaten yet? | Ты уже поел? | только в вопросе и отрицании, всегда в конце
-MARKER: ever | когда-нибудь | Have you ever been to Rome? | Ты когда-нибудь был в Риме? | вопрос про жизненный опыт
-MARKER: never | никогда | I have never tried sushi. | Я никогда не пробовал суши. | само по себе отрицание, второе not не нужно
-MARKER: since | с (какого момента) | I've lived here since 2019. | Я живу здесь с 2019 года. | после since — точка отсчёта
-MARKER: for | в течение | I've known him for ten years. | Я знаю его десять лет. | после for — длительность
+GRID: Ствердження
+HEAD: Хто | Дієслово | Приклад
+ROW: I / you / we / they | work | I work every day.
+ROW: he / she / it | works | She works every day.
 
-EX: I have lost my keys. | Я потерял ключи. | ключей нет прямо сейчас — важен результат
-EX: She has broken her arm. | Она сломала руку. | рука до сих пор в гипсе
-EX: We have finished the project. | Мы закончили проект. | проект готов, можно сдавать
+GRID: Питання
+HEAD: Допоміжне | Хто | Дія
+ROW: Do | I / you / we / they | dance?
+ROW: Does | he / she / it | play?
 
-NOTE: has — только для he, she, it. Для остальных have.
-NOTE: V3 — третья форма: read, seen, written. У правильных глаголов она совпадает с V2.
+GRID: Заперечення
+HEAD: Хто | Допоміжне | Дія
+ROW: I / you / we / they | don't | dance.
+ROW: he / she / it | doesn't | play.
 
-TRAP: ❌ I have seen him yesterday. ✅ I saw him yesterday. | появилось точное время — нужен Past Simple
-TRAP: ❌ I have been in London last year. ✅ I was in London last year. | last year закрывает период
+MARKER: always | завжди | She always drinks tea. | Вона завжди п'є чай. | стоїть перед основним дієсловом
+MARKER: usually | зазвичай | I usually get up at seven. | Я зазвичай встаю о сьомій. | можна поставити на початок речення для акценту
+MARKER: often | часто | They often go to the cinema. | Вони часто ходять у кіно. | у питанні стоїть після підмета
+MARKER: sometimes | іноді | Sometimes we order pizza. | Іноді ми замовляємо піцу. | вільне місце: початок або перед дієсловом
+MARKER: never | ніколи | I never drink coffee. | Я ніколи не п'ю кави. | саме по собі заперечення, not не потрібне
+MARKER: every day | щодня | We have English every Tuesday. | У нас англійська щовівторка. | ставиться в кінці речення
 
-BONUS: «I've got» — это не Present Perfect в смысле результата, а просто
-BONUS: британский способ сказать «у меня есть». Сравни: I've got a car.
+EX: Water boils at 100 degrees. | Вода кипить при 100 градусах. | факт, який не змінюється
+EX: The train leaves at 8:15. | Потяг вирушає о 8:15. | розклад, а не намір
+EX: She doesn't like horror films. | Вона не любить фільми жахів. | постійне ставлення, а не дія зараз
+
+NOTE: -s / -es додається тільки для he / she / it.
+NOTE: Коли в реченні є does / doesn't, закінчення -s зникає з основного дієслова.
+
+TRAP: ❌ She work in a hospital. ✅ She works in a hospital. | для he / she / it потрібне -s
+TRAP: ❌ Does he works here? ✅ Does he work here? | does уже забрало -s на себе
+TRAP: ❌ I am work every day. ✅ I work every day. | to be тут зайве
+
+BONUS: Після when, if, before, after вживається Present Simple, хоча йдеться про майбутнє: When I get home, I'll call you.
+
+LINK: https://grammarway.com/ru/present-simple | https://grammarway.com/ua/present-simple

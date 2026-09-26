@@ -212,6 +212,10 @@ function blockText(block: RuleBlock): string {
       return [block.formula, block.en, block.tr].join(" ");
     case "marker":
       return [block.word, block.tr, block.en, block.ru].join(" ");
+    case "grid":
+      return [block.title ?? "", ...block.headers, ...block.rows.flat()].join(" ");
+    case "link":
+      return block.label;
     default:
       return block.text;
   }

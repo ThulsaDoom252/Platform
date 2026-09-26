@@ -269,6 +269,13 @@ export async function translateRuleBlocks(
         add(`${index}.ru`, block.ru || block.en, block.ru ? sourceLanguage : "EN");
         add(`${index}.hintText`, block.hintText);
         break;
+      case "grid":
+        add(`${index}.title`, block.title);
+        block.headers.forEach((text, cell) => add(`${index}.headers.${cell}`, text));
+        break;
+      case "link":
+        add(`${index}.label`, block.label);
+        break;
     }
   });
 
@@ -328,6 +335,16 @@ export async function translateRuleBlocks(
           ru: get(`${index}.ru`, block.ru),
           hintText: get(`${index}.hintText`, block.hintText),
         };
+      case "grid":
+        return {
+          ...block,
+          ...(block.title ? { title: get(`${index}.title`, block.title) } : {}),
+          headers: block.headers.map((text, cell) =>
+            get(`${index}.headers.${cell}`, text),
+          ),
+        };
+      case "link":
+        return { ...block, label: get(`${index}.label`, block.label) };
     }
   });
 }

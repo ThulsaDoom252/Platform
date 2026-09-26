@@ -8,8 +8,14 @@ TEXT: Past Simple ставит событие в точку на линии вр
 TEXT: Present Perfect тянет ниточку из прошлого в настоящее: важен сегодняшний след.
 
 SECTION: 🧩 Формулы
-FORMULA: Present Perfect: have/has + V3
-FORMULA: Past Simple: V2 (или V + ed)
+FORMULA: Present Perfect: have / has + V3
+FORMULA: Past Simple: V2
+
+GRID: Что подставить
+HEAD: Кто | Present Perfect | Past Simple
+ROW: I / you / we / they | have done | did
+ROW: he / she / it | has done | did
+
 EX: I have lost my keys. | Я потерял ключи.
 EX: I lost my keys yesterday. | Я потерял ключи вчера.
 NOTE: Появилось точное время — Present Perfect отпадает автоматически.
@@ -26,3 +32,5 @@ NOTE: Первый вопрос — про результат, второй — 
 
 BONUS: Американцы часто говорят «Did you eat yet?» там, где британец скажет
 BONUS: «Have you eaten yet?». Обе фразы живые, просто разные берега.
+
+LINK: https://grammarway.com/ru/present-perfect | https://grammarway.com/ua/present-perfect

@@ -2249,6 +2249,7 @@ export function MaterialsExplorer({
               icon={selected.icon}
               description={selected.description}
               blocks={selected.blocks}
+              lang={selected.translationLang === "RU" ? "RU" : "UK"}
             />
           ) : (
             <PhraseReader
