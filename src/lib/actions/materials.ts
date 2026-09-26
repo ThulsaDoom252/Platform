@@ -897,6 +897,35 @@ export async function deleteNodesAction(ids: string[]): Promise<BulkState> {
   return { ok: true, message: `В архиве: ${archived}` };
 }
 
+/**
+ * Убрать из папки всё содержимое, оставив саму папку.
+ *
+ * Как и обычное удаление, это архивация: узлы никуда не деваются, просто
+ * уходят из активного дерева, и их можно вернуть кнопкой восстановления.
+ */
+export async function clearFolderAction(nodeId: string): Promise<BulkState> {
+  await requireTeacher();
+
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана папка" };
+
+  const [node] = await db
+    .select({ id: materialNodes.id, name: materialNodes.name, type: materialNodes.type })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+  if (!node || node.type !== "FOLDER") return { error: "Это не папка" };
+
+  // Саму папку не трогаем — иначе это было бы обычное удаление.
+  const inside = (await withDescendants([id])).filter((child) => child !== id);
+  if (inside.length === 0) return { error: `В «${node.name}» и так пусто` };
+
+  const archived = await archiveNodes(inside);
+
+  revalidateMaterials();
+  return { ok: true, message: `Очищено, в архиве: ${archived}` };
+}
+
 export type WipeWhat = { personal?: boolean; mistakes?: boolean; access?: boolean };
 export type WipeSummary = { nodes: number; grants: number; error?: string };
 
@@ -2872,6 +2901,8 @@ export type CopyNode = {
 export type CopyTree = {
   key: string;
   label: string;
+  /** Короткая подпись для кнопок выбора: у ученика — просто имя. */
+  short: string;
   scope: NodeScope;
   ownerId: string | null;
   nodes: CopyNode[];
@@ -2921,6 +2952,7 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
     {
       key: "material",
       label: "Общая библиотека",
+      short: "Общая библиотека",
       scope: "MATERIAL" as const,
       ownerId: null,
       nodes: pick("MATERIAL", null),
@@ -2928,6 +2960,7 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
     {
       key: "personal",
       label: `Мои материалы — ${teacher?.name ?? "учитель"}`,
+      short: "Мои материалы",
       scope: "PERSONAL" as const,
       ownerId: session.userId,
       nodes: pick("PERSONAL", session.userId),
@@ -2936,6 +2969,7 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
       {
         key: `student-${s.id}`,
         label: `Материалы — ${s.name}`,
+        short: s.name,
         scope: "STUDENT" as const,
         ownerId: s.id,
         nodes: pick("STUDENT", s.id),
@@ -2943,6 +2977,7 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
       {
         key: `mistake-${s.id}`,
         label: `Ошибки — ${s.name}`,
+        short: `Ошибки — ${s.name}`,
         scope: "MISTAKE" as const,
         ownerId: s.id,
         nodes: pick("MISTAKE", s.id),

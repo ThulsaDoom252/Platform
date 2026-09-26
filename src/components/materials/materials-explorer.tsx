@@ -18,6 +18,7 @@ import {
   IconMaterials,
   IconX,
   IconPencil,
+  IconTrash,
 } from "@/components/icons";
 import { Modal } from "@/components/modal";
 
@@ -49,6 +50,7 @@ const toCopySource = (n: MaterialNode): CopySource => ({
 import {
   changeMaterialPageKindAction,
   restoreMaterialContentAction,
+  clearFolderAction,
   clearTreeFormattingMarksAction,
   clearPagesAction,
   deleteNodeAction,
@@ -731,6 +733,31 @@ export function MaterialsExplorer({
         setMoveError(res.error);
       } else {
         setNotice(res.message ?? "Переформатирование завершено");
+      }
+    });
+  }
+
+  /** Убрать из папки всё содержимое, саму папку оставить. */
+  function clearFolder(node: MaterialNode) {
+    const inside = countFiles(node);
+    if (
+      !confirm(
+        `Очистить «${node.name}»?\n\n` +
+          `Всё внутри (${inside === 1 ? "1 материал" : `${inside} материалов`}) уедет в архив — ` +
+          "папка останется пустой. Вернуть можно кнопкой восстановления.",
+      )
+    ) {
+      return;
+    }
+
+    setNotice(`Очищаю «${node.name}»…`);
+    startMove(async () => {
+      const res = await clearFolderAction(node.id);
+      if (res.error) {
+        setNotice(null);
+        setMoveError(res.error);
+      } else {
+        setNotice(res.message ?? "Папка очищена");
       }
     });
   }
@@ -1772,6 +1799,15 @@ export function MaterialsExplorer({
               title="Скопировать сюда файлы и папки из материалов ученика"
             >
               <IconPlus className="h-4 w-4" /> Наполнить из…
+            </button>
+            <button
+              type="button"
+              onClick={() => clearFolder(contentNode)}
+              disabled={moving || contentNode.children.length === 0}
+              className={toolBtn}
+              title="Убрать всё содержимое, саму папку оставить"
+            >
+              <IconTrash className="h-4 w-4" /> Очистить
             </button>
             <button
               type="button"

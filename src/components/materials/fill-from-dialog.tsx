@@ -129,11 +129,18 @@ export function FillFromDialog({
 
     const active = intoFolder ? marked.has(node.id) : picked === node.id;
 
+    /** Сама ветка и всё, что в ней: папку отмечаем вместе с содержимым. */
+    const branchIds = (from: Branch): string[] => [
+      from.id,
+      ...from.children.flatMap(branchIds),
+    ];
+
     const toggleMark = () =>
       setMarked((prev) => {
         const next = new Set(prev);
-        if (next.has(node.id)) next.delete(node.id);
-        else next.add(node.id);
+        const ids = branchIds(node);
+        if (next.has(node.id)) ids.forEach((id) => next.delete(id));
+        else ids.forEach((id) => next.add(id));
         return next;
       });
 
@@ -287,7 +294,7 @@ export function FillFromDialog({
                       : "bg-surface-2 text-muted hover:text-content",
                   )}
                 >
-                  {t.label}
+                  {t.short}
                 </button>
               ))}
             </div>
