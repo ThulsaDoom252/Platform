@@ -21,9 +21,6 @@ import type { ParseResult, ParsedPhrase, ParsedExample } from "./materials-parse
 
 export type KeyedType = "VOCAB" | "RULE" | "LEXIS" | "TENSE";
 
-/** Цвета, которые понимает оформление. Остальное отбрасываем. */
-const COLORS = ["green", "amber", "sky", "violet", "rose", "orange", "accent"];
-
 /** Строка формата: ключ заглавными латинскими, двоеточие, значение. */
 const FIELD = /^([A-Z][A-Z_]{1,15}):[ \t]*(.*)$/;
 
@@ -154,19 +151,11 @@ function localized(url: string, lang: "ru" | "uk"): string {
     .replace(new RegExp(`^(https?://)${other}[.]`, "i"), `$1${lang}.`);
 }
 
-function color(value: string, warnings: string[], line: number): string | null {
-  const name = value.trim().toLowerCase();
-  if (COLORS.includes(name)) return name;
-  warnings.push(`Строка ${line}: неизвестный цвет «${short(value, 20)}»`);
-  return null;
-}
+/** Общий разбор шапки: тип и название. */
+type Head = { title: string | null };
 
-/** Общий разбор шапки: тип, название, цвет. */
-type Head = { title: string | null; color: string | null };
-
-export type KeyedVocabResult = ParseResult & { color: string | null };
+export type KeyedVocabResult = ParseResult;
 export type KeyedBlocksResult = RuleParseResult & {
-  color: string | null;
   kind: "RULE" | "LEXIS" | "TENSE";
 };
 
@@ -208,11 +197,10 @@ export function parseKeyedBlocks(raw: string): KeyedBlocksResult | null {
 // ---------- VOCAB ----------
 
 function parseVocab(fields: Field[], warnings: string[]): KeyedVocabResult {
-  const head: Head = { title: null, color: null };
+  const head: Head = { title: null };
   const phrases: ParsedPhrase[] = [];
 
   let section: string | null = null;
-  let sectionColor: string | null = null;
   let current: ParsedPhrase | null = null;
 
   const close = () => {
@@ -239,23 +227,14 @@ function parseVocab(fields: Field[], warnings: string[]): KeyedVocabResult {
         break;
 
       case "COLOR":
-        // До первой категории цвет относится ко всему словнику.
-        if (current) {
-          warnings.push(`Строка ${line}: COLOR внутри слова не используется`);
-        } else if (section) {
-          sectionColor = color(value, warnings, line);
-          for (const p of phrases) {
-            if (p.section === section) p.sectionColor = sectionColor;
-          }
-        } else {
-          head.color = color(value, warnings, line);
-        }
+        // Цвет задаёт тема платформы, а не материал: тем может стать
+        // больше, и зашитый в текст цвет однажды выпадет из оформления.
+        warnings.push(`Строка ${line}: COLOR не нужен — цвет берётся из темы`);
         break;
 
       case "CATEGORY":
         close();
         section = value;
-        sectionColor = null;
         break;
 
       case "WORD":
@@ -263,7 +242,6 @@ function parseVocab(fields: Field[], warnings: string[]): KeyedVocabResult {
         current = {
           icon: null,
           section,
-          sectionColor,
           kind: "PHRASE",
           phrase: value,
           transcription: null,
@@ -299,7 +277,6 @@ function parseVocab(fields: Field[], warnings: string[]): KeyedVocabResult {
   return {
     title: head.title,
     description: null,
-    color: head.color,
     phrases,
     warnings,
   };
@@ -354,7 +331,7 @@ function parseBlocks(
   fields: Field[],
   warnings: string[],
 ): KeyedBlocksResult {
-  const head: Head = { title: null, color: null };
+  const head: Head = { title: null };
   let subtitle: string | null = null;
   const blocks: RuleBlock[] = [];
 
@@ -382,7 +359,6 @@ function parseBlocks(
       type: "table",
       headers: [compare[0][0], compare[0][1]],
       rows: compare.map((row) => [row[2], row[3]]),
-      variant: "sheet-table",
     });
     compare = [];
   };
@@ -425,7 +401,7 @@ function parseBlocks(
         break;
 
       case "COLOR":
-        head.color = color(value, warnings, line);
+        warnings.push(`Строка ${line}: COLOR не нужен — цвет берётся из темы`);
         break;
 
       case "INTRO":
@@ -434,13 +410,13 @@ function parseBlocks(
 
       case "SECTION":
         flush();
-        blocks.push({ type: "heading", text: value, variant: "sheet-section" });
+        blocks.push({ type: "heading", text: value });
         break;
 
       case "TEXT":
       case "WHY":
         flush();
-        blocks.push({ type: "text", text: value, variant: "sheet-text" });
+        blocks.push({ type: "text", text: value });
         break;
 
       case "GRID":
@@ -485,7 +461,7 @@ function parseBlocks(
 
       case "FORMULA":
         closeCompare();
-        blocks.push({ type: "formula", text: value, variant: "sheet-formula" });
+        blocks.push({ type: "formula", text: value });
         break;
 
       case "ITEM":
@@ -530,7 +506,6 @@ function parseBlocks(
           tone: "tip",
           text: value,
           hint: true,
-          variant: "sheet-text",
         });
         break;
 
@@ -542,7 +517,6 @@ function parseBlocks(
           tone: "warn",
           text: got[0],
           ...(got[1] ? { label: got[1] } : {}),
-          variant: "sheet-mistake",
         });
         break;
       }
@@ -555,7 +529,6 @@ function parseBlocks(
           label: "Интересно знать",
           text: value,
           hint: true,
-          variant: "sheet-text",
         });
         break;
 
@@ -630,7 +603,6 @@ function parseBlocks(
     kind,
     title: head.title,
     subtitle,
-    color: head.color,
     blocks,
     warnings,
     format: "keyed",

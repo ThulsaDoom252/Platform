@@ -1,6 +1,5 @@
 TYPE: LEXIS
 TITLE: say / tell / speak / talk
-COLOR: amber
 INTRO: Все четыре переводятся как «говорить». Выбор зависит от того, что важнее: что сказано, кому сказано или сам процесс.
 
 ITEM: say

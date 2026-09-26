@@ -26,7 +26,6 @@ test("словник разбирается с категориями и тра�
   if (r.type !== "VOCAB") return;
 
   assert.equal(r.title, "Food and cooking");
-  assert.equal(r.color, "green");
   assert.deepEqual(r.warnings, []);
 
   const sections = [...new Set(r.phrases.map((p) => p.section))];
@@ -35,7 +34,6 @@ test("словник разбирается с категориями и тра�
   const simmer = r.phrases.find((p) => p.phrase === "simmer");
   assert.ok(simmer, "нет слова simmer");
   assert.equal(simmer.section, "Verbs");
-  assert.equal(simmer.sectionColor, "amber");
   assert.equal(simmer.icon, "🍲");
   assert.equal(simmer.transcriptionUs, "/ˈsɪmər/");
   assert.equal(simmer.transcriptionUk, "/ˈsɪmə/");
@@ -58,7 +56,6 @@ test("правило разбирается в секции, формулы и �
   if (r.type === "VOCAB") return;
 
   assert.equal(r.title, "Present Perfect vs Past Simple");
-  assert.equal(r.color, "violet");
   assert.match(r.subtitle ?? "", /важен результат сейчас/);
   assert.deepEqual(r.warnings, []);
 
@@ -98,7 +95,6 @@ test("лексика разбирается в карточки слов", () =>
   const r = parse("keyed-lexis.txt", "LEXIS");
   if (r.type === "VOCAB") return;
 
-  assert.equal(r.color, "amber");
   assert.deepEqual(r.warnings, []);
 
   const words = r.blocks.filter((b) => b.type === "word");
@@ -256,13 +252,12 @@ test("кривые строки не роняют разбор, а попада�
   assert.ok(r);
   if (!r || r.type === "VOCAB") return;
 
-  assert.equal(r.color, null, "негодный цвет не должен доезжать");
   // Непонятный знак не повод терять строку: обе формы доезжают, о второй
   // сказано в замечаниях.
   assert.equal(r.blocks.filter((b) => b.type === "form").length, 2);
 
   const said = r.warnings.join(" | ");
-  assert.match(said, /неизвестный цвет/);
+  assert.match(said, /COLOR не нужен/);
   assert.match(said, /вне формата/);
   assert.match(said, /непонятный знак/);
   assert.match(said, /5 частей/);

@@ -15,8 +15,6 @@ export type { RuleBlock, RuleBlockVariant };
 export type RuleParseResult = {
   title: string | null;
   subtitle: string | null;
-  /** Цвет оформления из ключевого формата. */
-  color?: string | null;
   /** Какой именно материал разобран: правило, лексика или время. */
   kind?: "RULE" | "LEXIS" | "TENSE";
   blocks: RuleBlock[];

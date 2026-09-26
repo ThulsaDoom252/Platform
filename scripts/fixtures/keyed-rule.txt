@@ -1,6 +1,5 @@
 TYPE: RULE
 TITLE: Present Perfect vs Past Simple
-COLOR: violet
 INTRO: Оба про прошлое. Разница в том, важен результат сейчас или сам момент.
 
 SECTION: 🎯 Зачем это нужно

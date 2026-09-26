@@ -14,8 +14,6 @@ export type ParsedExample = { en: string; tr: string };
 export type ParsedPhrase = {
   icon: string | null;
   section: string | null;
-  /** Цвет категории из ключевого формата; иначе подбирается по имени. */
-  sectionColor?: string | null;
   kind: "PHRASE" | "NOTE";
   phrase: string;
   transcription: string | null;
@@ -31,8 +29,6 @@ export type ParsedPhrase = {
 export type ParseResult = {
   title: string | null;
   description: string | null;
-  /** Цвет оформления из ключевого формата. */
-  color?: string | null;
   phrases: ParsedPhrase[];
   warnings: string[];
   /** Внутренний тип словарной разметки, выбранный автоматически. */

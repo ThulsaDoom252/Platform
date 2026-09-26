@@ -91,7 +91,6 @@ function toPreview(item: EditableItem): MaterialPhrase {
     translation: clean.translation || null,
     note: null,
     section: clean.section,
-    sectionColor: null,
     kind: item.kind,
     examples: clean.examples,
   };

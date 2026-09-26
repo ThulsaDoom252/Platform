@@ -217,6 +217,32 @@ export function RuleReader({
             }
 
             if (b.hint && !hints) return null;
+
+            // Ошибка «так нельзя — так можно» читается парой строк, а не
+            // сплошным текстом: неверное и верное должны стоять рядом.
+            if (b.tone === "warn") {
+              const parts = mistakeParts(b.text);
+              return (
+                <div key={i} className="overflow-hidden rounded-2xl ring-1 ring-line">
+                  <p className="flex items-start gap-2.5 tint-rose px-4 py-2.5 text-sm">
+                    <span aria-hidden>❌</span>
+                    <span>{parts.wrong}</span>
+                  </p>
+                  {parts.right && (
+                    <p className="flex items-start gap-2.5 tint-green px-4 py-2.5 text-sm">
+                      <span aria-hidden>✅</span>
+                      <span>{parts.right}</span>
+                    </p>
+                  )}
+                  {b.label && (
+                    <p className="bg-surface-2 px-4 py-2 text-[12px] text-muted">
+                      {b.label}
+                    </p>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <div
                 key={i}

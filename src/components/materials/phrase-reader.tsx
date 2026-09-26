@@ -35,7 +35,6 @@ export type MaterialPhrase = {
   /** Заметка «что стоит знать» под словом. */
   note: string | null;
   section: string | null;
-  sectionColor: string | null;
   kind: string;
   examples: PhraseExample[];
 };
@@ -525,15 +524,6 @@ export function PhraseReader({
               <span className="h-4 w-1 shrink-0 rounded-full bg-accent" />
               <h3 className="flex-1 text-sm font-bold text-content">
                 {g.section ?? (editable ? "Без категории" : "")}
-                {g.items[0]?.sectionColor && (
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "ml-2 inline-block h-2 w-8 rounded-full align-middle",
-                      `tint-${g.items[0].sectionColor}`,
-                    )}
-                  />
-                )}
               </h3>
 
               {editable && (

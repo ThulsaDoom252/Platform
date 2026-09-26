@@ -1,9 +1,6 @@
 TYPE: VOCAB
 TITLE: Food and cooking
-COLOR: green
-
 CATEGORY: Nouns
-COLOR: sky
 
 WORD: ingredient
 ICON: 🥕
@@ -24,7 +21,6 @@ EX: Don't throw the leftovers away. | Не выбрасывай остатки.
 NOTE: Только множественное число. «A leftover» не говорят.
 
 CATEGORY: Verbs
-COLOR: amber
 
 WORD: simmer
 ICON: 🍲
