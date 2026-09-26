@@ -1,5 +1,11 @@
 import "server-only";
 import type { RuleBlock } from "@/lib/db/schema";
+import {
+  KEEP_TAG,
+  needsProtection,
+  protectTerms,
+  restoreTerms,
+} from "@/lib/protect-terms";
 
 export type MaterialTranslationLang = "RU" | "UK";
 
@@ -51,6 +57,11 @@ async function requestDeepL(
 ): Promise<string[]> {
   if (texts.length === 0) return [];
   const { key, baseUrl } = deepLSettings();
+
+  // Английское слово внутри пояснения — предмет разговора, а не текст:
+  // помечаем такие куски и просим переводчик их не трогать.
+  const keep = texts.some(needsProtection);
+  const payload = keep ? texts.map(protectTerms) : texts;
   const response = await fetch(`${baseUrl}/v2/translate`, {
     method: "POST",
     headers: {
@@ -58,10 +69,11 @@ async function requestDeepL(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      text: texts,
+      text: payload,
       target_lang: target,
       ...(source && source !== target ? { source_lang: source } : {}),
       ...(context?.trim() ? { context: context.slice(0, 12_000) } : {}),
+      ...(keep ? { tag_handling: "xml", ignore_tags: KEEP_TAG } : {}),
       model_type: "prefer_quality_optimized",
       preserve_formatting: true,
     }),
@@ -80,7 +92,10 @@ async function requestDeepL(
   }
 
   const json = (await response.json()) as { translations?: { text?: string }[] };
-  const translations = (json.translations ?? []).map((item) => item.text?.trim() ?? "");
+  const translations = (json.translations ?? []).map((item) => {
+    const text = item.text?.trim() ?? "";
+    return keep ? restoreTerms(text) : text;
+  });
   if (translations.length !== texts.length || translations.some((text) => !text)) {
     throw new Error("DeepL вернул неполный перевод");
   }
