@@ -41,11 +41,12 @@ export default async function TeacherMaterialsPage({
       </div>
 
       <div className="flex w-fit items-center gap-1 rounded-2xl bg-surface p-1 ring-1 ring-line">
-        <Link href="/teacher/materials" className={tabCls(!mine)}>
-          Общая библиотека
-        </Link>
+        {/* Свои материалы первыми: учитель заходит сюда чаще, чем в общую базу. */}
         <Link href="/teacher/materials?view=mine" className={tabCls(mine)}>
           Мои материалы
+        </Link>
+        <Link href="/teacher/materials" className={tabCls(!mine)}>
+          Общая библиотека
         </Link>
       </div>
 
