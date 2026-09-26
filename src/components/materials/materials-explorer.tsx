@@ -1875,7 +1875,19 @@ export function MaterialsExplorer({
         )}
 
         {isPhrasePage && selected && selected.verbs.length > 0 && (
-          <VerbsReader verbs={selected.verbs} />
+          <VerbsReader
+            verbs={selected.verbs}
+            onEdit={
+              editable
+                ? () =>
+                    setFillVerbs({
+                      id: selected.id,
+                      name: selected.name,
+                      categories: verbCategories(selected),
+                    })
+                : undefined
+            }
+          />
         )}
 
         {isPhrasePage && selected && selected.verbs.length === 0 && (

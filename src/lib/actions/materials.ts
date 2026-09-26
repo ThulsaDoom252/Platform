@@ -1013,6 +1013,119 @@ export type VerbEdit = {
 };
 
 /** Сохранить правки списка: изменения, порядок и удаление лишних. */
+
+/** Одна группа вставки: как называлась, как называется, что вставили. */
+export type VerbsGroup = {
+  /** Прежнее имя категории — чтобы переименовать уже заведённые глаголы. */
+  original: string | null;
+  name: string | null;
+  text: string;
+};
+
+export type VerbsImportResult = { added: number; renamed: number; error?: string };
+
+/**
+ * Разложить вставленные глаголы по категориям за один заход.
+ *
+ * Учитель правит все группы разом: одной меняет имя, в другую вставляет
+ * новую таблицу, третью оставляет как есть. Поэтому и сохраняем всё
+ * вместе, а не по кнопке на каждую группу.
+ */
+export async function importVerbsAction(
+  nodeId: string,
+  groups: VerbsGroup[],
+): Promise<VerbsImportResult> {
+  await requireTeacher();
+
+  const id = String(nodeId ?? "");
+  if (!id) return { added: 0, renamed: 0, error: "Не выбрана страница" };
+
+  const [node] = await db
+    .select({ id: materialNodes.id, type: materialNodes.type })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+  if (!node || node.type !== "FILE") {
+    return { added: 0, renamed: 0, error: "Страница не найдена" };
+  }
+
+  const existing = await db
+    .select({
+      base: irregularVerbs.base,
+      past: irregularVerbs.past,
+      participle: irregularVerbs.participle,
+      sortOrder: irregularVerbs.sortOrder,
+    })
+    .from(irregularVerbs)
+    .where(eq(irregularVerbs.nodeId, id));
+
+  const key = (v: { base: string; past: string; participle: string }) =>
+    [v.base, v.past, v.participle].map((x) => x.trim().toLowerCase()).join("|");
+
+  const known = new Set(existing.map(key));
+  let order = existing.reduce((max, v) => Math.max(max, v.sortOrder), 0);
+
+  let added = 0;
+  let renamed = 0;
+  const warnings: string[] = [];
+
+  await db.transaction(async (tx) => {
+    for (const group of groups ?? []) {
+      const name = String(group?.name ?? "").trim().slice(0, 80) || null;
+      const was = group?.original ?? null;
+
+      // Переименование затрагивает уже заведённые глаголы этой группы.
+      if (was !== null && name !== was) {
+        const touched = await tx
+          .update(irregularVerbs)
+          .set({ category: name })
+          .where(and(eq(irregularVerbs.nodeId, id), eq(irregularVerbs.category, was)))
+          .returning({ id: irregularVerbs.id });
+        renamed += touched.length;
+      }
+
+      const text = String(group?.text ?? "");
+      if (!text.trim()) continue;
+
+      const parsed = parseIrregularVerbs(text);
+      warnings.push(...parsed.warnings);
+
+      const fresh = parsed.verbs.filter((v) => {
+        if (known.has(key(v))) return false;
+        known.add(key(v));
+        return true;
+      });
+      if (fresh.length === 0) continue;
+
+      await tx.insert(irregularVerbs).values(
+        fresh.map((v) => ({
+          nodeId: id,
+          category: name,
+          sortOrder: ++order,
+          icon: v.icon,
+          base: v.base,
+          baseIpa: v.baseIpa,
+          past: v.past,
+          pastIpa: v.pastIpa,
+          participle: v.participle,
+          participleIpa: v.participleIpa,
+          translation: v.translation,
+        })),
+      );
+      added += fresh.length;
+    }
+
+    await tx.update(materialNodes).set({ pageKind: "VERBS" }).where(eq(materialNodes.id, id));
+  });
+
+  if (added === 0 && renamed === 0) {
+    return { added: 0, renamed: 0, error: warnings[0] ?? "Нечего добавлять" };
+  }
+
+  revalidateMaterials();
+  return { added, renamed };
+}
+
 export async function saveVerbsAction(
   nodeId: string,
   verbs: VerbEdit[],

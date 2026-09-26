@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import type { MaterialVerb } from "@/lib/materials";
 import { useSpeech } from "./speech";
-import { IconVolume } from "@/components/icons";
+import { IconVolume, IconPencil } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const NO_CATEGORY = "Без категории";
@@ -42,7 +42,14 @@ function group(verbs: MaterialVerb[]) {
   }));
 }
 
-export function VerbsReader({ verbs }: { verbs: MaterialVerb[] }) {
+export function VerbsReader({
+  verbs,
+  onEdit,
+}: {
+  verbs: MaterialVerb[];
+  /** Открыть окно правки. Ученику не передаётся — у него кнопки нет. */
+  onEdit?: () => void;
+}) {
   const [alphabetical, setAlphabetical] = useState(false);
   const speech = useSpeech();
 
@@ -140,13 +147,25 @@ export function VerbsReader({ verbs }: { verbs: MaterialVerb[] }) {
     <div className="flex flex-col gap-4">
       {/* Панель липнет к верху: по ней прыгают между группами. */}
       <div className="sticky top-16 z-[7] -mx-2 rounded-2xl bg-surface/95 px-2 py-2 backdrop-blur-md ring-1 ring-line">
+        {onEdit && (
+          <div className="mb-2 flex justify-end border-b border-line pb-2">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] font-semibold text-content transition hover:border-accent hover:text-accent"
+            >
+              <IconPencil className="h-3.5 w-3.5" /> Редактировать
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-1.5">
           {tab(!alphabetical, "По категориям", () => setAlphabetical(false))}
           {tab(alphabetical, "Все по алфавиту", () => setAlphabetical(true))}
           <span className="ml-auto text-[11px] text-faint">{verbs.length} глаголов</span>
         </div>
 
-        {!alphabetical && groups.length > 1 && (
+        {!alphabetical && (
           <div className="mt-2 flex flex-wrap gap-1.5 border-t border-line pt-2">
             {groups.map((g) => (
               <a
@@ -169,9 +188,10 @@ export function VerbsReader({ verbs }: { verbs: MaterialVerb[] }) {
       ) : (
         groups.map((g) => (
           <section key={g.id} id={g.id} className="scroll-mt-40">
-            <h3 className="mb-1.5 px-1 text-sm font-bold text-content">
-              {g.name}
-              <span className="ml-2 text-[11px] font-medium text-faint">
+            <h3 className="mb-2 flex items-center gap-2 px-1">
+              <span className="h-4 w-1 shrink-0 rounded-full bg-accent" />
+              <span className="text-base font-bold text-content">{g.name}</span>
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-faint">
                 {g.verbs.length}
               </span>
             </h3>
