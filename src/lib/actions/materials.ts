@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { and, asc, count, eq, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
@@ -1328,111 +1328,149 @@ export async function fillVerbIconsAction(
 
 /** Убрать со страницы все глаголы. */
 /** Страница, куда можно передать глаголы. */
-export type VerbsPage = { id: string; name: string; path: string; verbs: number };
-export type VerbsPlace = { key: string; label: string; pages: VerbsPage[] };
+export type VerbsRecipient = {
+  key: string;
+  label: string;
+  /** Как называется раздел глаголов у получателя, если он уже заведён. */
+  section: string | null;
+  /** Категории, которые там уже лежат: их передавать некуда. */
+  categories: string[];
+  /** Глаголы, которые там уже лежат, — ключами по трём формам. */
+  verbs: string[];
+};
 
-/**
- * Куда можно передать глаголы.
- *
- * Берём только страницы глаголов и пустые файлы: в словник или правило
- * их класть некуда, а пустая страница станет списком глаголов сама.
- */
-export async function listVerbsPagesAction(): Promise<VerbsPlace[]> {
-  const session = await requireTeacher();
+/** Куда именно смотреть в дереве: своё, общее или ученика. */
+type VerbsPlace = {
+  key: string;
+  label: string;
+  scope: NodeScope;
+  ownerId: string | null;
+};
 
-  const rows = await db
-    .select({
-      id: materialNodes.id,
-      parentId: materialNodes.parentId,
-      name: materialNodes.name,
-      icon: materialNodes.icon,
-      type: materialNodes.type,
-      pageKind: materialNodes.pageKind,
-      scope: materialNodes.scope,
-      ownerId: materialNodes.ownerId,
-    })
-    .from(materialNodes)
-    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+/** Имя категории для сравнения: без регистра и лишних пробелов. */
+function categoryKey(name: string | null): string {
+  return (name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
 
-  const counts = await db
-    .select({ nodeId: irregularVerbs.nodeId, n: count() })
-    .from(irregularVerbs)
-    .groupBy(irregularVerbs.nodeId);
-  const verbsOf = new Map(counts.map((c) => [c.nodeId, Number(c.n)]));
+/** Ключ глагола по трём формам. */
+function formsKey(v: { base: string; past: string; participle: string }): string {
+  return [v.base, v.past, v.participle].map((x) => x.trim().toLowerCase()).join("|");
+}
 
-  const phrases = await db
-    .select({ nodeId: materialPhrases.nodeId })
-    .from(materialPhrases)
-    .groupBy(materialPhrases.nodeId);
-  const blocks = await db
-    .select({ nodeId: materialBlocks.nodeId })
-    .from(materialBlocks)
-    .groupBy(materialBlocks.nodeId);
-  const busy = new Set([...phrases, ...blocks].map((r) => r.nodeId));
-
+async function verbsPlaces(teacherId: string): Promise<VerbsPlace[]> {
   const students = await db
     .select({ id: users.id, name: users.name })
     .from(users)
-    .where(eq(users.role, "STUDENT"));
-
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const pathOf = (row: (typeof rows)[number]) => {
-    const parts: string[] = [];
-    let cur = row.parentId ? byId.get(row.parentId) : undefined;
-    for (let i = 0; cur && i < 12; i++) {
-      parts.unshift(cur.name);
-      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
-    }
-    return parts.join(" / ");
-  };
-
-  const pick = (scope: string, ownerId: string | null): VerbsPage[] =>
-    rows
-      .filter((r) => r.scope === scope && (r.ownerId ?? null) === ownerId)
-      .filter((r) => r.type === "FILE")
-      .filter((r) => (verbsOf.get(r.id) ?? 0) > 0 || (!busy.has(r.id) && !r.pageKind))
-      .map((r) => ({
-        id: r.id,
-        name: `${r.icon ?? ""} ${r.name}`.trim(),
-        path: pathOf(r),
-        verbs: verbsOf.get(r.id) ?? 0,
-      }));
+    .where(eq(users.role, "STUDENT"))
+    .orderBy(asc(users.name));
 
   return [
-    { key: "material", label: "Общая библиотека", pages: pick("MATERIAL", null) },
-    { key: "personal", label: "Мои материалы", pages: pick("PERSONAL", session.userId) },
+    { key: "material", label: "Общая библиотека", scope: "MATERIAL", ownerId: null },
+    { key: "personal", label: "Мои материалы", scope: "PERSONAL", ownerId: teacherId },
     ...students.map((st) => ({
       key: `student-${st.id}`,
       label: st.name,
-      pages: pick("STUDENT", st.id),
+      scope: "STUDENT" as NodeScope,
+      ownerId: st.id,
     })),
-  ].filter((place) => place.pages.length > 0);
+  ];
 }
 
 /**
- * Передать выбранные глаголы на другую страницу.
+ * Раздел глаголов у получателя.
+ *
+ * Раздел можно переименовать и перенести, поэтому узнаём его не по имени,
+ * а по виду страницы. Корневой важнее вложенного: именно такой мы заводим
+ * сами, а вложенный мог появиться из старой передачи.
+ */
+async function verbsSection(place: VerbsPlace) {
+  const rows = await db
+    .select({
+      id: materialNodes.id,
+      name: materialNodes.name,
+      icon: materialNodes.icon,
+      parentId: materialNodes.parentId,
+    })
+    .from(materialNodes)
+    .where(
+      and(
+        eq(materialNodes.scope, place.scope),
+        place.ownerId
+          ? eq(materialNodes.ownerId, place.ownerId)
+          : isNull(materialNodes.ownerId),
+        eq(materialNodes.pageKind, "VERBS"),
+      ),
+    )
+    .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
+
+  return rows.find((r) => !r.parentId) ?? rows[0] ?? null;
+}
+
+/**
+ * Кому можно передать глаголы и что у них уже есть.
+ *
+ * Страницу выбирать не нужно: раздел глаголов у получателя один, и если
+ * его ещё нет — он заведётся сам. Зато нужно знать содержимое: то, что
+ * у человека уже лежит, повторно не отдаём.
+ */
+export async function listVerbsRecipientsAction(): Promise<VerbsRecipient[]> {
+  const session = await requireTeacher();
+  const places = await verbsPlaces(session.userId);
+
+  const sections = await Promise.all(places.map((p) => verbsSection(p)));
+  const ids = sections.filter((s) => s !== null).map((s) => s.id);
+
+  const rows = ids.length
+    ? await db
+        .select({
+          nodeId: irregularVerbs.nodeId,
+          category: irregularVerbs.category,
+          base: irregularVerbs.base,
+          past: irregularVerbs.past,
+          participle: irregularVerbs.participle,
+        })
+        .from(irregularVerbs)
+        .where(inArray(irregularVerbs.nodeId, ids))
+    : [];
+
+  return places.map((place, i) => {
+    const section = sections[i];
+    const mine = section ? rows.filter((r) => r.nodeId === section.id) : [];
+    return {
+      key: place.key,
+      label: place.label,
+      section: section ? `${section.icon ?? ""} ${section.name}`.trim() : null,
+      categories: [
+        ...new Set(mine.map((r) => categoryKey(r.category)).filter(Boolean)),
+      ],
+      verbs: [...new Set(mine.map(formsKey))],
+    };
+  });
+}
+
+/** Имя раздела, который заводим получателю сами. */
+const VERBS_SECTION_NAME = "Irregular verbs";
+
+/**
+ * Передать выбранные глаголы получателю.
  *
  * Копия самостоятельная, как и везде: правки у себя до неё не доходят.
- * Категории переезжают вместе с глаголами, повторы по трём формам
- * пропускаются.
+ * Категории переезжают вместе с глаголами; та, что у получателя уже есть,
+ * пропускается целиком — иначе передача тихо перемешивала бы его группы.
  */
-export async function shareVerbsAction(
-  targetId: string,
+export async function shareVerbsToRecipientAction(
+  recipientKey: string,
   verbIds: string[],
 ): Promise<BulkState> {
-  await requireTeacher();
+  const session = await requireTeacher();
 
-  const target = String(targetId ?? "");
+  const key = String(recipientKey ?? "");
   const ids = [...new Set((verbIds ?? []).filter(Boolean))];
-  if (!target) return { error: "Не выбрана страница" };
+  if (!key) return { error: "Не выбран получатель" };
   if (ids.length === 0) return { error: "Не отмечено ни одного глагола" };
 
-  const [page] = await db
-    .select({ id: materialNodes.id, name: materialNodes.name, type: materialNodes.type })
-    .from(materialNodes)
-    .where(eq(materialNodes.id, target))
-    .limit(1);
-  if (!page || page.type !== "FILE") return { error: "Страница не найдена" };
+  const place = (await verbsPlaces(session.userId)).find((p) => p.key === key);
+  if (!place) return { error: "Получатель не найден" };
 
   const source = await db
     .select()
@@ -1441,33 +1479,83 @@ export async function shareVerbsAction(
     .orderBy(asc(irregularVerbs.sortOrder));
   if (source.length === 0) return { error: "Глаголы не найдены" };
 
-  const existing = await db
-    .select({
-      base: irregularVerbs.base,
-      past: irregularVerbs.past,
-      participle: irregularVerbs.participle,
-      sortOrder: irregularVerbs.sortOrder,
-    })
-    .from(irregularVerbs)
-    .where(eq(irregularVerbs.nodeId, target));
+  const section = await verbsSection(place);
 
-  const key = (v: { base: string; past: string; participle: string }) =>
-    [v.base, v.past, v.participle].map((x) => x.trim().toLowerCase()).join("|");
+  const existing = section
+    ? await db
+        .select({
+          category: irregularVerbs.category,
+          base: irregularVerbs.base,
+          past: irregularVerbs.past,
+          participle: irregularVerbs.participle,
+          sortOrder: irregularVerbs.sortOrder,
+        })
+        .from(irregularVerbs)
+        .where(eq(irregularVerbs.nodeId, section.id))
+    : [];
 
-  const known = new Set(existing.map(key));
+  const knownCategories = new Set(
+    existing.map((v) => categoryKey(v.category)).filter(Boolean),
+  );
+  const knownForms = new Set(existing.map(formsKey));
+
+  let skippedCategories = 0;
   const fresh = source.filter((v) => {
-    if (known.has(key(v))) return false;
-    known.add(key(v));
+    const category = categoryKey(v.category);
+    if (category && knownCategories.has(category)) {
+      skippedCategories++;
+      return false;
+    }
+    if (knownForms.has(formsKey(v))) return false;
+    knownForms.add(formsKey(v));
     return true;
   });
-  if (fresh.length === 0) return { error: `В «${page.name}» это всё уже есть` };
+  if (fresh.length === 0) {
+    return { error: `У получателя «${place.label}» это всё уже есть` };
+  }
 
   let order = existing.reduce((max, v) => Math.max(max, v.sortOrder), 0);
+  let sectionName = section ? section.name : VERBS_SECTION_NAME;
 
   await db.transaction(async (tx) => {
+    let nodeId = section?.id ?? null;
+
+    if (!nodeId) {
+      // Раздел встаёт в конец дерева получателя — как обычный новый раздел.
+      const [{ value: lastOrder } = { value: 0 }] = await tx
+        .select({ value: max(materialNodes.sortOrder) })
+        .from(materialNodes)
+        .where(
+          and(
+            isNull(materialNodes.parentId),
+            eq(materialNodes.scope, place.scope),
+            place.ownerId
+              ? eq(materialNodes.ownerId, place.ownerId)
+              : isNull(materialNodes.ownerId),
+          ),
+        );
+
+      const [created] = await tx
+        .insert(materialNodes)
+        .values({
+          parentId: null,
+          name: VERBS_SECTION_NAME,
+          icon: "📘",
+          scope: place.scope,
+          ownerId: place.ownerId,
+          type: "FILE",
+          pageKind: "VERBS",
+          sortOrder: (lastOrder ?? 0) + 1,
+        })
+        .returning({ id: materialNodes.id });
+
+      nodeId = created.id;
+      sectionName = VERBS_SECTION_NAME;
+    }
+
     await tx.insert(irregularVerbs).values(
       fresh.map((v) => ({
-        nodeId: target,
+        nodeId,
         category: v.category,
         sortOrder: ++order,
         icon: v.icon,
@@ -1480,16 +1568,18 @@ export async function shareVerbsAction(
         translation: v.translation,
       })),
     );
-    await tx.update(materialNodes).set({ pageKind: "VERBS" }).where(eq(materialNodes.id, target));
   });
 
   revalidateMaterials();
-  const skipped = source.length - fresh.length;
+
+  const skippedVerbs = source.length - fresh.length - skippedCategories;
   return {
     ok: true,
     message:
-      `Передано в «${page.name}»: ${fresh.length}` +
-      (skipped > 0 ? `, пропущено повторов: ${skipped}` : ""),
+      `${place.label} · «${sectionName}»: ${fresh.length}` +
+      (section ? "" : " — раздел создан") +
+      (skippedCategories > 0 ? `, категорий уже было: ${skippedCategories}` : "") +
+      (skippedVerbs > 0 ? `, повторов пропущено: ${skippedVerbs}` : ""),
   };
 }
 

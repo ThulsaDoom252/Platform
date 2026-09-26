@@ -1,26 +1,36 @@
 "use client";
 
 /**
- * Передача неправильных глаголов на другую страницу.
+ * Передача неправильных глаголов получателю.
  *
- * Отмечать можно как угодно: целую категорию, отдельные глаголы внутри
- * неё, глаголы без категории — и всё это вперемешку. По умолчанию не
- * отмечено ничего: передача копирует данные ученику, и делать это
- * молчаливо нельзя.
+ * Страницу выбирать не нужно: у получателя раздел глаголов один, и если
+ * его ещё нет — он заведётся сам в конце дерева. Зато то, что у человека
+ * уже лежит, повторно не отдаём: такие категории и глаголы помечены и
+ * отмечаться не дают.
+ *
+ * По умолчанию не отмечено ничего: передача копирует данные ученику, и
+ * делать это молчаливо нельзя.
  */
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  listVerbsPagesAction,
-  shareVerbsAction,
-  type VerbsPlace,
+  listVerbsRecipientsAction,
+  shareVerbsToRecipientAction,
+  type VerbsRecipient,
 } from "@/lib/actions/materials";
 import type { MaterialVerb } from "@/lib/materials";
-import { IconX, IconSearch } from "@/components/icons";
+import { IconX, IconCheck } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const NO_CATEGORY = "Без категории";
 
 export type ShareVerbsTarget = { id: string; name: string; verbs: MaterialVerb[] };
+
+/** Имя категории для сравнения — так же, как это делает сервер. */
+const categoryKey = (name: string | null) =>
+  (name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+
+const formsKey = (v: { base: string; past: string; participle: string }) =>
+  [v.base, v.past, v.participle].map((x) => x.trim().toLowerCase()).join("|");
 
 export function VerbsShareDialog({
   target,
@@ -32,23 +42,17 @@ export function VerbsShareDialog({
   onDone: (message: string) => void;
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [places, setPlaces] = useState<VerbsPlace[] | null>(null);
-  const [placeKey, setPlaceKey] = useState("");
-  const [pageId, setPageId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [people, setPeople] = useState<VerbsRecipient[] | null>(null);
+  const [who, setWho] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
 
   useEffect(() => {
     if (!target) return;
     let alive = true;
-    listVerbsPagesAction()
-      .then((list) => {
-        if (!alive) return;
-        setPlaces(list);
-        setPlaceKey((prev) => prev || list[0]?.key || "");
-      })
-      .catch(() => alive && setError("Не удалось загрузить список страниц"));
+    listVerbsRecipientsAction()
+      .then((list) => alive && setPeople(list))
+      .catch(() => alive && setError("Не удалось загрузить получателей"));
     return () => {
       alive = false;
     };
@@ -63,13 +67,32 @@ export function VerbsShareDialog({
     return [...byName.entries()].map(([name, verbs]) => ({ name, verbs }));
   }, [target]);
 
+  const recipient = people?.find((p) => p.key === who) ?? null;
+
+  // Что у получателя уже есть — отмечать нельзя.
+  const taken = useMemo(() => {
+    const categories = new Set(recipient?.categories ?? []);
+    const verbs = new Set(recipient?.verbs ?? []);
+    return {
+      category: (name: string) =>
+        name !== NO_CATEGORY && categories.has(categoryKey(name)),
+      verb: (v: MaterialVerb) => verbs.has(formsKey(v)),
+    };
+  }, [recipient]);
+
   if (!target) return null;
 
-  const place = places?.find((p) => p.key === placeKey) ?? null;
-  const needle = query.trim().toLowerCase();
-  const pages = (place?.pages ?? []).filter(
-    (p) => !needle || `${p.name} ${p.path}`.toLowerCase().includes(needle),
+  /** Всё, что этому получателю ещё можно отдать. */
+  const openIds = groups.flatMap((g) =>
+    taken.category(g.name)
+      ? []
+      : g.verbs.filter((v) => !taken.verb(v)).map((v) => v.id),
   );
+
+  // Отметки переживают смену получателя, но считаются и уезжают только те,
+  // что этому получателю ещё нужны.
+  const open = new Set(openIds);
+  const sending = [...picked].filter((id) => open.has(id));
 
   const toggle = (ids: string[], on: boolean) =>
     setPicked((prev) => {
@@ -82,10 +105,10 @@ export function VerbsShareDialog({
     });
 
   function share() {
-    if (!pageId) return;
+    if (!who) return;
     setError(null);
     startBusy(async () => {
-      const res = await shareVerbsAction(pageId, [...picked]);
+      const res = await shareVerbsToRecipientAction(who, sending);
       if (res.error) {
         setError(res.error);
         return;
@@ -95,8 +118,6 @@ export function VerbsShareDialog({
     });
   }
 
-  const allIds = target.verbs.map((v) => v.id);
-
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8">
       <div className="w-full max-w-3xl rounded-2xl bg-surface p-5 shadow-xl ring-1 ring-line sm:p-6">
@@ -104,8 +125,8 @@ export function VerbsShareDialog({
           <div>
             <h2 className="font-semibold text-content">Поделиться глаголами</h2>
             <p className="mt-1 text-sm text-muted">
-              Отметь категории целиком или отдельные глаголы. Копия
-              самостоятельная — правки у себя до неё не дойдут.
+              Выбери получателя и отметь, что передать. Раздел глаголов у него
+              заведётся сам, если его ещё нет.
             </p>
           </div>
           <button
@@ -117,14 +138,58 @@ export function VerbsShareDialog({
           </button>
         </div>
 
+        <p className="mt-4 text-[12px] font-semibold text-muted">Кому передать</p>
+
+        {!people && !error && <p className="mt-2 text-sm text-faint">Загружаю…</p>}
+
+        {people && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {people.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => setWho(p.key)}
+                title={p.section ? `Раздел: ${p.section}` : "Раздела ещё нет — заведём"}
+                className={cn(
+                  "flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition",
+                  p.key === who
+                    ? "bg-accent text-white"
+                    : "bg-surface-2 text-muted hover:text-content",
+                )}
+              >
+                {p.label}
+                {p.section && (
+                  <span
+                    className={cn(
+                      "text-[11px] font-normal",
+                      p.key === who ? "text-white/70" : "text-faint",
+                    )}
+                  >
+                    {p.verbs.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {recipient && (
+          <p className="mt-2 text-[12px] text-faint">
+            {recipient.section
+              ? `Уедет в «${recipient.section}» — там уже ${recipient.verbs.length} глаголов.`
+              : "Раздел «Irregular verbs» появится в конце материалов."}
+          </p>
+        )}
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <span className="text-[12px] font-semibold text-muted">
-            Отмечено: {picked.size} из {allIds.length}
+            Отмечено: {sending.length} из {openIds.length}
           </span>
           <button
             type="button"
-            onClick={() => toggle(allIds, true)}
-            className="h-7 rounded-lg bg-surface-2 px-2.5 text-[12px] font-semibold text-muted transition hover:text-content"
+            disabled={!recipient}
+            onClick={() => toggle(openIds, true)}
+            className="h-7 rounded-lg bg-surface-2 px-2.5 text-[12px] font-semibold text-muted transition hover:text-content disabled:opacity-40"
           >
             Выделить все
           </button>
@@ -137,18 +202,27 @@ export function VerbsShareDialog({
           </button>
         </div>
 
-        <div className="mt-3 max-h-[34vh] overflow-y-auto rounded-xl bg-surface-2 p-2">
+        <div className="mt-3 max-h-[40vh] overflow-y-auto rounded-xl bg-surface-2 p-2">
           {groups.map((g) => {
-            const ids = g.verbs.map((v) => v.id);
+            const blocked = taken.category(g.name);
+            const ids = g.verbs.filter((v) => !taken.verb(v)).map((v) => v.id);
             const on = ids.filter((id) => picked.has(id)).length;
-            const whole = on === ids.length;
+            const whole = ids.length > 0 && on === ids.length;
 
             return (
-              <div key={g.name} className="mb-2 last:mb-0">
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-surface">
+              <div key={g.name} className={cn("mb-2 last:mb-0", blocked && "opacity-50")}>
+                <label
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-2 py-1.5 transition",
+                    blocked || !recipient
+                      ? "cursor-not-allowed"
+                      : "cursor-pointer hover:bg-surface",
+                  )}
+                >
                   <input
                     type="checkbox"
                     checked={whole}
+                    disabled={blocked || !recipient || ids.length === 0}
                     ref={(el) => {
                       // Часть группы отмечена — показываем это третьим состоянием.
                       if (el) el.indeterminate = on > 0 && !whole;
@@ -157,154 +231,80 @@ export function VerbsShareDialog({
                     className="h-4 w-4 accent-[var(--accent)]"
                   />
                   <span className="text-sm font-bold text-content">{g.name}</span>
-                  <span className="text-[11px] text-faint">
-                    {on > 0 ? `${on} из ${ids.length}` : ids.length}
-                  </span>
+                  {blocked ? (
+                    <span className="flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent">
+                      <IconCheck className="h-3 w-3" /> уже есть
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-faint">
+                      {on > 0 ? `${on} из ${ids.length}` : g.verbs.length}
+                    </span>
+                  )}
                 </label>
 
                 <div className="ml-6 flex flex-col">
-                  {g.verbs.map((v) => (
-                    <label
-                      key={v.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-surface"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={picked.has(v.id)}
-                        onChange={(e) => toggle([v.id], e.target.checked)}
-                        className="h-3.5 w-3.5 accent-[var(--accent)]"
-                      />
-                      <span className="w-5 shrink-0 text-center text-[13px]">{v.icon ?? ""}</span>
-                      <span className="text-[13px] text-content">
-                        {v.base} — {v.past} — {v.participle}
-                      </span>
-                      <span className="truncate text-[11px] text-faint">{v.translation ?? ""}</span>
-                    </label>
-                  ))}
+                  {g.verbs.map((v) => {
+                    const has = blocked || taken.verb(v);
+                    return (
+                      <label
+                        key={v.id}
+                        className={cn(
+                          "flex items-center gap-2 rounded-lg px-2 py-1 transition",
+                          has || !recipient
+                            ? "cursor-not-allowed opacity-60"
+                            : "cursor-pointer hover:bg-surface",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={picked.has(v.id) && !has}
+                          disabled={has || !recipient}
+                          onChange={(e) => toggle([v.id], e.target.checked)}
+                          className="h-3.5 w-3.5 accent-[var(--accent)]"
+                        />
+                        <span className="w-5 shrink-0 text-center text-[13px]">
+                          {v.icon ?? ""}
+                        </span>
+                        <span className="text-[13px] text-content">
+                          {v.base} — {v.past} — {v.participle}
+                        </span>
+                        <span className="truncate text-[11px] text-faint">
+                          {v.translation ?? ""}
+                        </span>
+                        {has && !blocked && (
+                          <span className="ml-auto shrink-0 text-[11px] text-faint">
+                            уже есть
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             );
           })}
         </div>
 
-        <p className="mt-4 flex items-center gap-2 text-[12px] font-semibold text-muted">
-          Куда передать
-          {/* Кнопка ждёт двух выборов, и второй легко пропустить —
-              поэтому недостающий шаг называем прямо здесь. */}
-          {!pageId && picked.size > 0 && (
-            <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent">
-              выбери страницу
-            </span>
-          )}
-        </p>
-
-        {!places && !error && <p className="mt-2 text-sm text-faint">Загружаю…</p>}
-
-        {places && (
-          <>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {places.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => {
-                    setPlaceKey(p.key);
-                    setPageId(null);
-                  }}
-                  className={cn(
-                    "h-8 rounded-lg px-3 text-[12px] font-semibold transition",
-                    p.key === placeKey
-                      ? "bg-accent text-white"
-                      : "bg-surface-2 text-muted hover:text-content",
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            <label className="relative mt-2 flex items-center">
-              <IconSearch className="absolute left-3 h-4 w-4 text-faint" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Поиск страницы…"
-                className="h-9 w-full rounded-xl border border-line bg-surface-2 pl-9 pr-3 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
-              />
-            </label>
-
-            <div className="mt-2 max-h-[22vh] overflow-y-auto rounded-xl bg-surface-2 p-1.5">
-              {pages.length === 0 && (
-                <p className="px-2.5 py-3 text-sm text-faint">
-                  Здесь нет подходящих страниц. Годятся списки глаголов и пустые файлы.
-                </p>
-              )}
-              {pages.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPageId(p.id)}
-                  disabled={p.id === target.id}
-                  className={cn(
-                    "flex w-full flex-col items-start rounded-lg px-2.5 py-1.5 text-left transition",
-                    p.id === target.id && "opacity-40",
-                    pageId === p.id ? "bg-accent text-white" : "hover:bg-surface",
-                  )}
-                >
-                  <span className="text-sm font-semibold">
-                    {p.name}
-                    {p.verbs > 0 && (
-                      <span
-                        className={cn(
-                          "ml-1.5 text-[11px]",
-                          pageId === p.id ? "text-white/70" : "text-faint",
-                        )}
-                      >
-                        уже {p.verbs}
-                      </span>
-                    )}
-                  </span>
-                  {p.path && (
-                    <span
-                      className={cn(
-                        "text-[11px]",
-                        pageId === p.id ? "text-white/70" : "text-faint",
-                      )}
-                    >
-                      {p.path}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
         {error && (
-          <p className="mt-3 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-500">{error}</p>
+          <p className="mt-3 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-500">
+            {error}
+          </p>
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={share}
-            disabled={busy || picked.size === 0 || !pageId}
-            title={
-              picked.size === 0
-                ? "Отметь хотя бы один глагол"
-                : !pageId
-                  ? "Выбери страницу, куда передать"
-                  : undefined
-            }
+            disabled={busy || !who || sending.length === 0}
             className="h-10 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
           >
             {busy
               ? "Передаю…"
-              : picked.size === 0
-                ? "Отметь глаголы"
-                : !pageId
-                  ? "Выбери страницу"
-                  : `Поделиться (${picked.size})`}
+              : !who
+                ? "Выбери получателя"
+                : sending.length === 0
+                  ? "Отметь глаголы"
+                  : `Поделиться (${sending.length})`}
           </button>
           <button
             type="button"
