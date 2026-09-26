@@ -9,6 +9,7 @@ import { getDict } from "@/lib/i18n/server";
 import { I18nProvider } from "@/components/i18n-provider";
 import { logoutAction } from "@/lib/actions/auth";
 import { SidebarNav } from "@/components/teacher/sidebar-nav";
+import { SidebarShell } from "@/components/teacher/sidebar-shell";
 import { MobileNav } from "@/components/teacher/mobile-nav";
 import { NotificationBell } from "@/components/teacher/notification-bell";
 import { Avatar } from "@/components/avatar";
@@ -41,9 +42,12 @@ export default async function TeacherLayout({
   return (
     <I18nProvider locale={locale}>
       <div className="min-h-screen bg-page">
-        <div className="mx-auto flex w-full max-w-[1440px]">
-          {/* Sidebar */}
-          <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 flex-col gap-6 border-r border-line bg-surface px-5 py-6 lg:flex">
+        <div className="mx-auto flex w-full max-w-[1920px]">
+          {/* Sidebar — сворачивается в кружок, см. SidebarShell */}
+          <SidebarShell
+            expandLabel={t.topbar.expandSidebar}
+            collapseLabel={t.topbar.collapseSidebar}
+          >
             <div className="flex items-center gap-3 px-1">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
                 <IconCap className="h-6 w-6" />
@@ -67,7 +71,7 @@ export default async function TeacherLayout({
                 <br />— Lingora
               </p>
             </div>
-          </aside>
+          </SidebarShell>
 
           {/* Main column */}
           <div className="flex min-w-0 flex-1 flex-col">

@@ -32,6 +32,8 @@ export const uk: Dict = {
     roleTeacher: "Викладач англійської",
     roleStudent: "Учень",
     profile: "Мій профіль",
+    collapseSidebar: "Згорнути панель",
+    expandSidebar: "Показати панель",
   },
 
   common: {

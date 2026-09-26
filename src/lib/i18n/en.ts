@@ -35,6 +35,8 @@ export const en = {
     roleTeacher: "English Teacher",
     roleStudent: "Student",
     profile: "My profile",
+    collapseSidebar: "Collapse sidebar",
+    expandSidebar: "Show sidebar",
   },
 
   common: {

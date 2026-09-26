@@ -1308,6 +1308,7 @@ export function MaterialsExplorer({
     const isOpen = expanded.has(n.id);
     const isSelected = selectedId === n.id;
     const hasChildren = n.children.length > 0;
+    const isFolder = n.type === "FOLDER";
 
     return (
       <div key={n.id} className="py-0.5">
@@ -1331,7 +1332,10 @@ export function MaterialsExplorer({
           <button
             type="button"
             onClick={(e) => handleOpenClick(e, n, treeOrder)}
-            className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left"
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-2.5 text-left",
+              isFolder ? "py-2.5" : "py-1.5",
+            )}
           >
             <span
               className={cn(
@@ -1344,18 +1348,25 @@ export function MaterialsExplorer({
             {n.icon &&
               iconSlot(
                 n,
-                "material-node-emoji flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg leading-none",
+                cn(
+                  "material-node-emoji flex shrink-0 items-center justify-center rounded-lg leading-none",
+                  // Папка в дереве всегда чуть крупнее файла — так уровни
+                  // читаются с одного взгляда.
+                  isFolder ? "h-8 w-8 text-lg" : "h-7 w-7 text-base",
+                ),
               )}
-            {kindMarker(n)}
+            {/* Значок «папка/файл» оставлен только папкам: у файла он ничего
+                не добавлял, а место под название отнимал. */}
+            {isFolder && kindMarker(n)}
             <span
               className={cn(
-                "truncate text-[15px] font-semibold leading-5 transition",
+                "truncate font-semibold transition",
+                isFolder ? "text-[15px] leading-5" : "text-[14px] leading-5",
                 isSelected ? "text-accent" : "text-content",
               )}
             >
               {n.name}
             </span>
-            {pageTypeMarker(n)}
             {mergedMarker(n)}
             {formattingMarker(n)}
             {fixMarker(n)}
@@ -1448,7 +1459,7 @@ export function MaterialsExplorer({
                 {n.description || fmt(t.materials.itemsCount, { n: countFiles(n) })}
               </span>
             </span>
-            {pageTypeMarker(n)}
+            {/* Тип страницы в дереве не показываем — он виден в карточках справа. */}
             {mergedMarker(n)}
             {formattingMarker(n)}
             {fixMarker(n)}

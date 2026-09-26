@@ -32,6 +32,8 @@ export const ru: Dict = {
     roleTeacher: "Учитель английского",
     roleStudent: "Ученик",
     profile: "Мой профиль",
+    collapseSidebar: "Свернуть панель",
+    expandSidebar: "Показать панель",
   },
 
   common: {
