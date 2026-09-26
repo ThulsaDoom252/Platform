@@ -32,7 +32,6 @@ import { TreeImporter, type ImportTarget } from "./tree-importer";
 import { FillFromDialog, type FillTarget } from "./fill-from-dialog";
 import { VerbsReader } from "./verbs-reader";
 import { VerbsFiller, type VerbsTarget } from "./verbs-filler";
-import { VerbsEditor } from "./verbs-editor";
 import { ContentImporter } from "./content-importer";
 import { VocabularyCoverActions } from "./vocabulary-cover";
 import { RuleImporter } from "./rule-importer";
@@ -80,10 +79,6 @@ const hasContent = (n: MaterialNode) => n.phrases.length > 0 || n.blocks.length 
 /** Страница неправильных глаголов — по типу или по уже залитым глаголам. */
 const isVerbsPage = (n: MaterialNode) =>
   n.type === "FILE" && (n.pageKind === "VERBS" || n.verbs.length > 0);
-
-/** Категории, уже заведённые на странице, — для подсказки в окне. */
-const verbCategories = (n: MaterialNode) =>
-  [...new Set(n.verbs.map((v) => v.category?.trim()).filter(Boolean))] as string[];
 
 const pageKind = (n: MaterialNode): "VOCAB" | "RULE" | null =>
   n.pageKind === "RULE" || n.pageKind === "VOCAB"
@@ -197,7 +192,6 @@ export function MaterialsExplorer({
   const [importTree, setImportTree] = useState<ImportTarget | null>(null);
   const [fillFrom, setFillFrom] = useState<FillTarget | null>(null);
   const [fillVerbs, setFillVerbs] = useState<VerbsTarget | null>(null);
-  const [editVerbs, setEditVerbs] = useState<MaterialNode | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
   const [kindChange, setKindChange] = useState<{
@@ -1879,11 +1873,12 @@ export function MaterialsExplorer({
             verbs={selected.verbs}
             onEdit={
               editable
-                ? () =>
+                ? (category) =>
                     setFillVerbs({
                       id: selected.id,
                       name: selected.name,
-                      categories: verbCategories(selected),
+                      verbs: selected.verbs,
+                      focus: category,
                     })
                 : undefined
             }
@@ -1936,23 +1931,19 @@ export function MaterialsExplorer({
                         setFillVerbs({
                           id: selected.id,
                           name: selected.name,
-                          categories: verbCategories(selected),
+                          verbs: selected.verbs,
                         })
                       }
                       className={pageBtn}
-                      title="Вставить таблицу глаголов из Google Docs"
+                      title={
+                        selected.verbs.length > 0
+                          ? "Править список и добавить новые"
+                          : "Вставить таблицу глаголов из Google Docs"
+                      }
                     >
-                      <IconPlus className="h-4 w-4" /> Заполнить
+                      <IconPlus className="h-4 w-4" />
+                      {selected.verbs.length > 0 ? "Редактировать" : "Заполнить"}
                     </button>
-                    {selected.verbs.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setEditVerbs(selected)}
-                        className={pageBtn}
-                      >
-                        <IconPencil className="h-4 w-4" /> Редактировать
-                      </button>
-                    )}
                     {selected.verbs.length > 0 && (
                       <button
                         type="button"
@@ -2369,12 +2360,6 @@ export function MaterialsExplorer({
             target={importTree}
             onClose={() => setImportTree(null)}
             onDone={setNotice}
-          />
-          <VerbsEditor
-            key={editVerbs ? "verbs-edit-" + editVerbs.id : "verbs-edit-idle"}
-            node={editVerbs}
-            onClose={() => setEditVerbs(null)}
-            onDone={(message) => setNotice(message)}
           />
           <VerbsFiller
             key={fillVerbs ? "verbs-" + fillVerbs.id : "verbs-idle"}

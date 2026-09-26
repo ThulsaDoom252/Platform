@@ -47,8 +47,8 @@ export function VerbsReader({
   onEdit,
 }: {
   verbs: MaterialVerb[];
-  /** Открыть окно правки. Ученику не передаётся — у него кнопки нет. */
-  onEdit?: () => void;
+  /** Открыть правку. Аргумент — группа, с которой открыть; null — «без категории». */
+  onEdit?: (category: string | null) => void;
 }) {
   const [alphabetical, setAlphabetical] = useState(false);
   const speech = useSpeech();
@@ -151,7 +151,7 @@ export function VerbsReader({
           <div className="mb-2 flex justify-end border-b border-line pb-2">
             <button
               type="button"
-              onClick={onEdit}
+              onClick={() => onEdit(null)}
               className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12px] font-semibold text-content transition hover:border-accent hover:text-accent"
             >
               <IconPencil className="h-3.5 w-3.5" /> Редактировать
@@ -194,6 +194,17 @@ export function VerbsReader({
               <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-faint">
                 {g.verbs.length}
               </span>
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(g.name === NO_CATEGORY ? null : g.name)}
+                  title={`Править группу «${g.name}»`}
+                  aria-label={`Править группу ${g.name}`}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg text-faint transition hover:bg-accent-soft hover:text-accent"
+                >
+                  <IconPencil className="h-3.5 w-3.5" />
+                </button>
+              )}
             </h3>
             <div className="rounded-2xl bg-surface ring-1 ring-line">
               {g.verbs.map((v) => row(v, g.id))}
