@@ -2511,6 +2511,7 @@ export async function translateMaterialPageAction(
               phrase: phrase.phrase,
               section: phrase.section,
               currentTranslation: phrase.translation,
+              note: phrase.note,
               examples: (phrase.examples ?? []).map((example) => ({
                 en: example.en,
                 currentTranslation: example.tr,
@@ -2558,6 +2559,7 @@ export async function translateMaterialPageAction(
           .set({
             phrase: phrase.kind === "NOTE" ? translated.phrase : phrase.phrase,
             translation: translated.translation,
+            note: translated.note || phrase.note,
             examples,
           })
           .where(eq(materialPhrases.id, phrase.id));

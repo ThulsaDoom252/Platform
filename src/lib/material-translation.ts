@@ -15,6 +15,8 @@ export type VocabularyTranslationInput = {
   phrase: string;
   section?: string | null;
   currentTranslation?: string | null;
+  /** Жёлтая заметка «что стоит знать» под словом. */
+  note?: string | null;
   examples?: { en: string; currentTranslation?: string | null }[];
 };
 
@@ -22,6 +24,7 @@ export type VocabularyTranslationResult = {
   id: string;
   phrase: string;
   translation: string;
+  note: string;
   examples: string[];
 };
 
@@ -184,6 +187,15 @@ export async function translateVocabulary(
       });
     }
 
+    if (item.note?.trim()) {
+      segments.push({
+        id: `${item.id}:note`,
+        text: item.note,
+        source: sourceLanguage,
+        context,
+      });
+    }
+
     examples.forEach((example, index) => {
       const existing = example.currentTranslation?.trim();
       if (!existing && !example.en.trim()) return;
@@ -214,7 +226,8 @@ export async function translateVocabulary(
     if (item.kind !== "NOTE" && !translation) {
       throw new Error(`DeepL не вернул перевод для «${item.phrase}»`);
     }
-    result.set(item.id, { id: item.id, phrase, translation, examples });
+    const note = translated.get(`${item.id}:note`) ?? item.note?.trim() ?? "";
+    result.set(item.id, { id: item.id, phrase, translation, note, examples });
   }
   return result;
 }

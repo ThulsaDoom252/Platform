@@ -45,7 +45,7 @@ function translatableText(block: RuleBlock): string[] {
 }
 
 /** Всё, что в блоке вообще лежит — включая то, что переводить не надо. */
-function allText(block: RuleBlock): string[] {
+function allText(block: unknown): string[] {
   const out: string[] = [];
   const walk = (value: unknown) => {
     if (typeof value === "string") out.push(value);
@@ -75,3 +75,48 @@ for (const name of ["keyed-rule.txt", "keyed-lexis.txt", "keyed-tense.txt"]) {
     }
   });
 }
+
+/**
+ * То же для словника: у записи переводятся перевод, жёлтая заметка и
+ * переводы примеров. Заметку однажды забыли, и она оставалась на прежнем
+ * языке, пока всё вокруг менялось.
+ */
+test("keyed-vocab.txt: кириллица записи нигде не остаётся без перевода", () => {
+  const raw = readFileSync(
+    join(process.cwd(), "scripts", "fixtures", "keyed-vocab.txt"),
+    "utf8",
+  );
+  const parsed = parseKeyed(raw);
+  assert.ok(parsed && parsed.type === "VOCAB");
+
+  // Хотя бы одна заметка в образце должна быть — иначе проверка пустая.
+  assert.ok(
+    parsed.phrases.some((p) => p.note),
+    "в образце нет ни одной заметки",
+  );
+
+  for (const p of parsed.phrases) {
+    // Что уезжает переводчику.
+    const covered = new Set(
+      [p.translation, p.note ?? "", ...p.examples.map((e) => e.tr)].filter(Boolean),
+    );
+    // Что в записи вообще лежит, кроме английского и служебного: слово,
+    // транскрипции, значок и категория переводу не подлежат.
+    const skip = new Set(
+      [
+        p.phrase,
+        p.section ?? "",
+        p.icon ?? "",
+        p.transcription ?? "",
+        p.transcriptionUs ?? "",
+        p.transcriptionUk ?? "",
+        ...p.examples.map((e) => e.en),
+      ].filter(Boolean),
+    );
+
+    const missed = allText(p).filter(
+      (text) => CYRILLIC.test(text) && !covered.has(text) && !skip.has(text),
+    );
+    assert.deepEqual(missed, [], `${p.phrase}: не попадёт в перевод`);
+  }
+});
