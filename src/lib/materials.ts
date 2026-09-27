@@ -63,10 +63,6 @@ export type MaterialNode = {
   translationLang: "RU" | "UK";
   /** Служебная красная отметка, видимая только в редакторе учителя. */
   needsFix: boolean;
-  /** Автоматический сканер нашёл проблему форматирования. */
-  formattingIssue: boolean;
-  /** Файл вручную исключён учителем из следующих проверок. */
-  formattingScanIgnored: boolean;
   /** Сколько одноимённых импортированных файлов объединено в этот файл. */
   mergeCount: number;
   /** Исходный текст правила или словаря, как его вставили. */
@@ -169,8 +165,6 @@ async function buildTree(rows: NodeRow[]): Promise<{
       pageKind: r.pageKind,
       translationLang: r.translationLang,
       needsFix: r.needsFix,
-      formattingIssue: r.formattingIssue,
-      formattingScanIgnored: r.formattingScanIgnored,
       mergeCount: r.mergeCount,
       sourceText: r.sourceText,
       contentBackupAt: r.contentBackup?.savedAt ?? null,

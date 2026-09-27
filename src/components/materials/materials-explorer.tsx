@@ -56,7 +56,6 @@ import {
   restoreMaterialContentAction,
   clearFolderAction,
   clearVerbsAction,
-  clearTreeFormattingMarksAction,
   clearPagesAction,
   deleteNodeAction,
   deleteNodesAction,
@@ -66,9 +65,7 @@ import {
   repairPhraseIconsAction,
   reorderNodeAction,
   reorderVerbGroupsAction,
-  scanTreeFormattingAction,
   setMaterialsNeedsFixAction,
-  toggleFormattingScanIgnoredAction,
   translateMaterialPageAction,
 } from "@/lib/actions/materials";
 
@@ -145,8 +142,6 @@ export type MaterialNode = {
   pageKind: string | null;
   translationLang: "RU" | "UK";
   needsFix: boolean;
-  formattingIssue: boolean;
-  formattingScanIgnored: boolean;
   mergeCount: number;
   sourceText: string | null;
   /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
@@ -381,7 +376,6 @@ export function MaterialsExplorer({
       openMenu(n.id, e.clientX, e.clientY);
     },
   });
-
 
   /**
    * Можно ли поставить перетаскиваемый узел рядом с этим элементом.
@@ -631,13 +625,6 @@ export function MaterialsExplorer({
     .map((id) => byId.get(id))
     .filter((n): n is MaterialNode => !!n);
 
-  const formattingIssueCount = [...byId.values()].filter(
-    (node) => node.type === "FILE" && node.formattingIssue,
-  ).length;
-  const formattingIgnoredCount = [...byId.values()].filter(
-    (node) => node.type === "FILE" && node.formattingScanIgnored,
-  ).length;
-
   /** Наполнять можно только страницы: папка и файл с типом сюда не годятся. */
   const fillablePages = selectedNodes.filter((n) => n.type === "FILE" && !n.fileKind);
 
@@ -692,43 +679,6 @@ export function MaterialsExplorer({
       } else {
         setNotice(res.message ?? (marked ? "Отмечено красным" : "Отметка снята"));
       }
-    });
-  }
-
-  /** Проверить формат словарей и правил во всём текущем дереве. */
-  function scanFormatting() {
-    setNotice("Робот проверяет форматирование всего дерева…");
-    startMove(async () => {
-      const res = await scanTreeFormattingAction(scope, ownerId ?? null);
-      if (res.error) {
-        setNotice(null);
-        setMoveError(res.error);
-      } else {
-        setNotice(res.message ?? "Проверка форматирования завершена");
-      }
-    });
-  }
-
-  /** Снять результаты проверки; ручные исключения при этом сохраняются. */
-  function clearFormattingMarks() {
-    setNotice("Снимаю жёлтые отметки…");
-    startMove(async () => {
-      const res = await clearTreeFormattingMarksAction(scope, ownerId ?? null);
-      if (res.error) {
-        setNotice(null);
-        setMoveError(res.error);
-      } else {
-        setNotice(res.message ?? "Жёлтые отметки сняты");
-      }
-    });
-  }
-
-  /** Включить или исключить один файл из будущих автоматических проверок. */
-  function toggleFormattingIgnored(node: MaterialNode) {
-    startMove(async () => {
-      const res = await toggleFormattingScanIgnoredAction(node.id);
-      if (res.error) setMoveError(res.error);
-      else setNotice(res.message ?? null);
     });
   }
 
@@ -1134,57 +1084,6 @@ export function MaterialsExplorer({
       </span>
     ) : null;
 
-  /**
-   * Жёлтый робот — найденная проблема; приглушённый зачёркнутый робот — файл
-   * исключён из следующих проходов. Клик меняет только режим сканирования.
-   */
-  const formattingMarker = (n: MaterialNode) => {
-    if (
-      !editable ||
-      n.type !== "FILE" ||
-      (!n.formattingIssue && !n.formattingScanIgnored)
-    ) {
-      return null;
-    }
-
-    const ignored = n.formattingScanIgnored;
-    const activate = (event: React.SyntheticEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      toggleFormattingIgnored(n);
-    };
-
-    return (
-      <span
-        role="button"
-        tabIndex={0}
-        title={
-          ignored
-            ? "Исключён из проверок — нажми, чтобы вернуть"
-            : "Проблема форматирования — нажми, чтобы исключить из будущих проверок"
-        }
-        aria-label={
-          ignored ? "Вернуть файл в проверки" : "Исключить файл из будущих проверок"
-        }
-        onClick={activate}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") activate(event);
-        }}
-        className={cn(
-          "relative flex h-7 min-w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg px-1 text-sm shadow-sm transition hover:scale-105",
-          ignored
-            ? "bg-surface-2 text-faint ring-1 ring-line"
-            : "bg-amber-400 text-slate-950 ring-1 ring-amber-300",
-        )}
-      >
-        <span aria-hidden>🤖</span>
-        {ignored && (
-          <span className="absolute h-0.5 w-5 -rotate-45 rounded-full bg-rose-500" />
-        )}
-      </span>
-    );
-  };
-
   /** Жёлтая цифра показывает, сколько одноимённых файлов сведено в один. */
   const mergedMarker = (n: MaterialNode) =>
     editable && n.type === "FILE" && n.mergeCount > 1 ? (
@@ -1528,7 +1427,6 @@ export function MaterialsExplorer({
             n.type === "FOLDER" ? "material-tree-row-folder" : "material-tree-row-file",
             isSelected ? "is-selected" : "",
             mergedHighlight(n) && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
-            editable && n.formattingIssue && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
             editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
             dragId === n.id && "opacity-40",
             dropRing(n.id),
@@ -1576,7 +1474,6 @@ export function MaterialsExplorer({
               {n.name}
             </span>
             {mergedMarker(n)}
-            {formattingMarker(n)}
             {fixMarker(n)}
           </button>
 
@@ -1620,7 +1517,6 @@ export function MaterialsExplorer({
             "material-tree-root group relative flex items-center gap-2 rounded-2xl px-2.5 py-2.5 transition",
             isSelected ? "is-selected" : "",
             mergedHighlight(n) && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
-            editable && n.formattingIssue && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
             editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
             dragId === n.id && "opacity-40",
             dropRing(n.id),
@@ -1669,7 +1565,6 @@ export function MaterialsExplorer({
             </span>
             {/* Тип страницы в дереве не показываем — он виден в карточках справа. */}
             {mergedMarker(n)}
-            {formattingMarker(n)}
             {fixMarker(n)}
           </button>
 
@@ -1725,39 +1620,6 @@ export function MaterialsExplorer({
             )}
           />
         </button>
-
-        {pathOpen && (
-          <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
-            <button
-              type="button"
-              onClick={scanFormatting}
-              disabled={moving}
-              className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 text-sm font-bold text-slate-950 transition hover:bg-amber-300 disabled:cursor-wait disabled:opacity-60"
-              title="Проверить все словари и правила в этом дереве"
-            >
-              <span aria-hidden>🤖</span>
-              {moving ? "Проверяю…" : "Проверить форматирование"}
-            </button>
-            <div className="flex items-center justify-between gap-2 text-[11px] text-faint">
-              <span>
-                {formattingIssueCount > 0
-                  ? `Проблем: ${formattingIssueCount}`
-                  : "Жёлтых отметок нет"}
-                {formattingIgnoredCount > 0 ? ` · исключено: ${formattingIgnoredCount}` : ""}
-              </span>
-              {formattingIssueCount > 0 && (
-                <button
-                  type="button"
-                  onClick={clearFormattingMarks}
-                  disabled={moving}
-                  className="shrink-0 font-semibold text-amber-600 transition hover:text-amber-500 disabled:opacity-50"
-                >
-                  Снять все
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         {pathOpen && (
           <div className="materials-tree-scroll min-h-0 flex-1 max-h-[70vh] overflow-y-auto pr-1 lg:max-h-none">
@@ -1847,7 +1709,6 @@ export function MaterialsExplorer({
         ref={contentRef}
         className={cn(
           "scroll-mt-36 rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6 lg:scroll-mt-20",
-          editable && selected?.formattingIssue && "ring-2 ring-amber-400",
           editable && selected?.needsFix && "ring-2 ring-rose-400",
         )}
       >
@@ -1869,7 +1730,7 @@ export function MaterialsExplorer({
                 >
                   {b.icon} {b.name}
                 </button>
-                {i === breadcrumb.length - 1 && formattingMarker(b)}
+
                 {i === breadcrumb.length - 1 && fixMarker(b)}
               </span>
             ))}
@@ -2354,7 +2215,6 @@ export function MaterialsExplorer({
                       ? "is-selected"
                       : "",
                   mergedHighlight(n) && "border-amber-400 bg-amber-400/10 ring-1 ring-amber-300",
-                  editable && n.formattingIssue && "border-amber-400 bg-amber-400/10 ring-1 ring-amber-300",
                   editable && n.needsFix && "border-rose-400 bg-rose-500/10 ring-1 ring-rose-300",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
@@ -2380,9 +2240,8 @@ export function MaterialsExplorer({
                   {n.name}
                 </span>
                 {pageTypeMarker(n)}
-                {editable && (n.formattingIssue || n.formattingScanIgnored || n.needsFix) && (
+                {editable && n.needsFix && (
                   <span className="mt-1 flex w-full items-center justify-between gap-2">
-                    {formattingMarker(n)}
                     {fixMarker(n)}
                   </span>
                 )}
@@ -2421,8 +2280,7 @@ export function MaterialsExplorer({
                   n.type === "FOLDER" ? "is-folder" : "is-file",
                   selection.has(n.id) && "is-selected",
                   mergedHighlight(n) && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
-                  editable && n.formattingIssue && "bg-amber-400/15 ring-1 ring-inset ring-amber-400",
-                  editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
+                        editable && n.needsFix && "bg-rose-500/10 ring-1 ring-inset ring-rose-400",
                   dragId === n.id && "opacity-40",
                   dropRing(n.id),
                 )}
@@ -2438,7 +2296,6 @@ export function MaterialsExplorer({
                 </span>
                 {pageTypeMarker(n)}
                 {mergedMarker(n)}
-                {formattingMarker(n)}
                 {fixMarker(n)}
                 {n.type === "FILE" && n.fileKind && (
                   <span

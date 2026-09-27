@@ -176,10 +176,6 @@ export const materialNodes = pgTable("material_nodes", {
   translationLang: vocabLangEnum("translation_lang").notNull().default("UK"),
   /** Служебная отметка учителя: материал нужно исправить. Ученику не показывается. */
   needsFix: boolean("needs_fix").notNull().default(false),
-  /** Автоматическая проверка нашла проблему форматирования. */
-  formattingIssue: boolean("formatting_issue").notNull().default(false),
-  /** Учитель исключил файл из последующих автоматических проверок. */
-  formattingScanIgnored: boolean("formatting_scan_ignored").notNull().default(false),
   /** Число одноимённых файлов, которые были безопасно объединены при импорте. */
   mergeCount: integer("merge_count").notNull().default(1),
   /**
