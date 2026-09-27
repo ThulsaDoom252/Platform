@@ -27,10 +27,12 @@ import {
   IconMessage,
   IconMaterials,
   IconClock,
+  IconFile,
   IconGrid,
   IconList,
   IconX,
 } from "@/components/icons";
+import { ClassScript } from "./class-script";
 import { cn } from "@/lib/utils";
 
 const BEAT_MS = 30_000;
@@ -97,7 +99,7 @@ function Timer() {
   );
 }
 
-type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "activities";
+type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "activities" | "script";
 
 export function ClassRoom({
   role,
@@ -122,6 +124,7 @@ export function ClassRoom({
     dictionary: false,
     board: false,
     activities: false,
+    script: false,
   });
   const [showTimer, setShowTimer] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -315,7 +318,13 @@ export function ClassRoom({
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex flex-col gap-4">
-          {teacher && !partner ? picker : stub("Урок")}
+          {open.script && teacher && partner ? (
+            <ClassScript studentId={partner.id} onClose={() => toggle("script")} />
+          ) : teacher && !partner ? (
+            picker
+          ) : (
+            stub("Урок")
+          )}
           {open.dictionary && stub("Словник")}
           {open.board && stub("Доска")}
           {open.activities && stub("Активности")}
@@ -351,6 +360,7 @@ export function ClassRoom({
           {tabBtn("chat", <IconMessage className="h-4 w-4" />, "Чат", unread)}
           {tabBtn("dictionary", <IconMaterials className="h-4 w-4" />, "Словник")}
           {tabBtn("verbs", <IconList className="h-4 w-4" />, "Irregular verbs")}
+          {teacher && tabBtn("script", <IconFile className="h-4 w-4" />, "Скрипт")}
           {tabBtn("board", <IconGrid className="h-4 w-4" />, "Доска")}
           {tabBtn("activities", <IconGrid className="h-4 w-4" />, "Активности")}
 

@@ -13,6 +13,7 @@ export const en = {
     students: "Students",
     schedule: "Schedule",
     finances: "Accounts",
+    script: "Script",
     materials: "Materials",
     settings: "Settings",
     // ученик

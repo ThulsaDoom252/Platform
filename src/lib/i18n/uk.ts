@@ -12,6 +12,7 @@ export const uk: Dict = {
     students: "Учні",
     schedule: "Розклад",
     finances: "Фінанси",
+    script: "Скрипт",
     materials: "Матеріали",
     settings: "Налаштування",
     myClass: "Клас",

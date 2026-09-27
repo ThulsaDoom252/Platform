@@ -142,6 +142,42 @@ export const lessonsRelations = relations(lessons, ({ one, many }) => ({
   homework: many(homework),
 }));
 
+/** Оформление скрипта: шрифт, размер, цвета, фон. */
+export type ScriptStyle = {
+  font?: string;
+  size?: number;
+  color?: string;
+  background?: string;
+  backgroundImage?: string | null;
+};
+
+/**
+ * Скрипт урока — заметки учителя к конкретному занятию.
+ *
+ * Привязан к уроку, а значит сразу к ученику и к дню: отдельных полей
+ * для них не нужно. Ученик его не видит никогда — это подготовка,
+ * а не материал.
+ */
+export const lessonScripts = pgTable("lesson_scripts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  lessonId: uuid("lesson_id")
+    .notNull()
+    .unique()
+    .references(() => lessons.id, { onDelete: "cascade" }),
+  /** Размеченный текст: его же показывает читалка. */
+  html: text("html").notNull().default(""),
+  style: jsonb("style").$type<ScriptStyle>().default({}).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const lessonScriptsRelations = relations(lessonScripts, ({ one }) => ({
+  lesson: one(lessons, {
+    fields: [lessonScripts.lessonId],
+    references: [lessons.id],
+  }),
+}));
+
 // ---------- Materials tree ----------
 export const materialNodes = pgTable("material_nodes", {
   id: uuid("id").primaryKey().defaultRandom(),

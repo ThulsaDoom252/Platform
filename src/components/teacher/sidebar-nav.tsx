@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n-provider";
 import {
   IconCap,
+  IconFile,
   IconHome,
   IconUsers,
   IconCalendar,
@@ -23,6 +24,7 @@ export function SidebarNav() {
     { href: "/teacher", label: t.nav.home, Icon: IconHome, exact: true },
     { href: "/teacher/students", label: t.nav.students, Icon: IconUsers },
     { href: "/teacher/schedule", label: t.nav.schedule, Icon: IconCalendar },
+    { href: "/teacher/script", label: t.nav.script, Icon: IconFile },
     { href: "/teacher/accounts", label: t.nav.finances, Icon: IconChart },
     { href: "/teacher/materials", label: t.nav.materials, Icon: IconMaterials },
     { href: "/teacher/settings", label: t.nav.settings, Icon: IconSettings },

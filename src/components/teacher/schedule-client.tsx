@@ -607,6 +607,14 @@ function EditLessonBody({
         />
       </div>
 
+      {/* Подготовка к этому занятию: открывается прямо отсюда. */}
+      <Link
+        href={`/teacher/script?lesson=${lesson.id}`}
+        className="mt-3 flex h-10 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent-soft text-sm font-semibold text-accent transition hover:border-accent"
+      >
+        📝 Скрипт урока
+      </Link>
+
       {lesson.cancelReason && (
         <div className="tint-amber mt-3 rounded-xl px-3.5 py-2.5 text-xs">
           {fmt(t.schedule.cancelReason, { reason: lesson.cancelReason })}
