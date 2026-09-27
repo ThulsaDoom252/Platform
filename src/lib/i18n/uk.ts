@@ -183,6 +183,8 @@ export const uk: Dict = {
     lessonsBalance: "Баланс уроків",
     balanceLeft: "{n} залишилось",
     lessonTime: "Час уроку",
+    lessonScript: "Скрипт уроку",
+    studentProfile: "Профіль учня",
     commentPlaceholder: "Учень побачить цей коментар…",
     rescheduleTo: "Перенести на",
     cancelLesson: "Скасувати урок",

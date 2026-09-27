@@ -12,6 +12,7 @@
  * заодно узнаёт, на месте ли собеседник.
  */
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   heartbeatAction,
   listClassPeopleAction,
@@ -31,6 +32,7 @@ import {
   IconGrid,
   IconList,
   IconX,
+  IconUser,
 } from "@/components/icons";
 import { ClassScript } from "./class-script";
 import { cn } from "@/lib/utils";
@@ -242,36 +244,48 @@ export function ClassRoom({
 
       <div className="mt-6 flex flex-wrap gap-5">
         {(people ?? []).map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            disabled={busy}
-            onClick={() => startBusy(async () => {
-              await enterClassAction(p.id);
-              setNonce((n) => n + 1);
-            })}
-            className="group flex w-24 flex-col items-center gap-2"
-          >
-            <span className="relative">
-              <Avatar
-                name={p.name}
-                src={p.avatarUrl}
-                className="h-20 w-20 text-xl ring-2 ring-line transition group-hover:ring-accent"
-              />
-              <span className="absolute bottom-1 right-1">
-                <Dot presence={p.presence} />
-              </span>
-              {p.unread > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
-                  {p.unread}
+          /* Сам кружок начинает класс, а уголок слева ведёт в карточку:
+             ссылку нельзя вложить в кнопку, поэтому они рядом. */
+          <div key={p.id} className="group relative flex w-24 flex-col items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => startBusy(async () => {
+                await enterClassAction(p.id);
+                setNonce((n) => n + 1);
+              })}
+              className="flex flex-col items-center gap-2"
+            >
+              <span className="relative">
+                <Avatar
+                  name={p.name}
+                  src={p.avatarUrl}
+                  className="h-20 w-20 text-xl ring-2 ring-line transition group-hover:ring-accent"
+                />
+                <span className="absolute bottom-1 right-1">
+                  <Dot presence={p.presence} />
                 </span>
-              )}
-            </span>
-            <span className="w-full truncate text-center text-[13px] font-semibold text-content group-hover:text-accent">
-              {p.name}
-            </span>
+                {p.unread > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
+                    {p.unread}
+                  </span>
+                )}
+              </span>
+              <span className="w-full truncate text-center text-[13px] font-semibold text-content group-hover:text-accent">
+                {p.name}
+              </span>
+            </button>
             {p.level && <span className="text-[11px] text-faint">{p.level}</span>}
-          </button>
+
+            <Link
+              href={`/teacher/students/${p.id}`}
+              title={`Профиль — ${p.name}`}
+              aria-label={`Профиль — ${p.name}`}
+              className="absolute -left-1 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-surface text-faint opacity-0 ring-1 ring-line transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <IconUser className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         ))}
       </div>
     </div>
@@ -287,13 +301,32 @@ export function ClassRoom({
         </div>
 
         {partner ? (
-          <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
-            <Dot presence={partner.presence} />
-            <span className="text-sm font-semibold text-content">{partner.name}</span>
-            <span className="text-[11px] text-faint">
-              {partner.presence === "online" ? "на платформе" : "не в сети"}
-            </span>
-          </div>
+          /* У учителя плашка ученика — вход в его карточку: во время урока
+             профиль нужен чаще всего, а искать его в «Учениках» долго. */
+          teacher ? (
+            <Link
+              href={`/teacher/students/${partner.id}`}
+              title={`Профиль — ${partner.name}`}
+              className="group flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line transition hover:ring-accent"
+            >
+              <Dot presence={partner.presence} />
+              <span className="text-sm font-semibold text-content group-hover:text-accent">
+                {partner.name}
+              </span>
+              <span className="text-[11px] text-faint">
+                {partner.presence === "online" ? "на платформе" : "не в сети"}
+              </span>
+              <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
+              <Dot presence={partner.presence} />
+              <span className="text-sm font-semibold text-content">{partner.name}</span>
+              <span className="text-[11px] text-faint">
+                {partner.presence === "online" ? "на платформе" : "не в сети"}
+              </span>
+            </div>
+          )
         ) : (
           <span className="text-[12px] text-faint">
             {teacher ? "Класс не начат" : "Учитель ещё не начал класс"}

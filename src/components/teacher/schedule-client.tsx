@@ -6,6 +6,7 @@ import { useT } from "@/components/i18n-provider";
 import { useNow } from "@/lib/use-now";
 import { useLocalFlag } from "@/lib/use-local-flag";
 import { fmt } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import {
   cancelLessonByTeacherAction,
   deleteLessonAction,
@@ -607,13 +608,24 @@ function EditLessonBody({
         />
       </div>
 
-      {/* Подготовка к этому занятию: открывается прямо отсюда. */}
-      <Link
-        href={`/teacher/script?lesson=${lesson.id}`}
-        className="mt-3 flex h-10 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent-soft text-sm font-semibold text-accent transition hover:border-accent"
-      >
-        📝 Скрипт урока
-      </Link>
+      {/* Подготовка к занятию и карточка ученика — прямо отсюда.
+          Под маской профиль не показываем: он раскрыл бы скрытое имя. */}
+      <div className={cn("mt-3 grid gap-2", !masked && "sm:grid-cols-2")}>
+        <Link
+          href={`/teacher/script?lesson=${lesson.id}`}
+          className="flex h-10 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent-soft text-sm font-semibold text-accent transition hover:border-accent"
+        >
+          📝 {t.schedule.lessonScript}
+        </Link>
+        {!masked && (
+          <Link
+            href={`/teacher/students/${lesson.studentId}`}
+            className="flex h-10 items-center justify-center gap-2 rounded-xl border border-line text-sm font-semibold text-content transition hover:border-accent hover:text-accent"
+          >
+            <IconUser className="h-4 w-4" /> {t.schedule.studentProfile}
+          </Link>
+        )}
+      </div>
 
       {lesson.cancelReason && (
         <div className="tint-amber mt-3 rounded-xl px-3.5 py-2.5 text-xs">

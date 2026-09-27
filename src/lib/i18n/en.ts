@@ -181,6 +181,8 @@ export const en = {
     lessonsBalance: "Lessons balance",
     balanceLeft: "{n} left",
     lessonTime: "Lesson time",
+    lessonScript: "Lesson script",
+    studentProfile: "Student profile",
     commentPlaceholder: "The student will see this comment…",
     rescheduleTo: "Reschedule to",
     cancelLesson: "Cancel lesson",

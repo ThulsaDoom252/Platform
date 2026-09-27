@@ -17,7 +17,9 @@ export default async function TeacherMaterialsPage({
   const { t } = await getDict();
   const { view } = await searchParams;
   const session = await getSession();
-  const mine = view === "mine";
+  // По умолчанию открывается личная библиотека: учитель заходит сюда
+  // работать со своими файлами, а в общую базу — заметно реже.
+  const mine = view !== "shared";
 
   const tree = mine
     ? await getOwnedTree("PERSONAL", session!.userId)
@@ -42,10 +44,10 @@ export default async function TeacherMaterialsPage({
 
       <div className="flex w-fit items-center gap-1 rounded-2xl bg-surface p-1 ring-1 ring-line">
         {/* Свои материалы первыми: учитель заходит сюда чаще, чем в общую базу. */}
-        <Link href="/teacher/materials?view=mine" className={tabCls(mine)}>
+        <Link href="/teacher/materials" className={tabCls(mine)}>
           Мои материалы
         </Link>
-        <Link href="/teacher/materials" className={tabCls(!mine)}>
+        <Link href="/teacher/materials?view=shared" className={tabCls(!mine)}>
           Общая библиотека
         </Link>
       </div>
