@@ -107,9 +107,11 @@ export default async function SchedulePage({
     .where(eq(users.role, "STUDENT"))
     .orderBy(asc(users.name));
 
-  // Диапазон часов подстраивается под реальные уроки (минимум 8:00–20:00).
+  // Диапазон часов подстраивается под реальные уроки. Нижняя граница —
+  // последний час, в который ещё назначают урок, поэтому 21: сам ряд 20:00
+  // должен быть кликабельным.
   let hFrom = 8;
-  let hTo = 20;
+  let hTo = 21;
   for (const r of rows) {
     const s = r.startTime.getHours();
     const e = Math.ceil(
