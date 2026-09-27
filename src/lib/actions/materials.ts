@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
@@ -2608,43 +2608,39 @@ export async function reformatMaterialPageAction(nodeId: string): Promise<BulkSt
       return { error: parsed.warnings[0] ?? "Не удалось заново разобрать правило" };
     }
 
-    const current = await db
-      .select({ id: materialBlocks.id })
+    const [{ value: before = 0 } = { value: 0 }] = await db
+      .select({ value: count() })
       .from(materialBlocks)
-      .where(eq(materialBlocks.nodeId, id))
-      .orderBy(asc(materialBlocks.sortOrder));
-    if (blocks.length < current.length) {
-      return {
-        error:
-          `Новый разбор нашёл меньше блоков: ${blocks.length} вместо ${current.length}. ` +
-          "Автоматическая замена остановлена — открой редактирование и проверь результат.",
-      };
-    }
+      .where(eq(materialBlocks.nodeId, id));
 
+    // Блоки заменяются целиком, а прежнее уходит в снимок: разбор мог
+    // измениться, и «стало меньше» — это обычно правка формата, а не
+    // поломка. Отменяется кнопкой «Вернуть прежнее».
     await db.transaction(async (tx) => {
-      for (let index = 0; index < current.length; index++) {
-        const block = blocks[index];
-        await tx
-          .update(materialBlocks)
-          .set({ sortOrder: index + 1, type: block.type, data: block })
-          .where(eq(materialBlocks.id, current[index].id));
-      }
-      if (blocks.length > current.length) {
-        await tx.insert(materialBlocks).values(
-          blocks.slice(current.length).map((block, offset) => ({
-            nodeId: id,
-            sortOrder: current.length + offset + 1,
-            type: block.type,
-            data: block,
-          })),
-        );
-      }
+      await snapshotContent(tx, id, node.pageKind);
+      await tx.delete(materialBlocks).where(eq(materialBlocks.nodeId, id));
+      await tx.insert(materialBlocks).values(
+        blocks.map((block, index) => ({
+          nodeId: id,
+          sortOrder: index + 1,
+          type: block.type,
+          data: block,
+        })),
+      );
+      await tx
+        .update(materialNodes)
+        .set({ formattingIssue: parsed.warnings.length > 0 })
+        .where(eq(materialNodes.id, id));
     });
 
     revalidateMaterials();
     return {
       ok: true,
-      message: `Правило переформатировано: ${blocks.length} блоков`,
+      message:
+        `Переформатировано: ${blocks.length} блоков` +
+        (blocks.length < Number(before)
+          ? ` (было ${before} — прежнее сохранено, вернуть можно кнопкой «Вернуть прежнее»)`
+          : ""),
     };
   }
 
@@ -2658,46 +2654,28 @@ export async function reformatMaterialPageAction(nodeId: string): Promise<BulkSt
   }
 
   const current = await loadPhrases(id);
-  if (parsed.phrases.length < current.length) {
-    return {
-      error:
-        `Новый разбор нашёл меньше записей: ${parsed.phrases.length} вместо ${current.length}. ` +
-        "Автоматическая замена остановлена — открой редактирование и проверь результат.",
-    };
-  }
 
+  // Словник заменяется целиком под снимок, как и правило: «стало меньше»
+  // чаще означает правку формата, а не поломку.
   await db.transaction(async (tx) => {
-    for (let index = 0; index < current.length; index++) {
-      const phrase = parsed.phrases[index];
-      await tx
-        .update(materialPhrases)
-        .set({
-          sortOrder: index + 1,
-          icon: phrase.icon,
-          phrase: phrase.phrase,
-          transcription: phrase.transcription,
-          translation: phrase.translation,
-          section: phrase.section,
-          kind: phrase.kind,
-          examples: phrase.examples,
-        })
-        .where(eq(materialPhrases.id, current[index].id));
-    }
-    if (parsed.phrases.length > current.length) {
-      await tx.insert(materialPhrases).values(
-        parsed.phrases.slice(current.length).map((phrase, offset) => ({
-          nodeId: id,
-          sortOrder: current.length + offset + 1,
-          icon: phrase.icon,
-          phrase: phrase.phrase,
-          transcription: phrase.transcription,
-          translation: phrase.translation,
-          section: phrase.section,
-          kind: phrase.kind,
-          examples: phrase.examples,
-        })),
-      );
-    }
+    await snapshotContent(tx, id, node.pageKind);
+    await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, id));
+    await tx.insert(materialPhrases).values(
+      parsed.phrases.map((phrase, index) => ({
+        nodeId: id,
+        sortOrder: index + 1,
+        icon: phrase.icon,
+        phrase: phrase.phrase,
+        transcription: phrase.transcription,
+        transcriptionUs: phrase.transcriptionUs ?? null,
+        transcriptionUk: phrase.transcriptionUk ?? null,
+        translation: phrase.translation,
+        note: phrase.note ?? null,
+        section: phrase.section,
+        kind: phrase.kind,
+        examples: phrase.examples,
+      })),
+    );
   });
 
   const words = parsed.phrases.filter((phrase) => phrase.kind === "PHRASE").length;
@@ -2705,7 +2683,11 @@ export async function reformatMaterialPageAction(nodeId: string): Promise<BulkSt
   revalidateMaterials();
   return {
     ok: true,
-    message: `Словарь переформатирован: ${words} записей${notes ? `, ${notes} заметок` : ""}`,
+    message:
+      `Словарь переформатирован: ${words} записей${notes ? `, ${notes} заметок` : ""}` +
+      (parsed.phrases.length < current.length
+        ? ` (было ${current.length} — прежнее сохранено)`
+        : ""),
   };
 }
 

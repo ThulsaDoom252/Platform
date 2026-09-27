@@ -1,13 +1,16 @@
 TYPE: TENSE
 TITLE: Present Simple
+SECTION: 🎯 Навіщо це потрібно
 WHY: Дія відбувається регулярно, завжди або взагалі: звички, розклад, факти.
 WHY: Час самої дії не важливий — важливо, що так буває зазвичай.
 
+SECTION: 🧩 Побудова
 FORM: + | I / you / we / they + V | I work in a bank. | Я працюю в банку.
 FORM: + | he / she / it + V-s | She works in a bank. | Вона працює в банку.
 FORM: - | підмет + don't / doesn't + V | He doesn't eat meat. | Він не їсть м'яса.
 FORM: ? | Do / Does + підмет + V | Do you speak English? | Ти розмовляєш англійською?
 
+SECTION: 🔁 Підстановка
 GRID: Ствердження
 HEAD: Хто | Дієслово | Приклад
 ROW: I / you / we / they | work | I work every day.
@@ -23,6 +26,7 @@ HEAD: Хто | Допоміжне | Дія
 ROW: I / you / we / they | don't | dance.
 ROW: he / she / it | doesn't | play.
 
+SECTION: 🔑 Ключові слова
 MARKER: always | завжди | She always drinks tea. | Вона завжди п'є чай. | стоїть перед основним дієсловом
 MARKER: usually | зазвичай | I usually get up at seven. | Я зазвичай встаю о сьомій. | можна поставити на початок речення для акценту
 MARKER: often | часто | They often go to the cinema. | Вони часто ходять у кіно. | у питанні стоїть після підмета
@@ -30,6 +34,7 @@ MARKER: sometimes | іноді | Sometimes we order pizza. | Іноді ми з�
 MARKER: never | ніколи | I never drink coffee. | Я ніколи не п'ю кави. | саме по собі заперечення, not не потрібне
 MARKER: every day | щодня | We have English every Tuesday. | У нас англійська щовівторка. | ставиться в кінці речення
 
+SECTION: 🗣 Розбір прикладів
 EX: Water boils at 100 degrees. | Вода кипить при 100 градусах. | факт, який не змінюється
 EX: The train leaves at 8:15. | Потяг вирушає о 8:15. | розклад, а не намір
 EX: She doesn't like horror films. | Вона не любить фільми жахів. | постійне ставлення, а не дія зараз
@@ -37,6 +42,7 @@ EX: She doesn't like horror films. | Вона не любить фільми ж�
 NOTE: -s / -es додається тільки для he / she / it.
 NOTE: Коли в реченні є does / doesn't, закінчення -s зникає з основного дієслова.
 
+SECTION: ⚠️ Типові помилки
 TRAP: ❌ She work in a hospital. ✅ She works in a hospital. | для he / she / it потрібне -s
 TRAP: ❌ Does he works here? ✅ Does he work here? | does уже забрало -s на себе
 TRAP: ❌ I am work every day. ✅ I work every day. | to be тут зайве

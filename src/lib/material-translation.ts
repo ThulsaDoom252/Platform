@@ -73,7 +73,7 @@ async function requestDeepL(
       target_lang: target,
       ...(source && source !== target ? { source_lang: source } : {}),
       ...(context?.trim() ? { context: context.slice(0, 12_000) } : {}),
-      ...(keep ? { tag_handling: "xml", ignore_tags: KEEP_TAG } : {}),
+      ...(keep ? { tag_handling: "xml", ignore_tags: [KEEP_TAG] } : {}),
       model_type: "prefer_quality_optimized",
       preserve_formatting: true,
     }),
@@ -239,6 +239,14 @@ export async function translateRuleBlocks(
     segments.push({ id, text, source, context: "English grammar learning material" });
   };
 
+  /**
+   * Кусок, где английское намешано с пояснением: «підмет + don't + V».
+   * Целиком английское не трогаем — это формула или пример, а не текст.
+   */
+  const addMixed = (id: string, text: string | undefined) => {
+    if (text && CYRILLIC.test(text)) add(id, text);
+  };
+
   blocks.forEach((block, index) => {
     switch (block.type) {
       case "heading":
@@ -250,10 +258,14 @@ export async function translateRuleBlocks(
         add(`${index}.text`, block.text);
         break;
       case "formula":
+        // Формула наполовину английская, наполовину нет: «підмет + V».
+        // Английское защищено тегом, остальное переводится как обычно.
+        addMixed(`${index}.text`, block.text);
         break;
       case "example":
         if (block.tr?.trim()) add(`${index}.tr`, block.tr);
         else add(`${index}.tr`, block.en, "EN");
+        add(`${index}.why`, block.why);
         break;
       case "list":
         block.items.forEach((item, itemIndex) => add(`${index}.items.${itemIndex}`, item));
@@ -277,6 +289,7 @@ export async function translateRuleBlocks(
         );
         break;
       case "form":
+        addMixed(`${index}.formula`, block.formula);
         add(`${index}.tr`, block.tr || block.en, block.tr ? sourceLanguage : "EN");
         break;
       case "marker":
@@ -287,6 +300,11 @@ export async function translateRuleBlocks(
       case "grid":
         add(`${index}.title`, block.title);
         block.headers.forEach((text, cell) => add(`${index}.headers.${cell}`, text));
+        block.rows.forEach((row, rowIndex) =>
+          row.forEach((text, cell) =>
+            addMixed(`${index}.rows.${rowIndex}.${cell}`, text),
+          ),
+        );
         break;
       case "link":
         add(`${index}.label`, block.label);
@@ -310,7 +328,11 @@ export async function translateRuleBlocks(
           text: get(`${index}.text`, block.text),
         };
       case "example":
-        return { ...block, tr: get(`${index}.tr`, block.tr ?? "") };
+        return {
+          ...block,
+          tr: get(`${index}.tr`, block.tr ?? ""),
+          ...(block.why ? { why: get(`${index}.why`, block.why) } : {}),
+        };
       case "list":
         return {
           ...block,
@@ -342,7 +364,11 @@ export async function translateRuleBlocks(
           ),
         };
       case "form":
-        return { ...block, tr: get(`${index}.tr`, block.tr) };
+        return {
+          ...block,
+          formula: get(`${index}.formula`, block.formula),
+          tr: get(`${index}.tr`, block.tr),
+        };
       case "marker":
         return {
           ...block,
@@ -356,6 +382,9 @@ export async function translateRuleBlocks(
           ...(block.title ? { title: get(`${index}.title`, block.title) } : {}),
           headers: block.headers.map((text, cell) =>
             get(`${index}.headers.${cell}`, text),
+          ),
+          rows: block.rows.map((row, rowIndex) =>
+            row.map((text, cell) => get(`${index}.rows.${rowIndex}.${cell}`, text)),
           ),
         };
       case "link":

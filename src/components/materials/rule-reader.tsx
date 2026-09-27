@@ -67,10 +67,18 @@ export function RuleReader({
 
   // Оглавление имеет смысл, когда разделов больше двух: иначе это просто
   // повтор того, что и так видно на экране.
+  // У времени секций обычно нет, зато есть названные сетки построения.
+  // Для навигации годится и то и другое: важно, куда можно прыгнуть.
   const sections = blocks
     .map((block, i) => ({ block, i }))
-    .filter(({ block }) => block.type === "heading")
-    .map(({ block, i }) => ({ id: `rule-section-${i}`, text: "text" in block ? block.text : "" }));
+    .map(({ block, i }) => {
+      if (block.type === "heading") return { id: `rule-section-${i}`, text: block.text };
+      if (block.type === "grid" && block.title) {
+        return { id: `rule-section-${i}`, text: block.title };
+      }
+      return null;
+    })
+    .filter((item) => item !== null);
 
   return (
     <div className={cn("flex flex-col gap-4", isStudySheet && "rule-sheet")}>
@@ -511,7 +519,11 @@ export function RuleReader({
           case "grid": {
             // Первая колонка — то, что меняется: её и выделяем.
             return (
-              <div key={i} className="overflow-hidden rounded-2xl ring-1 ring-line">
+              <div
+                key={i}
+                id={`rule-section-${i}`}
+                className="scroll-mt-20 overflow-hidden rounded-2xl ring-1 ring-line"
+              >
                 {b.title && (
                   <p className="bg-accent px-3.5 py-2 text-[13px] font-bold text-white">
                     {b.title}
