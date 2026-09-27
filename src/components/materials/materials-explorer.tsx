@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useLocalNumber } from "@/lib/use-local-number";
 import {
   IconChevronRight,
   IconChevronDown,
@@ -68,6 +69,14 @@ import {
   setMaterialsNeedsFixAction,
   translateMaterialPageAction,
 } from "@/lib/actions/materials";
+
+/** Ширина панели дерева: по умолчанию и допустимые пределы. */
+const TREE_WIDTH_DEFAULT = 400;
+const TREE_WIDTH_MIN = 280;
+const TREE_WIDTH_MAX = 760;
+
+const clampTreeWidth = (value: number) =>
+  Math.round(Math.min(TREE_WIDTH_MAX, Math.max(TREE_WIDTH_MIN, value)));
 
 /** Есть ли на странице что чистить: словник или разобранное правило. */
 const hasContent = (n: MaterialNode) => n.phrases.length > 0 || n.blocks.length > 0;
@@ -222,6 +231,52 @@ export function MaterialsExplorer({
   const [shareVerbs, setShareVerbs] = useState<ShareVerbsTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
+  /**
+   * Ширина панели дерева. Названия у разделов разной длины: одному
+   * экрана хватает, другому нет — поэтому размер подбирает учитель, а
+   * не вёрстка. Значение своё на каждом устройстве.
+   */
+  const [treeWidth, setTreeWidth] = useLocalNumber(
+    "materials-tree-width",
+    TREE_WIDTH_DEFAULT,
+  );
+  const gridRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  /**
+   * Пока тянем за полосу, ширину меняем прямо в разметке: перерисовывать
+   * всё дерево на каждое движение мыши незачем. В состояние она уходит
+   * один раз, когда полосу отпустили.
+   */
+  function startResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { startX: event.clientX, startWidth: treeWidth };
+  }
+
+  function onResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (!drag.current) return;
+    const next = clampTreeWidth(
+      drag.current.startWidth + event.clientX - drag.current.startX,
+    );
+    gridRef.current?.style.setProperty("--tree-w", `${next}px`);
+  }
+
+  function endResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (!drag.current) return;
+    const next = clampTreeWidth(
+      drag.current.startWidth + event.clientX - drag.current.startX,
+    );
+    drag.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setTreeWidth(next);
+  }
+
+  function resetResize() {
+    gridRef.current?.style.setProperty("--tree-w", `${TREE_WIDTH_DEFAULT}px`);
+    setTreeWidth(TREE_WIDTH_DEFAULT);
+  }
+
   // Редкие действия свёрнуты: на панели должно остаться то, чем
   // пользуются каждый урок.
   const [moreTools, setMoreTools] = useState(false);
@@ -1594,7 +1649,32 @@ export function MaterialsExplorer({
   };
 
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
+    <div
+      ref={gridRef}
+      style={{ "--tree-w": `${treeWidth}px` } as React.CSSProperties}
+      className="relative grid items-start gap-5 lg:grid-cols-[var(--tree-w)_minmax(0,1fr)]"
+    >
+      {/* Полоса между панелью и содержимым: тянуть — менять ширину,
+          двойной щелчок — вернуть обычную. На узком экране колонка одна,
+          и делить нечего. */}
+      {pathOpen && (
+        <div
+          onPointerDown={startResize}
+          onPointerMove={onResize}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onDoubleClick={resetResize}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ширина панели материалов"
+          title="Потяни, чтобы изменить ширину. Двойной щелчок — обычная."
+          className="group absolute inset-y-0 z-10 hidden w-3 cursor-col-resize touch-none lg:block"
+          style={{ left: "calc(var(--tree-w) + 0.35rem)" }}
+        >
+          <span className="pointer-events-none absolute inset-y-6 left-1/2 w-1 -translate-x-1/2 rounded-full bg-line transition group-hover:bg-accent" />
+        </div>
+      )}
+
       {/* ---------- Путь обучения ---------- */}
       <aside
         ref={panelRef}
