@@ -82,6 +82,34 @@ export const users = pgTable("users", {
   showExpiry: boolean("show_expiry").notNull().default(true),
   /** Может ли ученик выгружать материалы в текст и docx. */
   allowExport: boolean("allow_export").notNull().default(true),
+  /**
+   * Показывать ли ученику прошедшие уроки. По умолчанию нет: расписание
+   * нужно ему, чтобы знать, когда следующее занятие, а не разбирать архив.
+   * Учитель включает это отдельно каждому.
+   */
+  showPastLessons: boolean("show_past_lessons").notNull().default(false),
+
+  // ---------- Анкета ученика ----------
+  viber: text("viber"),
+  /** Чем занимается помимо языка: тем для разговора всегда не хватает. */
+  hobby: text("hobby"),
+  /** Зачем учит английский — своими словами. */
+  goal: text("goal"),
+  /** Откуда родом. */
+  homeland: text("homeland"),
+  /** Где живёт сейчас: страна и город. */
+  country: text("country"),
+  city: text("city"),
+
+  // ---------- Заметки учителя: ученику не показываются ----------
+  /** Цвет темы платформы, выбранный пользователем. */
+  accent: text("accent"),
+  /** Уровень на момент начала занятий — с чем пришёл. */
+  levelAtStart: text("level_at_start"),
+  /** Частые ошибки: то, к чему возвращаются из урока в урок. */
+  frequentMistakes: text("frequent_mistakes"),
+  /** Всё остальное, что учителю стоит помнить. */
+  teacherNote: text("teacher_note"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

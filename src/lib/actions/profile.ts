@@ -68,6 +68,17 @@ export async function updateProfileAction(
   const phone = String(formData.get("phone") || "").trim() || null;
   const telegram = String(formData.get("telegram") || "").trim() || null;
   const contactNote = String(formData.get("contactNote") || "").trim() || null;
+
+  /** Поле анкеты: пустое остаётся пустым, длинное подрезается. */
+  const field = (key: string, max = 200) =>
+    String(formData.get(key) || "").trim().slice(0, max) || null;
+
+  const viber = field("viber", 60);
+  const hobby = field("hobby", 300);
+  const goal = field("goal", 300);
+  const homeland = field("homeland", 120);
+  const country = field("country", 120);
+  const city = field("city", 120);
   // Имя меняет только учитель (аккаунты учеников заводит он).
   const name =
     session.role === "TEACHER"
@@ -98,7 +109,21 @@ export async function updateProfileAction(
 
   await db
     .update(users)
-    .set({ name, email, phone, telegram, contactNote, avatarUrl, updatedAt: new Date() })
+    .set({
+      name,
+      email,
+      phone,
+      telegram,
+      viber,
+      contactNote,
+      hobby,
+      goal,
+      homeland,
+      country,
+      city,
+      avatarUrl,
+      updatedAt: new Date(),
+    })
     .where(eq(users.id, session.userId));
 
   // Учитель должен знать, что ученик обновил контакты.
@@ -120,4 +145,24 @@ export async function updateProfileAction(
 
   revalidatePath("/", "layout");
   return { ok: true, message: "Сохранено" };
+}
+
+/**
+ * Запомнить тему в профиле.
+ *
+ * Сама тема применяется мгновенно из браузера — сюда она уходит только
+ * для того, чтобы учитель видел в карточке ученика, чем тот пользуется.
+ * Поэтому ответа мы не ждём и ошибки не показываем.
+ */
+export async function rememberThemeAction(mode: string, accent: string) {
+  const session = await getSession();
+  if (!session) return;
+
+  await db
+    .update(users)
+    .set({
+      theme: mode === "dark" ? "DARK" : "LIGHT",
+      accent: String(accent ?? "").slice(0, 32) || null,
+    })
+    .where(eq(users.id, session.userId));
 }

@@ -56,8 +56,34 @@ export default async function StudentSchedulePage() {
     .where(eq(lessons.studentId, session!.userId))
     .orderBy(asc(lessons.startTime));
 
-  const upcoming = myLessons.filter((l) => l.status === "SCHEDULED");
-  const history = myLessons.filter((l) => l.status !== "SCHEDULED").reverse();
+  /**
+   * Ученику нужна ближайшая неделя, а не весь список до конца года.
+   * Показываем то, что осталось на этой неделе; когда она отзанята —
+   * следующую, чтобы страница не пустовала.
+   */
+  const weekEnd = new Date(now);
+  weekEnd.setHours(0, 0, 0, 0);
+  weekEnd.setDate(weekEnd.getDate() + (7 - ((weekEnd.getDay() + 6) % 7)));
+
+  const scheduled = myLessons.filter(
+    (l) => l.status === "SCHEDULED" && l.startTime.getTime() >= now.getTime(),
+  );
+  const thisWeek = scheduled.filter((l) => l.startTime < weekEnd);
+  const nextWeekEnd = new Date(weekEnd);
+  nextWeekEnd.setDate(nextWeekEnd.getDate() + 7);
+  const upcoming =
+    thisWeek.length > 0
+      ? thisWeek
+      : scheduled.filter((l) => l.startTime < nextWeekEnd);
+
+  // Прошедшие показываем, только если учитель их открыл этому ученику.
+  const history = me.showPastLessons
+    ? myLessons
+        .filter(
+          (l) => l.status !== "SCHEDULED" || l.startTime.getTime() < now.getTime(),
+        )
+        .reverse()
+    : [];
   const balance = pkg ? pkg.remainingLessons : me.lessonBalance;
 
   return (
@@ -105,13 +131,15 @@ export default async function StudentSchedulePage() {
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
         <div className="mb-1.5 flex items-center gap-2">
           <IconCalendar className="h-4 w-4 text-accent" />
-          <h2 className="font-semibold text-content">{t.studentArea.myLessons}</h2>
+          <h2 className="font-semibold text-content">{t.profile.upcoming}</h2>
         </div>
         <p className="mb-4 text-xs text-faint">{t.studentArea.cancelRules}</p>
 
         {upcoming.length === 0 && (
           <p className="py-6 text-center text-sm text-faint">
-            {t.studentArea.noScheduled}
+            {scheduled.length > 0
+              ? t.profile.nothingThisWeek
+              : t.studentArea.noScheduled}
           </p>
         )}
 

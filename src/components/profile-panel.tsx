@@ -11,7 +11,13 @@ export type ProfileUser = {
   email: string | null;
   phone: string | null;
   telegram: string | null;
+  viber: string | null;
   contactNote: string | null;
+  hobby: string | null;
+  goal: string | null;
+  homeland: string | null;
+  country: string | null;
+  city: string | null;
   avatarUrl: string | null;
   role: "TEACHER" | "STUDENT";
 };
@@ -106,6 +112,67 @@ export function ProfilePanel({ user }: { user: ProfileUser }) {
               className={`${inputCls} mt-1.5`}
             />
           </label>
+          <label className="block">
+            <span className="text-sm font-medium text-content">{t.profile.viber}</span>
+            <input
+              name="viber"
+              defaultValue={user.viber ?? ""}
+              placeholder="+380 00 000 00 00"
+              className={`${inputCls} mt-1.5`}
+            />
+          </label>
+        </div>
+
+        {user.role === "STUDENT" && (
+          <p className="mt-3 text-[11px] text-faint">{t.profile.studentNote}</p>
+        )}
+      </section>
+
+      {/* О себе: то, из чего берутся темы для разговора */}
+      <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
+        <p className="font-semibold text-content">{t.profile.about}</p>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block sm:col-span-2">
+            <span className="text-sm font-medium text-content">{t.profile.hobby}</span>
+            <input
+              name="hobby"
+              defaultValue={user.hobby ?? ""}
+              className={`${inputCls} mt-1.5`}
+            />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-sm font-medium text-content">{t.profile.goal}</span>
+            <input
+              name="goal"
+              defaultValue={user.goal ?? ""}
+              className={`${inputCls} mt-1.5`}
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-content">{t.profile.homeland}</span>
+            <input
+              name="homeland"
+              defaultValue={user.homeland ?? ""}
+              className={`${inputCls} mt-1.5`}
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-content">{t.profile.country}</span>
+            <input
+              name="country"
+              defaultValue={user.country ?? ""}
+              className={`${inputCls} mt-1.5`}
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-content">{t.profile.city}</span>
+            <input
+              name="city"
+              defaultValue={user.city ?? ""}
+              className={`${inputCls} mt-1.5`}
+            />
+          </label>
           <label className="block sm:col-span-2">
             <span className="text-sm font-medium text-content">
               {t.profile.contactNote}
@@ -117,10 +184,6 @@ export function ProfilePanel({ user }: { user: ProfileUser }) {
             />
           </label>
         </div>
-
-        {user.role === "STUDENT" && (
-          <p className="mt-3 text-[11px] text-faint">{t.profile.studentNote}</p>
-        )}
 
         {state.error && <p className="mt-3 text-sm text-rose-500">{state.error}</p>}
 

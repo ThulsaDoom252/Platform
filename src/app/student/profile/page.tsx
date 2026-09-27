@@ -27,7 +27,13 @@ export default async function StudentProfilePage() {
           email: me.email,
           phone: me.phone,
           telegram: me.telegram,
+          viber: me.viber,
           contactNote: me.contactNote,
+          hobby: me.hobby,
+          goal: me.goal,
+          homeland: me.homeland,
+          country: me.country,
+          city: me.city,
           avatarUrl: me.avatarUrl,
           role: "STUDENT",
         }}

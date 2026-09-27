@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { useT } from "@/components/i18n-provider";
 import { IconMoon, IconSun, IconCheck } from "@/components/icons";
+import { rememberThemeAction } from "@/lib/actions/profile";
 
 type Mode = "light" | "dark";
 type Accent = "indigo" | "emerald" | "rose" | "violet";
@@ -67,6 +68,12 @@ export function ThemeSettings() {
       /* хранилище недоступно — тема всё равно применится до перезагрузки */
     }
     notify();
+    remember(next, readAccent());
+  }
+
+  /** Тема уже применена, сюда — только чтобы учитель видел её в карточке. */
+  function remember(nextMode: Mode, nextAccent: Accent) {
+    void rememberThemeAction(nextMode, nextAccent).catch(() => {});
   }
 
   function applyAccent(next: Accent) {
@@ -78,6 +85,7 @@ export function ThemeSettings() {
       /* то же самое: атрибут проставлен, не сохранилась только настройка */
     }
     notify();
+    remember(readMode(), next);
   }
 
   const dark = mode === "dark";

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { StudentNotes } from "@/components/teacher/student-notes";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -97,6 +98,23 @@ export default async function StudentDetailPage({
           showExpiry: student.showExpiry,
           allowExport: student.allowExport,
           sharedStudentIds,
+        }}
+      />
+
+      <StudentNotes
+        studentId={student.id}
+        seen={{
+          locale: student.locale,
+          theme: student.theme,
+          accent: student.accent,
+          level: student.level,
+          goal: student.goal,
+        }}
+        initial={{
+          levelAtStart: student.levelAtStart,
+          frequentMistakes: student.frequentMistakes,
+          teacherNote: student.teacherNote,
+          showPastLessons: student.showPastLessons,
         }}
       />
 

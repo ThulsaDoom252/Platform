@@ -509,3 +509,39 @@ export async function markNotificationsReadAction() {
     .where(eq(notifications.recipientId, session.userId));
   revalidatePath("/teacher");
 }
+
+export type StudentNotesState = { ok?: boolean; message?: string; error?: string };
+
+/**
+ * Заметки учителя об ученике и доступ к прошедшим урокам.
+ *
+ * Всё это видит только учитель, поэтому и правится только отсюда —
+ * в профиле ученика таких полей нет.
+ */
+export async function saveStudentNotesAction(
+  _prev: StudentNotesState,
+  formData: FormData,
+): Promise<StudentNotesState> {
+  await requireTeacher();
+
+  const studentId = String(formData.get("studentId") || "");
+  if (!studentId) return { error: "Не выбран ученик" };
+
+  const field = (key: string, max: number) =>
+    String(formData.get(key) || "").trim().slice(0, max) || null;
+
+  await db
+    .update(users)
+    .set({
+      levelAtStart: field("levelAtStart", 120),
+      frequentMistakes: field("frequentMistakes", 2000),
+      teacherNote: field("teacherNote", 2000),
+      showPastLessons: formData.get("showPastLessons") === "on",
+      updatedAt: new Date(),
+    })
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")));
+
+  revalidatePath(`/teacher/students/${studentId}`);
+  revalidatePath("/student/schedule");
+  return { ok: true, message: "Сохранено" };
+}
