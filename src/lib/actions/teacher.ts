@@ -510,7 +510,8 @@ export async function markNotificationsReadAction() {
   revalidatePath("/teacher");
 }
 
-export type StudentNotesState = { ok?: boolean; message?: string; error?: string };
+/* Текста подписи здесь нет: язык знает только страница. */
+export type StudentNotesState = { ok?: boolean; error?: string };
 
 /**
  * Заметки учителя об ученике и доступ к прошедшим урокам.
@@ -533,6 +534,9 @@ export async function saveStudentNotesAction(
   await db
     .update(users)
     .set({
+      // Уровень и цель ученик видит у себя, остальное — только учитель.
+      level: field("level", 120),
+      goal: field("goal", 500),
       levelAtStart: field("levelAtStart", 120),
       frequentMistakes: field("frequentMistakes", 2000),
       teacherNote: field("teacherNote", 2000),
@@ -543,5 +547,6 @@ export async function saveStudentNotesAction(
 
   revalidatePath(`/teacher/students/${studentId}`);
   revalidatePath("/student/schedule");
-  return { ok: true, message: "Сохранено" };
+  revalidatePath("/student/profile");
+  return { ok: true };
 }

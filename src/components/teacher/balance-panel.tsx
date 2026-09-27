@@ -62,6 +62,10 @@ export function BalancePanel({
   const [form, setForm] = useState<BalanceSettings>(initial);
   const [remainingInput, setRemainingInput] = useState(String(initial.remaining));
   const [saved, setSaved] = useState(false);
+  // Общий пул — редкий случай, поэтому свёрнут: в карточку заходят за
+  // остатком уроков, а не за составом пакета. Значок с числом участников
+  // остаётся снаружи, так что свёрнутый блок ничего не прячет.
+  const [poolOpen, setPoolOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
 
@@ -146,15 +150,26 @@ export function BalancePanel({
       </div>
 
       <div className="mt-4 rounded-xl border border-line p-3.5">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="text-[12px] font-semibold text-content">
+        <button
+          type="button"
+          onClick={() => setPoolOpen((v) => !v)}
+          aria-expanded={poolOpen}
+          className="flex w-full flex-wrap items-start justify-between gap-2 text-left"
+        >
+          <span>
+            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-content">
+              <span
+                aria-hidden
+                className={cn("text-faint transition", poolOpen && "rotate-90")}
+              >
+                ›
+              </span>
               Общий пул уроков <span className="font-normal text-faint">· необязательно</span>
-            </p>
-            <p className="mt-1 text-[11px] text-faint">
+            </span>
+            <span className="mt-1 block text-[11px] text-faint">
               Выбери учеников, которые будут тратить один остаток вместе с {studentName}.
-            </p>
-          </div>
+            </span>
+          </span>
           <span
             className={cn(
               "rounded-full px-2.5 py-1 text-[11px] font-semibold",
@@ -165,9 +180,9 @@ export function BalancePanel({
               ? `Участников: ${sharedStudents.length + 1}`
               : "Личный пакет"}
           </span>
-        </div>
+        </button>
 
-        {poolStudents.length > 0 ? (
+        {poolOpen && (poolStudents.length > 0 ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {poolStudents.map((student) => (
               <label
@@ -186,12 +201,14 @@ export function BalancePanel({
           </div>
         ) : (
           <p className="mt-3 text-[11px] text-faint">Других учеников пока нет.</p>
-        )}
+        ))}
 
-        <p className="mt-2.5 text-[11px] text-faint">
-          Если никого не выбирать, пакет остаётся личным. Ученик может состоять только
-          в одном общем пуле.
-        </p>
+        {poolOpen && (
+          <p className="mt-2.5 text-[11px] text-faint">
+            Если никого не выбирать, пакет остаётся личным. Ученик может состоять только
+            в одном общем пуле.
+          </p>
+        )}
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">

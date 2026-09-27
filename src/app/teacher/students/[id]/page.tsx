@@ -78,6 +78,30 @@ export default async function StudentDetailPage({
         </Badge>
       </div>
 
+      <StudentNotes
+        studentId={student.id}
+        card={{
+          email: student.email,
+          phone: student.phone,
+          telegram: student.telegram,
+          viber: student.viber,
+          contactNote: student.contactNote,
+          hobby: student.hobby,
+          homeland: student.homeland,
+          country: student.country,
+          city: student.city,
+          locale: student.locale,
+          theme: student.theme,
+          accent: student.accent,
+          level: student.level,
+          goal: student.goal,
+          levelAtStart: student.levelAtStart,
+          frequentMistakes: student.frequentMistakes,
+          teacherNote: student.teacherNote,
+          showPastLessons: student.showPastLessons,
+        }}
+      />
+
       <BalancePanel
         studentId={student.id}
         studentName={student.name}
@@ -98,23 +122,6 @@ export default async function StudentDetailPage({
           showExpiry: student.showExpiry,
           allowExport: student.allowExport,
           sharedStudentIds,
-        }}
-      />
-
-      <StudentNotes
-        studentId={student.id}
-        seen={{
-          locale: student.locale,
-          theme: student.theme,
-          accent: student.accent,
-          level: student.level,
-          goal: student.goal,
-        }}
-        initial={{
-          levelAtStart: student.levelAtStart,
-          frequentMistakes: student.frequentMistakes,
-          teacherNote: student.teacherNote,
-          showPastLessons: student.showPastLessons,
         }}
       />
 
