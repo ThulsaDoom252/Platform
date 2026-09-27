@@ -10,7 +10,7 @@ import {
   DEFAULT_SORT,
   MAX_PRESETS,
   captureOrder,
-  sortTree,
+  sortInsideRoots,
   type SortMode,
   type TreePreset,
 } from "@/lib/tree-sort";
@@ -285,7 +285,7 @@ export function MaterialsExplorer({
     : undefined;
 
   const sortedTree = useMemo(
-    () => sortTree(tree, sortState.mode, activePreset?.order),
+    () => sortInsideRoots(tree, sortState.mode, activePreset?.order),
     [tree, sortState.mode, activePreset],
   );
 

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   sortTree,
+  sortInsideRoots,
   captureOrder,
   DEFAULT_SORT,
   type SortableNode,
@@ -99,4 +100,30 @@ test("исходное дерево не меняется", () => {
   const before = JSON.stringify(tree);
   sortTree(tree, "name-desc");
   assert.equal(JSON.stringify(tree), before);
+});
+
+test("главные разделы сортировка не трогает", () => {
+  for (const mode of ["name-asc", "name-desc", "added-asc", "added-desc"] as const) {
+    const out = sortInsideRoots(tree, mode);
+    assert.deepEqual(
+      names(out),
+      names(tree),
+      `режим ${mode}: верхний уровень переставился`,
+    );
+  }
+});
+
+test("внутри главных разделов порядок всё равно меняется", () => {
+  const out = sortInsideRoots(tree, "name-asc");
+  const rules = out.find((n) => n.name === "Rules");
+  assert.ok(rules);
+  assert.deepEqual(names(rules.children), ["Tenses", "Articles", "Zero"]);
+});
+
+test("расстановка не запоминает верхний уровень", () => {
+  const order = captureOrder(sortInsideRoots(tree, "name-asc"));
+  for (const root of tree) {
+    assert.ok(!(root.id in order), `${root.name} попал в расстановку`);
+  }
+  assert.ok("Tenses" in order, "вложенные узлы должны сохраняться");
 });

@@ -121,15 +121,40 @@ export function sortTree<T extends SortableNode>(
   );
 }
 
-/** Снять расстановку с уже разложенного дерева — для сохранения пресета. */
-export function captureOrder(nodes: SortableNode[], into: Record<string, number> = {}): Record<string, number> {
+/**
+ * Разложить всё, кроме верхнего уровня.
+ *
+ * Главные разделы стоят так, как их поставил учитель: это его карта, и
+ * сортировка не вправе её переписывать. Внутри разделов порядок уже
+ * выбирается режимом.
+ */
+export function sortInsideRoots<T extends SortableNode>(
+  roots: T[],
+  mode: SortMode,
+  preset?: Record<string, number>,
+): T[] {
+  return roots.map(
+    (root) => ({ ...root, children: sortTree(root.children, mode, preset) }) as T,
+  );
+}
+
+/**
+ * Снять расстановку с уже разложенного дерева — для сохранения пресета.
+ *
+ * Верхний уровень в неё не попадает: его порядок сортировка всё равно
+ * не трогает, а в расстановке он только мешал бы.
+ */
+export function captureOrder(
+  nodes: SortableNode[],
+  into: Record<string, number> = {},
+): Record<string, number> {
   let index = 0;
-  const walk = (list: SortableNode[]) => {
+  const walk = (list: SortableNode[], top: boolean) => {
     for (const node of list) {
-      into[node.id] = index++;
-      walk(node.children);
+      if (!top) into[node.id] = index++;
+      walk(node.children, false);
     }
   };
-  walk(nodes);
+  walk(nodes, true);
   return into;
 }
