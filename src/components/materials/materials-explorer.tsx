@@ -2648,6 +2648,7 @@ export function MaterialsExplorer({
             description: exportPage.description,
             phrases: exportPage.phrases,
             blocks: exportPage.blocks,
+            lang: exportPage.translationLang === "RU" ? ("RU" as const) : ("UK" as const),
           }
         }
         onClose={() => setExportPage(null)}

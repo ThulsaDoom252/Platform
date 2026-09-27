@@ -13,7 +13,12 @@ export type ExportPhrase = {
   kind: string;
   phrase: string;
   transcription: string | null;
+  /** Американское и британское произношение, если они различаются. */
+  transcriptionUs?: string | null;
+  transcriptionUk?: string | null;
   translation: string | null;
+  /** Жёлтая подсказка «что стоит знать» под словом. */
+  note?: string | null;
   examples: { en: string; tr: string }[];
 };
 
@@ -22,7 +27,36 @@ export type ExportPage = {
   description: string | null;
   phrases: ExportPhrase[];
   blocks: RuleBlock[];
+  /** Язык перевода страницы — от него зависит ссылка на Reverso. */
+  lang?: "UK" | "RU";
 };
+
+/** Цвета выгрузки. Те же роли, что на странице: шапка, раздел, перевод. */
+const DOCX = {
+  title: "1F3864",
+  section: "1A7A8C",
+  word: "1B2733",
+  translation: "17843F",
+  faint: "6B7A8C",
+  example: "2B3A4A",
+  noteFill: "FFF3D6",
+  noteText: "7A5A10",
+  white: "FFFFFF",
+} as const;
+
+/** Ссылка на Reverso: по ней слово открывается в живых примерах. */
+function reversoUrl(word: string, lang: "UK" | "RU"): string {
+  const pair = lang === "RU" ? "english-russian" : "english-ukrainian";
+  return `https://context.reverso.net/translation/${pair}/${encodeURIComponent(word.trim())}`;
+}
+
+/** Произношение одной строкой: два варианта показываем, только если разные. */
+function transcriptionOf(p: ExportPhrase): string {
+  const us = p.transcriptionUs?.trim();
+  const uk = p.transcriptionUk?.trim();
+  if (us && uk && us !== uk) return `us ${us} uk ${uk}`;
+  return (us || uk || p.transcription || "").trim();
+}
 
 /** Словник в текст: «слово /транскрипция/ — перевод» и примеры маркерами. */
 function phrasesToText(phrases: ExportPhrase[]): string[] {
@@ -42,11 +76,12 @@ function phrasesToText(phrases: ExportPhrase[]): string[] {
       continue;
     }
 
-    const head = [p.phrase, p.transcription].filter(Boolean).join(" ");
+    const head = [p.phrase, transcriptionOf(p)].filter(Boolean).join(" ");
     out.push(`${head}${p.translation ? ` — ${p.translation}` : ""}`);
     for (const ex of p.examples) {
       out.push(`• ${ex.en}${ex.tr ? ` — ${ex.tr}` : ""}`);
     }
+    if (p.note) out.push(`💡 ${p.note}`);
   }
   return out;
 }
@@ -144,23 +179,82 @@ async function pageToDocxChildren(
   page: ExportPage,
   titleLevel: "h1" | "h2" | "none" = "h1",
 ) {
-  const { Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType } =
-    await import("docx");
+  const {
+    Paragraph,
+    TextRun,
+    HeadingLevel,
+    Table,
+    TableRow,
+    TableCell,
+    WidthType,
+    ExternalHyperlink,
+    AlignmentType,
+  } = await import("docx");
 
   type Block = InstanceType<typeof Paragraph> | InstanceType<typeof Table>;
   const children: Block[] = [];
 
+  const vocabulary = page.blocks.length === 0 && page.phrases.length > 0;
+
   if (titleLevel !== "none") {
     children.push(
-      new Paragraph({
-        text: page.title,
-        heading: titleLevel === "h1" ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2,
-      }),
+      vocabulary
+        ? // Словник открывается плашкой: в распечатке она отделяет один
+          // материал от другого лучше любого заголовка.
+          new Paragraph({
+            shading: { fill: DOCX.title },
+            spacing: { before: 120, after: 0 },
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({
+                text: page.title.toUpperCase(),
+                bold: true,
+                size: 34,
+                color: DOCX.white,
+              }),
+            ],
+          })
+        : new Paragraph({
+            text: page.title,
+            heading: titleLevel === "h1" ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2,
+          }),
     );
   }
+
   if (page.description) {
     children.push(
-      new Paragraph({ children: [new TextRun({ text: page.description, italics: true })] }),
+      vocabulary
+        ? new Paragraph({
+            shading: { fill: DOCX.title },
+            spacing: { before: 0, after: 0 },
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({
+                text: page.description.toUpperCase(),
+                size: 20,
+                color: "C7D2E4",
+              }),
+            ],
+          })
+        : new Paragraph({ children: [new TextRun({ text: page.description, italics: true })] }),
+    );
+  }
+
+  if (vocabulary) {
+    children.push(
+      new Paragraph({
+        shading: { fill: DOCX.title },
+        spacing: { before: 0, after: 200 },
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            text: "🔊 Нажми на слово, чтобы открыть его в Reverso Context",
+            italics: true,
+            size: 18,
+            color: "C7D2E4",
+          }),
+        ],
+      }),
     );
   }
 
@@ -213,32 +307,100 @@ async function pageToDocxChildren(
       }
     }
   } else {
+    const lang = page.lang ?? "UK";
     let section: string | null = null;
+
     for (const p of page.phrases) {
       if ((p.section ?? null) !== section) {
         section = p.section ?? null;
         if (section) {
-          children.push(new Paragraph({ text: section, heading: HeadingLevel.HEADING_2 }));
+          // Раздел плашкой: в длинном словнике глаз цепляется за цвет,
+          // а не за размер шрифта.
+          children.push(
+            new Paragraph({
+              shading: { fill: DOCX.section },
+              spacing: { before: 240, after: 120 },
+              children: [
+                new TextRun({ text: section, bold: true, size: 26, color: DOCX.white }),
+              ],
+            }),
+          );
         }
       }
 
       if (p.kind === "NOTE") {
-        children.push(para(`💡 ${p.phrase}${p.translation ? ` — ${p.translation}` : ""}`, { italics: true }));
+        children.push(
+          para(`💡 ${p.phrase}${p.translation ? ` — ${p.translation}` : ""}`, {
+            italics: true,
+          }),
+        );
         continue;
       }
 
+      const transcription = transcriptionOf(p);
       children.push(
         new Paragraph({
+          spacing: { before: 160, after: 40 },
           children: [
-            new TextRun({ text: p.phrase, bold: true }),
-            ...(p.transcription ? [new TextRun({ text: ` ${p.transcription}` })] : []),
-            ...(p.translation ? [new TextRun({ text: ` — ${p.translation}` })] : []),
+            ...(p.icon ? [new TextRun({ text: `${p.icon}  ` })] : []),
+            // Слово — ссылка: по ней открываются живые примеры в Reverso.
+            new ExternalHyperlink({
+              link: reversoUrl(p.phrase, lang),
+              children: [
+                new TextRun({ text: p.phrase, bold: true, size: 26, color: DOCX.word }),
+              ],
+            }),
+            ...(transcription
+              ? [new TextRun({ text: `  ${transcription}`, size: 18, color: DOCX.faint })]
+              : []),
+            ...(p.translation
+              ? [
+                  new TextRun({ text: "  —  ", color: DOCX.faint }),
+                  new TextRun({
+                    text: p.translation,
+                    bold: true,
+                    size: 24,
+                    color: DOCX.translation,
+                  }),
+                ]
+              : []),
           ],
         }),
       );
+
       for (const ex of p.examples) {
-        children.push(new Paragraph({ text: ex.en, bullet: { level: 0 } }));
-        if (ex.tr) children.push(para(ex.tr, { italics: true }));
+        children.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            spacing: { before: 0, after: 20 },
+            children: [
+              new TextRun({ text: ex.en, size: 21, color: DOCX.example }),
+              ...(ex.tr
+                ? [
+                    new TextRun({ text: "  —  ", color: DOCX.faint }),
+                    new TextRun({ text: ex.tr, italics: true, size: 20, color: DOCX.faint }),
+                  ]
+                : []),
+            ],
+          }),
+        );
+      }
+
+      // Подсказка — та самая жёлтая полоса со страницы.
+      if (p.note) {
+        for (const line of p.note.split(String.fromCharCode(10))) {
+          if (!line.trim()) continue;
+          children.push(
+            new Paragraph({
+              shading: { fill: DOCX.noteFill },
+              spacing: { before: 60, after: 60 },
+              indent: { left: 360 },
+              children: [
+                new TextRun({ text: line.trim(), size: 19, color: DOCX.noteText }),
+              ],
+            }),
+          );
+        }
       }
     }
   }
