@@ -46,7 +46,7 @@ export type StudentItem = {
 };
 
 const hm = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const wdShort = new Intl.DateTimeFormat("ru-RU", { weekday: "short" });
+const wdShort = new Intl.DateTimeFormat("en-GB", { weekday: "short" });
 const dFull = new Intl.DateTimeFormat("ru-RU", {
   weekday: "long",
   day: "numeric",
@@ -268,28 +268,38 @@ export function ScheduleClient({
 
       {/* ---------- Недельная сетка ---------- */}
       <section
-        className={`${isDay ? "hidden" : "hidden md:block"} overflow-hidden rounded-2xl bg-surface ring-1 ring-line shadow-sm`}
+        className={`${isDay ? "hidden" : "hidden md:block"} overflow-hidden rounded-2xl bg-surface shadow-sm ring-1 ring-[color:var(--grid-edge)]`}
       >
         <div className="overflow-x-auto">
           <div className="min-w-[720px]">
             <div
-              className="grid border-b border-line"
+              className="grid border-b-2 border-[color:var(--grid-edge)] bg-surface-2"
               style={{ gridTemplateColumns: `56px repeat(7, minmax(0,1fr))` }}
             >
-              <div className="px-2 py-3 text-[11px] font-medium text-faint">Время</div>
+              <div className="px-2 py-2.5 text-[10px] font-bold uppercase tracking-wide text-faint">
+                Время
+              </div>
               {days.map((d) => {
                 const today = sameDay(d, now);
                 return (
                   <Link
                     key={d.toISOString()}
                     href={href(d)}
-                    className="border-l border-line px-2 py-3 text-center transition hover:bg-surface-2"
+                    className={`border-l border-[color:var(--grid-line)] px-2 py-2.5 text-center transition hover:bg-surface ${
+                      today ? "bg-accent-soft" : ""
+                    }`}
                   >
-                    <p className={`text-[11px] uppercase ${today ? "text-accent" : "text-faint"}`}>
+                    <p
+                      className={`text-[11px] font-bold uppercase tracking-wide ${
+                        today ? "text-accent" : "text-muted"
+                      }`}
+                    >
                       {wdShort.format(d)}
                     </p>
                     <p
-                      className={`mt-0.5 text-sm font-semibold ${today ? "text-accent" : "text-content"}`}
+                      className={`mt-0.5 text-base font-extrabold leading-none ${
+                        today ? "text-accent" : "text-content"
+                      }`}
                     >
                       {d.getDate()}
                     </p>
@@ -302,12 +312,15 @@ export function ScheduleClient({
               className="grid"
               style={{ gridTemplateColumns: `56px repeat(7, minmax(0,1fr))` }}
             >
-              <div className="relative" style={{ height: gridH }}>
+              <div
+                className="relative border-r-2 border-[color:var(--grid-edge)] bg-surface-2"
+                style={{ height: gridH }}
+              >
                 {hours.map((h, i) => (
                   <div
                     key={h}
-                    className="absolute left-0 right-0 pr-2 text-right text-[11px] text-faint"
-                    style={{ top: i * rowH - 6 }}
+                    className="absolute left-0 right-0 flex items-center justify-end border-b border-[color:var(--grid-line)] pr-2 font-mono text-[12px] font-bold tabular-nums text-muted"
+                    style={{ top: i * rowH, height: rowH }}
                   >
                     {String(h).padStart(2, "0")}:00
                   </div>
@@ -319,10 +332,10 @@ export function ScheduleClient({
                 return (
                   <div
                     key={day.toISOString()}
-                    className="relative border-l border-line"
+                    className="relative border-l border-[color:var(--grid-line)]"
                     style={{
                       height: gridH,
-                      backgroundImage: `repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px ${rowH}px)`,
+                      backgroundImage: `repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px ${rowH}px)`,
                     }}
                   >
                     {/* Пустые слоты — клик добавляет урок */}
@@ -352,16 +365,25 @@ export function ScheduleClient({
                       const height = Math.max(28, (l.duration / 60) * rowH - 4);
                       const end = new Date(l.startTime.getTime() + l.duration * 60000);
                       const c = lessonTone(l, now);
+                      // Короткий урок двух строк не вмещает: имя важнее времени.
+                      const roomy = height >= 40;
                       return (
                         <button
                           key={l.id}
                           type="button"
                           onClick={() => openEdit(l)}
-                          className="absolute left-1 right-1 flex items-center overflow-hidden rounded-lg px-2.5 text-left shadow-sm transition hover:brightness-110"
+                          className="absolute left-1 right-1 flex flex-col justify-center overflow-hidden rounded-lg px-2.5 text-left shadow-md ring-1 ring-black/10 transition hover:brightness-110"
                           style={{ top, height, background: c }}
                           title={`${hide(l.studentName)} · ${hm.format(l.startTime)}–${hm.format(end)} · ${t.lessonStatus[l.status as keyof typeof t.lessonStatus]}`}
                         >
-                          <span className="truncate text-xs font-bold text-white">
+                          {/* Время внутри урока: по сетке его приходилось
+                              вычислять глазами, а начало важно сразу. */}
+                          {roomy && (
+                            <span className="font-mono text-[10px] font-bold leading-tight text-white/85 tabular-nums">
+                              {hm.format(l.startTime)}–{hm.format(end)}
+                            </span>
+                          )}
+                          <span className="truncate text-xs font-bold leading-tight text-white">
                             {hide(l.studentName)}
                           </span>
                         </button>
