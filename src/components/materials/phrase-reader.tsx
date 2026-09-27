@@ -107,7 +107,7 @@ function DeleteBadge({
         if (confirm(`Удалить «${phrase}» из словника?`)) onDelete();
       }}
       title="Удалить запись"
-      className="absolute right-11 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-surface-2 text-faint opacity-0 transition hover:text-rose-500 group-hover:opacity-100"
+      className="absolute right-20 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-surface-2 text-faint opacity-0 transition hover:text-rose-500 group-hover:opacity-100"
     >
       <IconTrash className="h-4 w-4" />
     </button>
