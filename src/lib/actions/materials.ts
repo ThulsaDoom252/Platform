@@ -18,6 +18,7 @@ import {
   type ContentBackup,
 } from "@/lib/db/schema";
 import { sanitizeBlocks } from "@/lib/rule-blocks";
+import type { ExportPhrase } from "@/lib/export-material";
 import {
   getOwnedTree,
   getMaterialsTree,
@@ -2453,6 +2454,123 @@ export async function reformatMaterialPageAction(nodeId: string): Promise<BulkSt
 }
 
 /** Перевести целиком открытую страницу словаря или правила. */
+export type ExportTranslation = {
+  phrases: ExportPhrase[];
+  blocks: RuleBlock[];
+  error?: string;
+};
+
+/**
+ * Перевод только для выгрузки.
+ *
+ * Страницу не трогаем: учитель может выгрузить материал ученику на его
+ * языке, а у себя оставить тот, на котором работает. Ничего не
+ * сохраняется — результат живёт ровно до скачивания файла.
+ */
+export async function translateForExportAction(
+  nodeId: string,
+  target: MaterialTranslationLang,
+): Promise<ExportTranslation> {
+  await requireTeacher();
+  const lang: MaterialTranslationLang = target === "RU" ? "RU" : "UK";
+  if (!nodeId) return { phrases: [], blocks: [], error: "Не выбрана страница" };
+
+  const [node] = await db
+    .select({ type: materialNodes.type, translationLang: materialNodes.translationLang })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, nodeId))
+    .limit(1);
+  if (!node || node.type !== "FILE") {
+    return { phrases: [], blocks: [], error: "Страница не найдена" };
+  }
+
+  const [phrases, blockRows] = await Promise.all([
+    loadPhrases(nodeId),
+    db
+      .select()
+      .from(materialBlocks)
+      .where(eq(materialBlocks.nodeId, nodeId))
+      .orderBy(asc(materialBlocks.sortOrder)),
+  ]);
+
+  const asExport = (rows: typeof phrases): ExportPhrase[] =>
+    rows.map((p) => ({
+      icon: p.icon,
+      section: p.section,
+      kind: p.kind,
+      phrase: p.phrase,
+      transcription: p.transcription,
+      transcriptionUs: p.transcriptionUs,
+      transcriptionUk: p.transcriptionUk,
+      translation: p.translation,
+      note: p.note,
+      examples: p.examples ?? [],
+    }));
+
+  // Язык уже совпадает — переводить нечего, отдаём как есть.
+  if (node.translationLang === lang) {
+    return {
+      phrases: asExport(phrases),
+      blocks: blockRows.map((row) => row.data as RuleBlock),
+    };
+  }
+
+  try {
+    const [translatedPhrases, translatedBlocks] = await Promise.all([
+      phrases.length
+        ? translateVocabulary(
+            phrases.map((phrase) => ({
+              id: phrase.id,
+              kind: phrase.kind === "NOTE" ? "NOTE" : "PHRASE",
+              phrase: phrase.phrase,
+              section: phrase.section,
+              currentTranslation: phrase.translation,
+              note: phrase.note,
+              examples: (phrase.examples ?? []).map((example) => ({
+                en: example.en,
+                currentTranslation: example.tr,
+              })),
+            })),
+            lang,
+            node.translationLang,
+          )
+        : Promise.resolve(new Map()),
+      blockRows.length
+        ? translateRuleBlocks(
+            blockRows.map((row) => row.data as RuleBlock),
+            lang,
+            node.translationLang,
+          )
+        : Promise.resolve([] as RuleBlock[]),
+    ]);
+
+    return {
+      phrases: asExport(phrases).map((p, index) => {
+        const done = translatedPhrases.get(phrases[index].id);
+        if (!done) return p;
+        return {
+          ...p,
+          phrase: p.kind === "NOTE" ? done.phrase : p.phrase,
+          translation: done.translation,
+          note: done.note || p.note,
+          examples: p.examples.map((example: { en: string; tr: string }, i: number) => ({
+            ...example,
+            tr: done.examples[i] ?? example.tr,
+          })),
+        };
+      }),
+      blocks: translatedBlocks,
+    };
+  } catch (error) {
+    console.error("Перевод для выгрузки не удался:", error);
+    return {
+      phrases: asExport(phrases),
+      blocks: blockRows.map((row) => row.data as RuleBlock),
+      error: error instanceof Error ? error.message : "Переводчик недоступен",
+    };
+  }
+}
+
 export async function translateMaterialPageAction(
   nodeId: string,
   target: MaterialTranslationLang,

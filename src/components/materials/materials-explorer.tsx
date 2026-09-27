@@ -2642,6 +2642,7 @@ export function MaterialsExplorer({
 
       <ExportDialog
         key={exportPage ? `export-${exportPage.id}` : "export-idle"}
+        nodeId={exportPage?.id ?? null}
         page={
           exportPage && {
             title: exportPage.name,

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Modal } from "@/components/modal";
+import { translateForExportAction } from "@/lib/actions/materials";
 import {
   pageSourceOrText,
   pageToDocxBlob,
@@ -16,17 +17,50 @@ import { IconCheck, IconFile } from "@/components/icons";
  */
 export function ExportDialog({
   page,
+  nodeId,
   onClose,
 }: {
   page: ExportPage | null;
+  /** Нужен, чтобы перевести материал под выгрузку, не трогая страницу. */
+  nodeId?: string | null;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const text = useMemo(() => (page ? pageSourceOrText(page) : ""), [page]);
-  const isSource = !!page?.sourceText?.trim();
+  /**
+   * Язык выгрузки живёт отдельно от языка страницы: материал можно отдать
+   * ученику на его языке, а у себя оставить рабочий.
+   */
+  const pageLang = page?.lang ?? "UK";
+  const [lang, setLang] = useState<"UK" | "RU">(pageLang);
+  const [translated, setTranslated] = useState<ExportPage | null>(null);
+  const [translating, startTranslate] = useTransition();
+
+  const shown = lang === pageLang ? page : translated;
+  const text = useMemo(() => (shown ? pageSourceOrText(shown) : ""), [shown]);
+  // Исходник записан на языке страницы: для другого языка он уже не он.
+  const isSource = lang === pageLang && !!page?.sourceText?.trim();
+
+  function switchLang(next: "UK" | "RU") {
+    setError(null);
+    setLang(next);
+    if (next === pageLang || !nodeId || !page) return;
+
+    startTranslate(async () => {
+      const res = await translateForExportAction(nodeId, next);
+      if (res.error) setError(res.error);
+      // Перевод не сохраняется: он нужен только этому файлу.
+      setTranslated({
+        ...page,
+        phrases: res.phrases,
+        blocks: res.blocks,
+        lang: next,
+        sourceText: null,
+      });
+    });
+  }
 
   if (!page) return null;
 
@@ -45,7 +79,7 @@ export function ExportDialog({
     setError(null);
     setBusy(true);
     try {
-      const blob = await pageToDocxBlob(page!);
+      const blob = await pageToDocxBlob(shown ?? page!);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -71,6 +105,41 @@ export function ExportDialog({
       icon={<IconFile className="h-5 w-5" />}
     >
       <div className="flex flex-col gap-4">
+        {/* Язык выгрузки: страницу он не трогает. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-semibold text-faint">Язык перевода</span>
+          <div className="flex items-center gap-1 rounded-xl bg-surface-2 p-1 ring-1 ring-line">
+            {(["UK", "RU"] as const).map((code) => (
+              <button
+                key={code}
+                type="button"
+                disabled={translating || !nodeId}
+                onClick={() => switchLang(code)}
+                title={
+                  nodeId
+                    ? "Только для этого файла — страница останется как есть"
+                    : "Здесь язык не переключается"
+                }
+                className={
+                  "h-7 rounded-lg px-2.5 text-xs font-bold transition disabled:opacity-50 " +
+                  (lang === code
+                    ? "bg-accent text-white"
+                    : "text-muted hover:bg-surface hover:text-content")
+                }
+              >
+                {code === "UK" ? "🇺🇦 UA" : "🇷🇺 RU"}
+              </button>
+            ))}
+          </div>
+          {translating && <span className="text-[12px] text-faint">Перевожу…</span>}
+          {lang !== pageLang && !translating && (
+            <span className="text-[12px] text-faint">
+              Только для файла — на странице остаётся{" "}
+              {pageLang === "UK" ? "украинский" : "русский"}
+            </span>
+          )}
+        </div>
+
         <p className="text-[12px] text-muted">
           {isSource
             ? `Исходный текст, из которого страницу разобрали — ${lines} строк. Его можно вставить обратно в парсер.`

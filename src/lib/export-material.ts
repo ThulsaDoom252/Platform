@@ -208,12 +208,16 @@ async function pageToDocxChildren(
   type Block = InstanceType<typeof Paragraph> | InstanceType<typeof Table>;
   const children: Block[] = [];
 
-  const vocabulary = page.blocks.length === 0 && page.phrases.length > 0;
+  // Плашку-шапку получает любой материал: она отделяет один от другого.
+  const banner = true;
+  // Подсказку про Reverso — только там, где есть слова со ссылками.
+  const hasWords =
+    page.phrases.length > 0 || page.blocks.some((b) => b.type === "word");
 
   if (titleLevel !== "none") {
     children.push(
-      vocabulary
-        ? // Словник открывается плашкой: в распечатке она отделяет один
+      banner
+        ? // Материал открывается плашкой: в распечатке она отделяет один
           // материал от другого лучше любого заголовка.
           new Paragraph({
             shading: { fill: DOCX.title },
@@ -237,7 +241,7 @@ async function pageToDocxChildren(
 
   if (page.description) {
     children.push(
-      vocabulary
+      banner
         ? new Paragraph({
             shading: { fill: DOCX.title },
             spacing: { before: 0, after: 0 },
@@ -254,7 +258,7 @@ async function pageToDocxChildren(
     );
   }
 
-  if (vocabulary) {
+  if (hasWords) {
     children.push(
       new Paragraph({
         shading: { fill: DOCX.title },
@@ -276,48 +280,307 @@ async function pageToDocxChildren(
     new Paragraph({ children: [new TextRun({ text, ...opts })] });
 
   if (page.blocks.length > 0) {
+    const lang = page.lang ?? "UK";
+
+    /** Полоса-раздел: тот же приём, что у категорий словника. */
+    const band = (text: string, fill: string) =>
+      new Paragraph({
+        shading: { fill },
+        spacing: { before: 240, after: 120 },
+        children: [new TextRun({ text, bold: true, size: 26, color: DOCX.white })],
+      });
+
+    /** Жёлтая подсказка — то, что на странице подсвечено. */
+    const hint = (text: string) =>
+      new Paragraph({
+        shading: { fill: DOCX.noteFill },
+        spacing: { before: 60, after: 60 },
+        indent: { left: 360 },
+        children: [new TextRun({ text, size: 19, color: DOCX.noteText })],
+      });
+
+    /** Пример: английское, тире, курсивный перевод. */
+    const example = (en: string, tr?: string, bullet = true) =>
+      new Paragraph({
+        ...(bullet ? { bullet: { level: 0 } } : { indent: { left: 360 } }),
+        spacing: { before: 0, after: 20 },
+        children: [
+          new TextRun({ text: en, size: 21, color: DOCX.example }),
+          ...(tr
+            ? [
+                new TextRun({ text: "  —  ", color: DOCX.faint }),
+                new TextRun({ text: tr, italics: true, size: 20, color: DOCX.faint }),
+              ]
+            : []),
+        ],
+      });
+
+    /** Таблица с шапкой: сетка подстановки и сравнение. */
+    const grid = (headers: string[], rows: string[][], title?: string) => {
+      const out: Block[] = [];
+      if (title) out.push(band(title, DOCX.section));
+
+      const tableRows: InstanceType<typeof TableRow>[] = [];
+      if (headers.length) {
+        tableRows.push(
+          new TableRow({
+            children: headers.map(
+              (h) =>
+                new TableCell({
+                  shading: { fill: DOCX.section },
+                  children: [
+                    new Paragraph({
+                      children: [
+                        new TextRun({ text: h, bold: true, size: 20, color: DOCX.white }),
+                      ],
+                    }),
+                  ],
+                }),
+            ),
+          }),
+        );
+      }
+      for (const row of rows) {
+        tableRows.push(
+          new TableRow({
+            children: row.map(
+              (cell, i) =>
+                new TableCell({
+                  children: [
+                    new Paragraph({
+                      children: [
+                        new TextRun({
+                          text: cell,
+                          // Первая колонка — то, что меняется: её и выделяем.
+                          bold: i === 0,
+                          size: 21,
+                          color: i === 0 ? DOCX.section : DOCX.example,
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+            ),
+          }),
+        );
+      }
+      if (tableRows.length) {
+        out.push(
+          new Table({ rows: tableRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
+        );
+        out.push(new Paragraph({ text: "" }));
+      }
+      return out;
+    };
+
     for (const b of page.blocks) {
       switch (b.type) {
         case "heading":
-          children.push(new Paragraph({ text: b.text, heading: HeadingLevel.HEADING_2 }));
+          children.push(band(b.text, DOCX.section));
           break;
-        case "callout":
-          children.push(para(b.label ? `${b.label}: ${b.text}` : b.text, { bold: true }));
+
+        case "callout": {
+          // Ошибка «так нельзя — так можно» читается парой строк.
+          if (b.tone === "warn") {
+            const at = b.text.search(/[✓✔✅]/u);
+            const wrong = (at < 0 ? b.text : b.text.slice(0, at)).trim();
+            const right = at < 0 ? "" : b.text.slice(at).trim();
+            children.push(
+              new Paragraph({
+                shading: { fill: "FBE3E3" },
+                spacing: { before: 80, after: 0 },
+                children: [new TextRun({ text: wrong, size: 21, color: "9B2C2C" })],
+              }),
+            );
+            if (right) {
+              children.push(
+                new Paragraph({
+                  shading: { fill: "E3F5E8" },
+                  spacing: { before: 0, after: 80 },
+                  children: [new TextRun({ text: right, size: 21, color: "1F6B3A" })],
+                }),
+              );
+            }
+            if (b.label) children.push(hint(b.label));
+            break;
+          }
+          children.push(hint(b.label ? `${b.label}: ${b.text}` : b.text));
           break;
+        }
+
         case "formula":
-          children.push(para(b.text, { bold: true }));
+          children.push(
+            new Paragraph({
+              shading: { fill: "EEF2FA" },
+              spacing: { before: 80, after: 80 },
+              children: [
+                new TextRun({ text: b.text, bold: true, size: 22, color: DOCX.title }),
+              ],
+            }),
+          );
           break;
+
         case "text":
-          children.push(para(b.text));
+          children.push(
+            new Paragraph({
+              spacing: { before: 60, after: 60 },
+              children: [new TextRun({ text: b.text, size: 21, color: DOCX.example })],
+            }),
+          );
           break;
+
         case "example":
-          children.push(new Paragraph({ text: b.en, bullet: { level: 0 } }));
-          if (b.tr) children.push(para(b.tr, { italics: true }));
+          children.push(example(b.en, b.tr));
+          if (b.why) {
+            children.push(
+              new Paragraph({
+                indent: { left: 720 },
+                spacing: { before: 0, after: 40 },
+                children: [
+                  new TextRun({ text: b.why, italics: true, size: 18, color: DOCX.faint }),
+                ],
+              }),
+            );
+          }
           break;
+
         case "list":
           for (const item of b.items) {
             children.push(new Paragraph({ text: item, bullet: { level: 0 } }));
           }
           break;
-        case "table": {
-          const rows: InstanceType<typeof TableRow>[] = [];
-          const cell = (text: string, bold = false) =>
-            new TableCell({ children: [para(text, { bold })] });
 
-          if (b.headers.length) {
-            rows.push(new TableRow({ children: b.headers.map((h) => cell(h, true)) }));
-          }
-          for (const r of b.rows) {
-            rows.push(new TableRow({ children: r.map((c) => cell(c)) }));
-          }
-          if (rows.length) {
+        case "word": {
+          // Карточка слова: как в лексике на странице.
+          children.push(
+            new Paragraph({
+              spacing: { before: 200, after: 40 },
+              children: [
+                ...(b.icon ? [new TextRun({ text: `${b.icon}  ` })] : []),
+                new ExternalHyperlink({
+                  link: reversoUrl(b.word, lang),
+                  children: [
+                    new TextRun({ text: b.word, bold: true, size: 26, color: DOCX.word }),
+                  ],
+                }),
+                ...(b.us || b.uk
+                  ? [
+                      new TextRun({
+                        text: `  ${[b.us && `us ${b.us}`, b.uk && b.uk !== b.us && `uk ${b.uk}`]
+                          .filter(Boolean)
+                          .join("  ")}`,
+                        size: 18,
+                        color: DOCX.faint,
+                      }),
+                    ]
+                  : []),
+                ...(b.tr
+                  ? [
+                      new TextRun({ text: "  —  ", color: DOCX.faint }),
+                      new TextRun({
+                        text: b.tr,
+                        bold: true,
+                        size: 24,
+                        color: DOCX.translation,
+                      }),
+                    ]
+                  : []),
+              ],
+            }),
+          );
+          if (b.sense) {
             children.push(
-              new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }),
+              new Paragraph({
+                indent: { left: 360 },
+                spacing: { before: 0, after: 40 },
+                children: [
+                  new TextRun({ text: b.sense, size: 21, color: DOCX.example }),
+                ],
+              }),
             );
-            children.push(new Paragraph({ text: "" }));
           }
+          if (b.pattern) {
+            children.push(
+              new Paragraph({
+                shading: { fill: "EEF2FA" },
+                indent: { left: 360 },
+                spacing: { before: 0, after: 60 },
+                children: [
+                  new TextRun({ text: b.pattern, bold: true, size: 20, color: DOCX.title }),
+                ],
+              }),
+            );
+          }
+          for (const ex of b.examples) children.push(example(ex.en, ex.tr));
+          for (const note of b.notes) children.push(hint(note));
           break;
         }
+
+        case "form": {
+          const sign = b.sign === "+" ? "✅" : b.sign === "-" ? "⛔" : "❓";
+          children.push(
+            new Paragraph({
+              spacing: { before: 120, after: 20 },
+              children: [
+                new TextRun({ text: `${sign}  ` }),
+                new TextRun({ text: b.formula, bold: true, size: 21, color: DOCX.title }),
+              ],
+            }),
+          );
+          children.push(example(b.en, b.tr, false));
+          break;
+        }
+
+        case "marker": {
+          children.push(
+            new Paragraph({
+              spacing: { before: 140, after: 20 },
+              children: [
+                new TextRun({ text: b.word, bold: true, size: 24, color: DOCX.translation }),
+                ...(b.tr
+                  ? [
+                      new TextRun({ text: "  —  ", color: DOCX.faint }),
+                      new TextRun({ text: b.tr, size: 21, color: DOCX.example }),
+                    ]
+                  : []),
+              ],
+            }),
+          );
+          if (b.en) children.push(example(b.en, b.ru, false));
+          if (b.hintText) children.push(hint(b.hintText));
+          break;
+        }
+
+        case "grid":
+          children.push(...grid(b.headers, b.rows, b.title));
+          break;
+
+        case "table":
+          children.push(...grid(b.headers, b.rows));
+          break;
+
+        case "link":
+          children.push(
+            new Paragraph({
+              spacing: { before: 200, after: 80 },
+              children: [
+                new TextRun({ text: "📖  " }),
+                new ExternalHyperlink({
+                  link: lang === "RU" ? b.ru : b.uk,
+                  children: [
+                    new TextRun({
+                      text: b.label,
+                      bold: true,
+                      size: 21,
+                      color: DOCX.section,
+                      underline: {},
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          );
+          break;
       }
     }
   } else {
