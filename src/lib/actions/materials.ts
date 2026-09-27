@@ -1551,6 +1551,8 @@ export type PhraseInput = {
   phrase: string;
   transcription: string | null;
   translation: string;
+  /** Жёлтая подсказка «что стоит знать» под словом. */
+  note: string | null;
   examples: { en: string; tr: string }[];
 };
 
@@ -1568,6 +1570,7 @@ function cleanPhrase(p: PhraseInput): PhraseInput | null {
     phrase,
     transcription: p.transcription ? String(p.transcription).trim().slice(0, 120) : null,
     translation: String(p?.translation ?? "").trim().slice(0, 600),
+    note: p.note ? String(p.note).trim().slice(0, 1_000) || null : null,
     examples: (Array.isArray(p?.examples) ? p.examples : [])
       .map((e) => ({
         en: String(e?.en ?? "").trim().slice(0, 600),
@@ -1823,6 +1826,7 @@ export async function saveVocabularyEditAction(
         phrase: item.phrase,
         transcription: item.transcription,
         translation: item.translation,
+        note: item.note,
         section: item.section,
         kind: item.kind,
         examples: item.examples,

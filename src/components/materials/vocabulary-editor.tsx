@@ -58,6 +58,7 @@ function fromStored(phrase: MaterialPhrase): EditableItem {
     phrase: phrase.phrase,
     transcription: phrase.transcription ?? "",
     translation: phrase.translation ?? "",
+    note: phrase.note ?? "",
     examples: phrase.examples.map((example) => ({ ...example })),
   };
 }
@@ -74,6 +75,7 @@ function fromParsed(phrase: ParsedPhrase): EditableItem {
     phrase: phrase.phrase,
     transcription: phrase.transcription ?? "",
     translation: phrase.translation,
+    note: phrase.note ?? "",
     examples: phrase.examples.map((example) => ({ ...example })),
   };
 }
@@ -89,7 +91,7 @@ function toPreview(item: EditableItem): MaterialPhrase {
     transcriptionUs: null,
     transcriptionUk: null,
     translation: clean.translation || null,
-    note: null,
+    note: clean.note,
     section: clean.section,
     kind: item.kind,
     examples: clean.examples,

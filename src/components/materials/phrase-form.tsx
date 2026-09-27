@@ -28,6 +28,8 @@ export type Draft = {
   phrase: string;
   transcription: string;
   translation: string;
+  /** Подсказка «что стоит знать»: на странице она жёлтая. */
+  note: string;
   examples: Example[];
 };
 
@@ -39,6 +41,7 @@ export const newDraft = (section = "", icon = "💬", examples = 0): Draft => ({
   phrase: "",
   transcription: "",
   translation: "",
+  note: "",
   examples: Array.from({ length: examples }, () => ({ en: "", tr: "" })),
 });
 
@@ -48,6 +51,7 @@ export const toInput = (d: Draft): PhraseInput => ({
   phrase: d.phrase.trim(),
   transcription: d.transcription.trim() || null,
   translation: d.translation.trim(),
+  note: d.note.trim() || null,
   examples: d.examples.filter((e) => e.en.trim()),
 });
 
@@ -159,6 +163,16 @@ export function DraftFields({
         onChange={(e) => set({ translation: e.target.value })}
         placeholder="Перевод"
         className={inputCls}
+      />
+
+      {/* Подсказка «что стоит знать»: на странице она жёлтая, здесь тоже —
+          чтобы поле не путали с переводом. */}
+      <textarea
+        value={draft.note}
+        onChange={(e) => set({ note: e.target.value })}
+        rows={2}
+        placeholder="💡 Что стоит знать — необязательно"
+        className="w-full resize-y rounded-xl border border-amber-300/60 bg-amber-400/10 px-3 py-2 text-sm text-content outline-none transition placeholder:text-faint focus:border-amber-400"
       />
 
       <div className="flex flex-col gap-2">
@@ -373,6 +387,7 @@ export function WordAdder({
             phrase: p.phrase,
             transcription: p.transcription,
             translation: p.translation,
+            note: p.note ?? null,
             examples: p.examples,
           }));
 
@@ -546,6 +561,7 @@ export function PhraseEditor({
         phrase: string;
         transcription: string | null;
         translation: string | null;
+        note: string | null;
         examples: Example[];
       }
     | null;
@@ -562,6 +578,7 @@ export function PhraseEditor({
           phrase: phrase.phrase,
           transcription: phrase.transcription ?? "",
           translation: phrase.translation ?? "",
+          note: phrase.note ?? "",
           examples: phrase.examples.map((example) => ({ ...example })),
         }
       : null,
