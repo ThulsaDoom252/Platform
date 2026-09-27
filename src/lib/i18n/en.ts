@@ -171,6 +171,9 @@ export const en = {
     nextWeek: "Next week",
     noLessonsThisDay: "No lessons on this day.",
     addLesson: "Lesson",
+    maskNames: "Hide names",
+    maskOn: "Names hidden",
+    maskHint: "Student names are hidden — this schedule is safe to share",
     cancelled: "Cancelled",
 
     editTitle: "Edit lesson",

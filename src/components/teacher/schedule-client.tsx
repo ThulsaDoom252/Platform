@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
 import { useNow } from "@/lib/use-now";
+import { useLocalFlag } from "@/lib/use-local-flag";
 import { fmt } from "@/lib/i18n";
 import {
   cancelLessonByTeacherAction,
@@ -228,6 +229,14 @@ export function ScheduleClient({
     setNewStart(toLocalInput(l.startTime));
   }
 
+  /**
+   * Маскировка: расписание часто показывают самим ученикам, а чужие
+   * имена в нём — чужое дело. Флаг местный и переживает перезагрузку,
+   * потому что это привычка учителя, а не свойство расписания.
+   */
+  const [masked, setMasked] = useLocalFlag("schedule-mask");
+  const hide = (name: string) => (masked ? "🔒" : name);
+
   const hFrom = hours[0] ?? 8;
   const gridH = hours.length * rowH;
 
@@ -236,6 +245,27 @@ export function ScheduleClient({
 
   return (
     <>
+      {/* ---------- Маскировка имён ---------- */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setMasked(!masked)}
+          aria-pressed={masked}
+          title={t.schedule.maskHint}
+          className={`flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition ${
+            masked
+              ? "bg-accent text-white"
+              : "bg-surface text-muted ring-1 ring-line hover:text-content"
+          }`}
+        >
+          <span aria-hidden>{masked ? "🔒" : "🔓"}</span>
+          {masked ? t.schedule.maskOn : t.schedule.maskNames}
+        </button>
+        {masked && (
+          <span className="text-[12px] text-faint">{t.schedule.maskHint}</span>
+        )}
+      </div>
+
       {/* ---------- Недельная сетка ---------- */}
       <section
         className={`${isDay ? "hidden" : "hidden md:block"} overflow-hidden rounded-2xl bg-surface ring-1 ring-line shadow-sm`}
@@ -329,10 +359,10 @@ export function ScheduleClient({
                           onClick={() => openEdit(l)}
                           className="absolute left-1 right-1 flex items-center overflow-hidden rounded-lg px-2.5 text-left shadow-sm transition hover:brightness-110"
                           style={{ top, height, background: c }}
-                          title={`${l.studentName} · ${hm.format(l.startTime)}–${hm.format(end)} · ${t.lessonStatus[l.status as keyof typeof t.lessonStatus]}`}
+                          title={`${hide(l.studentName)} · ${hm.format(l.startTime)}–${hm.format(end)} · ${t.lessonStatus[l.status as keyof typeof t.lessonStatus]}`}
                         >
                           <span className="truncate text-xs font-bold text-white">
-                            {l.studentName}
+                            {hide(l.studentName)}
                           </span>
                         </button>
                       );
@@ -417,7 +447,7 @@ export function ScheduleClient({
                     style={{ background: c }}
                   >
                     <span className="truncate text-sm font-bold text-white">
-                      {l.studentName}
+                      {hide(l.studentName)}
                     </span>
                   </span>
                 </button>
@@ -450,6 +480,7 @@ export function ScheduleClient({
             setComment={setComment}
             newStart={newStart}
             setNewStart={setNewStart}
+            masked={masked}
             onClose={() => setEditing(null)}
           />
         )}
@@ -461,6 +492,7 @@ export function ScheduleClient({
           <AssignLessonBody
             slot={assignSlot}
             students={students}
+            masked={masked}
             onClose={() => setAssignSlot(null)}
             state={assignState}
             formAction={assignFormAction}
@@ -498,6 +530,7 @@ function EditLessonBody({
   setComment,
   newStart,
   setNewStart,
+  masked,
   onClose,
 }: {
   lesson: LessonItem;
@@ -505,6 +538,7 @@ function EditLessonBody({
   setComment: (v: string) => void;
   newStart: string;
   setNewStart: (v: string) => void;
+  masked: boolean;
   onClose: () => void;
 }) {
   const { t } = useT();
@@ -538,7 +572,7 @@ function EditLessonBody({
         <InfoRow
           icon={<IconUser className="h-5 w-5" />}
           label={t.common.student}
-          value={lesson.studentName}
+          value={masked ? "🔒" : lesson.studentName}
           hint={lesson.studentLevel ?? undefined}
         />
         <InfoRow
@@ -641,6 +675,7 @@ function EditLessonBody({
 function AssignLessonBody({
   slot,
   students,
+  masked,
   onClose,
   state,
   formAction,
@@ -648,6 +683,7 @@ function AssignLessonBody({
 }: {
   slot: Date;
   students: StudentItem[];
+  masked: boolean;
   onClose: () => void;
   state: AssignState;
   formAction: (formData: FormData) => void;
@@ -695,9 +731,12 @@ function AssignLessonBody({
               <option value="" disabled>
                 {t.schedule.chooseStudent}
               </option>
-              {students.map((s) => (
+              {students.map((s, i) => (
                 <option key={s.id} value={s.id}>
-                  {fmt(t.schedule.studentLeft, { name: s.name, n: s.balance })}
+                  {fmt(t.schedule.studentLeft, {
+                    name: masked ? `🔒 ${i + 1}` : s.name,
+                    n: s.balance,
+                  })}
                 </option>
               ))}
             </select>

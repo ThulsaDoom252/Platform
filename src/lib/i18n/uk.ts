@@ -173,6 +173,9 @@ export const uk: Dict = {
     nextWeek: "Наступний тиждень",
     noLessonsThisDay: "Цього дня уроків немає.",
     addLesson: "Урок",
+    maskNames: "Сховати імена",
+    maskOn: "Імена сховані",
+    maskHint: "Імена учнів сховані — розклад можна показати будь-кому",
     cancelled: "Скасований",
 
     editTitle: "Редагувати урок",

@@ -173,6 +173,9 @@ export const ru: Dict = {
     nextWeek: "Следующая неделя",
     noLessonsThisDay: "В этот день уроков нет.",
     addLesson: "Урок",
+    maskNames: "Скрыть имена",
+    maskOn: "Имена скрыты",
+    maskHint: "Имена учеников скрыты — расписание можно показать кому угодно",
     cancelled: "Отменён",
 
     editTitle: "Редактировать урок",
