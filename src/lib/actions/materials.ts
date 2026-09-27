@@ -2856,6 +2856,26 @@ export async function deleteSectionAction(
 }
 
 /** Удалить одно слово. */
+/**
+ * Убрать жёлтую подсказку, оставив саму запись.
+ *
+ * Отдельное действие, потому что правка записи целиком требует всех её
+ * полей: ради одной строки открывать окно и пересохранять слово — лишнее.
+ */
+export async function clearPhraseNoteAction(phraseId: string): Promise<BulkState> {
+  await requireTeacher();
+  const id = String(phraseId ?? "");
+  if (!id) return { error: "Не выбрана запись" };
+
+  await db
+    .update(materialPhrases)
+    .set({ note: null })
+    .where(eq(materialPhrases.id, id));
+
+  revalidateMaterials();
+  return { ok: true, message: "Подсказка убрана" };
+}
+
 export async function deletePhraseAction(phraseId: string): Promise<BulkState> {
   await requireTeacher();
   if (!phraseId) return { error: "Не выбрана запись" };

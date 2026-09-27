@@ -3,6 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import {
   movePhraseAction,
+  clearPhraseNoteAction,
+  deletePhraseAction,
   repairPhraseIconAction,
   renameSectionAction,
   deleteSectionAction,
@@ -69,17 +71,45 @@ function SpeakButton({
   );
 }
 
-/** Карандаш в углу карточки — правка и удаление записи. */
+/** Карандаш в углу карточки — правка записи. */
 function EditBadge({ onEdit }: { onEdit?: () => void }) {
   if (!onEdit) return null;
   return (
     <button
       type="button"
       onClick={onEdit}
-      title="Изменить или удалить запись"
+      title="Изменить запись"
       className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-surface-2 text-faint opacity-0 transition hover:text-accent group-hover:opacity-100"
     >
       <IconPencil className="h-4 w-4" />
+    </button>
+  );
+}
+
+/**
+ * Корзина рядом с карандашом.
+ *
+ * Спрашиваем подтверждение: запись уходит насовсем, а промахнуться по
+ * соседней кнопке легко. Зато это одно нажатие вместо окна правки.
+ */
+function DeleteBadge({
+  phrase,
+  onDelete,
+}: {
+  phrase: string;
+  onDelete?: () => void;
+}) {
+  if (!onDelete) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (confirm(`Удалить «${phrase}» из словника?`)) onDelete();
+      }}
+      title="Удалить запись"
+      className="absolute right-11 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-surface-2 text-faint opacity-0 transition hover:text-rose-500 group-hover:opacity-100"
+    >
+      <IconTrash className="h-4 w-4" />
     </button>
   );
 }
@@ -116,6 +146,8 @@ function PhraseCard({
   imageScale = 100,
   speech,
   onEdit,
+  onDelete,
+  onClearNote,
   onRepairIcon,
   repairBusy,
 }: {
@@ -128,6 +160,8 @@ function PhraseCard({
   imageScale?: number;
   speech: ReturnType<typeof useSpeech>;
   onEdit?: () => void;
+  onDelete?: () => void;
+  onClearNote?: () => void;
   onRepairIcon?: () => void;
   repairBusy?: boolean;
 }) {
@@ -142,6 +176,7 @@ function PhraseCard({
   return (
     <article className="group relative overflow-hidden rounded-2xl bg-surface ring-1 ring-line transition hover:ring-accent/40">
       <EditBadge onEdit={onEdit} />
+      <DeleteBadge phrase={p.phrase} onDelete={onDelete} />
       <RepairIconBadge onRepair={onRepairIcon} busy={repairBusy} />
       <div className="flex gap-3.5 p-4 sm:gap-4 sm:p-5">
         {/* Картинка-образ */}
@@ -233,9 +268,21 @@ function PhraseCard({
           )}
 
           {hints && p.note && (
-            <p className="mt-2.5 whitespace-pre-line rounded-xl tint-amber px-3 py-2 text-[13px] leading-snug">
-              {p.note}
-            </p>
+            <div className="group/note relative mt-2.5">
+              <p className="whitespace-pre-line rounded-xl tint-amber px-3 py-2 pr-9 text-[13px] leading-snug">
+                {p.note}
+              </p>
+              {onClearNote && (
+                <button
+                  type="button"
+                  onClick={onClearNote}
+                  title="Убрать подсказку"
+                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-lg text-[13px] opacity-0 transition hover:bg-black/10 group-hover/note:opacity-100"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -663,6 +710,14 @@ export function PhraseReader({
                     imageScale={imageScale}
                     speech={speech}
                     onEdit={onEditPhrase && (() => onEditPhrase(p))}
+                    onDelete={
+                      editable ? () => run(() => deletePhraseAction(p.id)) : undefined
+                    }
+                    onClearNote={
+                      editable && p.note
+                        ? () => run(() => clearPhraseNoteAction(p.id))
+                        : undefined
+                    }
                     onRepairIcon={
                       editable ? () => run(() => repairPhraseIconAction(p.id)) : undefined
                     }
