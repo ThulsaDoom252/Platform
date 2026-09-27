@@ -333,10 +333,7 @@ export function ScheduleClient({
                   <div
                     key={day.toISOString()}
                     className="relative border-l border-[color:var(--grid-line)]"
-                    style={{
-                      height: gridH,
-                      backgroundImage: `repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px ${rowH}px)`,
-                    }}
+                    style={{ height: gridH }}
                   >
                     {/* Пустые слоты — клик добавляет урок */}
                     {hours.map((h, i) => {
@@ -348,7 +345,7 @@ export function ScheduleClient({
                           type="button"
                           onClick={() => setAssignSlot(slot)}
                           title={`${t.schedule.assignTitle} · ${String(h).padStart(2, "0")}:00`}
-                          className="group absolute left-0 right-0 transition hover:bg-accent-soft"
+                          className="group absolute left-0 right-0 border-b border-[color:var(--grid-line)] transition hover:bg-accent-soft"
                           style={{ top: i * rowH, height: rowH }}
                         >
                           <span className="pointer-events-none flex h-full items-center justify-center text-accent opacity-0 transition group-hover:opacity-100">
