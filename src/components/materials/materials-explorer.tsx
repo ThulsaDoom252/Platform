@@ -75,6 +75,21 @@ const TREE_WIDTH_DEFAULT = 400;
 const TREE_WIDTH_MIN = 280;
 const TREE_WIDTH_MAX = 760;
 
+/**
+ * Обычная ширина для текущего экрана.
+ *
+ * До перетаскивания вёрстка давала 360 на обычном мониторе и 400 на
+ * широком — возвращаем ровно это, а на совсем больших добавляем ещё,
+ * потому что места там не жалко.
+ */
+function defaultTreeWidth(): number {
+  if (typeof window === "undefined") return TREE_WIDTH_DEFAULT;
+  const w = window.innerWidth;
+  if (w >= 1920) return 480;
+  if (w >= 1280) return 400;
+  return 360;
+}
+
 const clampTreeWidth = (value: number) =>
   Math.round(Math.min(TREE_WIDTH_MAX, Math.max(TREE_WIDTH_MIN, value)));
 
@@ -273,8 +288,9 @@ export function MaterialsExplorer({
   }
 
   function resetResize() {
-    gridRef.current?.style.setProperty("--tree-w", `${TREE_WIDTH_DEFAULT}px`);
-    setTreeWidth(TREE_WIDTH_DEFAULT);
+    const next = defaultTreeWidth();
+    gridRef.current?.style.setProperty("--tree-w", `${next}px`);
+    setTreeWidth(next);
   }
 
   // Редкие действия свёрнуты: на панели должно остаться то, чем
@@ -1684,22 +1700,41 @@ export function MaterialsExplorer({
           !pathOpen && "is-collapsed",
         )}
       >
-        <button
-          type="button"
-          onClick={togglePathPanel}
-          className="flex items-center gap-2 px-1"
-        >
-          <IconSprout className="h-4.5 w-4.5 text-accent" />
-          <span className="flex-1 text-left text-sm font-bold text-content">
-            {t.materials.learningPath}
-          </span>
-          <IconChevronDown
-            className={cn(
-              "h-4 w-4 text-faint transition-transform",
-              !pathOpen && "-rotate-90",
-            )}
-          />
-        </button>
+        <div className="flex items-center gap-1 px-1">
+          <button
+            type="button"
+            onClick={togglePathPanel}
+            className="flex flex-1 items-center gap-2"
+          >
+            <IconSprout className="h-4.5 w-4.5 text-accent" />
+            <span className="flex-1 text-left text-sm font-bold text-content">
+              {t.materials.learningPath}
+            </span>
+          </button>
+
+          {pathOpen && (
+            <button
+              type="button"
+              onClick={resetResize}
+              title="Вернуть обычную ширину панели для этого экрана"
+              aria-label="Вернуть обычную ширину панели"
+              className="hidden h-7 w-7 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-accent lg:flex"
+            >
+              <span aria-hidden className="text-[13px]">⇤⇥</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={togglePathPanel}
+            aria-label={pathOpen ? "Свернуть панель" : "Развернуть панель"}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content"
+          >
+            <IconChevronDown
+              className={cn("h-4 w-4 transition-transform", !pathOpen && "-rotate-90")}
+            />
+          </button>
+        </div>
 
         {pathOpen && (
           <div className="materials-tree-scroll min-h-0 flex-1 max-h-[70vh] overflow-y-auto pr-1 lg:max-h-none">
