@@ -97,6 +97,12 @@ export function TreeImporter({
   onClose: () => void;
   onDone?: (message: string) => void;
 }) {
+  /**
+   * Куда класть. Окно открывают с панели раздела, и тогда местом по
+   * умолчанию становится он — но чаще структуру переносят в корень, и
+   * разница видна только по одной строке в шапке. Поэтому выбор здесь.
+   */
+  const [intoRoot, setIntoRoot] = useState(false);
   const [nodes, setNodes] = useState<ImportNode[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +117,17 @@ export function TreeImporter({
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (!target) return null;
+
+  // Верхние имена переносимой структуры против имени выбранного раздела:
+  // совпадение почти всегда значит, что метить хотели в корень.
+  const sameNameAsTarget =
+    !intoRoot &&
+    !!target.parentId &&
+    (nodes ?? []).some(
+      (node) =>
+        node.name.trim().toLocaleLowerCase() ===
+        target.parentName.trim().toLocaleLowerCase(),
+    );
 
   function show(
     found: ImportNode[],
@@ -344,7 +361,7 @@ export function TreeImporter({
       const includeContents = parseContents && googleContentReady;
       const payload = prepareImportContentPayload(nodes, includeContents);
       const res = await importTreeAction(payload.nodes, {
-        parentId: target!.parentId,
+        parentId: intoRoot ? null : target!.parentId,
         scope: target!.scope,
         ownerId: target!.ownerId,
         parseContents: includeContents,
@@ -505,9 +522,47 @@ export function TreeImporter({
           <div>
             <h2 className="font-semibold text-content">Перенести структуру</h2>
             <p className="mt-1 text-sm text-muted">
-              Создастся внутри «{target.parentName}». Что уже есть с таким же
-              названием — не задвоится.
+              Создастся {intoRoot ? "в корне дерева" : `внутри «${target.parentName}»`}.
+              Что уже есть с таким же названием — не задвоится.
             </p>
+
+            {target.parentId && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIntoRoot(false)}
+                  className={cn(
+                    "h-8 rounded-lg px-2.5 text-[12px] font-semibold transition",
+                    !intoRoot
+                      ? "bg-accent text-white"
+                      : "bg-surface-2 text-muted hover:text-content",
+                  )}
+                >
+                  Внутрь «{target.parentName}»
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIntoRoot(true)}
+                  className={cn(
+                    "h-8 rounded-lg px-2.5 text-[12px] font-semibold transition",
+                    intoRoot
+                      ? "bg-accent text-white"
+                      : "bg-surface-2 text-muted hover:text-content",
+                  )}
+                >
+                  В корень дерева
+                </button>
+              </div>
+            )}
+
+            {/* Ровно та ошибка, на которой легко потерять полчаса: раздел
+                кладут сам в себя, и дерево уходит на уровень глубже. */}
+            {sameNameAsTarget && (
+              <p className="mt-2 rounded-xl tint-amber px-3 py-2 text-[12px]">
+                В переносимой структуре есть «{target.parentName}» — он ляжет
+                внутрь одноимённого раздела. Если это не то, выбери «В корень дерева».
+              </p>
+            )}
           </div>
           <button
             type="button"
