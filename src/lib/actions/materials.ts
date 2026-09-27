@@ -3134,6 +3134,50 @@ export type CoverState = {
 };
 
 /** Поставить или заменить обложку уже готового словаря. */
+/** Обычный размер картинок и пределы, в которых его можно менять. */
+export const IMAGE_SCALE_DEFAULT = 100;
+export const IMAGE_SCALE_MIN = 60;
+export const IMAGE_SCALE_MAX = 260;
+
+/**
+ * Размер картинок слов на странице словаря.
+ *
+ * Картинки бывают разные: где-то мелкая иконка, где-то кадр, который
+ * стоит рассмотреть. Размер хранится у страницы, а не в браузере —
+ * ученик должен увидеть словарь таким же, каким его собрал учитель.
+ */
+export async function setVocabularyImageScaleAction(
+  nodeId: string,
+  scale: number,
+): Promise<BulkState> {
+  await requireTeacher();
+
+  const id = String(nodeId ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+
+  const next = Math.round(
+    Math.min(IMAGE_SCALE_MAX, Math.max(IMAGE_SCALE_MIN, Number(scale) || IMAGE_SCALE_DEFAULT)),
+  );
+
+  const [node] = await db
+    .select({ id: materialNodes.id, type: materialNodes.type })
+    .from(materialNodes)
+    .where(eq(materialNodes.id, id))
+    .limit(1);
+  if (!node || node.type !== "FILE") return { error: "Страница не найдена" };
+
+  await db
+    .update(materialNodes)
+    .set({ imageScale: next })
+    .where(eq(materialNodes.id, id));
+
+  revalidateMaterials();
+  return {
+    ok: true,
+    message: next === IMAGE_SCALE_DEFAULT ? "Обычный размер картинок" : `Картинки: ${next}%`,
+  };
+}
+
 export async function updateVocabularyCoverAction(
   nodeId: string,
   _prev: CoverState,

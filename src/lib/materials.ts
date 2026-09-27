@@ -65,6 +65,8 @@ export type MaterialNode = {
   needsFix: boolean;
   /** Сколько одноимённых импортированных файлов объединено в этот файл. */
   mergeCount: number;
+  /** Размер картинок слов в процентах; 100 — обычный. */
+  imageScale: number;
   /** Исходный текст правила или словаря, как его вставили. */
   sourceText: string | null;
   /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
@@ -168,6 +170,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       translationLang: r.translationLang,
       needsFix: r.needsFix,
       mergeCount: r.mergeCount,
+      imageScale: r.imageScale,
       sourceText: r.sourceText,
       contentBackupAt: r.contentBackup?.savedAt ?? null,
       createdAt: r.createdAt.toISOString(),

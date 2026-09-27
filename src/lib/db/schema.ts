@@ -178,6 +178,8 @@ export const materialNodes = pgTable("material_nodes", {
   needsFix: boolean("needs_fix").notNull().default(false),
   /** Число одноимённых файлов, которые были безопасно объединены при импорте. */
   mergeCount: integer("merge_count").notNull().default(1),
+  /** Во сколько процентов показывать картинки слов: 100 — обычный размер. */
+  imageScale: integer("image_scale").notNull().default(100),
   /**
    * Исходный текст правила или словаря, как его вставили. Нужен, чтобы
    * «Редактировать» показывало и разобранное содержимое, и оригинал.

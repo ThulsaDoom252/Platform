@@ -73,6 +73,7 @@ import {
   fillVerbIconsAction,
   moveNodeAction,
   reformatMaterialPageAction,
+  setVocabularyImageScaleAction,
   repairPhraseIconsAction,
   reorderNodeAction,
   reorderVerbGroupsAction,
@@ -177,6 +178,8 @@ export type MaterialNode = {
   translationLang: "RU" | "UK";
   needsFix: boolean;
   mergeCount: number;
+  /** Размер картинок слов в процентах; 100 — обычный. */
+  imageScale: number;
   sourceText: string | null;
   /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
   contentBackupAt: string | null;
@@ -334,6 +337,15 @@ export function MaterialsExplorer({
       ...sortState,
       presetId: preset.id,
       presets: [...sortState.presets, preset],
+    });
+  }
+
+  /** Размер картинок словника: хранится у страницы, а не в браузере. */
+  function setImageScale(node: MaterialNode, scale: number) {
+    startMove(async () => {
+      const res = await setVocabularyImageScaleAction(node.id, scale);
+      if (res.error) setMoveError(res.error);
+      else setNotice(res.message ?? null);
     });
   }
 
@@ -2355,7 +2367,11 @@ export function MaterialsExplorer({
               coverImageUrl={selected.imageUrl}
               phrases={selected.phrases}
               nodeId={selected.id}
+              imageScale={selected.imageScale}
               onEditPhrase={editable ? setEditPhrase : undefined}
+              onImageScale={
+                editable ? (scale) => setImageScale(selected, scale) : undefined
+              }
             />
           ))}
 

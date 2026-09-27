@@ -113,6 +113,7 @@ function PhraseCard({
   index,
   showTranslation,
   hints = true,
+  imageScale = 100,
   speech,
   onEdit,
   onRepairIcon,
@@ -123,6 +124,8 @@ function PhraseCard({
   showTranslation: boolean;
   /** Показывать ли заметку «что стоит знать». */
   hints?: boolean;
+  /** Размер картинки слова в процентах от обычного. */
+  imageScale?: number;
   speech: ReturnType<typeof useSpeech>;
   onEdit?: () => void;
   onRepairIcon?: () => void;
@@ -132,6 +135,8 @@ function PhraseCard({
   const [open, setOpen] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const grad = ["grad-c1", "grad-c2", "grad-c3", "grad-c4"][index % 4];
+  // Обычный размер картинки — 80; масштаб задаёт страница целиком.
+  const imageSide = Math.round((80 * imageScale) / 100);
   const visible = showTranslation || revealed;
 
   return (
@@ -145,7 +150,8 @@ function PhraseCard({
           <img
             src={p.imageUrl}
             alt={p.phrase}
-            className="h-16 w-16 shrink-0 rounded-2xl object-cover sm:h-20 sm:w-20"
+            style={{ width: imageSide, height: imageSide }}
+            className="max-w-[40vw] shrink-0 self-start rounded-2xl object-cover"
           />
         ) : (
           <span
@@ -286,12 +292,14 @@ function NoteCard({ p, onEdit }: { p: MaterialPhrase; onEdit?: () => void }) {
 }
 
 export function PhraseReader({
+  imageScale = 100,
   title,
   icon,
   description,
   coverImageUrl,
   phrases,
   onEditPhrase,
+  onImageScale,
   nodeId,
 }: {
   title: string;
@@ -303,6 +311,10 @@ export function PhraseReader({
   onEditPhrase?: (p: MaterialPhrase) => void;
   /** Страница, которой принадлежат записи: нужна для правки категорий. */
   nodeId?: string;
+  /** Размер картинок слов в процентах; 100 — обычный. */
+  imageScale?: number;
+  /** Передаётся только учителю: размер картинок хранится у страницы. */
+  onImageScale?: (scale: number) => void;
 }) {
   const { t } = useT();
   const [showTranslation, setShowTranslation] = useState(true);
@@ -493,6 +505,46 @@ export function PhraseReader({
           {showTranslation ? t.phrases.hideTranslations : t.phrases.showTranslations}
         </button>
 
+        {/* Картинки бывают разные: мелкая иконка и кадр, который стоит
+            рассмотреть. Размер хранится у страницы, чтобы ученик увидел
+            словарь таким же. */}
+        {onImageScale && phrases.some((p) => p.imageUrl) && (
+          <div className="flex h-9 items-center gap-1 rounded-xl bg-surface px-1.5 ring-1 ring-line">
+            <span className="px-1 text-[11px] font-semibold text-faint">Картинки</span>
+            <button
+              type="button"
+              onClick={() => onImageScale(Math.max(60, imageScale - 20))}
+              disabled={imageScale <= 60}
+              title="Меньше"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-content disabled:opacity-40"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              onClick={() => onImageScale(100)}
+              title="Обычный размер"
+              className={cn(
+                "h-7 rounded-lg px-2 text-[11px] font-bold tabular-nums transition",
+                imageScale === 100
+                  ? "text-faint"
+                  : "bg-accent-soft text-accent hover:opacity-80",
+              )}
+            >
+              {imageScale}%
+            </button>
+            <button
+              type="button"
+              onClick={() => onImageScale(Math.min(260, imageScale + 20))}
+              disabled={imageScale >= 260}
+              title="Больше"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-content disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+        )}
+
         {phrases.some((p) => p.note) && (
           <button
             type="button"
@@ -588,6 +640,7 @@ export function PhraseReader({
                     index={gi + i}
                     showTranslation={showTranslation}
                     hints={hints}
+                    imageScale={imageScale}
                     speech={speech}
                     onEdit={onEditPhrase && (() => onEditPhrase(p))}
                     onRepairIcon={
