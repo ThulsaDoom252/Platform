@@ -19,6 +19,7 @@ import {
 } from "@/lib/db/schema";
 import { sanitizeBlocks } from "@/lib/rule-blocks";
 import type { ExportPhrase } from "@/lib/export-material";
+import { authorKeyedSource, type KeyedKind } from "@/lib/format-author";
 import {
   getOwnedTree,
   getMaterialsTree,
@@ -2467,6 +2468,34 @@ export type ExportTranslation = {
  * языке, а у себя оставить тот, на котором работает. Ничего не
  * сохраняется — результат живёт ровно до скачивания файла.
  */
+export type DraftSourceState = { text?: string; error?: string };
+
+/**
+ * Получить исходник в ключевом формате по просьбе или из старого текста.
+ *
+ * Разбор у нас жёсткий, и писать формат руками неудобно. Раньше за ним
+ * ходили в отдельный чат: попросить, дождаться, скопировать, вернуться.
+ * Теперь это один шаг в том же окне.
+ */
+export async function draftKeyedSourceAction(
+  request: string,
+  kind?: KeyedKind,
+): Promise<DraftSourceState> {
+  await requireTeacher();
+
+  const text = String(request ?? "").trim().slice(0, 40_000);
+  if (!text) return { error: "Напиши, что нужно, или вставь старый текст" };
+
+  try {
+    return { text: await authorKeyedSource(text, kind) };
+  } catch (error) {
+    console.error("Не удалось собрать исходник:", error);
+    return {
+      error: error instanceof Error ? error.message : "Модель недоступна",
+    };
+  }
+}
+
 export async function translateForExportAction(
   nodeId: string,
   target: MaterialTranslationLang,

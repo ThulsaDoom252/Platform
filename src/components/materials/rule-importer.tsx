@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { Modal } from "@/components/modal";
 import { RuleReader } from "./rule-reader";
+import { SourceDrafter } from "./source-drafter";
 import {
   parseRuleHtml,
   parseRuleText,
@@ -106,6 +107,14 @@ export function RuleImporter({
         <input type="hidden" name="subtitle" value={parsed?.subtitle ?? ""} />
         <input type="hidden" name="sourceText" value={parsed?.sourceText ?? ""} />
         {applyTitle && <input type="hidden" name="applyTitle" value="on" />}
+
+        {!parsed && (
+          <SourceDrafter
+            onDraft={(text) =>
+              setParsed({ ...parseRuleText(text), source: "text", sourceText: text })
+            }
+          />
+        )}
 
         {/* Область вставки */}
         {!parsed && (

@@ -19,6 +19,7 @@ import {
   type SectionHint,
 } from "./phrase-form";
 import { IconPicker } from "./icon-picker";
+import { SourceDrafter } from "./source-drafter";
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
 import {
   IconCheck,
@@ -430,6 +431,7 @@ export function VocabularyEditor({
 
         {tab === "source" && (
           <div className="flex flex-col gap-2">
+            <SourceDrafter defaultKind="VOCAB" onDraft={setSource} />
             <p className="text-[11px] text-faint">
               Исходный текст, из которого словарь разбирали в прошлый раз. Его можно
               изменить и снова превратить в записи целиком.

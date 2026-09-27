@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/modal";
+import { SourceDrafter } from "./source-drafter";
 import {
   parseMaterial,
   flattenClipboardHtml,
@@ -78,6 +79,8 @@ export function ContentImporter({
         <input type="hidden" name="mode" value={mode} />
         <input type="hidden" name="raw" value={raw} />
         {applyTitle && <input type="hidden" name="applyTitle" value="on" />}
+
+        <SourceDrafter defaultKind="VOCAB" onDraft={setRaw} />
 
         {/* Ввод */}
         <div>
