@@ -69,6 +69,8 @@ export type MaterialNode = {
   sourceText: string | null;
   /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
   contentBackupAt: string | null;
+  /** Когда раздел завели: по этому сортируется «порядок добавления». */
+  createdAt: string;
   /** Неправильные глаголы, если страница про них. */
   verbs: MaterialVerb[];
   phrases: MaterialPhrase[];
@@ -168,6 +170,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       mergeCount: r.mergeCount,
       sourceText: r.sourceText,
       contentBackupAt: r.contentBackup?.savedAt ?? null,
+      createdAt: r.createdAt.toISOString(),
       verbs: verbsByNode.get(r.id) ?? [],
       phrases: phrasesByNode.get(r.id) ?? [],
       blocks: blocksByNode.get(r.id) ?? [],

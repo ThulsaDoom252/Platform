@@ -5,6 +5,16 @@ import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocalNumber } from "@/lib/use-local-number";
+import { useLocalJson } from "@/lib/use-local-json";
+import {
+  DEFAULT_SORT,
+  MAX_PRESETS,
+  captureOrder,
+  sortTree,
+  type SortMode,
+  type TreePreset,
+} from "@/lib/tree-sort";
+import { TreeSorter } from "./tree-sorter";
 import {
   IconChevronRight,
   IconChevronDown,
@@ -170,6 +180,8 @@ export type MaterialNode = {
   sourceText: string | null;
   /** Когда снят снимок перед перестройкой. Пусто — отменять нечего. */
   contentBackupAt: string | null;
+  /** Когда раздел завели: по этому сортируется «порядок добавления». */
+  createdAt: string;
   /** Неправильные глаголы, если страница про них. */
   verbs: MaterialVerb[];
   phrases: MaterialPhrase[];
@@ -255,6 +267,28 @@ export function MaterialsExplorer({
     "materials-tree-width",
     TREE_WIDTH_DEFAULT,
   );
+  /**
+   * Порядок дерева. Это взгляд, а не запись: ручной порядок разделов
+   * лежит в базе и остаётся нетронутым, к нему возвращает «Свой порядок».
+   * Настройка своя у каждого дерева — материалы ученика и общая база
+   * раскладываются по-разному.
+   */
+  const sortKey = `materials-sort:${scope}:${ownerId ?? "-"}`;
+  const [sortState, setSortState] = useLocalJson<{
+    mode: SortMode;
+    presetId: string | null;
+    presets: TreePreset[];
+  }>(sortKey, { mode: DEFAULT_SORT, presetId: null, presets: [] });
+
+  const activePreset = sortState.presetId
+    ? sortState.presets.find((p) => p.id === sortState.presetId)
+    : undefined;
+
+  const sortedTree = useMemo(
+    () => sortTree(tree, sortState.mode, activePreset?.order),
+    [tree, sortState.mode, activePreset],
+  );
+
   const gridRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -285,6 +319,22 @@ export function MaterialsExplorer({
     drag.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
     setTreeWidth(next);
+  }
+
+  /** Сохранить нынешнюю расстановку под именем. */
+  function savePreset(name: string) {
+    if (sortState.presets.length >= MAX_PRESETS) return;
+    const preset: TreePreset = {
+      id: `p${Date.now().toString(36)}`,
+      name,
+      savedAt: new Date().toISOString(),
+      order: captureOrder(sortedTree),
+    };
+    setSortState({
+      ...sortState,
+      presetId: preset.id,
+      presets: [...sortState.presets, preset],
+    });
   }
 
   function resetResize() {
@@ -1713,6 +1763,24 @@ export function MaterialsExplorer({
           </button>
 
           {pathOpen && (
+            <TreeSorter
+              mode={sortState.mode}
+              presetId={sortState.presetId}
+              presets={sortState.presets}
+              onMode={(mode) => setSortState({ ...sortState, mode, presetId: null })}
+              onLoadPreset={(id) => setSortState({ ...sortState, presetId: id })}
+              onSavePreset={savePreset}
+              onDeletePreset={(id) =>
+                setSortState({
+                  ...sortState,
+                  presetId: sortState.presetId === id ? null : sortState.presetId,
+                  presets: sortState.presets.filter((p) => p.id !== id),
+                })
+              }
+            />
+          )}
+
+          {pathOpen && (
             <button
               type="button"
               onClick={resetResize}
@@ -1738,7 +1806,7 @@ export function MaterialsExplorer({
 
         {pathOpen && (
           <div className="materials-tree-scroll min-h-0 flex-1 max-h-[70vh] overflow-y-auto pr-1 lg:max-h-none">
-            {tree.map(renderCategory)}
+            {sortedTree.map(renderCategory)}
           </div>
         )}
 

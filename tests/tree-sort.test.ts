@@ -1,0 +1,102 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  sortTree,
+  captureOrder,
+  DEFAULT_SORT,
+  type SortableNode,
+} from "../src/lib/tree-sort";
+
+const node = (
+  name: string,
+  type: "FOLDER" | "FILE",
+  createdAt: string,
+  children: SortableNode[] = [],
+): SortableNode => ({ id: name, name, icon: null, type, createdAt, children });
+
+/** Дерево, в котором перемешаны папки и файлы, а имена идут не по порядку. */
+const tree: SortableNode[] = [
+  node("Яблоки", "FILE", "2026-01-03"),
+  node("Rules", "FOLDER", "2026-01-05", [
+    node("Zero", "FILE", "2026-02-02"),
+    node("Articles", "FILE", "2026-02-01"),
+    node("Tenses", "FOLDER", "2026-02-03"),
+  ]),
+  node("Activities", "FOLDER", "2026-01-01"),
+  node("Бананы", "FILE", "2026-01-02"),
+];
+
+const names = (list: SortableNode[]) => list.map((n) => n.name);
+
+test("папки всегда впереди файлов", () => {
+  for (const mode of ["manual", "name-asc", "name-desc", "added-asc", "added-desc"] as const) {
+    const out = sortTree(tree, mode);
+    const types = out.map((n) => n.type);
+    assert.deepEqual(
+      types,
+      ["FOLDER", "FOLDER", "FILE", "FILE"],
+      `режим ${mode}: порядок групп нарушен`,
+    );
+  }
+});
+
+test("по умолчанию — папки по алфавиту, потом файлы", () => {
+  const out = sortTree(tree, DEFAULT_SORT);
+  assert.deepEqual(names(out), ["Activities", "Rules", "Бананы", "Яблоки"]);
+});
+
+test("алфавит разворачивается", () => {
+  assert.deepEqual(names(sortTree(tree, "name-desc")), [
+    "Rules",
+    "Activities",
+    "Яблоки",
+    "Бананы",
+  ]);
+});
+
+test("порядок добавления считается по времени создания", () => {
+  assert.deepEqual(names(sortTree(tree, "added-asc")), [
+    "Activities",
+    "Rules",
+    "Бананы",
+    "Яблоки",
+  ]);
+  assert.deepEqual(names(sortTree(tree, "added-desc")), [
+    "Rules",
+    "Activities",
+    "Яблоки",
+    "Бананы",
+  ]);
+});
+
+test("сортировка идёт вглубь", () => {
+  const out = sortTree(tree, "name-asc");
+  const rules = out.find((n) => n.name === "Rules");
+  assert.ok(rules);
+  assert.deepEqual(names(rules.children), ["Tenses", "Articles", "Zero"]);
+});
+
+test("свой порядок не трогает ничего, кроме групп", () => {
+  const out = sortTree(tree, "manual");
+  assert.deepEqual(names(out), ["Rules", "Activities", "Яблоки", "Бананы"]);
+});
+
+test("сохранённая расстановка сильнее режима", () => {
+  const preset = captureOrder(sortTree(tree, "name-desc"));
+  const out = sortTree(tree, "name-asc", preset);
+  assert.deepEqual(names(out), ["Rules", "Activities", "Яблоки", "Бананы"]);
+});
+
+test("незнакомые узлы встают после известных", () => {
+  const preset = { Activities: 0 };
+  const out = sortTree(tree, "name-asc", preset);
+  assert.equal(out[0].name, "Activities");
+  // Остальные папки идут следом, файлы — после всех папок.
+  assert.deepEqual(out.map((n) => n.type), ["FOLDER", "FOLDER", "FILE", "FILE"]);
+});
+
+test("исходное дерево не меняется", () => {
+  const before = JSON.stringify(tree);
+  sortTree(tree, "name-desc");
+  assert.equal(JSON.stringify(tree), before);
+});
