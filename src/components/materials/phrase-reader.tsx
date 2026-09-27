@@ -321,6 +321,15 @@ export function PhraseReader({
   // Заметки под словами — то, что стоит знать, но не обязательно читать
   // сразу. Учитель гасит их, когда хочет чистый список.
   const [hints, setHints] = useState(true);
+
+  /**
+   * Пределы размера зависят от того, что на странице. Картинку слова
+   * есть смысл увеличивать, обложку — только уменьшать: она и так во
+   * всю ширину.
+   */
+  const hasWordImages = phrases.some((p) => p.imageUrl);
+  const scaleMin = 30;
+  const scaleMax = hasWordImages ? 260 : 100;
   const speech = useSpeech();
 
   const editable = !!onEditPhrase && !!nodeId;
@@ -428,12 +437,15 @@ export function PhraseReader({
         )}
       >
         {coverImageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={coverImageUrl}
-            alt={`Обложка: ${title}`}
-            className="block h-auto w-full object-contain"
-          />
+          <div className="flex justify-center bg-surface-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={coverImageUrl}
+              alt={`Обложка: ${title}`}
+              style={{ width: `${Math.min(100, imageScale)}%` }}
+              className="block h-auto object-contain"
+            />
+          </div>
         )}
         <div
           className={cn(
@@ -508,13 +520,13 @@ export function PhraseReader({
         {/* Картинки бывают разные: мелкая иконка и кадр, который стоит
             рассмотреть. Размер хранится у страницы, чтобы ученик увидел
             словарь таким же. */}
-        {onImageScale && phrases.some((p) => p.imageUrl) && (
+        {onImageScale && (coverImageUrl || phrases.some((p) => p.imageUrl)) && (
           <div className="flex h-9 items-center gap-1 rounded-xl bg-surface px-1.5 ring-1 ring-line">
             <span className="px-1 text-[11px] font-semibold text-faint">Картинки</span>
             <button
               type="button"
-              onClick={() => onImageScale(Math.max(60, imageScale - 20))}
-              disabled={imageScale <= 60}
+              onClick={() => onImageScale(Math.max(scaleMin, imageScale - 10))}
+              disabled={imageScale <= scaleMin}
               title="Меньше"
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-content disabled:opacity-40"
             >
@@ -535,8 +547,8 @@ export function PhraseReader({
             </button>
             <button
               type="button"
-              onClick={() => onImageScale(Math.min(260, imageScale + 20))}
-              disabled={imageScale >= 260}
+              onClick={() => onImageScale(Math.min(scaleMax, imageScale + 10))}
+              disabled={imageScale >= scaleMax}
               title="Больше"
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-content disabled:opacity-40"
             >

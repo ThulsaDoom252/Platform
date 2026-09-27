@@ -3141,7 +3141,7 @@ export type CoverState = {
  * только асинхронные функции, всё остальное собирается с ошибкой.
  */
 const IMAGE_SCALE_DEFAULT = 100;
-const IMAGE_SCALE_MIN = 60;
+const IMAGE_SCALE_MIN = 30;
 const IMAGE_SCALE_MAX = 260;
 
 /**
