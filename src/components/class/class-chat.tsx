@@ -18,6 +18,7 @@ import {
 } from "@/lib/actions/class";
 import { IconX, IconPencil, IconTrash, IconMessage } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { useT } from "@/components/i18n-provider";
 
 const POLL_MS = 4000;
 
@@ -34,6 +35,7 @@ export function ClassChat({
   /** Сколько чужих сообщений пришло, пока панель свёрнута. */
   onUnread?: (n: number) => void;
 }) {
+  const { t, locale } = useT();
   const [messages, setMessages] = useState<ClassMessage[]>([]);
   const [withArchived, setWithArchived] = useState(false);
   const [text, setText] = useState("");
@@ -98,7 +100,7 @@ export function ClassChat({
     return (
       <div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-2 px-4 py-10 text-center">
         <IconMessage className="h-6 w-6 text-faint" />
-        <p className="text-sm text-muted">Выбери ученика — переписка откроется здесь.</p>
+        <p className="text-sm text-muted">{t.classRoom.pickStudentChat}</p>
       </div>
     );
   }
@@ -115,16 +117,16 @@ export function ClassChat({
               "h-7 rounded-lg px-2 text-[11px] font-semibold transition",
               withArchived ? "bg-accent text-white" : "text-faint hover:text-content",
             )}
-            title="Показать вместе с архивом"
+            title={t.classRoom.archiveHint}
           >
-            Архив
+            {t.classRoom.archive}
           </button>
         )}
       </div>
 
       <div ref={feed} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
         {messages.length === 0 && (
-          <p className="py-6 text-center text-sm text-faint">Здесь пока пусто.</p>
+          <p className="py-6 text-center text-sm text-faint">{t.common.empty}</p>
         )}
 
         {messages.map((m) => (
@@ -160,20 +162,20 @@ export function ClassChat({
 
             <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-faint">
               <span>
-                {new Date(m.createdAt).toLocaleTimeString("ru", {
+                {new Date(m.createdAt).toLocaleTimeString(locale, {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
               </span>
-              {m.editedAt && <span>· изменено</span>}
-              {m.archived && <span>· в архиве</span>}
+              {m.editedAt && <span>· {t.classRoom.edited}</span>}
+              {m.archived && <span>· {t.classRoom.archived}</span>}
 
               <span className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
                 {m.mine && (
                   <button
                     type="button"
                     onClick={() => setEditing({ id: m.id, text: m.text })}
-                    title="Изменить"
+                    title={t.classRoom.edit}
                     className="hover:text-content"
                   >
                     <IconPencil className="h-3 w-3" />
@@ -183,7 +185,7 @@ export function ClassChat({
                   <button
                     type="button"
                     onClick={() => apply(() => archiveMessageAction(m.id, !m.archived))}
-                    title={m.archived ? "Вернуть из архива" : "В архив"}
+                    title={m.archived ? t.classRoom.unarchive : t.classRoom.toArchive}
                     className="hover:text-content"
                   >
                     {m.archived ? "↩" : "▾"}
@@ -192,7 +194,7 @@ export function ClassChat({
                 <button
                   type="button"
                   onClick={() => apply(() => deleteMessageAction(m.id))}
-                  title="Удалить"
+                  title={t.common.delete}
                   className="hover:text-rose-500"
                 >
                   <IconTrash className="h-3 w-3" />
@@ -208,7 +210,7 @@ export function ClassChat({
           <button
             type="button"
             onClick={() => setEditing(null)}
-            title="Отменить правку"
+            title={t.classRoom.cancelEdit}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:text-content"
           >
             <IconX className="h-4 w-4" />
@@ -218,13 +220,15 @@ export function ClassChat({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Сообщение…"
+          placeholder={t.classRoom.messagePlaceholder}
           className="h-9 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
         />
         <button
           type="button"
           onClick={send}
           disabled={busy || !text.trim()}
+          title={t.classRoom.send}
+          aria-label={t.classRoom.send}
           className="h-9 shrink-0 rounded-xl bg-accent px-3.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
         >
           ➤

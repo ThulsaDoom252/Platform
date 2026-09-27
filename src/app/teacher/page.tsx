@@ -3,6 +3,8 @@ import { and, asc, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, lessons, materialNodes } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { getDict } from "@/lib/i18n/server";
+import { fmt, type Dict } from "@/lib/i18n";
 import {
   IconUsers,
   IconCalendar,
@@ -26,26 +28,11 @@ function initials(name: string) {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 }
 
-function progressStatus(pct: number) {
-  if (pct >= 90) return { label: "Отлично!", cls: "tint-violet" };
-  if (pct >= 75) return { label: "В графике", cls: "tint-green" };
-  if (pct >= 60) return { label: "Хороший темп", cls: "tint-sky" };
-  return { label: "Нужен рывок", cls: "tint-amber" };
-}
-
-const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const dateFmt = new Intl.DateTimeFormat("ru-RU", {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
-
-function greeting(hour: number) {
-  if (hour < 6) return "Доброй ночи";
-  if (hour < 12) return "Доброе утро";
-  if (hour < 18) return "Добрый день";
-  return "Добрый вечер";
+function greeting(hour: number, t: Dict) {
+  if (hour < 6) return t.greeting.night;
+  if (hour < 12) return t.greeting.morning;
+  if (hour < 18) return t.greeting.afternoon;
+  return t.greeting.evening;
 }
 
 const fileKindStyle: Record<string, string> = {
@@ -56,7 +43,21 @@ const fileKindStyle: Record<string, string> = {
 
 export default async function TeacherOverviewPage() {
   const session = await getSession();
+  const { t, locale } = await getDict();
   const now = new Date();
+
+  // Даты тоже идут по языку пользователя: «ср, 1 окт.» и «Wed, 1 Oct».
+  const intlLocale = locale === "en" ? "en-GB" : locale;
+  const timeFmt = new Intl.DateTimeFormat(intlLocale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const dateFmt = new Intl.DateTimeFormat(intlLocale, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
   const day = now.getDay();
   const diffToMon = (day + 6) % 7;
@@ -130,31 +131,31 @@ export default async function TeacherOverviewPage() {
   const stats = [
     {
       value: String(activeStudents),
-      label: "Активных учеников",
-      hint: "всего",
+      label: t.stats.activeStudents,
+      hint: t.stats.hintTotal,
       Icon: IconUsers,
       grad: "grad-c1",
       href: "/teacher/students",
     },
     {
       value: String(lessonsThisWeek),
-      label: "Уроков на этой неделе",
-      hint: "+3 к прошлой",
+      label: t.stats.lessonsThisWeek,
+      hint: t.stats.hintVsLastWeek,
       Icon: IconCalendar,
       grad: "grad-c2",
       href: "/teacher/schedule",
     },
     {
       value: String(completedThisMonth),
-      label: "Уроков за месяц",
-      hint: "проведено",
+      label: t.stats.lessonsPerMonth,
+      hint: t.stats.hintDone,
       Icon: IconTrendUp,
       grad: "grad-c3",
     },
     {
       value: "4.9",
-      label: "Средний рейтинг",
-      hint: "по 18 отзывам",
+      label: t.stats.avgRating,
+      hint: t.stats.hintReviews,
       Icon: IconStar,
       grad: "grad-c4",
     },
@@ -169,10 +170,10 @@ export default async function TeacherOverviewPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-content sm:text-[28px]">
-            {greeting(now.getHours())}, {session?.name}! <span className="align-middle">👋</span>
+            {greeting(now.getHours(), t)}, {session?.name}! <span className="align-middle">👋</span>
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Вот что происходит в твоём классе английского сегодня.
+            {t.greeting.teacherSubtitle}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -182,7 +183,7 @@ export default async function TeacherOverviewPage() {
           </div>
           <div className="hidden items-center gap-2 rounded-xl bg-accent-soft px-3.5 py-2 text-sm text-content ring-1 ring-line sm:flex">
             <IconGlobe className="h-4 w-4 text-accent" />
-            <span className="italic">«Язык открывает двери в светлое будущее.»</span>
+            <span className="italic">{t.greeting.globeQuote}</span>
           </div>
         </div>
       </div>
@@ -229,13 +230,13 @@ export default async function TeacherOverviewPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
                 <IconChart className="h-4.5 w-4.5" />
               </div>
-              <h2 className="font-semibold text-content">Прогресс учеников</h2>
+              <h2 className="font-semibold text-content">{t.progress.title}</h2>
             </div>
             <Link
               href="/teacher/students"
               className="flex shrink-0 items-center gap-1 text-sm font-medium text-accent hover:opacity-80"
             >
-              Все <IconChevronRight className="h-4 w-4" />
+              {t.common.all} <IconChevronRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="flex flex-col gap-4">
@@ -259,7 +260,7 @@ export default async function TeacherOverviewPage() {
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${s.balance > 3 ? "tint-green" : s.balance > 0 ? "tint-amber" : "tint-rose"}`}
                       >
-                        {s.balance} ур.
+                        {fmt(t.stats.lessonsShort, { n: s.balance })}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11px] text-faint">{s.level}</p>
@@ -277,18 +278,18 @@ export default async function TeacherOverviewPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
                 <IconCalendar className="h-4.5 w-4.5" />
               </div>
-              <h2 className="font-semibold text-content">Ближайшие уроки</h2>
+              <h2 className="font-semibold text-content">{t.upcoming.title}</h2>
             </div>
             <Link
               href="/teacher/schedule"
               className="flex shrink-0 items-center gap-1 text-sm font-medium text-accent hover:opacity-80"
             >
-              Расписание <IconChevronRight className="h-4 w-4" />
+              {t.nav.schedule} <IconChevronRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="flex flex-col">
             {upcoming.length === 0 && (
-              <p className="text-sm text-faint">Пока ничего не запланировано.</p>
+              <p className="text-sm text-faint">{t.upcoming.empty}</p>
             )}
             {upcoming.map((l, i) => {
               const join = i < 2;
@@ -318,7 +319,7 @@ export default async function TeacherOverviewPage() {
                     }
                   >
                     {join && <IconVideo className="h-3.5 w-3.5" />}
-                    {join ? "Подключиться" : "Подготовиться"}
+                    {join ? t.upcoming.join : t.upcoming.prepare}
                   </Link>
                 </div>
               );
@@ -332,12 +333,12 @@ export default async function TeacherOverviewPage() {
         {/* Recent materials */}
         <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="font-semibold text-content">Недавние материалы</h2>
+            <h2 className="font-semibold text-content">{t.materials.recentTitle}</h2>
             <Link
               href="/teacher/materials"
               className="flex shrink-0 items-center gap-1 text-sm font-medium text-accent hover:opacity-80"
             >
-              Все <IconChevronRight className="h-4 w-4" />
+              {t.common.all} <IconChevronRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="flex flex-col gap-3">
@@ -368,15 +369,15 @@ export default async function TeacherOverviewPage() {
         {/* Account overview */}
         <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
           <div className="mb-5 flex items-center justify-between gap-2">
-            <h2 className="font-semibold text-content">Финансы</h2>
+            <h2 className="font-semibold text-content">{t.finances.title}</h2>
             <span className="rounded-lg bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-muted">
-              За месяц
+              {t.finances.perMonth}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="rounded-xl bg-surface-2 p-3.5">
               <p className="text-2xl font-bold text-content">${earnings}</p>
-              <p className="text-[11px] text-muted">Доход</p>
+              <p className="text-[11px] text-muted">{t.finances.income}</p>
               <div className="mt-2 flex items-end gap-1">
                 {earningsBars.map((h, i) => (
                   <div
@@ -389,7 +390,7 @@ export default async function TeacherOverviewPage() {
             </div>
             <div className="rounded-xl bg-surface-2 p-3.5">
               <p className="text-2xl font-bold text-content">{completedThisMonth}</p>
-              <p className="text-[11px] text-muted">Проведено уроков</p>
+              <p className="text-[11px] text-muted">{t.finances.lessonsDone}</p>
               <div className="mt-2 flex items-end gap-1">
                 {completedBars.map((h, i) => (
                   <div
@@ -402,7 +403,7 @@ export default async function TeacherOverviewPage() {
             </div>
           </div>
           <p className="mt-4 text-[11px] text-faint">
-            Доход считается как проведённые уроки × ${LESSON_RATE}.
+            {fmt(t.finances.formula, { rate: LESSON_RATE })}
           </p>
         </section>
 
@@ -413,14 +414,14 @@ export default async function TeacherOverviewPage() {
               <IconSprout className="h-6 w-6" />
             </div>
             <p className="mt-4 text-lg font-bold leading-snug">
-              Хорошие уроки создают большие возможности.
+              {t.promo.title}
             </p>
-            <p className="mt-1 text-sm text-white/80">Лучшие ученики. Светлое будущее.</p>
+            <p className="mt-1 text-sm text-white/80">{t.promo.subtitle}</p>
             <Link
               href="/teacher/students"
               className="mt-4 flex w-fit items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-accent transition hover:bg-white/90"
             >
-              Вдохновлять дальше <IconChevronRight className="h-4 w-4" />
+              {t.promo.cta} <IconChevronRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="pointer-events-none absolute -right-6 -bottom-6 h-32 w-32 rounded-full bg-white/10" />

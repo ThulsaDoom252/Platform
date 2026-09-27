@@ -36,19 +36,17 @@ export default async function TeacherMaterialsPage({
       <div>
         <h1 className="text-2xl font-bold text-content">{t.materials.title}</h1>
         <p className="mt-1 text-sm text-muted">
-          {mine
-            ? "Личная библиотека — ученики её не видят."
-            : t.materials.teacherSubtitle}
+          {mine ? t.materials.personalSubtitle : t.materials.teacherSubtitle}
         </p>
       </div>
 
       <div className="flex w-fit items-center gap-1 rounded-2xl bg-surface p-1 ring-1 ring-line">
         {/* Свои материалы первыми: учитель заходит сюда чаще, чем в общую базу. */}
         <Link href="/teacher/materials" className={tabCls(mine)}>
-          Мои материалы
+          {t.materials.mine}
         </Link>
         <Link href="/teacher/materials?view=shared" className={tabCls(!mine)}>
-          Общая библиотека
+          {t.materials.shared}
         </Link>
       </div>
 
@@ -59,9 +57,7 @@ export default async function TeacherMaterialsPage({
         scope={mine ? "PERSONAL" : "MATERIAL"}
         ownerId={mine ? session!.userId : undefined}
         emptyText={
-          mine
-            ? "Здесь пока пусто. Создай раздел или скопируй материалы сюда через «Поделиться»."
-            : undefined
+          mine ? t.materials.personalEmpty : undefined
         }
       />
     </div>

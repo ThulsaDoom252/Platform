@@ -13,6 +13,8 @@
  */
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useT } from "@/components/i18n-provider";
+import { fmt, type Dict } from "@/lib/i18n";
 import {
   heartbeatAction,
   listClassPeopleAction,
@@ -40,10 +42,10 @@ import { cn } from "@/lib/utils";
 const BEAT_MS = 30_000;
 
 /** Короткая точка статуса: зелёная — на платформе, красная — нет. */
-function Dot({ presence }: { presence: Presence }) {
+function Dot({ presence, t }: { presence: Presence; t: Dict }) {
   return (
     <span
-      title={presence === "online" ? "На платформе" : "Не в сети"}
+      title={presence === "online" ? t.classRoom.onlineTitle : t.classRoom.offlineTitle}
       className={cn(
         "h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-surface",
         presence === "online" ? "bg-emerald-500" : "bg-rose-500",
@@ -52,7 +54,7 @@ function Dot({ presence }: { presence: Presence }) {
   );
 }
 
-function Timer() {
+function Timer({ t }: { t: Dict }) {
   // Считаем от метки времени: накопление по тику уезжает на длинном уроке.
   // Само время читается в интервале, а не в рендере — иначе разметка
   // разойдётся при гидратации.
@@ -84,7 +86,7 @@ function Timer() {
         onClick={() => setRunning((v) => !v)}
         className="text-[11px] font-semibold text-muted transition hover:text-content"
       >
-        {running ? "пауза" : "пуск"}
+        {running ? t.classRoom.timerPause : t.classRoom.timerStart}
       </button>
       <button
         type="button"
@@ -95,13 +97,16 @@ function Timer() {
         }}
         className="text-[11px] font-semibold text-faint transition hover:text-content"
       >
-        сброс
+        {t.classRoom.timerReset}
       </button>
     </div>
   );
 }
 
-type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "activities" | "script";
+type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "script";
+
+/** Части урока. Их разбор видит только учитель — ученику показан сам урок. */
+type LessonTab = "lesson" | "twister" | "activities";
 
 export function ClassRoom({
   role,
@@ -120,14 +125,15 @@ export function ClassRoom({
     name: string;
     presence: Presence;
   } | null>(null);
+  const { t } = useT();
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
     chat: true,
     verbs: true,
     dictionary: false,
     board: false,
-    activities: false,
     script: false,
   });
+  const [lessonTab, setLessonTab] = useState<LessonTab>("lesson");
   const [showTimer, setShowTimer] = useState(false);
   const [unread, setUnread] = useState(0);
   const [busy, startBusy] = useTransition();
@@ -228,19 +234,57 @@ export function ClassRoom({
   const stub = (title: string) => (
     <div className="rounded-2xl bg-surface p-5 text-center ring-1 ring-line">
       <p className="text-sm font-semibold text-content">{title}</p>
-      <p className="mt-1 text-[12px] text-faint">Появится позже — место уже занято.</p>
+      <p className="mt-1 text-[12px] text-faint">{t.classRoom.soon}</p>
     </div>
+  );
+
+  /*
+   * Урок у учителя разложен на части: сам урок, скороговорка и активности.
+   * Ученику этот разбор не нужен — он видит только урок, поэтому вкладки
+   * живут здесь, а не в общей нижней панели.
+   */
+  const LESSON_TABS: { key: LessonTab; label: string }[] = [
+    { key: "lesson", label: t.classRoom.lesson },
+    { key: "twister", label: t.classRoom.tongueTwister },
+    { key: "activities", label: t.classRoom.activities },
+  ];
+
+  const lessonSection = (
+    <section className="flex min-h-[420px] flex-col gap-3 rounded-2xl bg-surface p-3.5 ring-1 ring-line">
+      <div className="flex flex-wrap items-center gap-1">
+        {LESSON_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setLessonTab(tab.key)}
+            className={cn(
+              "h-9 rounded-xl px-3.5 text-sm font-semibold transition",
+              lessonTab === tab.key
+                ? "bg-accent text-white"
+                : "text-muted hover:bg-surface-2 hover:text-content",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+        <span className="ml-auto text-[11px] text-faint">{t.classRoom.onlyYou}</span>
+      </div>
+
+      <div className="flex flex-1 items-center justify-center">
+        {stub(LESSON_TABS.find((tab) => tab.key === lessonTab)!.label)}
+      </div>
+    </section>
   );
 
   /** Выбор ученика: пока класс не начат, кружочки на весь экран. */
   const picker = (
     <div className="rounded-2xl bg-surface p-6 ring-1 ring-line">
-      <h2 className="text-lg font-bold text-content">С кем проводим класс</h2>
-      <p className="mt-1 text-sm text-muted">
-        Нажми на ученика — класс откроется и он увидит, что ты на месте.
-      </p>
+      <h2 className="text-lg font-bold text-content">{t.classRoom.pickTitle}</h2>
+      <p className="mt-1 text-sm text-muted">{t.classRoom.pickHint}</p>
 
-      {people === null && <p className="mt-6 text-sm text-faint">Загружаю…</p>}
+      {people === null && (
+        <p className="mt-6 text-sm text-faint">{t.classRoom.loading}</p>
+      )}
 
       <div className="mt-6 flex flex-wrap gap-5">
         {(people ?? []).map((p) => (
@@ -263,7 +307,7 @@ export function ClassRoom({
                   className="h-20 w-20 text-xl ring-2 ring-line transition group-hover:ring-accent"
                 />
                 <span className="absolute bottom-1 right-1">
-                  <Dot presence={p.presence} />
+                  <Dot presence={p.presence} t={t} />
                 </span>
                 {p.unread > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
@@ -279,8 +323,8 @@ export function ClassRoom({
 
             <Link
               href={`/teacher/students/${p.id}`}
-              title={`Профиль — ${p.name}`}
-              aria-label={`Профиль — ${p.name}`}
+              title={fmt(t.classRoom.profileOf, { name: p.name })}
+              aria-label={fmt(t.classRoom.profileOf, { name: p.name })}
               className="absolute -left-1 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-surface text-faint opacity-0 ring-1 ring-line transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
             >
               <IconUser className="h-3.5 w-3.5" />
@@ -295,9 +339,9 @@ export function ClassRoom({
     <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
-          <Dot presence="online" />
+          <Dot presence="online" t={t} />
           <span className="text-sm font-semibold text-content">{selfName}</span>
-          <span className="text-[11px] text-faint">это ты</span>
+          <span className="text-[11px] text-faint">{t.classRoom.youAre}</span>
         </div>
 
         {partner ? (
@@ -306,30 +350,34 @@ export function ClassRoom({
           teacher ? (
             <Link
               href={`/teacher/students/${partner.id}`}
-              title={`Профиль — ${partner.name}`}
+              title={fmt(t.classRoom.profileOf, { name: partner.name })}
               className="group flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line transition hover:ring-accent"
             >
-              <Dot presence={partner.presence} />
+              <Dot presence={partner.presence} t={t} />
               <span className="text-sm font-semibold text-content group-hover:text-accent">
                 {partner.name}
               </span>
               <span className="text-[11px] text-faint">
-                {partner.presence === "online" ? "на платформе" : "не в сети"}
+                {partner.presence === "online"
+                  ? t.classRoom.online
+                  : t.classRoom.offline}
               </span>
               <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
             </Link>
           ) : (
             <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
-              <Dot presence={partner.presence} />
+              <Dot presence={partner.presence} t={t} />
               <span className="text-sm font-semibold text-content">{partner.name}</span>
               <span className="text-[11px] text-faint">
-                {partner.presence === "online" ? "на платформе" : "не в сети"}
+                {partner.presence === "online"
+                  ? t.classRoom.online
+                  : t.classRoom.offline}
               </span>
             </div>
           )
         ) : (
           <span className="text-[12px] text-faint">
-            {teacher ? "Класс не начат" : "Учитель ещё не начал класс"}
+            {teacher ? t.classRoom.notStarted : t.classRoom.waitingTeacher}
           </span>
         )}
 
@@ -344,7 +392,7 @@ export function ClassRoom({
             })}
             className="ml-auto flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-content transition hover:border-rose-400 hover:text-rose-500"
           >
-            <IconX className="h-4 w-4" /> Выйти из класса
+            <IconX className="h-4 w-4" /> {t.classRoom.leave}
           </button>
         )}
       </div>
@@ -355,12 +403,13 @@ export function ClassRoom({
             <ClassScript studentId={partner.id} onClose={() => toggle("script")} />
           ) : teacher && !partner ? (
             picker
+          ) : teacher ? (
+            lessonSection
           ) : (
-            stub("Урок")
+            stub(t.classRoom.lesson)
           )}
-          {open.dictionary && stub("Словник")}
-          {open.board && stub("Доска")}
-          {open.activities && stub("Активности")}
+          {open.dictionary && stub(t.classRoom.dictionary)}
+          {open.board && stub(t.classRoom.board)}
         </div>
 
         <div className="flex flex-col gap-4">
@@ -369,7 +418,11 @@ export function ClassRoom({
               <ClassChat
                 key={conversation ?? "none"}
                 studentId={conversation}
-                title={partner ? `Чат — ${partner.name}` : "Чат"}
+                title={
+                  partner
+                    ? fmt(t.classRoom.chatWith, { name: partner.name })
+                    : t.classRoom.chat
+                }
                 canArchive={teacher}
                 onUnread={onUnread}
               />
@@ -379,7 +432,7 @@ export function ClassRoom({
           {open.verbs && (
             <section className="flex h-[360px] flex-col overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
               <div className="border-b border-line px-3 py-2 text-sm font-semibold text-content">
-                Неправильные глаголы
+                {t.classRoom.verbsTitle}
               </div>
               <QuickVerbs />
             </section>
@@ -390,16 +443,15 @@ export function ClassRoom({
       {/* Нижняя панель — её видят оба, таймер только у учителя. */}
       <div className="fixed inset-x-0 bottom-[56px] z-20 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur-md lg:bottom-0">
         <div className="mx-auto flex max-w-[1920px] flex-wrap items-center gap-2">
-          {tabBtn("chat", <IconMessage className="h-4 w-4" />, "Чат", unread)}
-          {tabBtn("dictionary", <IconMaterials className="h-4 w-4" />, "Словник")}
-          {tabBtn("verbs", <IconList className="h-4 w-4" />, "Irregular verbs")}
-          {teacher && tabBtn("script", <IconFile className="h-4 w-4" />, "Скрипт")}
-          {tabBtn("board", <IconGrid className="h-4 w-4" />, "Доска")}
-          {tabBtn("activities", <IconGrid className="h-4 w-4" />, "Активности")}
+          {tabBtn("chat", <IconMessage className="h-4 w-4" />, t.classRoom.chat, unread)}
+          {tabBtn("dictionary", <IconMaterials className="h-4 w-4" />, t.classRoom.dictionary)}
+          {tabBtn("verbs", <IconList className="h-4 w-4" />, t.classRoom.verbs)}
+          {teacher && tabBtn("script", <IconFile className="h-4 w-4" />, t.classRoom.script)}
+          {tabBtn("board", <IconGrid className="h-4 w-4" />, t.classRoom.board)}
 
           {teacher && (
             <span className="ml-auto flex items-center gap-2">
-              {showTimer && <Timer />}
+              {showTimer && <Timer t={t} />}
               <button
                 type="button"
                 onClick={() => setShowTimer((v) => !v)}
@@ -411,7 +463,7 @@ export function ClassRoom({
                 )}
               >
                 <IconClock className="h-4 w-4" />
-                <span className="hidden sm:inline">Таймер</span>
+                <span className="hidden sm:inline">{t.classRoom.timer}</span>
               </button>
             </span>
           )}

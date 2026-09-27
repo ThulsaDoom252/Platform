@@ -11,8 +11,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { quickVerbsAction, type QuickVerb } from "@/lib/actions/class";
 import { IconSearch } from "@/components/icons";
+import { useT } from "@/components/i18n-provider";
+import { fmt } from "@/lib/i18n";
 
 export function QuickVerbs() {
+  const { t } = useT();
   const [verbs, setVerbs] = useState<QuickVerb[] | null>(null);
   const [query, setQuery] = useState("");
 
@@ -44,16 +47,16 @@ export function QuickVerbs() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Поиск по любой форме…"
+          placeholder={t.classRoom.verbsSearch}
           className="h-8 w-full rounded-lg border border-line bg-surface-2 pl-8 pr-2 text-[13px] text-content outline-none transition placeholder:text-faint focus:border-accent"
         />
       </label>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {verbs === null && <p className="p-3 text-[13px] text-faint">Загружаю…</p>}
+        {verbs === null && <p className="p-3 text-[13px] text-faint">{t.classRoom.loading}</p>}
 
         {verbs !== null && shown.length === 0 && (
-          <p className="p-3 text-[13px] text-faint">Ничего не нашлось.</p>
+          <p className="p-3 text-[13px] text-faint">{t.classRoom.verbsNothing}</p>
         )}
 
         {shown.length > 0 && (
@@ -75,7 +78,7 @@ export function QuickVerbs() {
                   <td className="px-2.5 py-1.5 font-semibold text-content">
                     {v.own && (
                       <span
-                        title="Из твоих материалов"
+                        title={t.classRoom.verbsOwn}
                         className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle"
                       />
                     )}
@@ -93,8 +96,11 @@ export function QuickVerbs() {
       {verbs !== null && verbs.length > 0 && (
         <p className="shrink-0 border-t border-line px-2.5 py-1.5 text-[11px] text-faint">
           {shown.length === verbs.length
-            ? `${verbs.length} глаголов`
-            : `${shown.length} из ${verbs.length}`}
+            ? fmt(t.classRoom.verbsCount, { n: verbs.length })
+            : fmt(t.classRoom.verbsShown, {
+                shown: shown.length,
+                total: verbs.length,
+              })}
         </p>
       )}
     </div>
