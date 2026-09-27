@@ -11,7 +11,14 @@
  * равно есть — чтобы было видно, что всё цело.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
-import { saveScriptAction, type ScriptDoc } from "@/lib/actions/script";
+import {
+  deleteScriptPresetAction,
+  listScriptPresetsAction,
+  saveScriptAction,
+  saveScriptPresetAction,
+  type ScriptDoc,
+  type ScriptPreset,
+} from "@/lib/actions/script";
 import type { ScriptStyle } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +65,52 @@ export function ScriptEditor({
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(doc.updatedAt);
   const [showStyle, setShowStyle] = useState(!compact);
+
+  /**
+   * Заготовки: план, который повторяется от урока к уроку. Хранятся в
+   * базе, поэтому переживают и чистку браузера, и другой компьютер.
+   */
+  const [presets, setPresets] = useState<ScriptPreset[] | null>(null);
+  const [showPresets, setShowPresets] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  useEffect(() => {
+    if (!showPresets || presets) return;
+    let alive = true;
+    listScriptPresetsAction()
+      .then((rows) => alive && setPresets(rows))
+      .catch(() => alive && setPresets([]));
+    return () => {
+      alive = false;
+    };
+  }, [showPresets, presets]);
+
+  /** Заготовка кладётся в поле как есть — дальше её правят под урок. */
+  function loadPreset(preset: ScriptPreset) {
+    if (area.current) area.current.innerHTML = preset.html;
+    setStyle(preset.style ?? {});
+    setDirty(true);
+    setShowPresets(false);
+  }
+
+  function storePreset() {
+    const name = presetName.trim();
+    if (!name) return;
+    const html = area.current?.innerHTML ?? "";
+    startSave(async () => {
+      const res = await saveScriptPresetAction(name, html, style);
+      if (res.error) return;
+      setPresetName("");
+      setPresets(await listScriptPresetsAction());
+    });
+  }
+
+  function dropPreset(id: string) {
+    startSave(async () => {
+      await deleteScriptPresetAction(id);
+      setPresets(await listScriptPresetsAction());
+    });
+  }
   const [busy, startSave] = useTransition();
 
   // Текст кладём в поле один раз: дальше им владеет браузер, и перезапись
@@ -156,15 +209,84 @@ export function ScriptEditor({
 
         <button
           type="button"
-          onClick={() => setShowStyle((v) => !v)}
+          onClick={() => setShowPresets((v) => !v)}
           className={cn(
             "ml-auto h-8 rounded-lg px-2.5 text-[12px] font-semibold transition",
+            showPresets ? "bg-accent text-white" : "text-muted hover:bg-surface-2",
+          )}
+        >
+          Заготовки
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowStyle((v) => !v)}
+          className={cn(
+            "h-8 rounded-lg px-2.5 text-[12px] font-semibold transition",
             showStyle ? "bg-accent text-white" : "text-muted hover:bg-surface-2",
           )}
         >
           Стиль
         </button>
       </div>
+
+      {showPresets && (
+        <div className="flex flex-col gap-1.5 rounded-xl bg-surface p-2 ring-1 ring-line">
+          {presets === null && <p className="px-1 text-[12px] text-faint">Загружаю…</p>}
+
+          {presets?.length === 0 && (
+            <p className="px-1 text-[12px] text-faint">
+              Заготовок нет. Разметь скрипт как надо и сохрани — он пригодится
+              на следующем уроке.
+            </p>
+          )}
+
+          {presets?.map((preset) => (
+            <div key={preset.id} className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => loadPreset(preset)}
+                title="Подставить в этот урок"
+                className="min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-left text-[13px] text-content transition hover:bg-surface-2"
+              >
+                {preset.name}
+              </button>
+              <button
+                type="button"
+                onClick={() => dropPreset(preset.id)}
+                title="Удалить заготовку"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-faint transition hover:text-rose-500"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-1 border-t border-line pt-1.5">
+            <input
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && storePreset()}
+              placeholder="Название заготовки"
+              disabled={(presets?.length ?? 0) >= 5}
+              className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-2 text-[12px] text-content outline-none focus:border-accent disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={storePreset}
+              disabled={!presetName.trim() || (presets?.length ?? 0) >= 5}
+              title={
+                (presets?.length ?? 0) >= 5
+                  ? "Заготовок уже пять — удали лишнюю"
+                  : "Запомнить нынешний скрипт"
+              }
+              className="h-8 shrink-0 rounded-lg bg-accent px-3 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              Сохранить как заготовку
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Стиль страницы: шрифт, размер, цвет, фон */}
       {showStyle && (

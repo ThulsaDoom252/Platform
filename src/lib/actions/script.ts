@@ -8,9 +8,15 @@
  * расписания, а не хранятся отдельно.
  */
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { lessons, lessonScripts, users, type ScriptStyle } from "@/lib/db/schema";
+import {
+  lessons,
+  lessonScripts,
+  scriptPresets,
+  users,
+  type ScriptStyle,
+} from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { cleanScriptHtml, scriptPreview } from "@/lib/script-html";
 
@@ -42,6 +48,100 @@ async function requireTeacher() {
   const session = await getSession();
   if (!session || session.role !== "TEACHER") throw new Error("Только для учителя");
   return session;
+}
+
+/** Уроки недели: от понедельника до воскресенья включительно. */
+export async function listScriptWeekAction(
+  fromISO: string,
+  toISO: string,
+): Promise<ScriptLesson[]> {
+  await requireTeacher();
+
+  const from = new Date(fromISO);
+  const to = new Date(toISO);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return [];
+
+  const rows = await db
+    .select({
+      lessonId: lessons.id,
+      studentId: lessons.studentId,
+      studentName: users.name,
+      studentLevel: users.level,
+      avatarUrl: users.avatarUrl,
+      startTime: lessons.startTime,
+      duration: lessons.durationMinutes,
+      status: lessons.status,
+      html: lessonScripts.html,
+      updatedAt: lessonScripts.updatedAt,
+    })
+    .from(lessons)
+    .innerJoin(users, eq(users.id, lessons.studentId))
+    .leftJoin(lessonScripts, eq(lessonScripts.lessonId, lessons.id))
+    .where(and(gte(lessons.startTime, from), lt(lessons.startTime, to)))
+    .orderBy(asc(lessons.startTime));
+
+  return rows.map(toScriptLesson);
+}
+
+/**
+ * История: только те уроки, к которым скрипт действительно написан.
+ *
+ * Нужна, чтобы найти прошлую подготовку — по ученику и по дате, а не
+ * листая недели назад.
+ */
+export async function listScriptHistoryAction(limit = 80): Promise<ScriptLesson[]> {
+  await requireTeacher();
+
+  const rows = await db
+    .select({
+      lessonId: lessons.id,
+      studentId: lessons.studentId,
+      studentName: users.name,
+      studentLevel: users.level,
+      avatarUrl: users.avatarUrl,
+      startTime: lessons.startTime,
+      duration: lessons.durationMinutes,
+      status: lessons.status,
+      html: lessonScripts.html,
+      updatedAt: lessonScripts.updatedAt,
+    })
+    .from(lessonScripts)
+    .innerJoin(lessons, eq(lessons.id, lessonScripts.lessonId))
+    .innerJoin(users, eq(users.id, lessons.studentId))
+    .where(and(isNotNull(lessonScripts.html), ne(lessonScripts.html, "")))
+    .orderBy(desc(lessonScripts.updatedAt))
+    .limit(Math.min(200, Math.max(1, limit)));
+
+  return rows.map(toScriptLesson);
+}
+
+type LessonRow = {
+  lessonId: string;
+  studentId: string;
+  studentName: string;
+  studentLevel: string | null;
+  avatarUrl: string | null;
+  startTime: Date;
+  duration: number;
+  status: string;
+  html: string | null;
+  updatedAt: Date | null;
+};
+
+function toScriptLesson(r: LessonRow): ScriptLesson {
+  return {
+    lessonId: r.lessonId,
+    studentId: r.studentId,
+    studentName: r.studentName,
+    studentLevel: r.studentLevel,
+    avatarUrl: r.avatarUrl,
+    startTime: r.startTime.toISOString(),
+    duration: r.duration,
+    status: r.status,
+    hasScript: !!r.html?.trim(),
+    preview: scriptPreview(r.html ?? ""),
+    updatedAt: r.updatedAt?.toISOString() ?? null,
+  };
 }
 
 /**
@@ -178,4 +278,70 @@ export async function saveScriptAction(
 
   revalidatePath("/teacher/script");
   return { ok: true, savedAt: now.toISOString() };
+}
+
+export type ScriptPreset = {
+  id: string;
+  name: string;
+  html: string;
+  style: ScriptStyle;
+  createdAt: string;
+};
+
+/** Больше пяти заготовок держать незачем: список сам станет свалкой. */
+const MAX_SCRIPT_PRESETS = 5;
+
+export async function listScriptPresetsAction(): Promise<ScriptPreset[]> {
+  await requireTeacher();
+
+  const rows = await db
+    .select()
+    .from(scriptPresets)
+    .orderBy(asc(scriptPresets.createdAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    html: r.html,
+    style: r.style ?? {},
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/** Запомнить нынешний скрипт как заготовку. */
+export async function saveScriptPresetAction(
+  name: string,
+  html: string,
+  style: ScriptStyle,
+): Promise<ScriptState> {
+  await requireTeacher();
+
+  const clean = String(name ?? "").trim().slice(0, 60);
+  if (!clean) return { error: "Дай заготовке название" };
+
+  const [{ value: count = 0 } = { value: 0 }] = await db
+    .select({ value: sql<number>`count(*)::int` })
+    .from(scriptPresets);
+  if (Number(count) >= MAX_SCRIPT_PRESETS) {
+    return { error: "Заготовок уже пять — удали лишнюю" };
+  }
+
+  await db.insert(scriptPresets).values({
+    name: clean,
+    html: cleanScriptHtml(html),
+    style: style ?? {},
+  });
+
+  revalidatePath("/teacher/script");
+  return { ok: true };
+}
+
+export async function deleteScriptPresetAction(id: string): Promise<ScriptState> {
+  await requireTeacher();
+  const presetId = String(id ?? "");
+  if (!presetId) return { error: "Не выбрана заготовка" };
+
+  await db.delete(scriptPresets).where(eq(scriptPresets.id, presetId));
+  revalidatePath("/teacher/script");
+  return { ok: true };
 }

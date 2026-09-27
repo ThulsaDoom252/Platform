@@ -178,6 +178,20 @@ export const lessonScriptsRelations = relations(lessonScripts, ({ one }) => ({
   }),
 }));
 
+/**
+ * Заготовка скрипта: план, который повторяется от урока к уроку.
+ *
+ * Хранится в базе, а не в браузере: это наработка учителя, и терять
+ * её при чистке истории нельзя.
+ */
+export const scriptPresets = pgTable("script_presets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  html: text("html").notNull().default(""),
+  style: jsonb("style").$type<ScriptStyle>().default({}).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // ---------- Materials tree ----------
 export const materialNodes = pgTable("material_nodes", {
   id: uuid("id").primaryKey().defaultRandom(),

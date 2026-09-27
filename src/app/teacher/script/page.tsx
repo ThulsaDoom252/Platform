@@ -11,8 +11,11 @@ export default async function TeacherScriptPage({
   const session = await getSession();
   if (!session || session.role !== "TEACHER") redirect("/login");
 
+  // Из расписания приходят с конкретным уроком — открываем сразу его.
   const { lesson } = await searchParams;
-  const lessons = await listScriptLessonsAction();
+  const initial = lesson
+    ? ((await listScriptLessonsAction(200)).find((l) => l.lessonId === lesson) ?? null)
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -24,7 +27,7 @@ export default async function TeacherScriptPage({
         </p>
       </div>
 
-      <ScriptWorkspace lessons={lessons} initialLessonId={lesson} />
+      <ScriptWorkspace initial={initial} />
     </div>
   );
 }
