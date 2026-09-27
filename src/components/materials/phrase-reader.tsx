@@ -300,6 +300,7 @@ export function PhraseReader({
   phrases,
   onEditPhrase,
   onImageScale,
+  onEditImage,
   nodeId,
 }: {
   title: string;
@@ -315,6 +316,8 @@ export function PhraseReader({
   imageScale?: number;
   /** Передаётся только учителю: размер картинок хранится у страницы. */
   onImageScale?: (scale: number) => void;
+  /** Щелчок по картинке открывает её правку. Только у учителя. */
+  onEditImage?: () => void;
 }) {
   const { t } = useT();
   const [showTranslation, setShowTranslation] = useState(true);
@@ -442,8 +445,13 @@ export function PhraseReader({
             <img
               src={coverImageUrl}
               alt={`Обложка: ${title}`}
+              onClick={onEditImage}
+              title={onEditImage ? "Нажми, чтобы изменить картинку" : undefined}
               style={{ width: `${Math.min(100, imageScale)}%` }}
-              className="block h-auto object-contain"
+              className={cn(
+                "block h-auto object-contain",
+                onEditImage && "cursor-pointer transition hover:opacity-90",
+              )}
             />
           </div>
         )}

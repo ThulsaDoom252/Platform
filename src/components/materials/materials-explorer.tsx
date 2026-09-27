@@ -15,6 +15,7 @@ import {
   type TreePreset,
 } from "@/lib/tree-sort";
 import { TreeSorter } from "./tree-sorter";
+import { ImageEditor } from "./image-editor";
 import {
   IconChevronRight,
   IconChevronDown,
@@ -261,6 +262,8 @@ export function MaterialsExplorer({
   const [shareVerbs, setShareVerbs] = useState<ShareVerbsTarget | null>(null);
   const [exportPage, setExportPage] = useState<MaterialNode | null>(null);
   const [editPhrase, setEditPhrase] = useState<MaterialPhrase | null>(null);
+  /** Картинка, которую сейчас правят. */
+  const [editImage, setEditImage] = useState<MaterialNode | null>(null);
   /**
    * Ширина панели дерева. Названия у разделов разной длины: одному
    * экрана хватает, другому нет — поэтому размер подбирает учитель, а
@@ -2372,6 +2375,9 @@ export function MaterialsExplorer({
               onImageScale={
                 editable ? (scale) => setImageScale(selected, scale) : undefined
               }
+              onEditImage={
+                editable && selected.imageUrl ? () => setEditImage(selected) : undefined
+              }
             />
           ))}
 
@@ -2854,6 +2860,17 @@ export function MaterialsExplorer({
         }
         onClose={() => setExportPage(null)}
       />
+
+      {editImage?.imageUrl && (
+        <ImageEditor
+          nodeId={editImage.id}
+          imageUrl={editImage.imageUrl}
+          scale={editImage.imageScale}
+          maxScale={editImage.phrases.some((p) => p.imageUrl) ? 260 : 100}
+          onClose={() => setEditImage(null)}
+          onDone={(message) => setNotice(message)}
+        />
+      )}
 
       {contextMenu}
 
