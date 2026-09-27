@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useSpeech, SpeakPair } from "./speech";
 import type { RuleBlock } from "@/lib/rule-parser";
+import { speakable } from "@/lib/speakable";
 
 const TONE: Record<string, string> = {
   key: "tint-accent",
@@ -34,19 +35,6 @@ function mistakeParts(text: string): { wrong: string; right: string | null } {
         wrong: text.slice(0, at).replace(/^[✗✘❌]\s*/u, "").trim(),
         right: text.slice(at).replace(/^[✓✔✅]\s*/u, "").trim(),
       };
-}
-
-/**
- * Ячейка, которую есть смысл озвучить: одно английское слово.
- *
- * Транскрипции вроде «work/t/» и звуки «/ɪd/» отсеиваются по косой черте,
- * перечисления и пояснения — по пробелам и кириллице. В таблице про -ed
- * кнопки появляются ровно у слов, а не у каждой клетки.
- */
-function speakableWord(cell: string): string | null {
-  const word = cell.trim();
-  if (word.length < 2 || word.length > 40) return null;
-  return /^[A-Za-z][A-Za-z'’-]*$/.test(word) ? word : null;
 }
 
 /** Страница-правило: заголовки, врезки, формулы, таблицы и примеры. */
@@ -224,14 +212,20 @@ export function RuleReader({
               const parts = mistakeParts(b.text);
               return (
                 <div key={i} className="overflow-hidden rounded-2xl ring-1 ring-line">
-                  <p className="flex items-start gap-2.5 tint-rose px-4 py-2.5 text-sm">
+                  <p className="flex flex-wrap items-center gap-2.5 tint-rose px-4 py-2.5 text-sm">
                     <span aria-hidden>❌</span>
                     <span>{parts.wrong}</span>
+                    {speakable(parts.wrong) && (
+                      <SpeakPair text={parts.wrong} id={`tw-${i}`} speech={s} />
+                    )}
                   </p>
                   {parts.right && (
-                    <p className="flex items-start gap-2.5 tint-green px-4 py-2.5 text-sm">
+                    <p className="flex flex-wrap items-center gap-2.5 tint-green px-4 py-2.5 text-sm">
                       <span aria-hidden>✅</span>
                       <span>{parts.right}</span>
+                      {speakable(parts.right) && (
+                        <SpeakPair text={parts.right} id={`tr-${i}`} speech={s} />
+                      )}
                     </p>
                   )}
                   {b.label && (
@@ -309,9 +303,12 @@ export function RuleReader({
             return (
               <ul key={i} className="flex flex-col gap-1.5 pl-1">
                 {b.items.map((it, j) => (
-                  <li key={j} className="flex gap-2.5 text-sm text-content">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                  <li key={j} className="flex items-center gap-2.5 text-sm text-content">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                     <span>{it}</span>
+                    {speakable(it) && (
+                      <SpeakPair text={it} id={`l-${i}-${j}`} speech={s} />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -350,13 +347,13 @@ export function RuleReader({
                       {b.rows.map((row, ri) => (
                         <tr key={ri}>
                           {row.map((cell, ci) => {
-                            const word = speakableWord(cell);
+                            const spoken = speakable(cell);
                             return (
                               <td key={ci}>
                                 {cell}
-                                {word && (
+                                {spoken && (
                                   <SpeakPair
-                                    text={word}
+                                    text={spoken}
                                     id={`t${i}-${ri}-${ci}`}
                                     speech={s}
                                   />
@@ -402,7 +399,7 @@ export function RuleReader({
                         )}
                       >
                         {row.map((cell, ci) => {
-                          const word = speakableWord(cell);
+                          const spoken = speakable(cell);
                           return (
                             <td
                               key={ci}
@@ -413,9 +410,9 @@ export function RuleReader({
                             >
                               <span className="inline-flex items-center gap-1.5">
                                 {cell}
-                                {word && (
+                                {spoken && (
                                   <SpeakPair
-                                    text={word}
+                                    text={spoken}
                                     id={`t${i}-${ri}-${ci}`}
                                     speech={s}
                                   />
@@ -550,7 +547,7 @@ export function RuleReader({
                           >
                             <span className="inline-flex items-center gap-1.5">
                               {cell}
-                              {speakableWord(cell) && (
+                              {speakable(cell) && (
                                 <SpeakPair
                                   text={cell}
                                   id={`g${i}-${ri}-${ci}`}
@@ -588,10 +585,11 @@ export function RuleReader({
           case "marker":
             return (
               <div key={i} className="rounded-xl bg-surface px-3.5 py-2.5 ring-1 ring-line">
-                <p className="flex flex-wrap items-baseline gap-2">
+                <p className="flex flex-wrap items-center gap-2">
                   <span className="rounded-lg bg-accent px-2 py-0.5 text-[13px] font-bold text-white">
                     {b.word}
                   </span>
+                  <SpeakPair text={b.word} id={`mw-${i}`} speech={s} />
                   <span className="text-[13px] text-muted">{b.tr}</span>
                 </p>
                 <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-content">
