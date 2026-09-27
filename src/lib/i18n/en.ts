@@ -14,6 +14,8 @@ export const en = {
     schedule: "Schedule",
     finances: "Accounts",
     script: "Script",
+    twisters: "Tongue twisters",
+    activities: "Activities",
     materials: "Materials",
     settings: "Settings",
     // ученик
@@ -201,6 +203,53 @@ export const en = {
     scriptOpening: "Opening…",
     scriptNoLesson:
       "This student has no lesson to write a script for yet. Schedule one first.",
+  },
+
+  twisters: {
+    title: "Tongue twisters",
+    subtitle: "A shared pool of cards. Pin one to a student and it opens in their lesson.",
+    upload: "Upload images",
+    uploading: "Uploading…",
+    uploaded: { one: "{n} card added", other: "{n} cards added" } as Plural,
+    empty: "The pool is empty.",
+    emptyHint: "Upload photos of cards — as many as you like, titles are optional.",
+    count: { one: "{n} card", other: "{n} cards" } as Plural,
+
+    view: "View",
+    viewGrid: "Tiles",
+    viewList: "List",
+    viewLarge: "Large",
+    sortBy: "Sort",
+    sortManual: "My order",
+    sortNewest: "Newest first",
+    sortTitle: "By title",
+    dragHint: "Drag cards to reorder them — that is the order below.",
+
+    untitled: "Untitled",
+    titlePlaceholder: "Title (optional)",
+    rename: "Rename",
+    deleteConfirm: "Remove this card from the pool?",
+
+    assign: "Pin to a student",
+    assignTo: "Pin «{title}»",
+    chooseStudent: "Choose a student",
+    assigned: "Pinned",
+    pinnedNow: "Pinned now",
+    unpin: "Unpin",
+    noPinned: "Nothing pinned yet.",
+    noPinnedHint: "Pick a card in Tongue twisters — it will open here.",
+    focus: "Focus",
+    exitFocus: "Exit focus",
+
+    history: "History",
+    historyFor: "What {name} has had",
+    historyEmpty: "Nothing given yet.",
+    seenBefore: {
+      one: "Already given once, last time {date}",
+      other: "Already given {n} times, last time {date}",
+    } as Plural,
+    seenShort: { one: "{n}×", other: "{n}×" } as Plural,
+    fromPool: "From the pool",
   },
 
   studentsPage: {

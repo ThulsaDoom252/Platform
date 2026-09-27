@@ -2,8 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   experimental: {
-    // Обложки до 5 МБ + небольшой запас под поля multipart-формы.
-    serverActions: { bodySizeLimit: "6mb" },
+    // Одна картинка за вызов: обложки до 5 МБ, снимки скороговорок до 8 МБ,
+    // плюс запас под поля multipart-формы. Пачку скороговорок страница
+    // отправляет по одной, чтобы в запрос не летели десятки мегабайт разом.
+    serverActions: { bodySizeLimit: "12mb" },
   },
 };
 

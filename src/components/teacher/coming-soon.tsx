@@ -1,4 +1,7 @@
+"use client";
+
 import { IconSprout } from "@/components/icons";
+import { useT } from "@/components/i18n-provider";
 
 export function ComingSoon({
   title,
@@ -7,6 +10,8 @@ export function ComingSoon({
   title: string;
   description: string;
 }) {
+  const { t } = useT();
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -17,10 +22,8 @@ export function ComingSoon({
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
           <IconSprout className="h-7 w-7" />
         </div>
-        <p className="text-base font-semibold text-content">Раздел в разработке</p>
-        <p className="max-w-sm text-sm text-faint">
-          Этот блок появится в следующей итерации. Сейчас готова главная панель учителя.
-        </p>
+        <p className="text-base font-semibold text-content">{t.comingSoon.title}</p>
+        <p className="max-w-sm text-sm text-faint">{t.comingSoon.text}</p>
       </div>
     </div>
   );

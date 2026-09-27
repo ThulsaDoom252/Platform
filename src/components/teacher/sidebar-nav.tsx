@@ -13,6 +13,8 @@ import {
   IconChart,
   IconMaterials,
   IconSettings,
+  IconVolume,
+  IconFire,
 } from "@/components/icons";
 
 export function SidebarNav() {
@@ -25,6 +27,8 @@ export function SidebarNav() {
     { href: "/teacher/students", label: t.nav.students, Icon: IconUsers },
     { href: "/teacher/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/teacher/script", label: t.nav.script, Icon: IconFile },
+    { href: "/teacher/tongue-twisters", label: t.nav.twisters, Icon: IconVolume },
+    { href: "/teacher/activities", label: t.nav.activities, Icon: IconFire },
     { href: "/teacher/accounts", label: t.nav.finances, Icon: IconChart },
     { href: "/teacher/materials", label: t.nav.materials, Icon: IconMaterials },
     { href: "/teacher/settings", label: t.nav.settings, Icon: IconSettings },

@@ -37,6 +37,7 @@ import {
   IconUser,
 } from "@/components/icons";
 import { ClassScript } from "./class-script";
+import { ClassTwister } from "./class-twister";
 import { cn } from "@/lib/utils";
 
 const BEAT_MS = 30_000;
@@ -270,8 +271,14 @@ export function ClassRoom({
         <span className="ml-auto text-[11px] text-faint">{t.classRoom.onlyYou}</span>
       </div>
 
-      <div className="flex flex-1 items-center justify-center">
-        {stub(LESSON_TABS.find((tab) => tab.key === lessonTab)!.label)}
+      <div className="flex flex-1 flex-col justify-center">
+        {lessonTab === "twister" && partner ? (
+          <ClassTwister studentId={partner.id} studentName={partner.name} />
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            {stub(LESSON_TABS.find((tab) => tab.key === lessonTab)!.label)}
+          </div>
+        )}
       </div>
     </section>
   );

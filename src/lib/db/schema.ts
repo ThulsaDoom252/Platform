@@ -567,3 +567,53 @@ export const notifications = pgTable("notifications", {
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+/**
+ * Скороговорки — общий пул картинок учителя.
+ *
+ * Хранится картинкой, а не текстом: скороговорки приходят снимками из
+ * книг и карточек, и перенабирать их вручную незачем. Название
+ * необязательно — без него карточка живёт под своим файлом.
+ */
+export const tongueTwisters = pgTable("tongue_twisters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title"),
+  imageUrl: text("image_url").notNull(),
+  /** Ручной порядок в пуле: перетаскивание важнее даты загрузки. */
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/**
+ * Кому и когда выдавалась скороговорка.
+ *
+ * Это история, а не связь: строки копятся, а не заменяются. Поэтому
+ * видно, что одна и та же скороговорка уже была у ученика, сколько раз
+ * и когда в последний раз. Закреплённая сейчас — та, у которой стоит
+ * `pinned`; она одна на ученика.
+ */
+export const tongueTwisterAssignments = pgTable("tongue_twister_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  twisterId: uuid("twister_id")
+    .notNull()
+    .references(() => tongueTwisters.id, { onDelete: "cascade" }),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  pinned: boolean("pinned").notNull().default(false),
+  assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+});
+
+export const tongueTwisterAssignmentsRelations = relations(
+  tongueTwisterAssignments,
+  ({ one }) => ({
+    twister: one(tongueTwisters, {
+      fields: [tongueTwisterAssignments.twisterId],
+      references: [tongueTwisters.id],
+    }),
+    student: one(users, {
+      fields: [tongueTwisterAssignments.studentId],
+      references: [users.id],
+    }),
+  }),
+);
