@@ -72,3 +72,17 @@ test("docx собирается и несёт оформление словни�
   const blob = await pageToDocxBlob(vocabularyPage());
   assert.ok(blob.size > 2000, `файл подозрительно мал: ${blob.size}`);
 });
+
+test("в окне выгрузки показывается сохранённый исходник", async () => {
+  const { pageSourceOrText, pageToText } = await import("../src/lib/export-material");
+  const page = vocabularyPage();
+  const source = "TYPE: VOCAB\nTITLE: Mixed\n\nWORD: urge\nTR: спонукати";
+
+  // Исходник есть — отдаём его как есть, без пересборки.
+  assert.equal(pageSourceOrText({ ...page, sourceText: source }), source);
+
+  // Исходника нет — собираем текст из содержимого, как раньше.
+  const rebuilt = pageSourceOrText({ ...page, sourceText: null });
+  assert.equal(rebuilt, pageToText(page));
+  assert.ok(rebuilt.includes("ingredient"));
+});

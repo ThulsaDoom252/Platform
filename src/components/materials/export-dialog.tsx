@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "@/components/modal";
 import {
-  pageToText,
+  pageSourceOrText,
   pageToDocxBlob,
   safeFileName,
   type ExportPage,
@@ -25,7 +25,8 @@ export function ExportDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const text = useMemo(() => (page ? pageToText(page) : ""), [page]);
+  const text = useMemo(() => (page ? pageSourceOrText(page) : ""), [page]);
+  const isSource = !!page?.sourceText?.trim();
 
   if (!page) return null;
 
@@ -71,8 +72,10 @@ export function ExportDialog({
     >
       <div className="flex flex-col gap-4">
         <p className="text-[12px] text-muted">
-          Текстовая версия страницы — {lines} строк. Материал на платформе
-          остаётся как есть, здесь только копия.
+          {isSource
+            ? `Исходный текст, из которого страницу разобрали — ${lines} строк. Его можно вставить обратно в парсер.`
+            : `Текстовая версия страницы — ${lines} строк. Исходник не сохранён, поэтому текст собран из содержимого.`}{" "}
+          Материал на платформе остаётся как есть, здесь только копия.
         </p>
 
         <textarea
