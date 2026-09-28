@@ -12,6 +12,7 @@ import { fmt } from "@/lib/i18n";
 import { myGameStateAction } from "@/lib/actions/guess-picture";
 import { useGameState } from "@/lib/use-game-state";
 import { GuessCard } from "./guess-card";
+import { GameStatsCard } from "./game-stats";
 
 export function StudentGuess() {
   const { t } = useT();
@@ -22,22 +23,30 @@ export function StudentGuess() {
     return <p className="p-4 text-sm text-faint">{t.common.loading}</p>;
   }
 
-  if (!state || state.status === "DONE" || !state.card) {
-    const finished = state?.status === "DONE";
+  // Итог видит и ученик: он о своей игре, прятать там нечего.
+  if (state?.status === "DONE") {
+    return (
+      <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+        <GameStatsCard stats={state.stats} />
+      </div>
+    );
+  }
+
+  if (!state || !state.card) {
     return (
       <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
-        <p className="text-sm font-semibold text-content">
-          {finished ? t.game.finished : t.game.waiting}
-        </p>
-        <p className="mt-1 text-[12px] text-faint">
-          {finished
-            ? fmt(t.game.result, {
-                right: state.score.right,
-                wrong: state.score.wrong,
-                total: state.score.total,
-              })
-            : t.game.watchHere}
-        </p>
+        <p className="text-sm font-semibold text-content">{t.game.waiting}</p>
+        <p className="mt-1 text-[12px] text-faint">{t.game.watchHere}</p>
+      </div>
+    );
+  }
+
+  // Партия готова, но ещё не пущена — карту показывать рано.
+  if (state.paused && state.stats.answered === 0 && state.at === 0) {
+    return (
+      <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
+        <p className="text-sm font-semibold text-content">{t.game.waiting}</p>
+        <p className="mt-1 text-[12px] text-faint">{t.game.watchHere}</p>
       </div>
     );
   }

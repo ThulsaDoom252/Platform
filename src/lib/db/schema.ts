@@ -662,6 +662,8 @@ export type GameCard = {
   word: string;
   translation: string | null;
   imageUrl: string;
+  /** Что на лицевой стороне именно этой карты. */
+  face: "PICTURE" | "TRANSLATION";
 };
 
 /** Как ответили на карту. null — до неё ещё не дошли. */
@@ -682,21 +684,41 @@ export const activityGames = pgTable("activity_games", {
     .references(() => users.id, { onDelete: "cascade" }),
   kind: text("kind").notNull().default("GUESS_PICTURE"),
   /**
-   * Что показано на лицевой стороне карты.
+   * Чем спрашиваем.
    *
-   * PICTURE — картинка, TRANSLATION — перевод на языке словника. Режим
+   * PICTURE — картинкой, TRANSLATION — переводом, MIXED — и тем и
+   * другим: у каждого слова две карты, разведённые по колоде. Режим
    * запоминается в партии: колода под него уже собрана, и менять его на
    * ходу значило бы показывать карточки, которых там нет.
    */
   mode: text("mode").notNull().default("PICTURE"),
+  /** Короткое имя для очереди активностей: по нему учитель её узнаёт. */
+  title: text("title"),
   /** LOBBY — собрана, но не начата; RUNNING — идёт; DONE — закончена. */
   status: text("status").notNull().default("LOBBY"),
   cards: jsonb("cards").$type<GameCard[]>().default([]).notNull(),
   verdicts: jsonb("verdicts").$type<(GameVerdict | null)[]>().default([]).notNull(),
+  /**
+   * Сколько миллисекунд ушло на каждую карту.
+   *
+   * По ним считается самый быстрый и самый долгий ответ. Хранится
+   * рядом с оценками, потому что смысл имеют только вместе: время без
+   * вердикта — это просто таймаут.
+   */
+  timings: jsonb("timings").$type<(number | null)[]>().default([]).notNull(),
   at: integer("at").notNull().default(0),
   /** Перевёрнута ли текущая карта — ответ уже виден обоим. */
   revealed: boolean("revealed").notNull().default(false),
   seconds: integer("seconds").notNull().default(10),
+  /**
+   * На паузе ли партия и сколько на карте оставалось, когда её нажали.
+   *
+   * Партия и начинается с паузы: игру ставят заранее, а начинают, когда
+   * оба готовы. Пока пауза, срок не идёт — остаток лежит числом, и
+   * только по «play» он снова превращается в метку времени.
+   */
+  paused: boolean("paused").notNull().default(true),
+  pausedLeftMs: integer("paused_left_ms").notNull().default(0),
   deadline: timestamp("deadline"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

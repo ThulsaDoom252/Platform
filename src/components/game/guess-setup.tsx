@@ -109,6 +109,12 @@ export function GuessSetup({
       const result = await startGameAction({
         studentId,
         mode,
+        // Имя для очереди: по нему учитель узнаёт активность в списке.
+        title: nodes
+          ?.filter((node) => chosen.includes(node.id))
+          .map((node) => node.name)
+          .join(" · ")
+          .slice(0, 80),
         nodeIds: chosen,
         // Ничего не отбирали — значит играем всем, что есть.
         phraseIds: phraseIds.length > 0 ? phraseIds : undefined,
@@ -143,11 +149,12 @@ export function GuessSetup({
     <div className="flex flex-col gap-4">
       <div>
         <p className="text-sm font-bold text-content">{t.game.modeTitle}</p>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <div className="mt-2 grid gap-2 sm:grid-cols-3">
           {(
             [
               ["PICTURE", t.game.modePicture, t.game.modePictureHint],
               ["TRANSLATION", t.game.modeTranslation, t.game.modeTranslationHint],
+              ["MIXED", t.game.modeMixed, t.game.modeMixedHint],
             ] as const
           ).map(([key, label, hint]) => (
             <button
@@ -183,9 +190,9 @@ export function GuessSetup({
         {nodes === null && <p className="mt-2 text-sm text-faint">{t.common.loading}</p>}
         {nodes?.length === 0 && (
           <p className="mt-2 rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-faint">
-            {mode === "PICTURE"
-              ? t.game.noVocabForStudent
-              : t.game.noVocabTranslation}
+            {mode === "TRANSLATION"
+              ? t.game.noVocabTranslation
+              : t.game.noVocabForStudent}
           </p>
         )}
 
@@ -221,7 +228,7 @@ export function GuessSetup({
                       {fmt(t.game.wordsReady, { n: node.words })}
                       {node.personal ? ` · ${t.game.personalVocab}` : ""}
                       {/* Язык перевода — то, что ученик увидит на карте. */}
-                      {mode === "TRANSLATION" ? ` · ${node.lang}` : ""}
+                      {mode !== "PICTURE" ? ` · ${node.lang}` : ""}
                     </span>
                   </span>
 
@@ -271,9 +278,9 @@ export function GuessSetup({
                           </span>
                           {!word.hasImage && (
                             <span className="shrink-0 text-[10px] text-faint">
-                              {mode === "PICTURE"
-                                ? t.game.noPicture
-                                : t.game.noTranslation}
+                              {mode === "TRANSLATION"
+                                ? t.game.noTranslation
+                                : t.game.noPicture}
                             </span>
                           )}
                         </label>
@@ -312,7 +319,7 @@ export function GuessSetup({
         disabled={busy || chosen.length === 0}
         className="h-11 self-start rounded-xl bg-accent px-6 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? t.game.starting : t.game.start}
+        {busy ? t.game.starting : t.game.add}
       </button>
     </div>
   );

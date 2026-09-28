@@ -86,6 +86,7 @@ const LOCALIZED_FILES = [
   "src/components/game/guess-setup.tsx",
   "src/components/game/guess-play.tsx",
   "src/components/game/guess-card.tsx",
+  "src/components/game/game-stats.tsx",
   "src/components/game/student-guess.tsx",
   "src/components/class/class-activities.tsx",
 ];

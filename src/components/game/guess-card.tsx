@@ -56,7 +56,7 @@ export function GuessCard({
 
       <div className="relative flex min-h-[46vh] flex-1 items-center justify-center overflow-hidden rounded-2xl bg-surface-2">
         {/* Лицевая сторона: картинка или перевод — смотря во что играем. */}
-        {state.mode === "TRANSLATION" ? (
+        {card.face === "TRANSLATION" ? (
           <p className="px-6 py-10 text-center text-3xl font-black leading-tight text-content sm:text-5xl">
             {card.translation}
           </p>
@@ -99,7 +99,7 @@ export function GuessCard({
           )}
         >
           <p className="text-2xl font-black text-content sm:text-3xl">{card.word}</p>
-          {card.translation && state.mode === "PICTURE" && (
+          {card.translation && card.face === "PICTURE" && (
             <p className="mt-0.5 text-sm text-muted">{card.translation}</p>
           )}
           {timedOut && (

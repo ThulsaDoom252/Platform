@@ -23,31 +23,54 @@ import {
 } from "@/lib/db/schema";
 import { visibleNodeIds } from "@/lib/material-grants";
 import { getSession } from "@/lib/session";
-import { buildDeck, scoreOf, type DeckSource, type GameScore } from "@/lib/game-deck";
+import {
+  buildDeck,
+  statsOf,
+  type DeckSource,
+  type GameStats,
+} from "@/lib/game-deck";
 
-/** Что на лицевой стороне карты. */
-export type GameMode = "PICTURE" | "TRANSLATION";
+/** Чем спрашиваем. MIXED — обоими способами, по две карты на слово. */
+export type GameMode = "PICTURE" | "TRANSLATION" | "MIXED";
 
 export type GameState = {
   id: string;
   status: string;
   mode: GameMode;
+  title: string | null;
   at: number;
   total: number;
   revealed: boolean;
   seconds: number;
+  /** На паузе ли партия: пока да, отсчёт стоит. */
+  paused: boolean;
   /** Сколько миллисекунд осталось. Считается на сервере — часы там одни. */
   leftMs: number;
   card: GameCard | null;
   verdict: GameVerdict | null;
-  score: GameScore;
+  stats: GameStats;
 };
 
-export type GameActionState = { ok?: boolean; error?: string };
+/** Строка очереди активностей в классе. */
+export type QueuedGame = {
+  id: string;
+  title: string | null;
+  mode: GameMode;
+  status: string;
+  total: number;
+  at: number;
+  paused: boolean;
+  stats: GameStats;
+  createdAt: string;
+};
+
+export type GameActionState = { ok?: boolean; error?: string; gameId?: string };
 
 export type GameSetup = {
   studentId: string;
   mode: GameMode;
+  /** Как назвать партию в очереди. Пусто — имя соберётся из режима. */
+  title?: string;
   /** Словники в том порядке, в каком их выбрали. */
   nodeIds: string[];
   /** Какие слова участвуют. Пусто для словника — значит все. */
@@ -72,7 +95,12 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
   if (!studentId) return { error: "Не выбран ученик" };
   if (nodeIds.length === 0) return { error: "Не выбран ни один словник" };
 
-  const mode: GameMode = setup?.mode === "TRANSLATION" ? "TRANSLATION" : "PICTURE";
+  const asked = String(setup?.mode ?? "");
+  const mode: GameMode =
+    asked === "TRANSLATION" || asked === "MIXED" ? asked : "PICTURE";
+  // В смешанном нужны обе стороны, поэтому требования складываются.
+  const needsPicture = mode !== "TRANSLATION";
+  const needsTranslation = mode !== "PICTURE";
 
   /*
    * По картинке карта без картинки бессмысленна, поэтому слова без неё
@@ -112,20 +140,19 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
     .where(inArray(materialPhrases.nodeId, nodeIds))
     .orderBy(asc(materialPhrases.sortOrder));
 
-  const rows = await (mode === "PICTURE" ? picture : text);
+  const rows = await (needsPicture ? picture : text);
 
   const chosen = new Set((setup?.phraseIds ?? []).map(String));
   const usable = rows
     .filter((r) => r.kind !== "NOTE")
-    .filter((r) => mode === "PICTURE" || !!r.translation?.trim())
+    .filter((r) => !needsTranslation || !!r.translation?.trim())
     .filter((r) => chosen.size === 0 || chosen.has(r.phraseId));
 
   if (usable.length === 0) {
     return {
-      error:
-        mode === "PICTURE"
-          ? "У выбранных слов нет картинок — подбери их в словнике"
-          : "У выбранных слов нет перевода",
+      error: needsPicture
+        ? "У выбранных слов нет картинок — подбери их в словнике"
+        : "У выбранных слов нет перевода",
     };
   }
 
@@ -141,6 +168,8 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
           word: r.word,
           translation: r.translation,
           imageUrl: r.imageUrl,
+          // В смешанном режиме сторона проставится при удвоении колоды.
+          face: mode === "TRANSLATION" ? "TRANSLATION" : "PICTURE",
         }),
       ),
   }));
@@ -148,75 +177,242 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
   const deck = buildDeck(sources, {
     shuffleWords: setup?.shuffleWords ?? true,
     shuffleDecks: setup?.shuffleDecks ?? false,
+    mixFaces: mode === "MIXED",
   });
 
   const seconds = Math.min(120, Math.max(3, Number(setup?.seconds) || 10));
 
-  // Прошлые партии этого ученика закрываем: идёт всегда одна.
-  await db
-    .update(activityGames)
-    .set({ status: "DONE", updatedAt: new Date() })
-    .where(
-      and(eq(activityGames.studentId, studentId), ne(activityGames.status, "DONE")),
-    );
+  /*
+   * Партия встаёт в очередь на паузе и никого оттуда не выгоняет.
+   *
+   * Игры готовят заранее, одну за другой, а начинают тогда, когда оба
+   * готовы. Поэтому прежние не закрываются, а отсчёт не идёт, пока не
+   * нажали «play».
+   */
+  const [created] = await db
+    .insert(activityGames)
+    .values({
+      studentId,
+      mode,
+      title: String(setup?.title ?? "").trim().slice(0, 80) || null,
+      status: "LOBBY",
+      cards: deck,
+      verdicts: deck.map(() => null),
+      timings: deck.map(() => null),
+      at: 0,
+      revealed: false,
+      seconds,
+      paused: true,
+      pausedLeftMs: seconds * 1000,
+      deadline: null,
+    })
+    .returning({ id: activityGames.id });
 
-  await db.insert(activityGames).values({
-    studentId,
-    mode,
-    status: "RUNNING",
-    cards: deck,
-    verdicts: deck.map(() => null),
-    at: 0,
-    revealed: false,
-    seconds,
-    // Отсчёт идёт с первой карты, как только партия началась.
-    deadline: new Date(Date.now() + seconds * 1000),
-  });
-
-  return { ok: true };
+  return { ok: true, gameId: created?.id };
 }
 
-/** Текущая партия ученика — её читают оба экрана. */
+/**
+ * Партия, которая сейчас на столе.
+ *
+ * Очередь может быть длинной, но идёт всегда одна: та, которую начали.
+ * Пока никто не начат, берётся ближайшая приготовленная — её и видят
+ * оба экрана.
+ */
 async function currentGame(studentId: string) {
-  const [row] = await db
+  const [running] = await db
     .select()
     .from(activityGames)
     .where(
-      and(eq(activityGames.studentId, studentId), ne(activityGames.status, "DONE")),
+      and(eq(activityGames.studentId, studentId), eq(activityGames.status, "RUNNING")),
     )
-    .orderBy(desc(activityGames.createdAt))
+    .orderBy(desc(activityGames.updatedAt))
+    .limit(1);
+  if (running) return running;
+
+  const [queued] = await db
+    .select()
+    .from(activityGames)
+    .where(
+      and(eq(activityGames.studentId, studentId), eq(activityGames.status, "LOBBY")),
+    )
+    .orderBy(asc(activityGames.createdAt))
+    .limit(1);
+  return queued ?? null;
+}
+
+/** Партия по её идентификатору — когда учитель выбрал её в очереди. */
+async function gameById(id: string) {
+  const [row] = await db
+    .select()
+    .from(activityGames)
+    .where(eq(activityGames.id, id))
     .limit(1);
   return row ?? null;
 }
 
-function toState(row: NonNullable<Awaited<ReturnType<typeof currentGame>>>): GameState {
+type GameRow = NonNullable<Awaited<ReturnType<typeof gameById>>>;
+
+function toState(row: GameRow): GameState {
   const cards = row.cards ?? [];
   const verdicts = row.verdicts ?? [];
 
-  // Время вышло, а учитель не нажал — карта переворачивается сама.
-  const expired = !!row.deadline && row.deadline.getTime() <= Date.now();
+  // На паузе время не идёт: остаток лежит числом, а не меткой.
+  const expired =
+    !row.paused && !!row.deadline && row.deadline.getTime() <= Date.now();
   const revealed = row.revealed || expired;
+
+  const leftMs = row.paused
+    ? row.pausedLeftMs
+    : row.deadline
+      ? Math.max(0, row.deadline.getTime() - Date.now())
+      : 0;
 
   return {
     id: row.id,
     status: row.status,
     mode: (row.mode as GameMode) ?? "PICTURE",
+    title: row.title,
     at: row.at,
     total: cards.length,
     revealed,
     seconds: row.seconds,
-    leftMs: row.deadline ? Math.max(0, row.deadline.getTime() - Date.now()) : 0,
+    paused: row.paused,
+    leftMs,
     card: cards[row.at] ?? null,
     verdict: verdicts[row.at] ?? (expired && !row.revealed ? "timeout" : null),
-    score: scoreOf(verdicts),
+    stats: statsOf(
+      verdicts,
+      row.timings ?? [],
+      cards.map((card) => card.word),
+    ),
   };
 }
 
-/** Состояние для учителя. */
-export async function gameStateAction(studentId: string): Promise<GameState | null> {
+/** Сколько ушло на текущую карту. Пауза из счёта выпадает. */
+function spentOn(row: GameRow): number | null {
+  if (row.paused || !row.deadline) return null;
+  const full = row.seconds * 1000;
+  const left = Math.max(0, row.deadline.getTime() - Date.now());
+  const spent = full - left;
+  return spent > 0 ? spent : null;
+}
+
+/** Состояние для учителя. Можно спросить и конкретную партию из очереди. */
+export async function gameStateAction(
+  studentId: string,
+  gameId?: string,
+): Promise<GameState | null> {
   await requireTeacher();
-  const row = await currentGame(String(studentId ?? ""));
+  const row = gameId
+    ? await gameById(String(gameId))
+    : await currentGame(String(studentId ?? ""));
   return row ? toState(row) : null;
+}
+
+/**
+ * Очередь активностей ученика.
+ *
+ * Партии не пропадают сами: приготовленные ждут, законченные остаются
+ * со своим итогом, пока учитель их не уберёт.
+ */
+export async function listGamesAction(studentId: string): Promise<QueuedGame[]> {
+  await requireTeacher();
+  const student = String(studentId ?? "");
+  if (!student) return [];
+
+  const rows = await db
+    .select()
+    .from(activityGames)
+    .where(eq(activityGames.studentId, student))
+    .orderBy(asc(activityGames.createdAt));
+
+  return rows.map((row) => {
+    const cards = row.cards ?? [];
+    return {
+      id: row.id,
+      title: row.title,
+      mode: (row.mode as GameMode) ?? "PICTURE",
+      status: row.status,
+      total: cards.length,
+      at: row.at,
+      paused: row.paused,
+      stats: statsOf(
+        row.verdicts ?? [],
+        row.timings ?? [],
+        cards.map((card) => card.word),
+      ),
+      createdAt: row.createdAt.toISOString(),
+    };
+  });
+}
+
+/**
+ * Пустить партию или снять её с паузы.
+ *
+ * Отсчёт начинается отсюда, а не от создания: игру ставят заранее, а
+ * начинают, когда оба готовы.
+ */
+export async function playGameAction(gameId: string): Promise<GameActionState> {
+  await requireTeacher();
+  const row = await gameById(String(gameId ?? ""));
+  if (!row) return { error: "Партия не найдена" };
+  if (row.status === "DONE") return { error: "Партия уже закончена" };
+
+  // На столе всегда одна: остальные начатые уходят на паузу.
+  await db
+    .update(activityGames)
+    .set({ paused: true, deadline: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(activityGames.studentId, row.studentId),
+        eq(activityGames.status, "RUNNING"),
+        ne(activityGames.id, row.id),
+      ),
+    );
+
+  const left = row.pausedLeftMs > 0 ? row.pausedLeftMs : row.seconds * 1000;
+
+  await db
+    .update(activityGames)
+    .set({
+      status: "RUNNING",
+      paused: false,
+      pausedLeftMs: 0,
+      // Карта уже перевёрнута — ждём «следующую», отсчитывать нечего.
+      deadline: row.revealed ? null : new Date(Date.now() + left),
+      updatedAt: new Date(),
+    })
+    .where(eq(activityGames.id, row.id));
+
+  return { ok: true };
+}
+
+/** Пауза: остаток превращается обратно в число и стоит. */
+export async function pauseGameAction(gameId: string): Promise<GameActionState> {
+  await requireTeacher();
+  const row = await gameById(String(gameId ?? ""));
+  if (!row) return { error: "Партия не найдена" };
+
+  const left = row.deadline
+    ? Math.max(0, row.deadline.getTime() - Date.now())
+    : row.pausedLeftMs;
+
+  await db
+    .update(activityGames)
+    .set({ paused: true, pausedLeftMs: left, deadline: null, updatedAt: new Date() })
+    .where(eq(activityGames.id, row.id));
+
+  return { ok: true };
+}
+
+/** Убрать активность из очереди вместе с её итогом. */
+export async function removeGameAction(gameId: string): Promise<GameActionState> {
+  await requireTeacher();
+  const id = String(gameId ?? "");
+  if (!id) return { error: "Не выбрана активность" };
+
+  await db.delete(activityGames).where(eq(activityGames.id, id));
+  return { ok: true };
 }
 
 /**
@@ -244,9 +440,21 @@ export async function answerCardAction(
   const verdicts = [...(row.verdicts ?? [])];
   verdicts[row.at] = verdict;
 
+  // Время ответа снимаем здесь: дальше карта уже перевёрнута.
+  const timings = [...(row.timings ?? [])];
+  timings[row.at] = spentOn(row);
+
   await db
     .update(activityGames)
-    .set({ verdicts, revealed: true, deadline: null, updatedAt: new Date() })
+    .set({
+      verdicts,
+      timings,
+      revealed: true,
+      paused: false,
+      pausedLeftMs: 0,
+      deadline: null,
+      updatedAt: new Date(),
+    })
     .where(eq(activityGames.id, row.id));
 
   return { ok: true };
@@ -269,7 +477,15 @@ export async function nextCardAction(studentId: string): Promise<GameActionState
   if (next >= cards.length) {
     await db
       .update(activityGames)
-      .set({ verdicts, status: "DONE", revealed: true, deadline: null, updatedAt: new Date() })
+      .set({
+        verdicts,
+        status: "DONE",
+        revealed: true,
+        paused: true,
+        pausedLeftMs: 0,
+        deadline: null,
+        updatedAt: new Date(),
+      })
       .where(eq(activityGames.id, row.id));
     return { ok: true };
   }
@@ -280,6 +496,8 @@ export async function nextCardAction(studentId: string): Promise<GameActionState
       verdicts,
       at: next,
       revealed: false,
+      paused: false,
+      pausedLeftMs: 0,
       // Отсчёт возобновляется со следующей карты, а не продолжается.
       deadline: new Date(Date.now() + row.seconds * 1000),
       updatedAt: new Date(),
@@ -387,14 +605,20 @@ export async function listGameVocabAction(
     .from(materialPhrases)
     .where(inArray(materialPhrases.nodeId, mine.map((n) => n.id)));
 
-  // В игре по переводу слово без перевода показать нечем.
+  /*
+   * Где спрашивают переводом, слово без перевода показать нечем; где
+   * картинкой — без картинки. В смешанном нужно и то и другое, поэтому
+   * требования складываются, а не выбираются.
+   */
+  const needsPicture = mode !== "TRANSLATION";
+  const needsTranslation = mode !== "PICTURE";
+
   const words = phrases.filter(
-    (p) => p.kind !== "NOTE" && (mode === "PICTURE" || !!p.translation?.trim()),
+    (p) => p.kind !== "NOTE" && (!needsTranslation || !!p.translation?.trim()),
   );
   if (words.length === 0) return [];
 
-  const ready =
-    mode === "PICTURE"
+  const ready = needsPicture
       ? new Set(
           (
             await db
@@ -477,7 +701,14 @@ export async function listGameWordsAction(
       word: r.word,
       translation: r.translation,
       // «Готово к игре» значит разное: там картинка, тут перевод.
-      hasImage: mode === "PICTURE" ? !!r.imageId : !!r.translation?.trim(),
+      // «Готово к игре» значит разное: там картинка, тут перевод, а в
+      // смешанном — и то и другое сразу.
+      hasImage:
+        mode === "TRANSLATION"
+          ? !!r.translation?.trim()
+          : mode === "MIXED"
+            ? !!r.imageId && !!r.translation?.trim()
+            : !!r.imageId,
     }));
 }
 

@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDeck, hasNext, scoreOf, shuffle, type DeckCard } from "../src/lib/game-deck";
+import {
+  buildDeck,
+  doubleFaces,
+  hasNext,
+  scoreOf,
+  shuffle,
+  spreadDuplicates,
+  statsOf,
+  type DeckCard,
+} from "../src/lib/game-deck";
 
 /** Предсказуемый «случайный»: без него перемешивание не проверить. */
 function seeded(seed: number): () => number {
@@ -15,8 +24,9 @@ const card = (nodeId: string, word: string): DeckCard => ({
   phraseId: `${nodeId}-${word}`,
   nodeId,
   word,
-  translation: null,
+  translation: `${word}-перевод`,
   imageUrl: `/uploads/${word}.png`,
+  face: "PICTURE",
 });
 
 const first = { nodeId: "one", cards: [card("one", "a"), card("one", "b"), card("one", "c")] };
@@ -102,4 +112,133 @@ test("следующая карта есть, пока колода не кон�
 test("истёкший таймер не считается ни верным, ни ошибкой", () => {
   const score = scoreOf(["right", "wrong", "timeout", "right", null]);
   assert.deepEqual(score, { right: 2, wrong: 1, total: 5 });
+});
+
+test("смешанный режим даёт по две карты на слово", () => {
+  const deck = buildDeck(
+    [first],
+    { shuffleWords: false, shuffleDecks: false, mixFaces: true },
+  );
+
+  assert.equal(deck.length, 6);
+  assert.equal(deck.filter((c) => c.face === "PICTURE").length, 3);
+  assert.equal(deck.filter((c) => c.face === "TRANSLATION").length, 3);
+  // Каждое слово встречается ровно дважды.
+  for (const word of ["a", "b", "c"]) {
+    assert.equal(deck.filter((c) => c.word === word).length, 2, word);
+  }
+});
+
+test("обе стороны слова не стоят подряд после перемешивания", () => {
+  /*
+   * Ради этого удвоение и делается до тасования: если картинка и
+   * перевод одного слова идут парой, вторая карта ничего не проверяет —
+   * ответ только что назвали вслух.
+   */
+  const many = {
+    nodeId: "one",
+    cards: "abcdefgh".split("").map((w) => card("one", w)),
+  };
+
+  const deck = buildDeck(
+    [many],
+    { shuffleWords: true, shuffleDecks: false, mixFaces: true },
+    seeded(21),
+  );
+
+  const pairsTogether = deck.filter(
+    (c, i) => i > 0 && deck[i - 1].phraseId === c.phraseId,
+  ).length;
+
+  assert.equal(deck.length, 16);
+  assert.equal(pairsTogether, 0, `подряд стоят ${pairsTogether} пар`);
+});
+
+test("разведение работает на любом раскладе", () => {
+  const many = {
+    nodeId: "one",
+    cards: "abcdefghij".split("").map((w) => card("one", w)),
+  };
+
+  for (const seed of [1, 7, 21, 99, 1234, 55555]) {
+    const deck = buildDeck(
+      [many],
+      { shuffleWords: true, shuffleDecks: true, mixFaces: true },
+      seeded(seed),
+    );
+
+    const together = deck.filter(
+      (c, i) => i > 0 && deck[i - 1].phraseId === c.phraseId,
+    ).length;
+
+    assert.equal(together, 0, `seed ${seed}`);
+    assert.equal(deck.length, 20, `seed ${seed}`);
+  }
+});
+
+test("разведение не теряет и не дублирует карты", () => {
+  const source = [card("one", "a"), card("one", "a"), card("one", "b")];
+  const spread = spreadDuplicates(source);
+  assert.equal(spread.length, 3);
+  assert.deepEqual(
+    spread.map((c) => c.word).sort(),
+    ["a", "a", "b"],
+  );
+});
+
+test("развести нечего — список не меняется", () => {
+  const source = [card("one", "a"), card("one", "b")];
+  assert.deepEqual(spreadDuplicates(source), source);
+});
+
+test("удвоение не трогает исходные карты", () => {
+  const source = [card("one", "a")];
+  const doubled = doubleFaces(source);
+  assert.equal(source.length, 1);
+  assert.equal(source[0].face, "PICTURE");
+  assert.equal(doubled.length, 2);
+});
+
+test("статистика: точность считается от отвеченных, не от всей колоды", () => {
+  const stats = statsOf(
+    ["right", "wrong", "timeout", "right", null],
+    [1200, 3400, null, 800, null],
+    ["a", "b", "c", "d", "e"],
+  );
+
+  assert.equal(stats.right, 2);
+  assert.equal(stats.wrong, 1);
+  assert.equal(stats.answered, 3);
+  assert.equal(stats.timeouts, 1);
+  // 2 из 3 названных, а не 2 из 5 карт.
+  assert.equal(stats.accuracy, 67);
+});
+
+test("статистика: самый быстрый и самый долгий ответ со словами", () => {
+  const stats = statsOf(
+    ["right", "right", "wrong"],
+    [2500, 900, 4100],
+    ["fork", "umbrella", "sneeze"],
+  );
+
+  assert.equal(stats.fastestMs, 900);
+  assert.equal(stats.fastestWord, "umbrella");
+  assert.equal(stats.slowestMs, 4100);
+  assert.equal(stats.slowestWord, "sneeze");
+  assert.equal(stats.averageMs, Math.round((2500 + 900 + 4100) / 3));
+});
+
+test("статистика: таймаут во время ответа не попадает", () => {
+  // Иначе «самый долгий ответ» всегда равнялся бы длине таймера.
+  const stats = statsOf(["right", "timeout"], [1000, 10000], ["a", "b"]);
+  assert.equal(stats.slowestMs, 1000);
+  assert.equal(stats.slowestWord, "a");
+});
+
+test("статистика без ответов не делит на ноль", () => {
+  const stats = statsOf([null, null], [null, null], ["a", "b"]);
+  assert.equal(stats.accuracy, 0);
+  assert.equal(stats.fastestMs, null);
+  assert.equal(stats.slowestMs, null);
+  assert.equal(stats.averageMs, null);
 });
