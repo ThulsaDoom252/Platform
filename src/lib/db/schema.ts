@@ -737,3 +737,96 @@ export const activityGamesRelations = relations(activityGames, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+/**
+ * Повторение слов: задание, которое учитель выдаёт из словника ученика.
+ *
+ * Слова снимаются при выдаче и хранятся списком: правка словника потом
+ * не должна менять уже выданное задание. Сами карточки собираются при
+ * старте попытки — по этому же списку и выбранным режимам.
+ */
+export const wordRevisions = pgTable("word_revisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** Откуда выдано — ссылка на словник в материалах ученика. */
+  nodeId: uuid("node_id").references(() => materialNodes.id, {
+    onDelete: "set null",
+  }),
+  /** Как назвал задание учитель: по нему ученик его и узнаёт. */
+  title: text("title").notNull(),
+  /** Какие слова участвуют. */
+  phraseIds: jsonb("phrase_ids").$type<string[]>().default([]).notNull(),
+  /** Режимы в том порядке, какой задал учитель. */
+  modes: jsonb("modes").$type<string[]>().default([]).notNull(),
+  /**
+   * Сколько секунд на один ответ. Пусто — без ограничения.
+   * Отдельно от общего срока: они складываются, а не заменяют друг друга.
+   */
+  answerSeconds: integer("answer_seconds"),
+  /** Сколько секунд на всё задание. Пусто — без ограничения. */
+  totalSeconds: integer("total_seconds"),
+  /** До какого числа пройти. */
+  dueAt: timestamp("due_at"),
+  /**
+   * Разрешено ли пройти ещё раз.
+   *
+   * Сданное задание закрывается; учитель может открыть его снова, и
+   * тогда попытки копятся — по ним и видно, как меняется результат.
+   */
+  reopened: boolean("reopened").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const wordRevisionsRelations = relations(wordRevisions, ({ one, many }) => ({
+  student: one(users, {
+    fields: [wordRevisions.studentId],
+    references: [users.id],
+  }),
+  node: one(materialNodes, {
+    fields: [wordRevisions.nodeId],
+    references: [materialNodes.id],
+  }),
+  attempts: many(wordRevisionAttempts),
+}));
+
+/** Один ответ ученика внутри попытки. */
+export type RevisionAnswerRow = {
+  mode: string;
+  phraseId: string;
+  word: string;
+  correct: boolean;
+  reason?: "wrong" | "timeout";
+  ms: number;
+};
+
+/**
+ * Попытка прохождения.
+ *
+ * Хранится целиком, включая ответы: разбор учителя строится по ним, а
+ * пересчитать его из итогового числа уже нельзя.
+ */
+export const wordRevisionAttempts = pgTable("word_revision_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  revisionId: uuid("revision_id")
+    .notNull()
+    .references(() => wordRevisions.id, { onDelete: "cascade" }),
+  /** Собранное задание: шаги в том виде, в каком их увидел ученик. */
+  plan: jsonb("plan").$type<unknown>(),
+  answers: jsonb("answers").$type<RevisionAnswerRow[]>().default([]).notNull(),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+  /** Учитель посмотрел результат — уведомление гаснет. */
+  seenByTeacher: boolean("seen_by_teacher").notNull().default(false),
+});
+
+export const wordRevisionAttemptsRelations = relations(
+  wordRevisionAttempts,
+  ({ one }) => ({
+    revision: one(wordRevisions, {
+      fields: [wordRevisionAttempts.revisionId],
+      references: [wordRevisions.id],
+    }),
+  }),
+);
