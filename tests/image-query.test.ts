@@ -22,6 +22,15 @@ test("инфинитивное to и артикли отбрасываются",
   assert.equal(imageQuery("the weather"), "weather");
 });
 
+test("служебное слово как само слово словника не тащит за собой to", () => {
+  // «to have» уходило в поиск целиком: по общему списку значимых слов в
+  // нём не оставалось, и запасной путь возвращал фразу как есть.
+  assert.equal(imageQuery("to have"), "have");
+  assert.equal(imageQuery("to be"), "be");
+  assert.equal(imageQuery("to do"), "do");
+  assert.equal(imageQuery("in front of"), "front");
+});
+
 test("заглушки sb и sth выкидываются", () => {
   assert.equal(imageQuery("give sb a hand"), "give hand");
   assert.equal(imageQuery("take care of sth"), "take care");

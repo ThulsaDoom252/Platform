@@ -23,6 +23,7 @@ import {
   type PhraseWithImages,
 } from "@/lib/actions/phrase-images";
 import { IconCheck, IconSearch, IconTrash, IconX } from "@/components/icons";
+import { ImageFinder } from "./image-finder";
 import { cn } from "@/lib/utils";
 
 export function PhraseImagesPanel({
@@ -39,6 +40,8 @@ export function PhraseImagesPanel({
   const [hasKey, setHasKey] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ phraseId: string; url: string } | null>(null);
+  const [finding, setFinding] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
 
   useEffect(() => {
@@ -60,11 +63,21 @@ export function PhraseImagesPanel({
   const words = rows?.length ?? 0;
   const ready = (rows ?? []).filter((r) => r.images.some((i) => i.picked)).length;
 
-  function run(work: () => Promise<{ error?: string }>) {
+  function run(work: () => Promise<{ error?: string; found?: number }>) {
     setError(null);
+    setNote(null);
     startBusy(async () => {
       const result = await work();
       if (result.error) setError(result.error);
+      // Сколько нашлось — иначе по молчащей кнопке не понять, сработала
+      // она или по этим словам ничего нет.
+      else if (typeof result.found === "number") {
+        setNote(
+          result.found > 0
+            ? fmt(t.pictures.found, { n: result.found })
+            : t.pictures.nothing,
+        );
+      }
       await reload();
     });
   }
@@ -116,6 +129,7 @@ export function PhraseImagesPanel({
           </p>
         )}
         {error && <p className="px-4 py-2 text-sm text-rose-500">{error}</p>}
+        {note && <p className="px-4 py-2 text-[12px] text-accent">{note}</p>}
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {rows === null && <p className="p-3 text-sm text-faint">{t.common.loading}</p>}
@@ -147,6 +161,21 @@ export function PhraseImagesPanel({
                     className="flex h-7 w-7 items-center justify-center rounded-lg text-faint transition hover:bg-surface hover:text-accent disabled:opacity-40"
                   >
                     <IconSearch className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!hasKey}
+                    onClick={() =>
+                      setFinding(finding === row.phraseId ? null : row.phraseId)
+                    }
+                    className={cn(
+                      "h-7 rounded-lg px-2 text-[11px] font-semibold transition disabled:opacity-40",
+                      finding === row.phraseId
+                        ? "bg-accent text-white"
+                        : "text-accent hover:bg-surface",
+                    )}
+                  >
+                    {t.pictures.ownSearch}
                   </button>
                 </span>
               </div>
@@ -188,8 +217,8 @@ export function PhraseImagesPanel({
                       <button
                         type="button"
                         onClick={() => run(() => deletePhraseImageAction(image.id))}
-                        title={t.common.delete}
-                        aria-label={t.common.delete}
+                        title={t.pictures.deleteWithFile}
+                        aria-label={t.pictures.deleteWithFile}
                         className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition hover:bg-rose-500 group-hover:opacity-100"
                       >
                         <IconTrash className="h-3 w-3" />
@@ -199,7 +228,15 @@ export function PhraseImagesPanel({
                 </div>
               )}
 
-              {/* Ручная ссылка: поиск понимает не всё. */}
+              {finding === row.phraseId && (
+                <ImageFinder
+                  phraseId={row.phraseId}
+                  initialQuery={row.query || row.phrase}
+                  onAdded={() => void reload()}
+                />
+              )}
+
+              {/* Прямая ссылка: когда картинка уже найдена где-то ещё. */}
               {link?.phraseId === row.phraseId ? (
                 <div className="mt-2 flex gap-1.5">
                   <input

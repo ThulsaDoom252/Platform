@@ -15,7 +15,13 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { materialNodes, materialPhrases, phraseImages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
-import { imageQuery, pickCandidates, type ImageCandidate } from "@/lib/image-query";
+import {
+  imageQuery,
+  looksLikeText,
+  pickCandidates,
+  type ImageCandidate,
+} from "@/lib/image-query";
+import { removeStoredImage, storeRemoteImage } from "@/lib/image-store";
 
 export type PhraseImage = {
   id: string;
@@ -60,7 +66,7 @@ type PixabayHit = {
  * Ошибку сети наверх не бросаем: подборка для двадцати слов не должна
  * разваливаться целиком из-за одного неудачного запроса.
  */
-async function searchPixabay(query: string): Promise<ImageCandidate[]> {
+async function searchPixabay(query: string, perPage = 20): Promise<ImageCandidate[]> {
   const key = process.env.PIXABAY_API_KEY;
   if (!key || !query) return [];
 
@@ -69,7 +75,7 @@ async function searchPixabay(query: string): Promise<ImageCandidate[]> {
   url.searchParams.set("q", query);
   url.searchParams.set("image_type", "all");
   url.searchParams.set("safesearch", "true");
-  url.searchParams.set("per_page", "20");
+  url.searchParams.set("per_page", String(Math.min(200, Math.max(3, perPage))));
   url.searchParams.set("lang", "en");
 
   try {
@@ -92,6 +98,30 @@ async function searchPixabay(query: string): Promise<ImageCandidate[]> {
   } catch {
     return [];
   }
+}
+
+export type FoundImage = { url: string; thumbUrl: string; tags: string };
+
+/**
+ * Поиск по любому запросу, который набрал учитель.
+ *
+ * Ничего не сохраняет: это витрина, из которой он выбирает. Автоподбор
+ * угадывает не всегда — «to have» или идиому проще найти своими словами,
+ * и тогда нужен не один вариант из трёх, а целая полка.
+ */
+export async function searchImagesAction(query: string): Promise<FoundImage[]> {
+  await requireTeacher();
+
+  const text = String(query ?? "").trim().slice(0, 100);
+  if (!text) return [];
+  if (!process.env.PIXABAY_API_KEY) return [];
+
+  const found = await searchPixabay(text, 30);
+  // Надписи и здесь ни к чему, но порядок оставляем поисковый: учитель
+  // смотрит глазами, и перетасовывать выдачу под него не надо.
+  return found
+    .filter((item) => !looksLikeText(item.tags))
+    .map((item) => ({ url: item.url, thumbUrl: item.thumbUrl, tags: item.tags }));
 }
 
 /** Есть ли ключ — страница по этому решает, показывать ли кнопку поиска. */
@@ -263,7 +293,7 @@ export async function pickPhraseImageAction(imageId: string): Promise<ImagesStat
   if (!id) return { error: "Не выбрана картинка" };
 
   const [image] = await db
-    .select({ phraseId: phraseImages.phraseId })
+    .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
     .from(phraseImages)
     .where(eq(phraseImages.id, id))
     .limit(1);
@@ -273,7 +303,18 @@ export async function pickPhraseImageAction(imageId: string): Promise<ImagesStat
     .update(phraseImages)
     .set({ picked: false })
     .where(eq(phraseImages.phraseId, image.phraseId));
-  await db.update(phraseImages).set({ picked: true }).where(eq(phraseImages.id, id));
+
+  /*
+   * Выбранная картинка переезжает к нам. Остальные остаются ссылками:
+   * они только витрина, а эта пойдёт в игру, и пропасть посреди урока
+   * из-за чужого сайта не должна.
+   */
+  const stored = await storeRemoteImage(image.url);
+
+  await db
+    .update(phraseImages)
+    .set(stored ? { picked: true, url: stored, thumbUrl: stored } : { picked: true })
+    .where(eq(phraseImages.id, id));
 
   return { ok: true };
 }
@@ -282,6 +323,7 @@ export async function pickPhraseImageAction(imageId: string): Promise<ImagesStat
 export async function addPhraseImageAction(
   phraseId: string,
   url: string,
+  pick = false,
 ): Promise<ImagesState> {
   await requireTeacher();
   const id = String(phraseId ?? "");
@@ -289,18 +331,35 @@ export async function addPhraseImageAction(
   if (!id || !link) return { error: "Нужна ссылка на картинку" };
   if (!/^https?:\/\//i.test(link)) return { error: "Ссылка должна начинаться с http" };
 
-  const [{ value: count = 0 } = { value: 0 }] = await db
-    .select({ value: phraseImages.sortOrder })
+  // Добавленную сразу кладём к себе: её выбрал учитель, и она должна
+  // остаться, даже когда источник её потеряет.
+  const stored = await storeRemoteImage(link);
+  if (!stored) return { error: "По ссылке не картинка или её не скачать" };
+
+  const existing = await db
+    .select({ sortOrder: phraseImages.sortOrder })
     .from(phraseImages)
     .where(eq(phraseImages.phraseId, id))
     .orderBy(asc(phraseImages.sortOrder));
 
+  const last = existing.at(-1)?.sortOrder ?? 0;
+
+  if (pick) {
+    await db
+      .update(phraseImages)
+      .set({ picked: false })
+      .where(eq(phraseImages.phraseId, id));
+  }
+
   await db.insert(phraseImages).values({
     phraseId: id,
-    url: link,
-    thumbUrl: link,
+    url: stored,
+    thumbUrl: stored,
     origin: "manual",
-    sortOrder: Number(count) + 10,
+    sortOrder: last + 10,
+    // Первая картинка слова сразу идёт в игру: иначе её пришлось бы
+    // выбирать вторым нажатием без всякого выбора.
+    picked: pick || existing.length === 0,
   });
 
   return { ok: true };
@@ -311,7 +370,31 @@ export async function deletePhraseImageAction(imageId: string): Promise<ImagesSt
   const id = String(imageId ?? "");
   if (!id) return { error: "Не выбрана картинка" };
 
+  const [image] = await db
+    .select({ url: phraseImages.url, phraseId: phraseImages.phraseId, picked: phraseImages.picked })
+    .from(phraseImages)
+    .where(eq(phraseImages.id, id))
+    .limit(1);
+  if (!image) return { ok: true };
+
   await db.delete(phraseImages).where(eq(phraseImages.id, id));
+  // Файл уходит вместе со строкой: иначе хранилище растёт тем, что уже
+  // никому не нужно. Чужие ссылки удалять нечего.
+  await removeStoredImage(image.url);
+
+  // Слово не должно остаться без картинки, если другие ещё есть.
+  if (image.picked) {
+    const [next] = await db
+      .select({ id: phraseImages.id })
+      .from(phraseImages)
+      .where(eq(phraseImages.phraseId, image.phraseId))
+      .orderBy(asc(phraseImages.sortOrder))
+      .limit(1);
+    if (next) {
+      await db.update(phraseImages).set({ picked: true }).where(eq(phraseImages.id, next.id));
+    }
+  }
+
   return { ok: true };
 }
 

@@ -299,6 +299,15 @@ export const ru: Dict = {
     noImages: "Картинок пока нет.",
     ready: "Готово {ready} из {words}",
     skipNotes: "Заметки пропускаются — угадывать в них нечего.",
+    ownSearch: "Искать самому",
+    ownSearchHint: "Пиши что угодно — найденная картинка сохранится на платформе.",
+    searchPlaceholder: "Что искать…",
+    run: "Найти",
+    noResults: "По этому запросу ничего нет.",
+    addThis: "Добавить",
+    added: "Добавлено",
+    storedHere: "Хранится на платформе",
+    deleteWithFile: "Удалить — вместе с файлом",
   },
 
   game: {

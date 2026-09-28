@@ -299,6 +299,15 @@ export const uk: Dict = {
     noImages: "Картинок поки немає.",
     ready: "Готово {ready} з {words}",
     skipNotes: "Нотатки пропускаються — вгадувати в них нічого.",
+    ownSearch: "Шукати самому",
+    ownSearchHint: "Пиши що завгодно — знайдена картинка збережеться на платформі.",
+    searchPlaceholder: "Що шукати…",
+    run: "Знайти",
+    noResults: "За цим запитом нічого немає.",
+    addThis: "Додати",
+    added: "Додано",
+    storedHere: "Зберігається на платформі",
+    deleteWithFile: "Видалити — разом з файлом",
   },
 
   game: {

@@ -18,6 +18,15 @@ const NOISE = new Set([
   "one", "ones", "some", "any", "very", "too", "not",
 ]);
 
+/**
+ * То, что снимается всегда: инфинитивное «to» и артикли.
+ *
+ * Их нельзя оставлять даже в коротком выражении. «to have» иначе уходит
+ * в поиск целиком — значимых слов в нём по общему списку не остаётся, и
+ * срабатывает запасной путь, который тащит служебное «to» за собой.
+ */
+const ALWAYS_DROP = new Set(["to", "a", "an", "the"]);
+
 /** Заглушки вроде sb/sth: они стоят вместо слова, картинку по ним не найти. */
 const PLACEHOLDERS = new Set([
   "sb", "sth", "smb", "smth", "somebody", "someone", "something",
@@ -51,10 +60,12 @@ export function imageQuery(phrase: string): string {
     .split(" ")
     .map((w) => w.replace(/^['’-]+|['’-]+$/g, ""))
     .filter(Boolean)
-    .filter((w) => !PLACEHOLDERS.has(w));
+    .filter((w) => !PLACEHOLDERS.has(w))
+    .filter((w) => !ALWAYS_DROP.has(w));
 
   // Значимые слова важнее служебных, но если значимых не осталось —
-  // лучше поискать хоть по чему-то, чем не искать вовсе.
+  // лучше поискать хоть по чему-то, чем не искать вовсе: «have» само по
+  // себе ищется, пусть и не идеально, а «to have» не ищется никак.
   const meaningful = words.filter((w) => !NOISE.has(w));
   const chosen = meaningful.length > 0 ? meaningful : words;
 

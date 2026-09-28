@@ -270,6 +270,15 @@ export const en = {
     noImages: "No pictures yet.",
     ready: "{ready} of {words} ready",
     skipNotes: "Notes are skipped — there is nothing to guess in them.",
+    ownSearch: "Search yourself",
+    ownSearchHint: "Type anything — the found picture is saved to the platform.",
+    searchPlaceholder: "What to look for…",
+    run: "Search",
+    noResults: "Nothing found for this query.",
+    addThis: "Add",
+    added: "Added",
+    storedHere: "Stored on the platform",
+    deleteWithFile: "Delete — the file goes too",
   },
 
   game: {
