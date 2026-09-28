@@ -81,6 +81,12 @@ const LOCALIZED_FILES = [
   "src/components/twisters/twister-viewer.tsx",
   "src/app/teacher/tongue-twisters/page.tsx",
   "src/app/teacher/activities/page.tsx",
+  "src/components/materials/phrase-images-panel.tsx",
+  "src/components/game/guess-setup.tsx",
+  "src/components/game/guess-play.tsx",
+  "src/components/game/guess-card.tsx",
+  "src/components/game/student-guess.tsx",
+  "src/components/class/class-activities.tsx",
 ];
 
 /** Убирает блочные комментарии и строки-комментарии — остаётся сам код. */

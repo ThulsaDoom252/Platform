@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { imageQuery, looksLikeText, pickCandidates } from "../src/lib/image-query";
+import {
+  imageQuery,
+  looksLikeText,
+  pickCandidates,
+  relevance,
+} from "../src/lib/image-query";
 
 test("пояснение в скобках в запрос не идёт", () => {
   assert.equal(imageQuery("on the left (side)"), "left");
@@ -67,6 +72,40 @@ test("подборка выкидывает надписи и берёт поп�
   ]);
 
   assert.deepEqual(picked.map((c) => c.url), ["c", "d", "a"]);
+});
+
+test("слово в первых тегах весит больше, чем в хвосте", () => {
+  // Ровно тот случай, из-за которого «fork» находил торты: слово стояло
+  // девятым тегом на снимке про десерт.
+  assert.ok(relevance("fork, cutlery, kitchen", "fork") > relevance("cake, dessert, coffee, fork", "fork"));
+  assert.equal(relevance("cat, pet", "dog"), 0);
+  assert.equal(relevance("", "fork"), 0);
+  assert.equal(relevance("fork, spoon", ""), 0);
+});
+
+test("тег из нескольких слов тоже считается", () => {
+  assert.ok(relevance("piece of cake, dessert", "cake") > 0);
+});
+
+test("картинка про само слово обходит популярную не про то", () => {
+  const picked = pickCandidates(
+    [
+      candidate("wallpaper", "wallpaper, background, desktop, fork", 5000),
+      candidate("real", "fork, cutlery, kitchen", 10),
+    ],
+    3,
+    "fork",
+  );
+
+  assert.deepEqual(picked.map((c) => c.url), ["real", "wallpaper"]);
+});
+
+test("без запроса порядок остаётся по популярности", () => {
+  const picked = pickCandidates(
+    [candidate("a", "cat", 10), candidate("b", "cat", 900)],
+    3,
+  );
+  assert.deepEqual(picked.map((c) => c.url), ["b", "a"]);
 });
 
 test("если чистых не хватило — добираем остальными", () => {

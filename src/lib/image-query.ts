@@ -93,26 +93,59 @@ export type ImageCandidate = {
   popularity: number;
 };
 
+/** Сколько первых тегов считаем описанием того, что на картинке. */
+const LEAD_TAGS = 3;
+
+/**
+ * Насколько картинка про запрошенное слово.
+ *
+ * Теги идут по важности: первые описывают, что на картинке, дальше —
+ * что рядом. Поэтому «fork» первым тегом — это вилка, а «fork» девятым
+ * тегом — чаще торт, который ею едят. Без этого поиск по короткому
+ * слову отдаёт красивые снимки не про то.
+ */
+export function relevance(tags: string, query: string): number {
+  const list = String(tags ?? "")
+    .toLowerCase()
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const words = String(query ?? "").toLowerCase().split(" ").filter(Boolean);
+  if (words.length === 0 || list.length === 0) return 0;
+
+  const lead = list.slice(0, LEAD_TAGS);
+
+  return words.reduce((score, word) => {
+    const inLead = lead.some((tag) => tag === word || tag.split(" ").includes(word));
+    if (inLead) return score + 2;
+    const anywhere = list.some((tag) => tag === word || tag.split(" ").includes(word));
+    return anywhere ? score + 1 : score;
+  }, 0);
+}
+
 /**
  * Отбор картинок под слово.
  *
- * Сначала выкидываем те, где, судя по тегам, написан текст. Если после
- * этого не остаётся ничего, возвращаем что было: пустая подборка хуже
- * несовершенной — учитель всё равно смотрит на неё глазами.
+ * Сначала выкидываем те, где, судя по тегам, написан текст. Оставшиеся
+ * сортируем по тому, насколько они про само слово, и только потом — по
+ * популярности. Если чистых не набралось, возвращаем что было: пустая
+ * подборка хуже несовершенной — учитель всё равно смотрит на неё глазами.
  */
 export function pickCandidates(
   results: ImageCandidate[],
   limit = 3,
+  query = "",
 ): ImageCandidate[] {
-  const byPopularity = (a: ImageCandidate, b: ImageCandidate) =>
-    b.popularity - a.popularity;
+  const better = (a: ImageCandidate, b: ImageCandidate) =>
+    relevance(b.tags, query) - relevance(a.tags, query) || b.popularity - a.popularity;
 
-  const clean = results.filter((r) => !looksLikeText(r.tags)).sort(byPopularity);
+  const clean = results.filter((r) => !looksLikeText(r.tags)).sort(better);
   if (clean.length >= limit) return clean.slice(0, limit);
 
   const rest = results
     .filter((r) => !clean.includes(r))
-    .sort(byPopularity)
+    .sort(better)
     .slice(0, limit - clean.length);
 
   return [...clean, ...rest];

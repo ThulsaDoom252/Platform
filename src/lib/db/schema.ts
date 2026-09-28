@@ -617,3 +617,78 @@ export const tongueTwisterAssignmentsRelations = relations(
     }),
   }),
 );
+
+/**
+ * Картинки, подобранные к слову словника.
+ *
+ * Лежат отдельно от самой фразы, потому что их несколько: поиск даёт
+ * три варианта, из которых учитель выбирает один. Ученику видна только
+ * выбранная, да и та лишь в игре — в словнике подборка не показывается.
+ */
+export const phraseImages = pgTable("phrase_images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  phraseId: uuid("phrase_id")
+    .notNull()
+    .references(() => materialPhrases.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  thumbUrl: text("thumb_url"),
+  /** pixabay — нашлась поиском, manual — учитель дал ссылку сам. */
+  origin: text("origin").notNull().default("pixabay"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  /** Та, что пойдёт в игру. На слово выбрана одна. */
+  picked: boolean("picked").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const phraseImagesRelations = relations(phraseImages, ({ one }) => ({
+  phrase: one(materialPhrases, {
+    fields: [phraseImages.phraseId],
+    references: [materialPhrases.id],
+  }),
+}));
+
+/** Карта в колоде: всё нужное для показа, снятое на момент старта. */
+export type GameCard = {
+  phraseId: string;
+  nodeId: string;
+  word: string;
+  translation: string | null;
+  imageUrl: string;
+};
+
+/** Как ответили на карту. null — до неё ещё не дошли. */
+export type GameVerdict = "right" | "wrong" | "timeout";
+
+/**
+ * Партия «Угадай по картинке».
+ *
+ * Колода снимается при старте и дальше не меняется: если учитель правит
+ * словник посреди игры, карточки под учеником разъезжаться не должны.
+ * Ученик читает эту же строку опросом — отсюда и `deadline`: время
+ * хранится меткой, а не остатком, иначе два экрана считают по-разному.
+ */
+export const activityGames = pgTable("activity_games", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("GUESS_PICTURE"),
+  /** LOBBY — собрана, но не начата; RUNNING — идёт; DONE — закончена. */
+  status: text("status").notNull().default("LOBBY"),
+  cards: jsonb("cards").$type<GameCard[]>().default([]).notNull(),
+  verdicts: jsonb("verdicts").$type<(GameVerdict | null)[]>().default([]).notNull(),
+  at: integer("at").notNull().default(0),
+  /** Перевёрнута ли текущая карта — ответ уже виден обоим. */
+  revealed: boolean("revealed").notNull().default(false),
+  seconds: integer("seconds").notNull().default(10),
+  deadline: timestamp("deadline"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const activityGamesRelations = relations(activityGames, ({ one }) => ({
+  student: one(users, {
+    fields: [activityGames.studentId],
+    references: [users.id],
+  }),
+}));

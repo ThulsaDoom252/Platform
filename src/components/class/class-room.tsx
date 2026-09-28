@@ -38,6 +38,8 @@ import {
 } from "@/components/icons";
 import { ClassScript } from "./class-script";
 import { ClassTwister } from "./class-twister";
+import { ClassActivities } from "./class-activities";
+import { StudentGuess } from "@/components/game/student-guess";
 import { cn } from "@/lib/utils";
 
 const BEAT_MS = 30_000;
@@ -274,6 +276,8 @@ export function ClassRoom({
       <div className="flex flex-1 flex-col justify-center">
         {lessonTab === "twister" && partner ? (
           <ClassTwister studentId={partner.id} studentName={partner.name} />
+        ) : lessonTab === "activities" && partner ? (
+          <ClassActivities studentId={partner.id} />
         ) : (
           <div className="flex flex-1 items-center justify-center">
             {stub(LESSON_TABS.find((tab) => tab.key === lessonTab)!.label)}
@@ -413,7 +417,9 @@ export function ClassRoom({
           ) : teacher ? (
             lessonSection
           ) : (
-            stub(t.classRoom.lesson)
+            /* У ученика секция урока не разложена на части: ему нужна
+               карта, а не то, из чего урок собран. */
+            <StudentGuess />
           )}
           {open.dictionary && stub(t.classRoom.dictionary)}
           {open.board && stub(t.classRoom.board)}

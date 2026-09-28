@@ -31,6 +31,7 @@ import {
   IconX,
   IconPencil,
   IconTrash,
+  IconSearch,
 } from "@/components/icons";
 import { Modal } from "@/components/modal";
 
@@ -46,6 +47,7 @@ import { VerbsReader } from "./verbs-reader";
 import { VerbsShareDialog, type ShareVerbsTarget } from "./verbs-share-dialog";
 import { VerbsFiller, type VerbsTarget } from "./verbs-filler";
 import { ContentImporter } from "./content-importer";
+import { PhraseImagesPanel } from "./phrase-images-panel";
 import { VocabularyCoverActions } from "./vocabulary-cover";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
@@ -361,6 +363,7 @@ export function MaterialsExplorer({
   // Редкие действия свёрнуты: на панели должно остаться то, чем
   // пользуются каждый урок.
   const [moreTools, setMoreTools] = useState(false);
+  const [picturesFor, setPicturesFor] = useState<MaterialNode | null>(null);
   const [kindChange, setKindChange] = useState<{
     node: MaterialNode;
     next: PageFlavour;
@@ -2248,6 +2251,19 @@ export function MaterialsExplorer({
                   <IconX className="h-4 w-4" /> Очистить
                 </button>
 
+                {/* Картинки к словам: нужны игре «Угадай по картинке»,
+                    поэтому кнопка стоит у словника, а не в активностях. */}
+                {pageKind(selected) === "VOCAB" && (
+                  <button
+                    type="button"
+                    onClick={() => setPicturesFor(selected)}
+                    className={pageBtn}
+                    title={t.pictures.hint}
+                  >
+                    <IconSearch className="h-4 w-4" /> {t.pictures.find}
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setMoreTools((v) => !v)}
@@ -2873,6 +2889,14 @@ export function MaterialsExplorer({
       )}
 
       {contextMenu}
+
+      {picturesFor && (
+        <PhraseImagesPanel
+          nodeId={picturesFor.id}
+          nodeName={picturesFor.name}
+          onClose={() => setPicturesFor(null)}
+        />
+      )}
 
       {(moving || moveError || notice) && (
         <div
