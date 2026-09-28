@@ -264,3 +264,84 @@ test("кривые строки не роняют разбор, а попада�
   assert.match(said, /перевод после/);
   assert.match(said, /UNKNOWN/);
 });
+
+/** Разбирает словник и не даёт тесту молча пройти мимо. */
+function vocab(source: string) {
+  const out = parseKeyed(source);
+  assert.ok(out, "формат не опознан");
+  assert.equal(out.type, "VOCAB");
+  if (out.type !== "VOCAB") throw new Error("не словник");
+  return out;
+}
+
+test("словник принимает описание и картинку для игр", () => {
+  /*
+   * Ученику они не показываются — по ним его спрашивают в игре.
+   * Разбор обязан их сохранить, иначе играть будет нечем.
+   */
+  const out = vocab(
+    [
+      "TYPE: VOCAB",
+      "TITLE: Objects",
+      "WORD: umbrella",
+      "TR: зонт",
+      "DEF: a thing you open over your head when it rains",
+      "IMG: https://example.com/umbrella.jpg",
+    ].join("\n"),
+  );
+
+  const [word] = out.phrases;
+  assert.equal(word.description, "a thing you open over your head when it rains");
+  assert.equal(word.imageSource, "https://example.com/umbrella.jpg");
+  assert.equal(word.translation, "зонт");
+});
+
+test("не-ссылка в IMG отбрасывается с предупреждением", () => {
+  // Модель иногда пишет описание картинки вместо адреса.
+  const out = vocab(
+    ["TYPE: VOCAB", "WORD: fork", "TR: вилка", "IMG: картинка вилки"].join("\n"),
+  );
+
+  assert.equal(out.phrases[0].imageSource, null);
+  assert.ok(out.warnings.some((w) => w.includes("IMG")), out.warnings.join(" | "));
+});
+
+test("слово без описания и картинки разбирается как прежде", () => {
+  const out = vocab(["TYPE: VOCAB", "WORD: fork", "TR: вилка"].join("\n"));
+
+  assert.equal(out.phrases[0].description, null);
+  assert.equal(out.phrases[0].imageSource, null);
+  // Про примеры парсер ворчит и без нас; про новые ключи — молчит.
+  assert.deepEqual(
+    out.warnings.filter((w) => w.includes("DEF") || w.includes("IMG")),
+    [],
+  );
+});
+
+test("слишком длинное описание подрезается", () => {
+  const out = vocab(
+    ["TYPE: VOCAB", "WORD: fork", "TR: вилка", `DEF: ${"a ".repeat(300)}`].join("\n"),
+  );
+
+  assert.ok((out.phrases[0].description ?? "").length <= 200);
+});
+
+test("описание и картинка достаются нужному слову", () => {
+  // Ключи идут после WORD и относятся к нему, а не к соседу.
+  const out = vocab(
+    [
+      "TYPE: VOCAB",
+      "WORD: fork",
+      "TR: вилка",
+      "DEF: you eat with it",
+      "WORD: spoon",
+      "TR: ложка",
+      "IMG: https://example.com/spoon.jpg",
+    ].join("\n"),
+  );
+
+  assert.equal(out.phrases[0].description, "you eat with it");
+  assert.equal(out.phrases[0].imageSource, null);
+  assert.equal(out.phrases[1].description, null);
+  assert.equal(out.phrases[1].imageSource, "https://example.com/spoon.jpg");
+});

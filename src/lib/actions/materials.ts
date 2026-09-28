@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import {
   materialNodes,
   materialPhrases,
+  phraseImages,
   materialBlocks,
   irregularVerbs,
   studentMaterials,
@@ -27,6 +28,7 @@ import {
   type MaterialPhrase,
 } from "@/lib/materials";
 import { getSession } from "@/lib/session";
+import { storeRemoteImage } from "@/lib/image-store";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { parseRuleText } from "@/lib/rule-parser";
 import { transcribe } from "@/lib/transcription";
@@ -3312,20 +3314,59 @@ export async function savePageContentAction(
 
   await db.delete(materialPhrases).where(eq(materialPhrases.nodeId, nodeId));
 
-  await db.insert(materialPhrases).values(
-    result.phrases.map((p, i) => ({
-      nodeId,
-      sortOrder: i + 1,
-      icon: p.icon,
-      phrase: p.phrase,
-      transcription: p.transcription,
-      transcriptionUs: p.transcriptionUs ?? null,
-      transcriptionUk: p.transcriptionUk ?? null,
-      note: p.note ?? null,
-      section: p.section,
-      kind: p.kind,
-      examples: p.examples,
-    })),
+  const saved = await db
+    .insert(materialPhrases)
+    .values(
+      result.phrases.map((p, i) => ({
+        nodeId,
+        sortOrder: i + 1,
+        icon: p.icon,
+        phrase: p.phrase,
+        transcription: p.transcription,
+        transcriptionUs: p.transcriptionUs ?? null,
+        transcriptionUk: p.transcriptionUk ?? null,
+        note: p.note ?? null,
+        description: p.description ?? null,
+        section: p.section,
+        kind: p.kind,
+        examples: p.examples,
+      })),
+    )
+    .returning({ id: materialPhrases.id });
+
+  /*
+   * Картинки из исходника забираем к себе.
+   *
+   * В тексте стоит ссылка на чужой сайт: она живёт ровно столько,
+   * сколько её там держат, а картинка нужна игре и через полгода.
+   * Недоступную пропускаем и говорим сколько — врать, что всё на месте,
+   * нельзя, а ронять из-за неё наполнение целиком тем более.
+   */
+  let pictures = 0;
+  let missed = 0;
+
+  await Promise.all(
+    result.phrases.map(async (p, i) => {
+      const link = p.imageSource;
+      const phraseId = saved[i]?.id;
+      if (!link || !phraseId) return;
+
+      const stored = await storeRemoteImage(link);
+      if (!stored) {
+        missed += 1;
+        return;
+      }
+
+      await db.insert(phraseImages).values({
+        phraseId,
+        url: stored,
+        thumbUrl: stored,
+        origin: "source",
+        sortOrder: 0,
+        picked: true,
+      });
+      pictures += 1;
+    }),
   );
 
   await db
@@ -3342,11 +3383,19 @@ export async function savePageContentAction(
 
   const count = result.phrases.filter((p) => p.kind === "PHRASE").length;
   const notes = result.phrases.filter((p) => p.kind === "NOTE").length;
+  const described = result.phrases.filter((p) => p.description?.trim()).length;
+
+  const extra = [
+    notes ? `${notes} заметок` : "",
+    described ? `${described} описаний` : "",
+    pictures ? `${pictures} картинок` : "",
+    missed ? `${missed} картинок не скачалось` : "",
+  ].filter(Boolean);
 
   revalidateMaterials();
   return {
     ok: true,
-    message: `Сохранено: ${count} записей${notes ? `, ${notes} заметок` : ""}`,
+    message: `Сохранено: ${count} записей${extra.length ? `, ${extra.join(", ")}` : ""}`,
     warnings: result.warnings,
   };
 }

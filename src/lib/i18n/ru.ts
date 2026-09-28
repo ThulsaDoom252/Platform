@@ -661,6 +661,10 @@ export const ru: Dict = {
     showWords: "Показать слова",
     tapToRevealWord: "нажми, чтобы увидеть слово",
     hideMode: "Скрыть",
+    gameData: "Для игр",
+    gameDataHint: "Описания и картинки, по которым спрашивают игры. Ученик их не видит.",
+    noDescription: "нет описания",
+    noPicture: "нет картинки",
     showTranslations: "Показать перевод",
     examples: {
       one: "{n} пример",

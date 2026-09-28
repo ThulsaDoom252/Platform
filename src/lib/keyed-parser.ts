@@ -249,6 +249,8 @@ function parseVocab(fields: Field[], warnings: string[]): KeyedVocabResult {
           transcriptionUk: null,
           translation: "",
           note: null,
+          description: null,
+          imageSource: null,
           examples: [],
         };
         break;
@@ -257,6 +259,8 @@ function parseVocab(fields: Field[], warnings: string[]): KeyedVocabResult {
       case "US":
       case "UK":
       case "TR":
+      case "DEF":
+      case "IMG":
       case "EX":
       case "NOTE":
         if (!current) {
@@ -301,6 +305,20 @@ function fillWord(word: ParsedPhrase, field: Field, warnings: string[]) {
   }
   if (key === "TR") {
     word.translation = value;
+    return;
+  }
+  if (key === "DEF") {
+    // Описание нужно игре, а не читалке, поэтому длину держим короткой:
+    // на карточке оно должно читаться целиком с одного взгляда.
+    word.description = value.slice(0, 200);
+    return;
+  }
+  if (key === "IMG") {
+    if (!/^https?:\/\//i.test(value)) {
+      warnings.push(`Строка ${line}: IMG у «${word.phrase}» — не ссылка, пропущено`);
+      return;
+    }
+    word.imageSource = value;
     return;
   }
   if (key === "NOTE") {

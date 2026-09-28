@@ -327,6 +327,13 @@ export const materialPhrases = pgTable("material_phrases", {
   transcriptionUk: text("transcription_uk"),
   /** Заметка «что стоит знать»; прячется тумблером подсказок. */
   note: text("note"),
+  /**
+   * Короткое английское описание слова.
+   *
+   * Ученику не показывается: по нему его спрашивают в игре. Картинка
+   * лежит отдельно, в phrase_images, — их у слова несколько.
+   */
+  description: text("description"),
   /** Цвет категории из ключевого формата. */
   sectionColor: text("section_color"),
   translation: text("translation"),

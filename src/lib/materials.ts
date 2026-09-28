@@ -6,6 +6,7 @@ import {
   studentMaterials,
   materialPhrases,
   materialBlocks,
+  phraseImages,
   irregularVerbs,
   type RuleBlock,
 } from "@/lib/db/schema";
@@ -53,6 +54,14 @@ export type MaterialPhrase = {
   id: string;
   icon: string | null;
   imageUrl: string | null;
+  /**
+   * Короткое английское описание и картинка для игр.
+   *
+   * Ученику не показываются: по ним его спрашивают. Учитель может
+   * включить их тумблером, чтобы видеть, что подобрано.
+   */
+  description?: string | null;
+  gameImageUrl?: string | null;
   phrase: string;
   transcription: string | null;
   /** Американский и британский варианты; у старых записей их нет. */
@@ -116,6 +125,24 @@ async function buildTree(rows: NodeRow[]): Promise<{
     .where(inArray(materialPhrases.nodeId, nodeIds))
     .orderBy(asc(materialPhrases.sortOrder));
 
+  /*
+   * Картинка, выбранная для игры. Ученику она не показывается — по ней
+   * его спрашивают, — но учителю нужна, чтобы видеть, что подобрано.
+   */
+  const pickedImages =
+    phraseRows.length === 0
+      ? []
+      : await db
+          .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
+          .from(phraseImages)
+          .where(
+            and(
+              inArray(phraseImages.phraseId, phraseRows.map((p) => p.id)),
+              eq(phraseImages.picked, true),
+            ),
+          );
+  const gameImageOf = new Map(pickedImages.map((r) => [r.phraseId, r.url]));
+
   const phrasesByNode = new Map<string, MaterialPhrase[]>();
   for (const p of phraseRows) {
     const list = phrasesByNode.get(p.nodeId) ?? [];
@@ -129,6 +156,8 @@ async function buildTree(rows: NodeRow[]): Promise<{
       transcriptionUk: p.transcriptionUk,
       translation: p.translation,
       note: p.note,
+      description: p.description,
+      gameImageUrl: gameImageOf.get(p.id) ?? null,
       section: p.section,
       kind: p.kind,
       examples: (p.examples ?? []) as PhraseExample[],

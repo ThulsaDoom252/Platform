@@ -37,6 +37,9 @@ export type MaterialPhrase = {
   translation: string | null;
   /** Заметка «что стоит знать» под словом. */
   note: string | null;
+  /** Данные для игр: ученик их не видит, учитель — по своему желанию. */
+  description?: string | null;
+  gameImageUrl?: string | null;
   section: string | null;
   kind: string;
   examples: PhraseExample[];
@@ -143,6 +146,7 @@ function PhraseCard({
   p,
   index,
   hidden,
+  gameData = false,
   hints = true,
   imageScale = 100,
   speech,
@@ -156,6 +160,8 @@ function PhraseCard({
   index: number;
   /** Что спрятано: ничего, перевод или само слово. */
   hidden: "none" | "translation" | "word";
+  /** Показывать ли описание и картинку, по которым спрашивают игры. */
+  gameData?: boolean;
   /** Показывать ли заметку «что стоит знать». */
   hints?: boolean;
   /** Размер картинки слова в процентах от обычного. */
@@ -311,6 +317,38 @@ function PhraseCard({
             </button>
           )}
 
+          {/* Данные для игр: описание и подобранная картинка. Ученику не
+              показываются — по ним его и спрашивают. */}
+          {gameData && (p.description || p.gameImageUrl) && (
+            <div className="mt-2.5 flex items-start gap-2.5 rounded-xl bg-surface-2 p-2.5">
+              {p.gameImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={p.gameImageUrl}
+                  alt=""
+                  className="h-14 w-20 shrink-0 rounded-lg object-cover"
+                />
+              ) : (
+                <span className="flex h-14 w-20 shrink-0 items-center justify-center rounded-lg bg-surface text-[10px] text-faint">
+                  {t.phrases.noPicture}
+                </span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-faint">
+                  {t.phrases.gameData}
+                </span>
+                <span
+                  className={cn(
+                    "mt-0.5 block text-[13px] leading-snug",
+                    p.description ? "text-content" : "text-faint",
+                  )}
+                >
+                  {p.description || t.phrases.noDescription}
+                </span>
+              </span>
+            </div>
+          )}
+
           {hints && p.note && (
             <div className="group/note relative mt-2.5">
               <p className="whitespace-pre-line rounded-xl tint-amber px-3 py-2 pr-9 text-[13px] leading-snug">
@@ -417,6 +455,12 @@ export function PhraseReader({
    * бессмысленно — на карточке не осталось бы ничего.
    */
   const [hidden, setHidden] = useState<"none" | "translation" | "word">("none");
+  /*
+   * Описания и картинки для игр. По умолчанию выключены даже у учителя:
+   * в обычной работе они только мешают, а ученику не показываются
+   * никогда — редактор словника открыт только учителю.
+   */
+  const [gameData, setGameData] = useState(false);
   // Заметки под словами — то, что стоит знать, но не обязательно читать
   // сразу. Учитель гасит их, когда хочет чистый список.
   const [hints, setHints] = useState(true);
@@ -642,6 +686,28 @@ export function PhraseReader({
           ))}
         </div>
 
+        {editable && (
+          <button
+            type="button"
+            onClick={() => setGameData((v) => !v)}
+            aria-pressed={gameData}
+            title={t.phrases.gameDataHint}
+            className={cn(
+              "flex h-9 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold ring-1 transition",
+              gameData
+                ? "bg-accent text-white ring-accent"
+                : "bg-surface text-muted ring-line hover:text-content",
+            )}
+          >
+            {gameData ? (
+              <IconEye className="h-4 w-4" />
+            ) : (
+              <IconEyeOff className="h-4 w-4" />
+            )}
+            {t.phrases.gameData}
+          </button>
+        )}
+
         {/* Картинки бывают разные: мелкая иконка и кадр, который стоит
             рассмотреть. Размер хранится у страницы, чтобы ученик увидел
             словарь таким же. */}
@@ -776,6 +842,7 @@ export function PhraseReader({
                     p={p}
                     index={gi + i}
                     hidden={hidden}
+                    gameData={gameData}
                     hints={hints}
                     imageScale={imageScale}
                     speech={speech}
