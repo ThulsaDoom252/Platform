@@ -355,6 +355,9 @@ export const en = {
     maskNames: "Hide names",
     maskOn: "Names hidden",
     maskHint: "Student names are hidden — this schedule is safe to share",
+    tapToReveal: "Tap a lesson to show or hide that student everywhere",
+    revealed: { one: "{n} name shown", other: "{n} names shown" } as Plural,
+    hideAll: "Hide all again",
     cancelled: "Cancelled",
 
     editTitle: "Edit lesson",

@@ -44,6 +44,9 @@
   --lesson-green: #10b981;
   --lesson-amber: #f59e0b;
   --lesson-rose: #f43f5e;
+  /* Открытый под маской урок. В палитре занятий синего нет —
+     поэтому им и помечаем то, что учитель раскрыл щелчком. */
+  --lesson-open: #3b82f6;
 }
 
 /* ---------- Theme palettes ----------
@@ -127,6 +130,7 @@
   --lesson-green: #059669;
   --lesson-amber: #d97706;
   --lesson-rose: #e11d48;
+  --lesson-open: #2563eb;
 }
 
 /* ---------- Tint helpers (work in both modes) ---------- */

@@ -236,7 +236,48 @@ export function ScheduleClient({
    * потому что это привычка учителя, а не свойство расписания.
    */
   const [masked, setMasked] = useLocalFlag("schedule-mask");
-  const hide = (name: string) => (masked ? "🔒" : name);
+
+  /*
+   * Кого из скрытых открыли вручную.
+   *
+   * Под маской расписание показывают ученику, и на экране надо найти
+   * именно его уроки. Поэтому щелчок по уроку открывает этого ученика
+   * сразу во всех окнах и таким же щелчком закрывает обратно — по одной
+   * клетке его расписание не собрать.
+   *
+   * Список живёт только в этом сеансе: перезагрузка возвращает всех под
+   * замок, иначе маска однажды окажется дырявой без предупреждения.
+   */
+  const [revealed, setRevealed] = useState<string[]>([]);
+
+  const isOpen = (studentId: string) => !masked || revealed.includes(studentId);
+  const hide = (name: string, studentId: string) => (isOpen(studentId) ? name : "🔒");
+
+  /*
+   * Открытый слот синий целиком.
+   *
+   * Плашки раскрашены по состоянию занятия — зелёным, янтарным,
+   * розовым; синего в этой палитре нет. Поэтому все уроки раскрытого
+   * ученика разом меняют цвет, и его расписание видно с одного взгляда,
+   * даже там, где имя не поместилось.
+   */
+  const slotTone = (lesson: LessonItem) =>
+    masked && revealed.includes(lesson.studentId)
+      ? "var(--lesson-open)"
+      : lessonTone(lesson, now);
+
+  const toggleReveal = (studentId: string) =>
+    setRevealed((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId],
+    );
+
+  /** Под маской щелчок открывает ученика, без маски — правит урок. */
+  const onLessonClick = (lesson: LessonItem) => {
+    if (masked) toggleReveal(lesson.studentId);
+    else openEdit(lesson);
+  };
 
   const hFrom = hours[0] ?? 8;
   const gridH = hours.length * rowH;
@@ -250,7 +291,12 @@ export function ScheduleClient({
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => setMasked(!masked)}
+          onClick={() => {
+            setMasked(!masked);
+            // Включили маску заново — прежние открытые не должны
+            // всплыть: расписание могло сменить того, кому его показывают.
+            setRevealed([]);
+          }}
           aria-pressed={masked}
           title={t.schedule.maskHint}
           className={`flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition ${
@@ -263,7 +309,22 @@ export function ScheduleClient({
           {masked ? t.schedule.maskOn : t.schedule.maskNames}
         </button>
         {masked && (
-          <span className="text-[12px] text-faint">{t.schedule.maskHint}</span>
+          <>
+            <span className="text-[12px] text-faint">{t.schedule.tapToReveal}</span>
+            {revealed.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setRevealed([])}
+                className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-surface px-2.5 text-[12px] font-semibold text-muted ring-1 ring-line transition hover:text-content"
+              >
+                <span aria-hidden>🔒</span>
+                {t.schedule.hideAll}
+                <span className="text-faint">
+                  · {fmt(t.schedule.revealed, { n: revealed.length })}
+                </span>
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -362,17 +423,17 @@ export function ScheduleClient({
                         (l.startTime.getHours() + l.startTime.getMinutes() / 60 - hFrom) * rowH;
                       const height = Math.max(28, (l.duration / 60) * rowH - 4);
                       const end = new Date(l.startTime.getTime() + l.duration * 60000);
-                      const c = lessonTone(l, now);
+                      const c = slotTone(l);
                       // Короткий урок двух строк не вмещает: имя важнее времени.
                       const roomy = height >= 40;
                       return (
                         <button
                           key={l.id}
                           type="button"
-                          onClick={() => openEdit(l)}
+                          onClick={() => onLessonClick(l)}
                           className="absolute left-1 right-1 flex flex-col justify-center overflow-hidden rounded-lg px-2.5 text-left shadow-md ring-1 ring-black/10 transition hover:brightness-110"
                           style={{ top, height, background: c }}
-                          title={`${hide(l.studentName)} · ${hm.format(l.startTime)}–${hm.format(end)} · ${t.lessonStatus[l.status as keyof typeof t.lessonStatus]}`}
+                          title={`${hide(l.studentName, l.studentId)} · ${hm.format(l.startTime)}–${hm.format(end)} · ${t.lessonStatus[l.status as keyof typeof t.lessonStatus]}`}
                         >
                           {/* Время внутри урока: по сетке его приходилось
                               вычислять глазами, а начало важно сразу. */}
@@ -382,7 +443,7 @@ export function ScheduleClient({
                             </span>
                           )}
                           <span className="truncate text-xs font-bold leading-tight text-white">
-                            {hide(l.studentName)}
+                            {hide(l.studentName, l.studentId)}
                           </span>
                         </button>
                       );
@@ -451,12 +512,12 @@ export function ScheduleClient({
 
           <div className="flex flex-col gap-2.5">
             {selectedLessons.map((l) => {
-              const c = lessonTone(l, now);
+              const c = slotTone(l);
               return (
                 <button
                   key={l.id}
                   type="button"
-                  onClick={() => openEdit(l)}
+                  onClick={() => onLessonClick(l)}
                   className="flex items-stretch gap-3 text-left"
                 >
                   <span className="w-12 shrink-0 pt-3 text-xs font-semibold text-muted">
@@ -467,7 +528,7 @@ export function ScheduleClient({
                     style={{ background: c }}
                   >
                     <span className="truncate text-sm font-bold text-white">
-                      {hide(l.studentName)}
+                      {hide(l.studentName, l.studentId)}
                     </span>
                   </span>
                 </button>
