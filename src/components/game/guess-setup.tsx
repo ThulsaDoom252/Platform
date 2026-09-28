@@ -14,6 +14,7 @@ import {
   listGameVocabAction,
   listGameWordsAction,
   startGameAction,
+  type GameMode,
   type GameVocab,
   type GameWord,
 } from "@/lib/actions/guess-picture";
@@ -28,6 +29,7 @@ export function GuessSetup({
   onStarted: () => void;
 }) {
   const { t } = useT();
+  const [mode, setMode] = useState<GameMode>("PICTURE");
   const [nodes, setNodes] = useState<GameVocab[] | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [openWords, setOpenWords] = useState<string | null>(null);
@@ -49,24 +51,42 @@ export function GuessSetup({
    */
   useEffect(() => {
     let alive = true;
-    listGameVocabAction(studentId)
-      .then((list) => alive && setNodes(list))
+    listGameVocabAction(studentId, mode)
+      .then((list) => {
+        if (!alive) return;
+        setNodes(list);
+      })
       .catch(() => alive && setNodes([]));
     return () => {
       alive = false;
     };
-  }, [studentId]);
+  }, [studentId, mode]);
+
 
   useEffect(() => {
     if (!openWords || words[openWords]) return;
     let alive = true;
-    listGameWordsAction(openWords)
+    listGameWordsAction(openWords, mode)
       .then((list) => alive && setWords((prev) => ({ ...prev, [openWords]: list })))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [openWords, words]);
+  }, [openWords, words, mode]);
+
+  /*
+   * Смена режима меняет и список словников, и состав слов в них, поэтому
+   * прежний выбор сбрасывается: он относился к другому списку.
+   */
+  function pickMode(next: GameMode) {
+    if (next === mode) return;
+    setMode(next);
+    setChosen([]);
+    setPicked({});
+    setWords({});
+    setOpenWords(null);
+    setNodes(null);
+  }
 
   const toggleNode = (id: string) =>
     setChosen((prev) => (prev.includes(id) ? prev.filter((n) => n !== id) : [...prev, id]));
@@ -88,6 +108,7 @@ export function GuessSetup({
       const phraseIds = chosen.flatMap((nodeId) => picked[nodeId] ?? []);
       const result = await startGameAction({
         studentId,
+        mode,
         nodeIds: chosen,
         // Ничего не отбирали — значит играем всем, что есть.
         phraseIds: phraseIds.length > 0 ? phraseIds : undefined,
@@ -121,13 +142,50 @@ export function GuessSetup({
   return (
     <div className="flex flex-col gap-4">
       <div>
+        <p className="text-sm font-bold text-content">{t.game.modeTitle}</p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {(
+            [
+              ["PICTURE", t.game.modePicture, t.game.modePictureHint],
+              ["TRANSLATION", t.game.modeTranslation, t.game.modeTranslationHint],
+            ] as const
+          ).map(([key, label, hint]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => pickMode(key)}
+              aria-pressed={mode === key}
+              className={cn(
+                "rounded-xl px-3.5 py-2.5 text-left ring-1 transition",
+                mode === key
+                  ? "bg-accent-soft ring-accent"
+                  : "bg-surface-2 ring-transparent hover:ring-line",
+              )}
+            >
+              <span
+                className={cn(
+                  "block text-sm font-semibold",
+                  mode === key ? "text-accent" : "text-content",
+                )}
+              >
+                {label}
+              </span>
+              <span className="block text-[12px] text-faint">{hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
         <p className="text-sm font-bold text-content">{t.game.chooseVocab}</p>
         <p className="text-[12px] text-faint">{t.game.chooseVocabHint}</p>
 
         {nodes === null && <p className="mt-2 text-sm text-faint">{t.common.loading}</p>}
         {nodes?.length === 0 && (
           <p className="mt-2 rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-faint">
-            {t.game.noVocabForStudent}
+            {mode === "PICTURE"
+              ? t.game.noVocabForStudent
+              : t.game.noVocabTranslation}
           </p>
         )}
 
@@ -162,6 +220,8 @@ export function GuessSetup({
                     <span className="block text-[11px] text-faint">
                       {fmt(t.game.wordsReady, { n: node.words })}
                       {node.personal ? ` · ${t.game.personalVocab}` : ""}
+                      {/* Язык перевода — то, что ученик увидит на карте. */}
+                      {mode === "TRANSLATION" ? ` · ${node.lang}` : ""}
                     </span>
                   </span>
 
@@ -211,7 +271,9 @@ export function GuessSetup({
                           </span>
                           {!word.hasImage && (
                             <span className="shrink-0 text-[10px] text-faint">
-                              {t.game.noPicture}
+                              {mode === "PICTURE"
+                                ? t.game.noPicture
+                                : t.game.noTranslation}
                             </span>
                           )}
                         </label>

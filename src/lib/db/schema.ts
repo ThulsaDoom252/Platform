@@ -681,6 +681,14 @@ export const activityGames = pgTable("activity_games", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   kind: text("kind").notNull().default("GUESS_PICTURE"),
+  /**
+   * Что показано на лицевой стороне карты.
+   *
+   * PICTURE — картинка, TRANSLATION — перевод на языке словника. Режим
+   * запоминается в партии: колода под него уже собрана, и менять его на
+   * ходу значило бы показывать карточки, которых там нет.
+   */
+  mode: text("mode").notNull().default("PICTURE"),
   /** LOBBY — собрана, но не начата; RUNNING — идёт; DONE — закончена. */
   status: text("status").notNull().default("LOBBY"),
   cards: jsonb("cards").$type<GameCard[]>().default([]).notNull(),

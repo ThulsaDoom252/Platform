@@ -350,6 +350,14 @@ export const uk: Dict = {
 
   game: {
     title: "Вгадай за картинкою",
+    modeTitle: "Що на картці",
+    modePicture: "За картинкою",
+    modeTranslation: "За перекладом",
+    modePictureHint: "Спереду картинка, зі зворотного боку слово.",
+    modeTranslationHint:
+      "Спереду переклад, зі зворотного боку слово англійською. Картинки не потрібні.",
+    noVocabTranslation: "У цього учня поки немає словника з перекладами.",
+    noTranslation: "без перекладу",
     subtitle: "Карткова гра: з одного боку картинка, з іншого — слово.",
     setUp: "Налаштувати гру",
     chooseStudent: "Хто грає",

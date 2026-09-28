@@ -301,6 +301,15 @@ export const en = {
 
   game: {
     title: "Guess by picture",
+    modeTitle: "What is on the card",
+    modePicture: "By picture",
+    modeTranslation: "By translation",
+    modePictureHint: "A picture on the front, the word on the back.",
+    modeTranslationHint:
+      "The translation on the front, the English word on the back. No pictures needed.",
+    noVocabTranslation:
+      "This student has no vocabulary with translations yet.",
+    noTranslation: "no translation",
     subtitle: "A card game: a picture on one side, the word on the other.",
     setUp: "Set up the game",
     chooseStudent: "Who is playing",

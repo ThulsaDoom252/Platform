@@ -9,7 +9,7 @@
  * остатком секунд: иначе два браузера отсчитывают по-своему и карта
  * переворачивается у них в разный момент.
  */
-import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   activityGames,
@@ -25,9 +25,13 @@ import { visibleNodeIds } from "@/lib/material-grants";
 import { getSession } from "@/lib/session";
 import { buildDeck, scoreOf, type DeckSource, type GameScore } from "@/lib/game-deck";
 
+/** Что на лицевой стороне карты. */
+export type GameMode = "PICTURE" | "TRANSLATION";
+
 export type GameState = {
   id: string;
   status: string;
+  mode: GameMode;
   at: number;
   total: number;
   revealed: boolean;
@@ -43,6 +47,7 @@ export type GameActionState = { ok?: boolean; error?: string };
 
 export type GameSetup = {
   studentId: string;
+  mode: GameMode;
   /** Словники в том порядке, в каком их выбрали. */
   nodeIds: string[];
   /** Какие слова участвуют. Пусто для словника — значит все. */
@@ -67,7 +72,14 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
   if (!studentId) return { error: "Не выбран ученик" };
   if (nodeIds.length === 0) return { error: "Не выбран ни один словник" };
 
-  const rows = await db
+  const mode: GameMode = setup?.mode === "TRANSLATION" ? "TRANSLATION" : "PICTURE";
+
+  /*
+   * По картинке карта без картинки бессмысленна, поэтому слова без неё
+   * просто не попадают в выборку. По переводу картинка не нужна вовсе —
+   * там обязателен перевод.
+   */
+  const picture = db
     .select({
       phraseId: materialPhrases.id,
       nodeId: materialPhrases.nodeId,
@@ -87,13 +99,34 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
     .where(inArray(materialPhrases.nodeId, nodeIds))
     .orderBy(asc(materialPhrases.sortOrder));
 
+  const text = db
+    .select({
+      phraseId: materialPhrases.id,
+      nodeId: materialPhrases.nodeId,
+      word: materialPhrases.phrase,
+      translation: materialPhrases.translation,
+      kind: materialPhrases.kind,
+      imageUrl: sql<string>`''`,
+    })
+    .from(materialPhrases)
+    .where(inArray(materialPhrases.nodeId, nodeIds))
+    .orderBy(asc(materialPhrases.sortOrder));
+
+  const rows = await (mode === "PICTURE" ? picture : text);
+
   const chosen = new Set((setup?.phraseIds ?? []).map(String));
   const usable = rows
     .filter((r) => r.kind !== "NOTE")
+    .filter((r) => mode === "PICTURE" || !!r.translation?.trim())
     .filter((r) => chosen.size === 0 || chosen.has(r.phraseId));
 
   if (usable.length === 0) {
-    return { error: "У выбранных слов нет картинок — подбери их в словнике" };
+    return {
+      error:
+        mode === "PICTURE"
+          ? "У выбранных слов нет картинок — подбери их в словнике"
+          : "У выбранных слов нет перевода",
+    };
   }
 
   // Порядок словников — тот, в каком их выбрал учитель, а не алфавитный.
@@ -129,6 +162,7 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
 
   await db.insert(activityGames).values({
     studentId,
+    mode,
     status: "RUNNING",
     cards: deck,
     verdicts: deck.map(() => null),
@@ -166,6 +200,7 @@ function toState(row: NonNullable<Awaited<ReturnType<typeof currentGame>>>): Gam
   return {
     id: row.id,
     status: row.status,
+    mode: (row.mode as GameMode) ?? "PICTURE",
     at: row.at,
     total: cards.length,
     revealed,
@@ -275,6 +310,8 @@ export type GameVocab = {
   words: number;
   /** Своё дерево ученика или раздел, выданный ему из общей базы. */
   personal: boolean;
+  /** На каком языке в нём переводы — его и увидит ученик на карте. */
+  lang: string;
 };
 
 /**
@@ -284,11 +321,17 @@ export type GameVocab = {
  * ему выдано из общей библиотеки. Чужой словник на уроке бесполезен —
  * ученик этих слов не видел.
  *
- * И только те, где картинка подобрана каждому слову. Наполовину готовый
- * словник даёт колоду с дырами: часть слов молча выпадет из игры, и
- * почему их не было — на уроке не разберёшь.
+ * Для игры по картинке — только те, где картинка подобрана каждому
+ * слову. Наполовину готовый словник даёт колоду с дырами: часть слов
+ * молча выпадет из игры, и почему их не было — на уроке не разберёшь.
+ *
+ * Для игры по переводу подбирать нечего, поэтому годится любой словник
+ * ученика, где у слов есть перевод.
  */
-export async function listGameVocabAction(studentId: string): Promise<GameVocab[]> {
+export async function listGameVocabAction(
+  studentId: string,
+  mode: GameMode = "PICTURE",
+): Promise<GameVocab[]> {
   await requireTeacher();
   const student = String(studentId ?? "");
   if (!student) return [];
@@ -313,6 +356,7 @@ export async function listGameVocabAction(studentId: string): Promise<GameVocab[
       icon: materialNodes.icon,
       scope: materialNodes.scope,
       ownerId: materialNodes.ownerId,
+      lang: materialNodes.translationLang,
     })
     .from(materialNodes)
     .where(
@@ -338,26 +382,33 @@ export async function listGameVocabAction(studentId: string): Promise<GameVocab[
       nodeId: materialPhrases.nodeId,
       phraseId: materialPhrases.id,
       kind: materialPhrases.kind,
+      translation: materialPhrases.translation,
     })
     .from(materialPhrases)
     .where(inArray(materialPhrases.nodeId, mine.map((n) => n.id)));
 
-  const words = phrases.filter((p) => p.kind !== "NOTE");
+  // В игре по переводу слово без перевода показать нечем.
+  const words = phrases.filter(
+    (p) => p.kind !== "NOTE" && (mode === "PICTURE" || !!p.translation?.trim()),
+  );
   if (words.length === 0) return [];
 
-  const ready = new Set(
-    (
-      await db
-        .select({ phraseId: phraseImages.phraseId })
-        .from(phraseImages)
-        .where(
-          and(
-            inArray(phraseImages.phraseId, words.map((w) => w.phraseId)),
-            eq(phraseImages.picked, true),
-          ),
+  const ready =
+    mode === "PICTURE"
+      ? new Set(
+          (
+            await db
+              .select({ phraseId: phraseImages.phraseId })
+              .from(phraseImages)
+              .where(
+                and(
+                  inArray(phraseImages.phraseId, words.map((w) => w.phraseId)),
+                  eq(phraseImages.picked, true),
+                ),
+              )
+          ).map((row) => row.phraseId),
         )
-    ).map((row) => row.phraseId),
-  );
+      : null;
 
   return mine
     .map((node) => {
@@ -367,17 +418,20 @@ export async function listGameVocabAction(studentId: string): Promise<GameVocab[
         name: node.name,
         icon: node.icon,
         words: own.length,
-        done: own.filter((w) => ready.has(w.phraseId)).length,
+        // Без картинок готовность считать не по чему: годится всё.
+        done: ready ? own.filter((w) => ready.has(w.phraseId)).length : own.length,
         personal: node.scope === "STUDENT",
+        lang: node.lang,
       };
     })
     .filter((node) => node.words > 0 && node.done === node.words)
-    .map(({ id, name, icon, words: count, personal }) => ({
+    .map(({ id, name, icon, words: count, personal, lang }) => ({
       id,
       name,
       icon,
       words: count,
       personal,
+      lang,
     }));
 }
 
@@ -389,7 +443,10 @@ export type GameWord = {
 };
 
 /** Слова словника для ручного отбора: видно, у каких есть картинка. */
-export async function listGameWordsAction(nodeId: string): Promise<GameWord[]> {
+export async function listGameWordsAction(
+  nodeId: string,
+  mode: GameMode = "PICTURE",
+): Promise<GameWord[]> {
   await requireTeacher();
   const id = String(nodeId ?? "");
   if (!id) return [];
@@ -419,7 +476,8 @@ export async function listGameWordsAction(nodeId: string): Promise<GameWord[]> {
       phraseId: r.phraseId,
       word: r.word,
       translation: r.translation,
-      hasImage: !!r.imageId,
+      // «Готово к игре» значит разное: там картинка, тут перевод.
+      hasImage: mode === "PICTURE" ? !!r.imageId : !!r.translation?.trim(),
     }));
 }
 

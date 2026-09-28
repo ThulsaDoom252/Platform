@@ -350,6 +350,14 @@ export const ru: Dict = {
 
   game: {
     title: "Угадай по картинке",
+    modeTitle: "Что на карте",
+    modePicture: "По картинке",
+    modeTranslation: "По переводу",
+    modePictureHint: "Спереди картинка, с обратной стороны слово.",
+    modeTranslationHint:
+      "Спереди перевод, с обратной стороны слово по-английски. Картинки не нужны.",
+    noVocabTranslation: "У этого ученика пока нет словника с переводами.",
+    noTranslation: "без перевода",
     subtitle: "Карточная игра: с одной стороны картинка, с другой — слово.",
     setUp: "Настроить игру",
     chooseStudent: "Кто играет",
