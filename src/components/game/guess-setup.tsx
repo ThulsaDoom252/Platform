@@ -11,12 +11,10 @@ import { useEffect, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
-  listVocabNodesAction,
-  type VocabNode,
-} from "@/lib/actions/phrase-images";
-import {
+  listGameVocabAction,
   listGameWordsAction,
   startGameAction,
+  type GameVocab,
   type GameWord,
 } from "@/lib/actions/guess-picture";
 import { IconCheck, IconChevronDown } from "@/components/icons";
@@ -30,7 +28,7 @@ export function GuessSetup({
   onStarted: () => void;
 }) {
   const { t } = useT();
-  const [nodes, setNodes] = useState<VocabNode[] | null>(null);
+  const [nodes, setNodes] = useState<GameVocab[] | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [openWords, setOpenWords] = useState<string | null>(null);
   const [words, setWords] = useState<Record<string, GameWord[]>>({});
@@ -42,15 +40,22 @@ export function GuessSetup({
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
 
+  /*
+   * Только словники этого ученика и только готовые целиком.
+   *
+   * Чужой словник на уроке бесполезен — этих слов ученик не видел. А
+   * наполовину подобранный даёт колоду с дырами: часть слов молча
+   * выпадет, и почему их не было, на уроке не разберёшь.
+   */
   useEffect(() => {
     let alive = true;
-    listVocabNodesAction()
+    listGameVocabAction(studentId)
       .then((list) => alive && setNodes(list))
       .catch(() => alive && setNodes([]));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [studentId]);
 
   useEffect(() => {
     if (!openWords || words[openWords]) return;
@@ -120,7 +125,11 @@ export function GuessSetup({
         <p className="text-[12px] text-faint">{t.game.chooseVocabHint}</p>
 
         {nodes === null && <p className="mt-2 text-sm text-faint">{t.common.loading}</p>}
-        {nodes?.length === 0 && <p className="mt-2 text-sm text-faint">{t.game.noVocab}</p>}
+        {nodes?.length === 0 && (
+          <p className="mt-2 rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px] text-faint">
+            {t.game.noVocabForStudent}
+          </p>
+        )}
 
         <div className="mt-2 flex flex-col gap-1.5">
           {(nodes ?? []).map((node) => {
@@ -151,7 +160,8 @@ export function GuessSetup({
                       {node.name}
                     </span>
                     <span className="block text-[11px] text-faint">
-                      {fmt(t.pictures.ready, { ready: node.ready, words: node.words })}
+                      {fmt(t.game.wordsReady, { n: node.words })}
+                      {node.personal ? ` · ${t.game.personalVocab}` : ""}
                     </span>
                   </span>
 

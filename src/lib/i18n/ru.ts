@@ -356,6 +356,15 @@ export const ru: Dict = {
     chooseVocab: "Словники",
     chooseVocabHint: "Идут в том порядке, в каком ты их выбрал.",
     noVocab: "Словников с картинками пока нет.",
+    noVocabForStudent:
+      "У этого ученика нет словника, готового целиком. Словник попадает в игру, когда картинка подобрана каждому слову.",
+    personalVocab: "личный",
+    wordsReady: {
+      one: "{n} слово",
+      few: "{n} слова",
+      many: "{n} слов",
+      other: "{n} слов",
+    },
     words: "Слова",
     allWords: "Все слова",
     pickWords: "Выбрать слова",

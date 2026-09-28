@@ -307,6 +307,10 @@ export const en = {
     chooseVocab: "Vocabularies",
     chooseVocabHint: "They come in the order you pick them.",
     noVocab: "No vocabularies with pictures yet.",
+    noVocabForStudent:
+      "This student has no vocabulary that is fully ready. A vocabulary joins the game when every word has a picture.",
+    personalVocab: "personal",
+    wordsReady: { one: "{n} word", other: "{n} words" } as Plural,
     words: "Words",
     allWords: "All words",
     pickWords: "Pick words",

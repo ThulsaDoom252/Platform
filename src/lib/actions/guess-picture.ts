@@ -9,16 +9,19 @@
  * остатком секунд: иначе два браузера отсчитывают по-своему и карта
  * переворачивается у них в разный момент.
  */
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   activityGames,
+  materialNodes,
   materialPhrases,
   phraseImages,
+  studentMaterials,
   users,
   type GameCard,
   type GameVerdict,
 } from "@/lib/db/schema";
+import { visibleNodeIds } from "@/lib/material-grants";
 import { getSession } from "@/lib/session";
 import { buildDeck, scoreOf, type DeckSource, type GameScore } from "@/lib/game-deck";
 
@@ -263,6 +266,119 @@ export async function stopGameAction(studentId: string): Promise<GameActionState
     .where(and(eq(activityGames.studentId, id), ne(activityGames.status, "DONE")));
 
   return { ok: true };
+}
+
+export type GameVocab = {
+  id: string;
+  name: string;
+  icon: string | null;
+  words: number;
+  /** Своё дерево ученика или раздел, выданный ему из общей базы. */
+  personal: boolean;
+};
+
+/**
+ * Словники, которыми можно играть с этим учеником.
+ *
+ * Берутся только его: то, что лежит в его собственном дереве, и то, что
+ * ему выдано из общей библиотеки. Чужой словник на уроке бесполезен —
+ * ученик этих слов не видел.
+ *
+ * И только те, где картинка подобрана каждому слову. Наполовину готовый
+ * словник даёт колоду с дырами: часть слов молча выпадет из игры, и
+ * почему их не было — на уроке не разберёшь.
+ */
+export async function listGameVocabAction(studentId: string): Promise<GameVocab[]> {
+  await requireTeacher();
+  const student = String(studentId ?? "");
+  if (!student) return [];
+
+  // Общая библиотека целиком — по ней считаем, что открыто ученику.
+  const shared = await db
+    .select({ id: materialNodes.id, parentId: materialNodes.parentId })
+    .from(materialNodes)
+    .where(and(eq(materialNodes.scope, "MATERIAL"), isNull(materialNodes.ownerId)));
+
+  const grants = await db
+    .select({ nodeId: studentMaterials.materialNodeId })
+    .from(studentMaterials)
+    .where(eq(studentMaterials.studentId, student));
+
+  const open = visibleNodeIds(shared, grants.map((row) => row.nodeId));
+
+  const nodes = await db
+    .select({
+      id: materialNodes.id,
+      name: materialNodes.name,
+      icon: materialNodes.icon,
+      scope: materialNodes.scope,
+      ownerId: materialNodes.ownerId,
+    })
+    .from(materialNodes)
+    .where(
+      and(
+        eq(materialNodes.pageKind, "VOCAB"),
+        or(
+          // Личное дерево ученика.
+          and(eq(materialNodes.scope, "STUDENT"), eq(materialNodes.ownerId, student)),
+          // Общая библиотека — отфильтруем по выдаче ниже.
+          and(eq(materialNodes.scope, "MATERIAL"), isNull(materialNodes.ownerId)),
+        ),
+      ),
+    )
+    .orderBy(asc(materialNodes.name));
+
+  const mine = nodes.filter(
+    (node) => node.scope === "STUDENT" || open.has(node.id),
+  );
+  if (mine.length === 0) return [];
+
+  const phrases = await db
+    .select({
+      nodeId: materialPhrases.nodeId,
+      phraseId: materialPhrases.id,
+      kind: materialPhrases.kind,
+    })
+    .from(materialPhrases)
+    .where(inArray(materialPhrases.nodeId, mine.map((n) => n.id)));
+
+  const words = phrases.filter((p) => p.kind !== "NOTE");
+  if (words.length === 0) return [];
+
+  const ready = new Set(
+    (
+      await db
+        .select({ phraseId: phraseImages.phraseId })
+        .from(phraseImages)
+        .where(
+          and(
+            inArray(phraseImages.phraseId, words.map((w) => w.phraseId)),
+            eq(phraseImages.picked, true),
+          ),
+        )
+    ).map((row) => row.phraseId),
+  );
+
+  return mine
+    .map((node) => {
+      const own = words.filter((w) => w.nodeId === node.id);
+      return {
+        id: node.id,
+        name: node.name,
+        icon: node.icon,
+        words: own.length,
+        done: own.filter((w) => ready.has(w.phraseId)).length,
+        personal: node.scope === "STUDENT",
+      };
+    })
+    .filter((node) => node.words > 0 && node.done === node.words)
+    .map(({ id, name, icon, words: count, personal }) => ({
+      id,
+      name,
+      icon,
+      words: count,
+      personal,
+    }));
 }
 
 export type GameWord = {
