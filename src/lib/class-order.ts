@@ -17,17 +17,72 @@
 export type ClassSortKey = "lessons" | "name" | "balance";
 export const CLASS_SORTS: ClassSortKey[] = ["lessons", "name", "balance"];
 
+/** Занятие: когда началось и сколько длится. */
+export type Lesson = { at: string; minutes: number };
+
 export type Orderable = {
   id: string;
   name: string;
   /** Остаток уроков — по нему сортируют, когда решают, кому напомнить. */
   balance: number;
   /** Все назначенные занятия на эту неделю, от раннего к позднему. */
-  lessons: string[];
+  lessons: Lesson[];
 };
 
-/** Кружок в списке: ученик и занятие, из-за которого он здесь. */
-export type ClassEntry<T> = { person: T; at: string | null };
+/**
+ * Кружок в списке: ученик и занятие, из-за которого он здесь.
+ *
+ * `parts` — сколько уроков расписания слилось в этот блок. Два и больше
+ * значит сдвоенное занятие.
+ */
+export type ClassEntry<T> = {
+  person: T;
+  at: string | null;
+  minutes: number;
+  parts: number;
+};
+
+/** Склеенный блок занятий. */
+export type LessonBlock = Lesson & { parts: number };
+
+/**
+ * Свести идущие подряд уроки в одно занятие.
+ *
+ * Два урока встык — это одно длинное занятие, а не два визита: ученик
+ * приходит один раз. Показывать его двумя кружками в одном дне значит
+ * говорить, что встреч будет две.
+ *
+ * Склеиваем, только когда между ними нет промежутка: урок в девять и
+ * урок в три часа дня — разные занятия, сколько бы их ни было в один
+ * день.
+ */
+export function mergeAdjacent(lessons: Lesson[]): LessonBlock[] {
+  const sorted = lessons
+    .slice()
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+  const blocks: LessonBlock[] = [];
+
+  for (const lesson of sorted) {
+    const last = blocks.at(-1);
+    const startsAt = new Date(lesson.at).getTime();
+
+    if (last) {
+      const endsAt = new Date(last.at).getTime() + last.minutes * 60000;
+      // Встык или внахлёст — продолжение того же занятия.
+      if (startsAt <= endsAt) {
+        const finish = Math.max(endsAt, startsAt + lesson.minutes * 60000);
+        last.minutes = Math.round((finish - new Date(last.at).getTime()) / 60000);
+        last.parts += 1;
+        continue;
+      }
+    }
+
+    blocks.push({ at: lesson.at, minutes: lesson.minutes, parts: 1 });
+  }
+
+  return blocks;
+}
 
 /** Группа списка: день и занятия этого дня. */
 export type ClassGroup<T> = {
@@ -53,7 +108,7 @@ export function daysLeftInWeek(now: Date): number {
 
 /** Ближайшее занятие — по нему сортируют плоские списки. */
 export function nextLessonOf(person: Orderable): string | null {
-  return person.lessons[0] ?? null;
+  return person.lessons[0]?.at ?? null;
 }
 
 /**
@@ -71,11 +126,14 @@ export function groupByDay<T extends Orderable>(
   const days = daysLeftInWeek(now);
   const weekEnd = new Date(today.getTime() + days * DAY_MS);
 
-  // Раскладываем все занятия недели разом: так ученик попадает в каждый
-  // свой день, а не только в ближайший.
+  /*
+   * Раскладываем все занятия недели разом: так ученик попадает в каждый
+   * свой день, а не только в ближайший. Идущие подряд уроки сводим в
+   * одно занятие — это один визит, а не два.
+   */
   const occurrences = people.flatMap((person) =>
-    person.lessons
-      .map((at) => ({ person, at, time: new Date(at).getTime() }))
+    mergeAdjacent(person.lessons)
+      .map((block) => ({ person, block, time: new Date(block.at).getTime() }))
       .filter(
         (row) => row.time >= today.getTime() && row.time < weekEnd.getTime(),
       ),
@@ -97,7 +155,12 @@ export function groupByDay<T extends Orderable>(
     for (const row of ofDay) busy.add(row.person.id);
     groups.push({
       day: new Date(from).toISOString(),
-      entries: ofDay.map((row) => ({ person: row.person, at: row.at })),
+      entries: ofDay.map((row) => ({
+        person: row.person,
+        at: row.block.at,
+        minutes: row.block.minutes,
+        parts: row.block.parts,
+      })),
     });
   }
 
@@ -105,7 +168,12 @@ export function groupByDay<T extends Orderable>(
   if (rest.length > 0) {
     groups.push({
       day: null,
-      entries: sortBy(rest, "name", false).map((person) => ({ person, at: null })),
+      entries: sortBy(rest, "name", false).map((person) => ({
+        person,
+        at: null,
+        minutes: 0,
+        parts: 0,
+      })),
     });
   }
 
@@ -166,6 +234,8 @@ export function orderClassPeople<T extends Orderable>(
         entries: sortBy(people, key, desc, locale).map((person) => ({
           person,
           at: null,
+          minutes: 0,
+          parts: 0,
         })),
       },
     ];

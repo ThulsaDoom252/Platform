@@ -21,6 +21,9 @@ const ONLINE_WINDOW_MS = 75_000;
 
 export type Presence = "online" | "offline";
 
+/** Занятие ученика: начало и длительность. */
+export type ClassLesson = { at: string; minutes: number };
+
 export type ClassPerson = {
   id: string;
   name: string;
@@ -31,7 +34,7 @@ export type ClassPerson = {
   inClass: boolean;
   unread: number;
   /** Все занятия этой недели — по ним строится порядок списка. */
-  lessons: string[];
+  lessons: ClassLesson[];
   /** Остаток уроков: у общего пакета — общий, иначе личный. */
   balance: number;
 };
@@ -166,7 +169,11 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
   weekEnd.setDate(weekEnd.getDate() + daysLeftInWeek(dayStart));
 
   const week = await db
-    .select({ studentId: lessons.studentId, startTime: lessons.startTime })
+    .select({
+      studentId: lessons.studentId,
+      startTime: lessons.startTime,
+      minutes: lessons.durationMinutes,
+    })
     .from(lessons)
     .where(
       and(
@@ -177,10 +184,11 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
     )
     .orderBy(asc(lessons.startTime));
 
-  const lessonsOf = new Map<string, string[]>();
+  const lessonsOf = new Map<string, ClassLesson[]>();
   for (const row of week) {
     const list = lessonsOf.get(row.studentId) ?? [];
-    list.push(row.startTime.toISOString());
+    // Длительность нужна, чтобы понять, идут ли уроки встык.
+    list.push({ at: row.startTime.toISOString(), minutes: row.minutes });
     lessonsOf.set(row.studentId, list);
   }
 

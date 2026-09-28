@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   daysLeftInWeek,
   groupByDay,
+  mergeAdjacent,
   nextLessonOf,
   orderClassPeople,
   sortBy,
@@ -12,13 +13,16 @@ import {
 /** Понедельник, 28 сентября 2026, десять утра. */
 const MONDAY = new Date(2026, 8, 28, 10, 0, 0);
 
-const at = (day: number, hour: number) =>
-  new Date(2026, 8, day, hour, 0, 0).toISOString();
+/** Урок по умолчанию длится час — как в расписании. */
+const at = (day: number, hour: number, minutes = 60) => ({
+  at: new Date(2026, 8, day, hour, 0, 0).toISOString(),
+  minutes,
+});
 
 const person = (
   id: string,
   name: string,
-  lessons: string[],
+  lessons: { at: string; minutes: number }[],
   balance = 5,
 ): Orderable => ({ id, name, balance, lessons });
 
@@ -67,8 +71,8 @@ test("в каждом дне показывается время именно э
   const people = [person("v", "Victoria", [at(28, 17), at(29, 11)])];
   const groups = groupByDay(people, MONDAY);
 
-  assert.equal(groups[0].entries[0].at, at(28, 17));
-  assert.equal(groups[1].entries[0].at, at(29, 11));
+  assert.equal(groups[0].entries[0].at, at(28, 17).at);
+  assert.equal(groups[1].entries[0].at, at(29, 11).at);
 });
 
 test("внутри дня — по времени урока, а не по имени", () => {
@@ -148,7 +152,7 @@ test("прошедшее сегодня занятие день не заним�
 });
 
 test("ближайшее занятие — первое из списка", () => {
-  assert.equal(nextLessonOf(person("a", "Alla", [at(28, 9), at(29, 9)])), at(28, 9));
+  assert.equal(nextLessonOf(person("a", "Alla", [at(28, 9), at(29, 9)])), at(28, 9).at);
   assert.equal(nextLessonOf(person("b", "Bogdan", [])), null);
 });
 
@@ -223,4 +227,71 @@ test("пустой список не падает", () => {
   assert.deepEqual(orderClassPeople([], "name", false, MONDAY), [
     { day: null, entries: [] },
   ]);
+});
+
+test("два урока встык — одно занятие", () => {
+  /*
+   * Ученик приходит один раз, а не дважды. Два кружка в одном дне
+   * говорили бы, что встреч будет две.
+   */
+  const blocks = mergeAdjacent([at(29, 9), at(29, 10)]);
+
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].at, at(29, 9).at);
+  assert.equal(blocks[0].minutes, 120);
+  assert.equal(blocks[0].parts, 2);
+});
+
+test("три урока подряд — тоже одно", () => {
+  const blocks = mergeAdjacent([at(29, 9), at(29, 10), at(29, 11)]);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].minutes, 180);
+  assert.equal(blocks[0].parts, 3);
+});
+
+test("уроки с перерывом остаются разными занятиями", () => {
+  // Девять утра и три часа дня — это два визита, а не длинный урок.
+  const blocks = mergeAdjacent([at(29, 9), at(29, 15)]);
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].parts, 1);
+  assert.equal(blocks[1].parts, 1);
+});
+
+test("короткий урок не склеивается со следующим часом", () => {
+  // 09:00 на полчаса и 10:00 — между ними полчаса паузы.
+  const blocks = mergeAdjacent([at(29, 9, 30), at(29, 10)]);
+  assert.equal(blocks.length, 2);
+});
+
+test("накладка считается одним занятием", () => {
+  // Урок на 90 минут и следующий через час: расписание так позволяет.
+  const blocks = mergeAdjacent([at(29, 9, 90), at(29, 10)]);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].minutes, 120);
+});
+
+test("порядок на входе неважен", () => {
+  const blocks = mergeAdjacent([at(29, 10), at(29, 9)]);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].at, at(29, 9).at);
+});
+
+test("склейка не трогает исходный список", () => {
+  const source = [at(29, 9), at(29, 10)];
+  mergeAdjacent(source);
+  assert.equal(source.length, 2);
+  assert.equal(source[0].minutes, 60);
+});
+
+test("сдвоенный урок даёт один кружок в дне", () => {
+  const groups = groupByDay([person("a", "Alla", [at(28, 9), at(28, 10)])], MONDAY);
+
+  assert.equal(groups[0].entries.length, 1);
+  assert.equal(groups[0].entries[0].parts, 2);
+  assert.equal(groups[0].entries[0].minutes, 120);
+});
+
+test("разнесённые по дню уроки дают два кружка", () => {
+  const groups = groupByDay([person("a", "Alla", [at(28, 9), at(28, 15)])], MONDAY);
+  assert.equal(groups[0].entries.length, 2);
 });

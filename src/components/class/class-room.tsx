@@ -352,7 +352,7 @@ export function ClassRoom({
    * Время приходит снаружи: у человека за неделю несколько занятий, и в
    * каждом дне он стоит со своим.
    */
-  const circle = (p: ClassPerson, at: string | null) => (
+  const circle = (p: ClassPerson, at: string | null, minutes = 0, parts = 1) => (
     /* Ссылку нельзя вложить в кнопку, поэтому они рядом. */
     <div
       key={`${p.id}-${at ?? "x"}`}
@@ -388,10 +388,14 @@ export function ClassRoom({
       </button>
 
       <span className="flex flex-col items-center gap-0.5 text-[11px] text-faint">
-        {/* Время урока важнее уровня: по нему список и построен. */}
+        {/* Время урока важнее уровня: по нему список и построен.
+            У сдвоенного показываем промежуток целиком — по одному
+            началу не видно, что занятие длинное. */}
         {at && sort === "lessons" && (
           <span className="font-mono font-bold text-muted">
             {hhmm.format(new Date(at))}
+            {parts > 1 &&
+              `–${hhmm.format(new Date(new Date(at).getTime() + minutes * 60000))}`}
           </span>
         )}
         {sort === "balance" && (
@@ -472,7 +476,9 @@ export function ClassRoom({
             </p>
           )}
           <div className="flex flex-wrap gap-5">
-            {group.entries.map((entry) => circle(entry.person, entry.at))}
+            {group.entries.map((entry) =>
+              circle(entry.person, entry.at, entry.minutes, entry.parts),
+            )}
           </div>
         </div>
       ))}
