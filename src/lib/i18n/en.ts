@@ -309,6 +309,14 @@ export const en = {
     noImages: "No pictures yet.",
     ready: "{ready} of {words} ready",
     skipNotes: "Notes are skipped — there is nothing to guess in them.",
+    addDefs: "Paste descriptions",
+    addDefsHint:
+      "Paste WORD and DEF lines from the model. Only descriptions are written — words, pictures and everything else stay as they are.",
+    addDefsPlaceholder:
+      "WORD: umbrella\nDEF: a thing you open over your head in rain",
+    addDefsApply: "Write descriptions",
+    addDefsDone: { one: "{n} description written", other: "{n} descriptions written" } as Plural,
+    addDefsMissed: "Not found on this page: {words}",
     ownSearch: "Search yourself",
     ownSearchHint: "Type anything — the found picture is saved to the platform.",
     searchPlaceholder: "What to look for…",

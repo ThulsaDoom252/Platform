@@ -368,6 +368,19 @@ export const ru: Dict = {
     noImages: "Картинок пока нет.",
     ready: "Готово {ready} из {words}",
     skipNotes: "Заметки пропускаются — угадывать в них нечего.",
+    addDefs: "Вставить описания",
+    addDefsHint:
+      "Вставь строки WORD и DEF от модели. Запишутся только описания — слова, картинки и всё остальное останутся как есть.",
+    addDefsPlaceholder:
+      "WORD: umbrella\nDEF: a thing you open over your head in rain",
+    addDefsApply: "Записать описания",
+    addDefsDone: {
+      one: "Записано {n} описание",
+      few: "Записано {n} описания",
+      many: "Записано {n} описаний",
+      other: "Записано {n} описаний",
+    },
+    addDefsMissed: "На странице не нашлись: {words}",
     ownSearch: "Искать самому",
     ownSearchHint: "Пиши что угодно — найденная картинка сохранится на платформе.",
     searchPlaceholder: "Что искать…",

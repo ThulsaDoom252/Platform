@@ -15,6 +15,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { materialNodes, materialPhrases, phraseImages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { carryKey } from "@/lib/phrase-carry";
 import {
   imageQuery,
   looksLikeText,
@@ -40,12 +41,96 @@ export type PhraseWithImages = {
   phraseId: string;
   phrase: string;
   translation: string | null;
+  /** Английское описание для игр. Ученику не показывается. */
+  description: string | null;
   /** Запрос, которым её будут искать — учителю видно, что уйдёт в поиск. */
   query: string;
   images: PhraseImage[];
 };
 
 export type ImagesState = { ok?: boolean; error?: string; found?: number };
+
+export type DescriptionsState = {
+  ok?: boolean;
+  error?: string;
+  /** Сколько слов получило описание и какие строки не нашли своего слова. */
+  filled?: number;
+  missed?: string[];
+};
+
+/**
+ * Дописать описания к словам, не трогая всё остальное.
+ *
+ * Обычное наполнение стирает страницу и собирает её заново — вместе со
+ * словами исчезают и картинки, подобранные руками. Здесь не удаляется
+ * ничего: из присланного текста берутся только строки DEF и кладутся
+ * тем словам, которые на странице уже есть.
+ *
+ * Читаем построчно, а не полным разбором: присылают обычно обрывок —
+ * пары WORD и DEF без заголовка, категорий и примеров.
+ */
+export async function fillDescriptionsAction(
+  nodeId: string,
+  raw: string,
+): Promise<DescriptionsState> {
+  await requireTeacher();
+
+  const id = String(nodeId ?? "");
+  const text = String(raw ?? "");
+  if (!id) return { error: "Не выбрана страница" };
+  if (!text.trim()) return { error: "Пустой текст" };
+
+  const wanted = new Map<string, string>();
+  let word: string | null = null;
+
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\s*(WORD|DEF)\s*:\s*(.*)$/i.exec(line);
+    if (!match) continue;
+
+    const key = match[1].toUpperCase();
+    const value = match[2].trim();
+
+    if (key === "WORD") {
+      word = value;
+      continue;
+    }
+    if (word && value) wanted.set(carryKey(word), value.slice(0, 200));
+  }
+
+  if (wanted.size === 0) return { error: "В тексте нет ни одной пары WORD и DEF" };
+
+  const phrases = await db
+    .select({ id: materialPhrases.id, phrase: materialPhrases.phrase })
+    .from(materialPhrases)
+    .where(eq(materialPhrases.nodeId, id));
+
+  if (phrases.length === 0) return { error: "На странице нет слов" };
+
+  const byWord = new Map<string, string>();
+  for (const p of phrases) {
+    const key = carryKey(p.phrase);
+    if (key && !byWord.has(key)) byWord.set(key, p.id);
+  }
+
+  let filled = 0;
+  const missed: string[] = [];
+
+  for (const [key, description] of wanted) {
+    const phraseId = byWord.get(key);
+    if (!phraseId) {
+      missed.push(key);
+      continue;
+    }
+    await db
+      .update(materialPhrases)
+      .set({ description })
+      .where(eq(materialPhrases.id, phraseId));
+    filled += 1;
+  }
+
+  revalidatePath("/teacher/materials");
+  return { ok: true, filled, missed: missed.slice(0, 12) };
+}
 
 /** Сколько вариантов держим на слово. */
 const PER_PHRASE = 3;
@@ -148,6 +233,7 @@ export async function listNodeImagesAction(
       id: materialPhrases.id,
       phrase: materialPhrases.phrase,
       translation: materialPhrases.translation,
+      description: materialPhrases.description,
       kind: materialPhrases.kind,
     })
     .from(materialPhrases)
@@ -181,6 +267,7 @@ export async function listNodeImagesAction(
     phraseId: w.id,
     phrase: w.phrase,
     translation: w.translation,
+    description: w.description,
     query: imageQuery(w.phrase),
     images: byPhrase.get(w.id) ?? [],
   }));

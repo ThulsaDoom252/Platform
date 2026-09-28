@@ -19,6 +19,7 @@ import {
   listNodeImagesAction,
   pickPhraseImageAction,
   searchNodeImagesAction,
+  fillDescriptionsAction,
   searchPhraseImagesAction,
   uploadPhraseImageAction,
   type PhraseWithImages,
@@ -42,6 +43,8 @@ export function PhraseImagesPanel({
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ phraseId: string; url: string } | null>(null);
   const [finding, setFinding] = useState<string | null>(null);
+  const [defsOpen, setDefsOpen] = useState(false);
+  const [defsText, setDefsText] = useState("");
   const [note, setNote] = useState<string | null>(null);
   // Одно поле выбора на всю панель: к какому слову грузим — помним рядом.
   const picker = useRef<HTMLInputElement>(null);
@@ -147,6 +150,19 @@ export function PhraseImagesPanel({
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
           <button
             type="button"
+            onClick={() => setDefsOpen((v) => !v)}
+            aria-pressed={defsOpen}
+            className={cn(
+              "order-2 flex h-9 items-center rounded-xl px-3.5 text-sm font-semibold transition",
+              defsOpen
+                ? "bg-accent-soft text-accent"
+                : "text-muted hover:bg-surface-2 hover:text-content",
+            )}
+          >
+            {t.pictures.addDefs}
+          </button>
+          <button
+            type="button"
             disabled={busy || !hasKey}
             onClick={() => run(() => searchNodeImagesAction(nodeId))}
             className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
@@ -158,6 +174,49 @@ export function PhraseImagesPanel({
             {fmt(t.pictures.ready, { ready, words })}
           </span>
         </div>
+
+        {defsOpen && (
+          /* Описания вставляются отдельно от наполнения: наполнение
+             пересобирает страницу и уносит подобранные картинки, а здесь
+             ничего не удаляется. */
+          <div className="border-b border-line px-4 py-3">
+            <p className="text-[12px] text-faint">{t.pictures.addDefsHint}</p>
+            <textarea
+              value={defsText}
+              onChange={(e) => setDefsText(e.target.value)}
+              rows={5}
+              placeholder={t.pictures.addDefsPlaceholder}
+              className="mt-2 w-full resize-y rounded-xl border border-line bg-surface-2 px-3 py-2 font-mono text-[12px] text-content outline-none focus:border-accent"
+            />
+            <button
+              type="button"
+              disabled={busy || !defsText.trim()}
+              onClick={() =>
+                run(async () => {
+                  const result = await fillDescriptionsAction(nodeId, defsText);
+                  if (result.error) return result;
+                  setDefsText("");
+                  setNote(
+                    [
+                      fmt(t.pictures.addDefsDone, { n: result.filled ?? 0 }),
+                      result.missed?.length
+                        ? fmt(t.pictures.addDefsMissed, {
+                            words: result.missed.join(", "),
+                          })
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                  );
+                  return {};
+                })
+              }
+              className="mt-2 h-9 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {t.pictures.addDefsApply}
+            </button>
+          </div>
+        )}
 
         {!hasKey && (
           <p className="tint-amber m-3 rounded-xl px-3.5 py-2.5 text-[12px]">
@@ -227,6 +286,15 @@ export function PhraseImagesPanel({
                   </button>
                 </span>
               </div>
+
+              <p
+                className={cn(
+                  "mt-1 text-[12px] leading-snug",
+                  row.description ? "text-muted" : "text-faint/70",
+                )}
+              >
+                {row.description || "—"}
+              </p>
 
               {row.images.length === 0 ? (
                 <p className="mt-2 text-[12px] text-faint">{t.pictures.noImages}</p>
