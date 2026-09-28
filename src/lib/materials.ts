@@ -10,10 +10,29 @@ import {
   type RuleBlock,
 } from "@/lib/db/schema";
 import { getVisibleGrantIds } from "@/lib/material-grants";
+import { pageTranslationLang } from "@/lib/translation-lang";
 
 export type { RuleBlock };
 
 export type PhraseExample = { en: string; tr: string };
+
+/**
+ * Весь переведённый текст страницы одним списком.
+ *
+ * По нему определяется язык. Берём перевод, заголовок раздела и заметку
+ * — английские поля тут ничего не решают, а чем больше текста, тем
+ * надёжнее ответ.
+ */
+function translatedTexts(
+  phrases: { translation: string | null; section: string | null; note?: string | null }[],
+  blocks: RuleBlock[],
+): (string | null)[] {
+  const fromPhrases = phrases.flatMap((p) => [p.translation, p.section, p.note ?? null]);
+  // У правила переведённое лежит в самих блоках; разбирать их по типам
+  // незачем — берём текст целиком, английские куски счёт не меняют.
+  const fromBlocks = blocks.map((b) => JSON.stringify(b));
+  return [...fromPhrases, ...fromBlocks];
+}
 
 /** Запись в списке неправильных глаголов. */
 export type MaterialVerb = {
@@ -167,7 +186,16 @@ async function buildTree(rows: NodeRow[]): Promise<{
       category: r.category,
       sizeLabel: r.sizeLabel,
       pageKind: r.pageKind,
-      translationLang: r.translationLang,
+      /*
+       * Язык перевода берём из самого текста, а не из метки в базе.
+       *
+       * Метка ставится при создании страницы и дальше врёт: страницу
+       * наполняют чем придётся. Когда различить нечем — остаётся метка.
+       */
+      translationLang: pageTranslationLang(
+        translatedTexts(phrasesByNode.get(r.id) ?? [], blocksByNode.get(r.id) ?? []),
+        r.translationLang,
+      ),
       needsFix: r.needsFix,
       mergeCount: r.mergeCount,
       imageScale: r.imageScale,
