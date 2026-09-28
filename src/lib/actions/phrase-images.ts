@@ -21,7 +21,12 @@ import {
   pickCandidates,
   type ImageCandidate,
 } from "@/lib/image-query";
-import { removeStoredImage, storeRemoteImage } from "@/lib/image-store";
+import {
+  removeStoredImage,
+  storeRemoteImage,
+  storeUploadedImage,
+  type StoreFailure,
+} from "@/lib/image-store";
 
 export type PhraseImage = {
   id: string;
@@ -360,6 +365,48 @@ export async function addPhraseImageAction(
     // Первая картинка слова сразу идёт в игру: иначе её пришлось бы
     // выбирать вторым нажатием без всякого выбора.
     picked: pick || existing.length === 0,
+  });
+
+  return { ok: true };
+}
+
+/**
+ * Загрузка картинки с компьютера.
+ *
+ * Поиск находит не всё: своя фотография или вырезанный кусок из книги
+ * иногда объясняют слово лучше любого стока. Файл кладётся в то же
+ * хранилище, что и найденное, поэтому дальше они ничем не различаются.
+ *
+ * Причина отказа возвращается кодом: текст собирает страница — язык
+ * знает она.
+ */
+export async function uploadPhraseImageAction(
+  formData: FormData,
+): Promise<ImagesState & { reason?: StoreFailure }> {
+  await requireTeacher();
+
+  const phraseId = String(formData.get("phraseId") || "");
+  const file = formData.get("image");
+  if (!phraseId) return { error: "Не выбрано слово" };
+  if (!(file instanceof File) || file.size === 0) return { reason: "failed" };
+
+  const stored = await storeUploadedImage(file);
+  if ("error" in stored) return { reason: stored.error };
+
+  const existing = await db
+    .select({ id: phraseImages.id, sortOrder: phraseImages.sortOrder })
+    .from(phraseImages)
+    .where(eq(phraseImages.phraseId, phraseId))
+    .orderBy(asc(phraseImages.sortOrder));
+
+  await db.insert(phraseImages).values({
+    phraseId,
+    url: stored.url,
+    thumbUrl: stored.url,
+    origin: "manual",
+    sortOrder: (existing.at(-1)?.sortOrder ?? 0) + 10,
+    // Первая картинка слова сразу идёт в игру: выбирать не из чего.
+    picked: existing.length === 0,
   });
 
   return { ok: true };

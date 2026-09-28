@@ -91,6 +91,36 @@ export async function storeRemoteImage(url: string): Promise<string | null> {
   }
 }
 
+/** Что пошло не так при приёме файла — страница переведёт сама. */
+export type StoreFailure = "type" | "size" | "failed";
+
+/**
+ * Положить в хранилище файл, выбранный на компьютере.
+ *
+ * Возвращает либо ссылку, либо причину отказа: текст ошибки собирает
+ * страница, потому что язык знает она, а не хранилище.
+ */
+export async function storeUploadedImage(
+  file: File,
+  dir: StoreDir = STORE_DIR,
+): Promise<{ url: string } | { error: StoreFailure }> {
+  const ext = EXT_BY_TYPE[file.type];
+  if (!ext) return { error: "type" };
+  if (file.size === 0 || file.size > MAX_BYTES) return { error: "size" };
+
+  try {
+    const target = storeRoot(dir);
+    await fs.mkdir(target, { recursive: true });
+
+    const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+    await fs.writeFile(path.join(target, name), Buffer.from(await file.arrayBuffer()));
+
+    return { url: `/uploads/${dir}/${name}` };
+  } catch {
+    return { error: "failed" };
+  }
+}
+
 /**
  * Убрать файл из хранилища.
  *

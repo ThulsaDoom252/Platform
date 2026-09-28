@@ -9,7 +9,7 @@
  * left» или идиому иногда проще найти глазами.
  */
 import Image from "next/image";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
@@ -20,6 +20,7 @@ import {
   pickPhraseImageAction,
   searchNodeImagesAction,
   searchPhraseImagesAction,
+  uploadPhraseImageAction,
   type PhraseWithImages,
 } from "@/lib/actions/phrase-images";
 import { IconCheck, IconSearch, IconTrash, IconX } from "@/components/icons";
@@ -42,6 +43,41 @@ export function PhraseImagesPanel({
   const [link, setLink] = useState<{ phraseId: string; url: string } | null>(null);
   const [finding, setFinding] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Одно поле выбора на всю панель: к какому слову грузим — помним рядом.
+  const picker = useRef<HTMLInputElement>(null);
+  const uploadFor = useRef<string | null>(null);
+
+  const FAILURE: Record<string, string> = {
+    type: t.pictures.badType,
+    size: t.pictures.tooBig,
+    failed: t.pictures.uploadFailed,
+  };
+
+  /*
+   * Файлы уходят по одному за вызов: ограничение на тело запроса одно
+   * на всю платформу, и пачка снимков отвалилась бы целиком из-за
+   * одного лишнего мегабайта.
+   */
+  function upload(files: FileList | null) {
+    const phraseId = uploadFor.current;
+    if (!phraseId || !files || files.length === 0) return;
+
+    setError(null);
+    setNote(null);
+    startBusy(async () => {
+      for (const file of Array.from(files)) {
+        const form = new FormData();
+        form.append("phraseId", phraseId);
+        form.append("image", file);
+        const result = await uploadPhraseImageAction(form);
+        if (result.reason || result.error) {
+          setError(result.error ?? FAILURE[result.reason!] ?? t.pictures.uploadFailed);
+          break;
+        }
+      }
+      await reload();
+    });
+  }
   const [busy, startBusy] = useTransition();
 
   useEffect(() => {
@@ -130,6 +166,18 @@ export function PhraseImagesPanel({
         )}
         {error && <p className="px-4 py-2 text-sm text-rose-500">{error}</p>}
         {note && <p className="px-4 py-2 text-[12px] text-accent">{note}</p>}
+
+        <input
+          ref={picker}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          hidden
+          onChange={(e) => {
+            upload(e.target.files);
+            e.target.value = "";
+          }}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {rows === null && <p className="p-3 text-sm text-faint">{t.common.loading}</p>}
@@ -236,6 +284,31 @@ export function PhraseImagesPanel({
                 />
               )}
 
+              {/* Свой файл и прямая ссылка — рядом: оба про «нашёл сам». */}
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    uploadFor.current = row.phraseId;
+                    picker.current?.click();
+                  }}
+                  className="text-[11px] font-semibold text-accent transition hover:opacity-80 disabled:opacity-50"
+                >
+                  + {busy ? t.pictures.uploading : t.pictures.fromComputer}
+                </button>
+
+                {link?.phraseId !== row.phraseId && (
+                  <button
+                    type="button"
+                    onClick={() => setLink({ phraseId: row.phraseId, url: "" })}
+                    className="text-[11px] font-semibold text-accent transition hover:opacity-80"
+                  >
+                    + {t.pictures.addByLink}
+                  </button>
+                )}
+              </div>
+
               {/* Прямая ссылка: когда картинка уже найдена где-то ещё. */}
               {link?.phraseId === row.phraseId ? (
                 <div className="mt-2 flex gap-1.5">
@@ -267,15 +340,7 @@ export function PhraseImagesPanel({
                     <IconX className="h-3.5 w-3.5" />
                   </button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setLink({ phraseId: row.phraseId, url: "" })}
-                  className="mt-2 text-[11px] font-semibold text-accent transition hover:opacity-80"
-                >
-                  + {t.pictures.addByLink}
-                </button>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
