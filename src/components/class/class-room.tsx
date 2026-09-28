@@ -16,6 +16,12 @@ import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
 import { fmt, type Dict } from "@/lib/i18n";
 import {
+  CLASS_SORTS,
+  orderClassPeople,
+  type ClassSortKey,
+} from "@/lib/class-order";
+import { useLocalJson } from "@/lib/use-local-json";
+import {
   heartbeatAction,
   listClassPeopleAction,
   enterClassAction,
@@ -128,7 +134,7 @@ export function ClassRoom({
     name: string;
     presence: Presence;
   } | null>(null);
-  const { t } = useT();
+  const { t, locale } = useT();
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
     chat: true,
     verbs: true,
@@ -137,6 +143,9 @@ export function ClassRoom({
     script: false,
   });
   const [lessonTab, setLessonTab] = useState<LessonTab>("lesson");
+  // Порядок в списке — привычка учителя, поэтому живёт в браузере.
+  const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
+  const [sortDesc, setSortDesc] = useLocalJson("class-sort-desc", false);
   const [showTimer, setShowTimer] = useState(false);
   const [unread, setUnread] = useState(0);
   const [busy, startBusy] = useTransition();
@@ -215,6 +224,34 @@ export function ClassRoom({
     if (key === "chat") setUnread(0);
   };
 
+  /*
+   * Сегодня и завтра называем словами, остальные дни — днём недели: на
+   * «Wednesday» в середине списка взгляд цепляется хуже, чем на «Завтра».
+   */
+  const hhmm = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const dayShort = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
+    day: "2-digit",
+    month: "2-digit",
+  });
+  const weekday = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
+    weekday: "long",
+  });
+
+  const dayLabel = (day: Date) => {
+    const today = new Date();
+    const diff = Math.round(
+      (day.setHours(0, 0, 0, 0) - new Date(today).setHours(0, 0, 0, 0)) / 86400000,
+    );
+    if (diff === 0) return t.classRoom.today;
+    if (diff === 1) return t.classRoom.tomorrow;
+    return weekday.format(day);
+  };
+
+  const groups = orderClassPeople(people ?? [], sort, sortDesc);
+
   const tabBtn = (key: PanelKey, icon: React.ReactNode, label: string, badge?: number) => (
     <button
       type="button"
@@ -287,62 +324,132 @@ export function ClassRoom({
     </section>
   );
 
+  const SORT_LABEL: Record<ClassSortKey, string> = {
+    lessons: t.classRoom.sortLessons,
+    name: t.classRoom.sortName,
+    balance: t.classRoom.sortBalance,
+  };
+
+  /** Кружок ученика. Сам кружок начинает класс, уголок ведёт в карточку. */
+  const circle = (p: ClassPerson) => (
+    /* Ссылку нельзя вложить в кнопку, поэтому они рядом. */
+    <div key={p.id} className="group relative flex w-24 flex-col items-center gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => startBusy(async () => {
+          await enterClassAction(p.id);
+          setNonce((n) => n + 1);
+        })}
+        className="flex flex-col items-center gap-2"
+      >
+        <span className="relative">
+          <Avatar
+            name={p.name}
+            src={p.avatarUrl}
+            className="h-20 w-20 text-xl ring-2 ring-line transition group-hover:ring-accent"
+          />
+          <span className="absolute bottom-1 right-1">
+            <Dot presence={p.presence} t={t} />
+          </span>
+          {p.unread > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
+              {p.unread}
+            </span>
+          )}
+        </span>
+        <span className="w-full truncate text-center text-[13px] font-semibold text-content group-hover:text-accent">
+          {p.name}
+        </span>
+      </button>
+
+      <span className="flex flex-col items-center gap-0.5 text-[11px] text-faint">
+        {/* Время урока важнее уровня: по нему список и построен. */}
+        {p.nextLessonAt && sort === "lessons" && (
+          <span className="font-mono font-bold text-muted">
+            {hhmm.format(new Date(p.nextLessonAt))}
+          </span>
+        )}
+        {sort === "balance" && (
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 font-semibold",
+              p.balance > 3 ? "tint-green" : p.balance > 0 ? "tint-amber" : "tint-rose",
+            )}
+          >
+            {fmt(t.classRoom.lessonsLeft, { n: p.balance })}
+          </span>
+        )}
+        {p.level && sort === "name" && <span>{p.level}</span>}
+      </span>
+
+      <Link
+        href={`/teacher/students/${p.id}`}
+        title={fmt(t.classRoom.profileOf, { name: p.name })}
+        aria-label={fmt(t.classRoom.profileOf, { name: p.name })}
+        className="absolute -left-1 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-surface text-faint opacity-0 ring-1 ring-line transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
+      >
+        <IconUser className="h-3.5 w-3.5" />
+      </Link>
+    </div>
+  );
+
   /** Выбор ученика: пока класс не начат, кружочки на весь экран. */
   const picker = (
     <div className="rounded-2xl bg-surface p-6 ring-1 ring-line">
       <h2 className="text-lg font-bold text-content">{t.classRoom.pickTitle}</h2>
       <p className="mt-1 text-sm text-muted">{t.classRoom.pickHint}</p>
 
+      {/* Порядок списка */}
+      <div className="mt-4 flex flex-wrap items-center gap-1">
+        <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
+          {t.classRoom.sortBy}
+        </span>
+        {CLASS_SORTS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              if (sort === key) setSortDesc(!sortDesc);
+              else {
+                setSort(key);
+                setSortDesc(false);
+              }
+            }}
+            className={cn(
+              "flex h-8 items-center gap-1 rounded-lg px-2.5 text-[12px] font-semibold transition",
+              sort === key
+                ? "bg-accent-soft text-accent"
+                : "text-muted hover:bg-surface-2 hover:text-content",
+            )}
+          >
+            {SORT_LABEL[key]}
+            <span aria-hidden className={sort === key ? "" : "opacity-40"}>
+              {sort === key && sortDesc ? "↓" : "↑"}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {people === null && (
         <p className="mt-6 text-sm text-faint">{t.classRoom.loading}</p>
       )}
 
-      <div className="mt-6 flex flex-wrap gap-5">
-        {(people ?? []).map((p) => (
-          /* Сам кружок начинает класс, а уголок слева ведёт в карточку:
-             ссылку нельзя вложить в кнопку, поэтому они рядом. */
-          <div key={p.id} className="group relative flex w-24 flex-col items-center gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => startBusy(async () => {
-                await enterClassAction(p.id);
-                setNonce((n) => n + 1);
-              })}
-              className="flex flex-col items-center gap-2"
-            >
-              <span className="relative">
-                <Avatar
-                  name={p.name}
-                  src={p.avatarUrl}
-                  className="h-20 w-20 text-xl ring-2 ring-line transition group-hover:ring-accent"
-                />
-                <span className="absolute bottom-1 right-1">
-                  <Dot presence={p.presence} t={t} />
+      {groups.map((group) => (
+        <div key={group.day ?? "rest"} className="mt-5">
+          {sort === "lessons" && (
+            <p className="mb-2 flex items-baseline gap-2 text-[12px] font-bold uppercase tracking-wide text-faint">
+              {group.day ? dayLabel(new Date(group.day)) : t.classRoom.noLessons}
+              {group.day && (
+                <span className="font-mono normal-case text-faint/70">
+                  {dayShort.format(new Date(group.day))}
                 </span>
-                {p.unread > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
-                    {p.unread}
-                  </span>
-                )}
-              </span>
-              <span className="w-full truncate text-center text-[13px] font-semibold text-content group-hover:text-accent">
-                {p.name}
-              </span>
-            </button>
-            {p.level && <span className="text-[11px] text-faint">{p.level}</span>}
-
-            <Link
-              href={`/teacher/students/${p.id}`}
-              title={fmt(t.classRoom.profileOf, { name: p.name })}
-              aria-label={fmt(t.classRoom.profileOf, { name: p.name })}
-              className="absolute -left-1 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-surface text-faint opacity-0 ring-1 ring-line transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <IconUser className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        ))}
-      </div>
+              )}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-5">{group.people.map(circle)}</div>
+        </div>
+      ))}
     </div>
   );
 

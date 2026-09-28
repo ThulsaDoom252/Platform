@@ -261,8 +261,11 @@ export async function twisterSeenByStudentAction(
 /**
  * Закрепить скороговорку ученику.
  *
- * Закреплённая всегда одна: на уроке смотрят на одну карточку. Прошлые
- * строки не трогаем — они и есть история.
+ * Закреплённых может быть несколько: на урок их берут пачкой и проходят
+ * по очереди. Повторное закрепление той же карточки ничего не добавляет
+ * — иначе на уроке она задвоилась бы в списке.
+ *
+ * Прошлые строки не трогаем: они и есть история.
  */
 export async function assignTwisterAction(
   twisterId: string,
@@ -273,53 +276,68 @@ export async function assignTwisterAction(
   const student = String(studentId ?? "");
   if (!twister || !student) return { error: "Не выбрана скороговорка или ученик" };
 
-  await db
-    .update(tongueTwisterAssignments)
-    .set({ pinned: false })
+  const [already] = await db
+    .select({ id: tongueTwisterAssignments.id })
+    .from(tongueTwisterAssignments)
     .where(
       and(
         eq(tongueTwisterAssignments.studentId, student),
+        eq(tongueTwisterAssignments.twisterId, twister),
         eq(tongueTwisterAssignments.pinned, true),
       ),
-    );
+    )
+    .limit(1);
 
-  await db
-    .insert(tongueTwisterAssignments)
-    .values({ twisterId: twister, studentId: student, pinned: true });
+  if (!already) {
+    await db
+      .insert(tongueTwisterAssignments)
+      .values({ twisterId: twister, studentId: student, pinned: true });
+  }
 
   revalidatePath("/teacher/tongue-twisters");
   revalidatePath("/teacher/class");
   return { ok: true };
 }
 
-/** Снять закрепление, не стирая историю. */
-export async function unpinTwisterAction(studentId: string): Promise<TwisterState> {
+/**
+ * Снять закрепление, не стирая историю.
+ *
+ * Без второго довода снимает все: так кнопка «убрать всё» на уроке
+ * остаётся одной командой.
+ */
+export async function unpinTwisterAction(
+  studentId: string,
+  twisterId?: string,
+): Promise<TwisterState> {
   await requireTeacher();
   const student = String(studentId ?? "");
   if (!student) return { error: "Не выбран ученик" };
 
-  await db
-    .update(tongueTwisterAssignments)
-    .set({ pinned: false })
-    .where(
-      and(
+  const where = twisterId
+    ? and(
         eq(tongueTwisterAssignments.studentId, student),
         eq(tongueTwisterAssignments.pinned, true),
-      ),
-    );
+        eq(tongueTwisterAssignments.twisterId, String(twisterId)),
+      )
+    : and(
+        eq(tongueTwisterAssignments.studentId, student),
+        eq(tongueTwisterAssignments.pinned, true),
+      );
+
+  await db.update(tongueTwisterAssignments).set({ pinned: false }).where(where);
 
   revalidatePath("/teacher/class");
   return { ok: true };
 }
 
-/** Та, что сейчас на уроке у этого ученика. */
-export async function pinnedTwisterAction(studentId: string): Promise<Twister | null> {
+/** Те, что сейчас стоят на уроке у этого ученика. */
+export async function pinnedTwistersAction(studentId: string): Promise<Twister[]> {
   await requireTeacher();
   const student = String(studentId ?? "");
-  if (!student) return null;
+  if (!student) return [];
 
-  const [row] = await db
-    .select({ twister: tongueTwisters })
+  const rows = await db
+    .select({ twister: tongueTwisters, at: tongueTwisterAssignments.assignedAt })
     .from(tongueTwisterAssignments)
     .innerJoin(tongueTwisters, eq(tongueTwisters.id, tongueTwisterAssignments.twisterId))
     .where(
@@ -328,10 +346,9 @@ export async function pinnedTwisterAction(studentId: string): Promise<Twister | 
         eq(tongueTwisterAssignments.pinned, true),
       ),
     )
-    .orderBy(desc(tongueTwisterAssignments.assignedAt))
-    .limit(1);
+    .orderBy(asc(tongueTwisterAssignments.assignedAt));
 
-  return row ? toTwister(row.twister) : null;
+  return rows.map((row) => toTwister(row.twister));
 }
 
 /** Что и когда этот ученик уже получал — от свежего к старому. */

@@ -11,7 +11,7 @@
 import { revalidatePath } from "next/cache";
 import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users, classMessages } from "@/lib/db/schema";
+import { users, classMessages, lessons, lessonPackages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { IRREGULAR_VERBS_BASE, verbKey } from "@/lib/irregular-verbs-base";
 
@@ -29,6 +29,10 @@ export type ClassPerson = {
   /** Учитель уже ведёт класс с этим учеником. */
   inClass: boolean;
   unread: number;
+  /** Ближайшее занятие — по нему строится порядок списка. */
+  nextLessonAt: string | null;
+  /** Остаток уроков: у общего пакета — общий, иначе личный. */
+  balance: number;
 };
 
 export type ClassMessage = {
@@ -134,10 +138,39 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
       avatarUrl: users.avatarUrl,
       level: users.level,
       lastSeenAt: users.lastSeenAt,
+      balance: users.lessonBalance,
+      packageId: users.packageId,
     })
     .from(users)
     .where(eq(users.role, "STUDENT"))
     .orderBy(asc(users.name));
+
+  /*
+   * Ближайшее назначенное занятие каждого.
+   *
+   * Одним запросом на всех: список открывается на каждом такте опроса,
+   * и ходить в базу за каждым учеником отдельно здесь нельзя.
+   */
+  const upcoming = await db
+    .select({
+      studentId: lessons.studentId,
+      startTime: sql<Date>`min(${lessons.startTime})`,
+    })
+    .from(lessons)
+    .where(
+      and(
+        eq(lessons.status, "SCHEDULED"),
+        sql`${lessons.startTime} >= date_trunc('day', now())`,
+      ),
+    )
+    .groupBy(lessons.studentId);
+  const nextOf = new Map(
+    upcoming.map((r) => [r.studentId, new Date(r.startTime).toISOString()]),
+  );
+
+  // У общего пакета остаток один на всех участников.
+  const packages = await db.select().from(lessonPackages);
+  const packageOf = new Map(packages.map((p) => [p.id, p.remainingLessons]));
 
   const [me] = await db
     .select({ classWithId: users.classWithId })
@@ -166,6 +199,8 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
     presence: isOnline(r.lastSeenAt) ? "online" : "offline",
     inClass: me?.classWithId === r.id,
     unread: unreadOf.get(r.id) ?? 0,
+    nextLessonAt: nextOf.get(r.id) ?? null,
+    balance: (r.packageId ? packageOf.get(r.packageId) : null) ?? r.balance,
   }));
 }
 
