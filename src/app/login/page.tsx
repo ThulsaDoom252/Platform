@@ -35,7 +35,8 @@ export default async function LoginPage() {
             </p>
           </div>
         </div>
-        <LoginForm />
+        {/* Разработка — своя машина; в онлайне кнопки быстрого входа нет. */}
+        <LoginForm quickLogin={process.env.NODE_ENV !== "production"} />
       </div>
     </main>
   );

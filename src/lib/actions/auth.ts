@@ -42,6 +42,37 @@ export async function loginAction(
   redirect(user.role === "TEACHER" ? "/teacher" : "/student");
 }
 
+/**
+ * Быстрый вход учителем — только на своей машине.
+ *
+ * Пароль при разработке набирается десятки раз на дню, и это чистая
+ * трата времени. Но кнопка, пускающая учителем без пароля, на
+ * развёрнутом сайте означала бы, что учётной записи нет вовсе, поэтому
+ * вне разработки действие просто отказывает — даже если кнопку кто-то
+ * вызовет напрямую.
+ */
+export async function quickTeacherLoginAction(): Promise<LoginState> {
+  if (process.env.NODE_ENV === "production") {
+    return { error: "Быстрый вход работает только при локальной разработке" };
+  }
+
+  const [teacher] = await db
+    .select()
+    .from(users)
+    .where(eq(users.role, "TEACHER"))
+    .limit(1);
+
+  if (!teacher) return { error: "Учитель в базе не найден" };
+
+  await createSession({
+    userId: teacher.id,
+    role: teacher.role,
+    name: teacher.name,
+  });
+
+  redirect("/teacher");
+}
+
 /** Открыть ученическую часть от лица выбранного ученика. */
 export async function viewAsStudentAction(formData: FormData) {
   const teacherSession = await getSession();
