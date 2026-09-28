@@ -53,3 +53,21 @@ test("выход за папку не проходит и для скорого�
     assert.equal(isStoredImage(url, "twisters"), false, url);
   }
 });
+
+test("в скороговорки годится только путь их собственной папки", () => {
+  /*
+   * По этому правилу раздел и отбирает, что показывать. Обложки
+   * материалов, аватары и картинки словника лежат в своих папках, и
+   * попасть в пул они не должны даже через базу.
+   */
+  assert.equal(isStoredImage("/uploads/twisters/a-1.webp", "twisters"), true);
+
+  for (const foreign of [
+    "/uploads/materials/cover-1.jpg",
+    "/uploads/words/word-1.png",
+    "/uploads/avatar-1.jpg",
+    "https://example.com/a.jpg",
+  ]) {
+    assert.equal(isStoredImage(foreign, "twisters"), false, foreign);
+  }
+});

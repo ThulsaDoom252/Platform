@@ -16,7 +16,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tongueTwisters, tongueTwisterAssignments, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
-import { removeStoredImage } from "@/lib/image-store";
+import { isStoredImage, removeStoredImage } from "@/lib/image-store";
 
 export type Twister = {
   id: string;
@@ -71,14 +71,22 @@ function toTwister(row: typeof tongueTwisters.$inferSelect): Twister {
   };
 }
 
-/** Весь пул в ручном порядке. */
+/**
+ * Весь пул в ручном порядке.
+ *
+ * Показываем только то, что лежит в собственной папке скороговорок.
+ * Обложки материалов, аватары и картинки словника живут в своих папках
+ * и здесь появляться не должны ни при каких обстоятельствах — даже
+ * если чужой путь однажды окажется в этой таблице.
+ */
 export async function listTwistersAction(): Promise<Twister[]> {
   await requireTeacher();
   const rows = await db
     .select()
     .from(tongueTwisters)
     .orderBy(asc(tongueTwisters.sortOrder), desc(tongueTwisters.createdAt));
-  return rows.map(toTwister);
+
+  return rows.filter((row) => isStoredImage(row.imageUrl, "twisters")).map(toTwister);
 }
 
 /**
