@@ -1175,7 +1175,13 @@ export function MaterialsExplorer({
 
   // ------------------------------------------------ горячие клавиши
 
-  /** Порядок строк дерева на экране — по нему считается диапазон. */
+  /**
+   * Порядок строк дерева на экране — по нему считается диапазон.
+   *
+   * Считаем по отсортированному дереву, а не по исходному: на экране
+   * строки идут в порядке сортировки, и протяжка должна брать то, что
+   * лежит между ними там, а не в порядке из базы.
+   */
   const treeOrder = useMemo(() => {
     const out: string[] = [];
     const walk = (nodes: MaterialNode[]) => {
@@ -1184,9 +1190,9 @@ export function MaterialsExplorer({
         if (n.children.length && expanded.has(n.id)) walk(n.children);
       }
     };
-    walk(tree);
+    walk(sortedTree);
     return out;
-  }, [tree, expanded]);
+  }, [sortedTree, expanded]);
 
   const modalOpen = !!(
     editorTarget ||
@@ -1632,14 +1638,9 @@ export function MaterialsExplorer({
               isFolder ? "py-2.5" : "py-1.5",
             )}
           >
-            <span
-              className={cn(
-                "material-tree-dot h-3 w-3 shrink-0 rounded-full border-2 transition",
-                isSelected
-                  ? "border-accent bg-accent"
-                  : "border-line bg-surface group-hover:border-faint",
-              )}
-            />
+            {/* Кружок-маркер открытой страницы убран: строка и так
+                подсвечена, а рядом с кружком выбора он читался как вторая
+                галочка. */}
             {n.icon &&
               iconSlot(
                 n,
