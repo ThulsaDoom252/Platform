@@ -12,8 +12,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-/** Папка внутри public/uploads, где лежат картинки слов. */
-export const STORE_DIR = "words";
+/** Папки внутри public/uploads, которыми владеет платформа. */
+export const STORE_DIRS = ["words", "twisters"] as const;
+export type StoreDir = (typeof STORE_DIRS)[number];
+
+/** Папка картинок словника — она же по умолчанию. */
+export const STORE_DIR: StoreDir = "words";
 
 const EXT_BY_TYPE: Record<string, string> = {
   "image/png": "png",
@@ -32,20 +36,22 @@ const MAX_BYTES = 8 * 1024 * 1024;
  * позволить стереть что угодно на диске. Поэтому путь должен быть ровно
  * нашего вида — папка, имя, расширение, и ничего больше.
  */
-export function isStoredImage(url: string): boolean {
-  return /^\/uploads\/words\/[A-Za-z0-9_-]+\.(png|jpg|jpeg|webp|gif)$/.test(
-    String(url ?? ""),
+export function isStoredImage(url: string, dir: StoreDir = STORE_DIR): boolean {
+  if (!STORE_DIRS.includes(dir)) return false;
+  const pattern = new RegExp(
+    `^/uploads/${dir}/[A-Za-z0-9_-]+\.(png|jpg|jpeg|webp|gif)$`,
   );
+  return pattern.test(String(url ?? ""));
 }
 
 /** Имя файла из нашей ссылки. Для чужой — null. */
-export function storedFileName(url: string): string | null {
-  if (!isStoredImage(url)) return null;
-  return String(url).slice("/uploads/words/".length);
+export function storedFileName(url: string, dir: StoreDir = STORE_DIR): string | null {
+  if (!isStoredImage(url, dir)) return null;
+  return String(url).slice(`/uploads/${dir}/`.length);
 }
 
-function storeRoot(): string {
-  return path.join(process.cwd(), "public", "uploads", STORE_DIR);
+function storeRoot(dir: StoreDir): string {
+  return path.join(process.cwd(), "public", "uploads", dir);
 }
 
 /**
@@ -71,7 +77,7 @@ export async function storeRemoteImage(url: string): Promise<string | null> {
     const buffer = Buffer.from(await response.arrayBuffer());
     if (buffer.byteLength === 0 || buffer.byteLength > MAX_BYTES) return null;
 
-    const dir = storeRoot();
+    const dir = storeRoot(STORE_DIR);
     await fs.mkdir(dir, { recursive: true });
 
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
@@ -91,12 +97,15 @@ export async function storeRemoteImage(url: string): Promise<string | null> {
  * Чужую ссылку не трогаем — удалять там нечего. Пропавший файл ошибкой
  * не считаем: строку в базе всё равно надо стереть.
  */
-export async function removeStoredImage(url: string): Promise<void> {
-  const name = storedFileName(url);
+export async function removeStoredImage(
+  url: string,
+  dir: StoreDir = STORE_DIR,
+): Promise<void> {
+  const name = storedFileName(url, dir);
   if (!name) return;
 
   try {
-    await fs.unlink(path.join(storeRoot(), name));
+    await fs.unlink(path.join(storeRoot(dir), name));
   } catch {
     /* файла уже нет — и хорошо */
   }

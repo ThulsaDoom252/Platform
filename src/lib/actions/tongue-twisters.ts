@@ -11,10 +11,11 @@
 import { revalidatePath } from "next/cache";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tongueTwisters, tongueTwisterAssignments, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { removeStoredImage } from "@/lib/image-store";
 
 export type Twister = {
   id: string;
@@ -150,17 +151,45 @@ export async function reorderTwistersAction(ids: string[]): Promise<TwisterState
 }
 
 /**
- * Удаление из пула. Файл остаётся на диске: та же картинка может быть
- * записана в истории у ученика, и терять её вместе со строкой нельзя.
+ * Удаление из пула.
+ *
+ * Файл уносится вместе со строкой, но только если карточку никому не
+ * давали: у выданной остаётся запись в истории ученика, и картинка там
+ * должна открываться и через полгода.
  */
-export async function deleteTwisterAction(id: string): Promise<TwisterState> {
+export async function deleteTwistersAction(ids: string[]): Promise<TwisterState> {
   await requireTeacher();
-  const twisterId = String(id ?? "");
-  if (!twisterId) return { error: "Не выбрана скороговорка" };
 
-  await db.delete(tongueTwisters).where(eq(tongueTwisters.id, twisterId));
+  const list = [...new Set((ids ?? []).map(String).filter(Boolean))];
+  if (list.length === 0) return { error: "Не выбрана ни одна скороговорка" };
+
+  const rows = await db
+    .select({ id: tongueTwisters.id, imageUrl: tongueTwisters.imageUrl })
+    .from(tongueTwisters)
+    .where(inArray(tongueTwisters.id, list));
+  if (rows.length === 0) return { ok: true };
+
+  const used = await db
+    .select({ twisterId: tongueTwisterAssignments.twisterId })
+    .from(tongueTwisterAssignments)
+    .where(inArray(tongueTwisterAssignments.twisterId, list));
+  const inHistory = new Set(used.map((r) => r.twisterId));
+
+  await db.delete(tongueTwisters).where(inArray(tongueTwisters.id, list));
+
+  await Promise.all(
+    rows
+      .filter((row) => !inHistory.has(row.id))
+      .map((row) => removeStoredImage(row.imageUrl, "twisters")),
+  );
+
   revalidatePath("/teacher/tongue-twisters");
-  return { ok: true };
+  return { ok: true, added: rows.length };
+}
+
+/** Одна карточка — тот же путь, просто короче вызов. */
+export async function deleteTwisterAction(id: string): Promise<TwisterState> {
+  return deleteTwistersAction([String(id ?? "")]);
 }
 
 /**

@@ -34,3 +34,22 @@ test("имя файла достаётся только из своей ссыл
   assert.equal(storedFileName("/uploads/words/abc-123.png"), "abc-123.png");
   assert.equal(storedFileName("https://example.com/a.png"), null);
 });
+
+test("папка скороговорок — тоже наша, но отдельная", () => {
+  // Одна функция служит двум хранилищам, и перепутать их нельзя:
+  // удаление картинки слова не должно доставать до скороговорок.
+  assert.equal(isStoredImage("/uploads/twisters/a-1.jpg", "twisters"), true);
+  assert.equal(isStoredImage("/uploads/twisters/a-1.jpg"), false);
+  assert.equal(isStoredImage("/uploads/words/a-1.jpg", "twisters"), false);
+  assert.equal(storedFileName("/uploads/twisters/a-1.jpg", "twisters"), "a-1.jpg");
+});
+
+test("выход за папку не проходит и для скороговорок", () => {
+  for (const url of [
+    "/uploads/twisters/../words/x.jpg",
+    "/uploads/twisters/../../.env",
+    "/uploads/twisters/sub/x.jpg",
+  ]) {
+    assert.equal(isStoredImage(url, "twisters"), false, url);
+  }
+});

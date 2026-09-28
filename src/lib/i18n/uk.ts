@@ -246,6 +246,18 @@ export const uk: Dict = {
     titlePlaceholder: "Назва (необов'язково)",
     rename: "Перейменувати",
     deleteConfirm: "Прибрати картку з пулу?",
+    select: "Виділити",
+    selectAll: "Виділити все",
+    clearSelection: "Зняти",
+    selectedCount: {
+      one: "Обрана {n}",
+      few: "Обрано {n}",
+      many: "Обрано {n}",
+      other: "Обрано {n}",
+    },
+    deleteSelected: "Видалити обрані",
+    deleteManyConfirm: "Прибрати з пулу {n} карток?",
+    keptInHistory: "У карток, які вже комусь давали, картинка залишиться в його історії.",
 
     assign: "Закріпити за учнем",
     assignTo: "Закріпити «{title}»",

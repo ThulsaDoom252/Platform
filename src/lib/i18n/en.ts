@@ -229,6 +229,13 @@ export const en = {
     titlePlaceholder: "Title (optional)",
     rename: "Rename",
     deleteConfirm: "Remove this card from the pool?",
+    select: "Select",
+    selectAll: "Select all",
+    clearSelection: "Clear",
+    selectedCount: { one: "{n} selected", other: "{n} selected" } as Plural,
+    deleteSelected: "Delete selected",
+    deleteManyConfirm: "Remove {n} cards from the pool?",
+    keptInHistory: "Cards already given to someone keep their picture in that history.",
 
     assign: "Pin to a student",
     assignTo: "Pin «{title}»",

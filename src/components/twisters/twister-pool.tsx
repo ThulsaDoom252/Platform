@@ -14,6 +14,7 @@ import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
   deleteTwisterAction,
+  deleteTwistersAction,
   listTwistersAction,
   renameTwisterAction,
   reorderTwistersAction,
@@ -31,7 +32,15 @@ import {
 import { useLocalJson } from "@/lib/use-local-json";
 import { TwisterAssign } from "./twister-assign";
 import { TwisterViewer } from "./twister-viewer";
-import { IconGrid, IconList, IconPlus, IconTrash, IconUser, IconEye } from "@/components/icons";
+import {
+  IconCheck,
+  IconGrid,
+  IconList,
+  IconPlus,
+  IconTrash,
+  IconUser,
+  IconEye,
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const VIEW_CLASS: Record<TwisterView, string> = {
@@ -51,6 +60,9 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
   const [busy, startBusy] = useTransition();
   const picker = useRef<HTMLInputElement>(null);
   const dragged = useRef<number | null>(null);
+  // Выделение для разбора завала: по одной карточке двадцать шесть
+  // штук не убрать, а пачка выбирается мимо цели за один промах.
+  const [selection, setSelection] = useState<string[]>([]);
 
   // Порядок правится только руками; в остальных режимах перетаскивать
   // нечего — переставленное всё равно не сохранилось бы.
@@ -91,6 +103,23 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
     setPool(next.map((item, i) => ({ ...item, sortOrder: i + 1 })));
     startBusy(async () => {
       await reorderTwistersAction(next.map((item) => item.id));
+    });
+  }
+
+  const toggleSelect = (id: string) =>
+    setSelection((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  function removeSelected() {
+    const ids = [...selection];
+    if (ids.length === 0) return;
+    if (!confirm(fmt(t.twisters.deleteManyConfirm, { n: ids.length }))) return;
+
+    startBusy(async () => {
+      await deleteTwistersAction(ids);
+      setPool((prev) => prev.filter((row) => !ids.includes(row.id)));
+      setSelection([]);
     });
   }
 
@@ -170,6 +199,37 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
         </span>
       </div>
 
+      {selection.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-accent-soft px-3 py-2 ring-1 ring-accent">
+          <span className="text-[13px] font-semibold text-accent">
+            {fmt(t.twisters.selectedCount, { n: selection.length })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelection(shown.map((item) => item.id))}
+            className="h-8 rounded-lg px-2.5 text-[12px] font-semibold text-accent transition hover:bg-surface"
+          >
+            {t.twisters.selectAll}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelection([])}
+            className="h-8 rounded-lg px-2.5 text-[12px] font-semibold text-muted transition hover:bg-surface"
+          >
+            {t.twisters.clearSelection}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={removeSelected}
+            className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            <IconTrash className="h-3.5 w-3.5" /> {t.twisters.deleteSelected}
+          </button>
+          <span className="w-full text-[11px] text-faint">{t.twisters.keptInHistory}</span>
+        </div>
+      )}
+
       {error && <p className="text-sm text-rose-500">{error}</p>}
       {manual && pool.length > 1 && (
         <p className="text-[12px] text-faint">{t.twisters.dragHint}</p>
@@ -188,6 +248,8 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
               item={item}
               view={view}
               draggable={manual}
+              selected={selection.includes(item.id)}
+              onSelect={() => toggleSelect(item.id)}
               onDragStart={() => (dragged.current = i)}
               onDrop={() => drop(i)}
               onOpen={() => setWatching(item)}
@@ -237,6 +299,8 @@ function Card({
   item,
   view,
   draggable,
+  selected,
+  onSelect,
   onDragStart,
   onDrop,
   onOpen,
@@ -247,6 +311,8 @@ function Card({
   item: Twister;
   view: TwisterView;
   draggable: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onDragStart: () => void;
   onDrop: () => void;
   onOpen: () => void;
@@ -264,11 +330,30 @@ function Card({
       onDragOver={(e) => draggable && e.preventDefault()}
       onDrop={onDrop}
       className={cn(
-        "group overflow-hidden rounded-2xl bg-surface ring-1 ring-line transition hover:ring-accent",
+        "group relative overflow-hidden rounded-2xl bg-surface ring-1 transition",
+        selected ? "ring-2 ring-accent" : "ring-line hover:ring-accent",
         row && "flex items-center gap-3 p-2",
         draggable && "cursor-grab active:cursor-grabbing",
       )}
     >
+      {/* Уголок выделения. Виден всегда у выбранных и при наведении у
+          остальных: иначе разбирать пул приходится по одной карточке. */}
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+        title={t.twisters.select}
+        aria-label={t.twisters.select}
+        className={cn(
+          "absolute left-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-lg ring-1 transition",
+          selected
+            ? "bg-accent text-white ring-accent"
+            : "bg-surface/80 text-transparent ring-line opacity-0 backdrop-blur group-hover:opacity-100 hover:text-faint",
+        )}
+      >
+        <IconCheck className="h-3.5 w-3.5" />
+      </button>
+
       <button
         type="button"
         onClick={onOpen}
