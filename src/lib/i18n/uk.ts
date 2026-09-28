@@ -601,6 +601,10 @@ export const uk: Dict = {
 
   phrases: {
     hideTranslations: "Сховати переклад",
+    hideWords: "Сховати слова",
+    showWords: "Показати слова",
+    tapToRevealWord: "натисни, щоб побачити слово",
+    hideMode: "Сховати",
     showTranslations: "Показати переклад",
     examples: {
       one: "{n} приклад",

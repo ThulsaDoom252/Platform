@@ -10,6 +10,7 @@ import {
   deleteSectionAction,
 } from "@/lib/actions/materials";
 import { useT } from "@/components/i18n-provider";
+import { hasTranscription } from "@/lib/phrase-words";
 import { fmt } from "@/lib/i18n";
 import { useSpeech } from "./speech";
 import { cn } from "@/lib/utils";
@@ -141,7 +142,7 @@ function RepairIconBadge({
 function PhraseCard({
   p,
   index,
-  showTranslation,
+  hidden,
   hints = true,
   imageScale = 100,
   speech,
@@ -153,7 +154,8 @@ function PhraseCard({
 }: {
   p: MaterialPhrase;
   index: number;
-  showTranslation: boolean;
+  /** Что спрятано: ничего, перевод или само слово. */
+  hidden: "none" | "translation" | "word";
   /** Показывать ли заметку «что стоит знать». */
   hints?: boolean;
   /** Размер картинки слова в процентах от обычного. */
@@ -171,7 +173,23 @@ function PhraseCard({
   const grad = ["grad-c1", "grad-c2", "grad-c3", "grad-c4"][index % 4];
   // Обычный размер картинки — 80; масштаб задаёт страница целиком.
   const imageSide = Math.round((80 * imageScale) / 100);
-  const visible = showTranslation || revealed;
+
+  const wordVisible = hidden !== "word" || revealed;
+  const translationVisible = hidden !== "translation" || revealed;
+
+  /*
+   * Транскрипция принадлежит слову, поэтому прячется вместе с ним: она
+   * и есть подсказка, как это слово звучит.
+   *
+   * Показывается только у одного слова — у выражения читать её целиком
+   * никто не станет, а места она занимает столько же, сколько фраза.
+   */
+  const showIpa = wordVisible && hasTranscription(p.phrase);
+  const ipaUs = p.transcriptionUs ?? p.transcription;
+  const ipaUk =
+    p.transcriptionUk && p.transcriptionUk !== p.transcriptionUs
+      ? p.transcriptionUk
+      : null;
 
   return (
     <article className="group relative overflow-hidden rounded-2xl bg-surface ring-1 ring-line transition hover:ring-accent/40">
@@ -202,20 +220,46 @@ function PhraseCard({
         <div className="min-w-0 flex-1">
           {/* Фраза + транскрипция + произношение */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h3 className="text-base font-bold text-content sm:text-lg">{p.phrase}</h3>
-            {p.transcriptionUs || p.transcriptionUk ? (
-              <span className="flex flex-wrap gap-2 font-mono text-xs text-faint">
-                {p.transcriptionUs && <span>us {p.transcriptionUs}</span>}
-                {p.transcriptionUk && p.transcriptionUk !== p.transcriptionUs && (
-                  <span>uk {p.transcriptionUk}</span>
+            {wordVisible ? (
+              <h3 className="text-base font-bold text-content sm:text-lg">{p.phrase}</h3>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setRevealed(true)}
+                className="rounded-lg bg-surface-2 px-3 py-1.5 text-sm font-semibold text-faint transition hover:bg-accent-soft hover:text-accent"
+              >
+                {t.phrases.tapToRevealWord}
+              </button>
+            )}
+
+            {/* Транскрипция: не серая строчка мимоходом, а отдельная
+                плашка — на неё смотрят прицельно, когда сомневаются в
+                произношении. */}
+            {showIpa && (ipaUs || ipaUk) && (
+              <span className="flex flex-wrap items-center gap-1.5">
+                {ipaUs && (
+                  <span className="flex items-center gap-1 rounded-lg bg-accent-soft px-2 py-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-accent/70">
+                      us
+                    </span>
+                    <span className="font-mono text-[13px] font-semibold text-accent">
+                      {ipaUs}
+                    </span>
+                  </span>
+                )}
+                {ipaUk && (
+                  <span className="flex items-center gap-1 rounded-lg bg-surface-2 px-2 py-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-faint">
+                      uk
+                    </span>
+                    <span className="font-mono text-[13px] font-semibold text-muted">
+                      {ipaUk}
+                    </span>
+                  </span>
                 )}
               </span>
-            ) : (
-              p.transcription && (
-                <span className="font-mono text-xs text-faint">{p.transcription}</span>
-              )
             )}
-            {speech.supported && (
+            {speech.supported && wordVisible && (
               <div className="flex items-center gap-1.5">
                 <SpeakButton
                   label="US"
@@ -242,12 +286,12 @@ function PhraseCard({
               onClick={() => setRevealed((v) => !v)}
               className={cn(
                 "mt-1.5 block w-full rounded-lg text-left text-sm font-semibold transition sm:text-[15px]",
-                visible
+                translationVisible
                   ? "text-[color:var(--lesson-green)]"
                   : "select-none bg-surface-2 px-3 py-1.5 text-faint hover:bg-accent-soft",
               )}
             >
-              {visible ? p.translation : t.phrases.tapToReveal}
+              {translationVisible ? p.translation : t.phrases.tapToReveal}
             </button>
           )}
 
@@ -312,7 +356,8 @@ function PhraseCard({
                       </button>
                     )}
                   </p>
-                  {visible && (
+                  {/* Перевод примера прячется вместе с переводом слова. */}
+                  {translationVisible && (
                     <p className="mt-0.5 text-[13px] italic text-muted">{ex.tr}</p>
                   )}
                 </div>
@@ -367,7 +412,11 @@ export function PhraseReader({
   onEditImage?: () => void;
 }) {
   const { t } = useT();
-  const [showTranslation, setShowTranslation] = useState(true);
+  /*
+   * Что спрятано на карточках. Либо-либо: прятать разом обе стороны
+   * бессмысленно — на карточке не осталось бы ничего.
+   */
+  const [hidden, setHidden] = useState<"none" | "translation" | "word">("none");
   // Заметки под словами — то, что стоит знать, но не обязательно читать
   // сразу. Учитель гасит их, когда хочет чистый список.
   const [hints, setHints] = useState(true);
@@ -559,18 +608,39 @@ export function PhraseReader({
 
       {/* Управление */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setShowTranslation((v) => !v)}
-          className="flex h-9 items-center gap-2 rounded-xl bg-surface px-3.5 text-xs font-semibold text-muted ring-1 ring-line transition hover:text-content"
-        >
-          {showTranslation ? (
-            <IconEyeOff className="h-4 w-4" />
-          ) : (
-            <IconEye className="h-4 w-4" />
-          )}
-          {showTranslation ? t.phrases.hideTranslations : t.phrases.showTranslations}
-        </button>
+        {/* Прятать можно любую сторону, но только одну: скрыв обе, на
+            карточке не осталось бы ничего. */}
+        <div className="flex h-9 items-center gap-1 rounded-xl bg-surface px-1.5 ring-1 ring-line">
+          <span className="px-1 text-[11px] font-semibold text-faint">
+            {t.phrases.hideMode}
+          </span>
+          {(
+            [
+              ["translation", t.phrases.hideTranslations],
+              ["word", t.phrases.hideWords],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setHidden((v) => (v === key ? "none" : key))}
+              aria-pressed={hidden === key}
+              className={cn(
+                "flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold transition",
+                hidden === key
+                  ? "bg-accent text-white"
+                  : "text-muted hover:bg-surface-2 hover:text-content",
+              )}
+            >
+              {hidden === key ? (
+                <IconEyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <IconEye className="h-3.5 w-3.5" />
+              )}
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* Картинки бывают разные: мелкая иконка и кадр, который стоит
             рассмотреть. Размер хранится у страницы, чтобы ученик увидел
@@ -705,7 +775,7 @@ export function PhraseReader({
                   <PhraseCard
                     p={p}
                     index={gi + i}
-                    showTranslation={showTranslation}
+                    hidden={hidden}
                     hints={hints}
                     imageScale={imageScale}
                     speech={speech}

@@ -536,6 +536,10 @@ export const en = {
 
   phrases: {
     hideTranslations: "Hide translations",
+    hideWords: "Hide words",
+    showWords: "Show words",
+    tapToRevealWord: "tap to see the word",
+    hideMode: "Hide",
     showTranslations: "Show translations",
     examples: { one: "{n} example", other: "{n} examples" } as Plural,
     hideExamples: "Hide examples",

@@ -601,6 +601,10 @@ export const ru: Dict = {
 
   phrases: {
     hideTranslations: "Скрыть перевод",
+    hideWords: "Скрыть слова",
+    showWords: "Показать слова",
+    tapToRevealWord: "нажми, чтобы увидеть слово",
+    hideMode: "Скрыть",
     showTranslations: "Показать перевод",
     examples: {
       one: "{n} пример",
