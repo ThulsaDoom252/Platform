@@ -292,7 +292,6 @@ export const en = {
     searching: "Searching…",
     found: { one: "{n} picture found", other: "{n} pictures found" } as Plural,
     nothing: "Nothing found — add a link by hand.",
-    noKey: "Image search is off: PIXABAY_API_KEY is missing from .env.",
     title: "Pictures for the words",
     hint: "Only you see this. The student sees a picture only inside the game.",
     query: "Search query",

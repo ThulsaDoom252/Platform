@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { uploadPhraseImageAction } from "@/lib/actions/phrase-images";
 import {
   movePhraseAction,
   clearPhraseNoteAction,
@@ -38,8 +40,8 @@ export type MaterialPhrase = {
   /** Заметка «что стоит знать» под словом. */
   note: string | null;
   /** Данные для игр: ученик их не видит, учитель — по своему желанию. */
-  description?: string | null;
-  gameImageUrl?: string | null;
+  description: string | null;
+  gameImageUrl: string | null;
   section: string | null;
   kind: string;
   examples: PhraseExample[];
@@ -147,6 +149,7 @@ function PhraseCard({
   index,
   hidden,
   gameData = false,
+  onPickGameImage,
   hints = true,
   imageScale = 100,
   speech,
@@ -162,6 +165,8 @@ function PhraseCard({
   hidden: "none" | "translation" | "word";
   /** Показывать ли описание и картинку, по которым спрашивают игры. */
   gameData?: boolean;
+  /** Нажали по месту картинки — открыть выбор файла для этого слова. */
+  onPickGameImage?: (phraseId: string) => void;
   /** Показывать ли заметку «что стоит знать». */
   hints?: boolean;
   /** Размер картинки слова в процентах от обычного. */
@@ -319,20 +324,26 @@ function PhraseCard({
 
           {/* Данные для игр: описание и подобранная картинка. Ученику не
               показываются — по ним его и спрашивают. */}
-          {gameData && (p.description || p.gameImageUrl) && (
+          {gameData && (
             <div className="mt-2.5 flex items-start gap-2.5 rounded-xl bg-surface-2 p-2.5">
-              {p.gameImageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={p.gameImageUrl}
-                  alt=""
-                  className="h-14 w-20 shrink-0 rounded-lg object-cover"
-                />
-              ) : (
-                <span className="flex h-14 w-20 shrink-0 items-center justify-center rounded-lg bg-surface text-[10px] text-faint">
-                  {t.phrases.noPicture}
-                </span>
-              )}
+              {/* Нажатие по месту картинки сразу открывает выбор файла:
+                  менять её чаще всего хочется прямо отсюда. */}
+              <button
+                type="button"
+                onClick={() => onPickGameImage?.(p.id)}
+                title={t.pictures.fromComputer}
+                disabled={!onPickGameImage}
+                className="h-14 w-20 shrink-0 overflow-hidden rounded-lg ring-1 ring-line transition hover:ring-accent disabled:cursor-default"
+              >
+                {p.gameImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.gameImageUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-surface text-[10px] text-faint">
+                    {t.phrases.noPicture}
+                  </span>
+                )}
+              </button>
               <span className="min-w-0 flex-1">
                 <span className="block text-[10px] font-bold uppercase tracking-wide text-faint">
                   {t.phrases.gameData}
@@ -460,7 +471,31 @@ export function PhraseReader({
    * в обычной работе они только мешают, а ученику не показываются
    * никогда — редактор словника открыт только учителю.
    */
+  const router = useRouter();
   const [gameData, setGameData] = useState(false);
+  /* Одно поле выбора на весь словник: к какому слову грузим — рядом. */
+  const gamePicker = useRef<HTMLInputElement>(null);
+  const gameFor = useRef<string | null>(null);
+  const [gameBusy, startGameUpload] = useTransition();
+
+  function pickGameImage(phraseId: string) {
+    gameFor.current = phraseId;
+    gamePicker.current?.click();
+  }
+
+  function uploadGameImage(file: File | undefined) {
+    const phraseId = gameFor.current;
+    if (!file || !phraseId) return;
+
+    startGameUpload(async () => {
+      const form = new FormData();
+      form.append("phraseId", phraseId);
+      form.append("image", file);
+      await uploadPhraseImageAction(form);
+      // Картинки приходят со страницы, поэтому обновляем её целиком.
+      router.refresh();
+    });
+  }
   // Заметки под словами — то, что стоит знать, но не обязательно читать
   // сразу. Учитель гасит их, когда хочет чистый список.
   const [hints, setHints] = useState(true);
@@ -649,6 +684,17 @@ export function PhraseReader({
           </>
         )}
       </header>
+
+      <input
+        ref={gamePicker}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        hidden
+        onChange={(e) => {
+          uploadGameImage(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
 
       {/* Управление */}
       <div className="flex flex-wrap items-center gap-2">
@@ -843,6 +889,7 @@ export function PhraseReader({
                     index={gi + i}
                     hidden={hidden}
                     gameData={gameData}
+                    onPickGameImage={editable ? pickGameImage : undefined}
                     hints={hints}
                     imageScale={imageScale}
                     speech={speech}

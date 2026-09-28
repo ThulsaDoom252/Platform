@@ -1558,6 +1558,8 @@ export type PhraseInput = {
   translation: string;
   /** Жёлтая подсказка «что стоит знать» под словом. */
   note: string | null;
+  /** Английское описание для игр. Ученику не показывается. */
+  description?: string | null;
   examples: { en: string; tr: string }[];
 };
 
@@ -1576,6 +1578,7 @@ function cleanPhrase(p: PhraseInput): PhraseInput | null {
     transcription: p.transcription ? String(p.transcription).trim().slice(0, 120) : null,
     translation: String(p?.translation ?? "").trim().slice(0, 600),
     note: p.note ? String(p.note).trim().slice(0, 1_000) || null : null,
+    description: p.description ? String(p.description).trim().slice(0, 200) || null : null,
     examples: (Array.isArray(p?.examples) ? p.examples : [])
       .map((e) => ({
         en: String(e?.en ?? "").trim().slice(0, 600),

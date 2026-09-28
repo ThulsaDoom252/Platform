@@ -13,8 +13,16 @@ import {
   type PhraseInput,
 } from "@/lib/actions/materials";
 import { IconPlus, IconPencil, IconX, IconCheck } from "@/components/icons";
+import {
+  pickedImageAction,
+  uploadPhraseImageAction,
+} from "@/lib/actions/phrase-images";
 import { suggestVocabularyIcon } from "@/lib/icon-suggest";
 import { cn } from "@/lib/utils";
+
+/** Подпись поля описания: ученик его не видит, по нему спрашивают игры. */
+const descriptionPlaceholder =
+  "🎮 Описание для игр по-английски — ученик его не видит";
 
 const inputCls =
   "h-10 w-full rounded-xl border border-line bg-surface-2 px-3 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
@@ -30,6 +38,8 @@ export type Draft = {
   translation: string;
   /** Подсказка «что стоит знать»: на странице она жёлтая. */
   note: string;
+  /** Английское описание для игр. Ученик его не видит. */
+  description: string;
   examples: Example[];
 };
 
@@ -42,6 +52,7 @@ export const newDraft = (section = "", icon = "💬", examples = 0): Draft => ({
   transcription: "",
   translation: "",
   note: "",
+  description: "",
   examples: Array.from({ length: examples }, () => ({ en: "", tr: "" })),
 });
 
@@ -52,6 +63,7 @@ export const toInput = (d: Draft): PhraseInput => ({
   transcription: d.transcription.trim() || null,
   translation: d.translation.trim(),
   note: d.note.trim() || null,
+  description: d.description.trim() || null,
   examples: d.examples.filter((e) => e.en.trim()),
 });
 
@@ -173,6 +185,16 @@ export function DraftFields({
         rows={2}
         placeholder="💡 Что стоит знать — необязательно"
         className="w-full resize-y rounded-xl border border-amber-300/60 bg-amber-400/10 px-3 py-2 text-sm text-content outline-none transition placeholder:text-faint focus:border-amber-400"
+      />
+
+      {/* Описание для игр: ученику не показывается, по нему его
+          спрашивают. Поэтому оно и стоит отдельно от подсказки. */}
+      <textarea
+        value={draft.description}
+        onChange={(e) => set({ description: e.target.value })}
+        rows={2}
+        placeholder={descriptionPlaceholder}
+        className="w-full resize-y rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
       />
 
       <div className="flex flex-col gap-2">
@@ -562,6 +584,9 @@ export function PhraseEditor({
         transcription: string | null;
         translation: string | null;
         note: string | null;
+        description: string | null;
+        /** Картинка для игр: её же можно заменить прямо из этого окна. */
+        gameImageUrl: string | null;
         examples: Example[];
       }
     | null;
@@ -579,6 +604,7 @@ export function PhraseEditor({
           transcription: phrase.transcription ?? "",
           translation: phrase.translation ?? "",
           note: phrase.note ?? "",
+          description: phrase.description ?? "",
           examples: phrase.examples.map((example) => ({ ...example })),
         }
       : null,
@@ -586,8 +612,29 @@ export function PhraseEditor({
   const [showIcons, setShowIcons] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
+  /* Картинка для игр меняется прямо отсюда: ходить за ней в отдельную
+     панель ради одного слова — лишний шаг. */
+  const [gameImage, setGameImage] = useState(phrase?.gameImageUrl ?? null);
+  const picker = useRef<HTMLInputElement>(null);
 
   if (!phrase || !draft) return null;
+
+  function uploadGameImage(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    startSave(async () => {
+      const form = new FormData();
+      form.append("phraseId", phrase!.id);
+      form.append("image", file);
+      const result = await uploadPhraseImageAction(form);
+      if (result.error || result.reason) {
+        setError(result.error ?? "Не удалось сохранить картинку");
+        return;
+      }
+      const fresh = await pickedImageAction(phrase!.id);
+      setGameImage(fresh);
+    });
+  }
 
   function save() {
     setError(null);
@@ -663,6 +710,52 @@ export function PhraseEditor({
             />
           </div>
         )}
+
+        {/* Картинка для игр. Ученик её видит только в игре — здесь она
+            для того, чтобы учитель понимал, что подобрано. */}
+        <div className="flex items-center gap-3 rounded-xl bg-surface-2 p-2.5">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => picker.current?.click()}
+            title="Загрузить картинку с компьютера"
+            className="relative h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-surface ring-1 ring-line transition hover:ring-accent disabled:opacity-50"
+          >
+            {gameImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={gameImage} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-[10px] text-faint">
+                нет картинки
+              </span>
+            )}
+          </button>
+
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-bold uppercase tracking-wide text-faint">
+              Картинка для игр
+            </span>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => picker.current?.click()}
+              className="mt-0.5 text-[13px] font-semibold text-accent transition hover:opacity-80 disabled:opacity-50"
+            >
+              {saving ? "Загружаю…" : "Загрузить с компьютера"}
+            </button>
+          </span>
+
+          <input
+            ref={picker}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+            onChange={(e) => {
+              uploadGameImage(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </div>
 
         {error && <p className="text-sm text-rose-500">{error}</p>}
 

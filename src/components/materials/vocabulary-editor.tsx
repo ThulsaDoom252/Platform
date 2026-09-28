@@ -54,6 +54,7 @@ function fromStored(phrase: MaterialPhrase): EditableItem {
     key: phrase.id,
     kind: phrase.kind === "NOTE" ? "NOTE" : "PHRASE",
     imageUrl: phrase.imageUrl,
+    description: phrase.description ?? "",
     section: phrase.section ?? "",
     icon: phrase.icon ?? (phrase.kind === "NOTE" ? "💡" : "💬"),
     phrase: phrase.phrase,
@@ -87,6 +88,10 @@ function toPreview(item: EditableItem): MaterialPhrase {
     id: item.key,
     icon: clean.icon,
     imageUrl: item.imageUrl,
+    description: clean.description ?? null,
+    // В предпросмотре игровой картинки нет: она живёт отдельно и
+    // подбирается в своей панели.
+    gameImageUrl: null,
     phrase: clean.phrase,
     transcription: clean.transcription,
     transcriptionUs: null,

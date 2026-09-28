@@ -60,8 +60,8 @@ export type MaterialPhrase = {
    * Ученику не показываются: по ним его спрашивают. Учитель может
    * включить их тумблером, чтобы видеть, что подобрано.
    */
-  description?: string | null;
-  gameImageUrl?: string | null;
+  description: string | null;
+  gameImageUrl: string | null;
   phrase: string;
   transcription: string | null;
   /** Американский и британский варианты; у старых записей их нет. */
