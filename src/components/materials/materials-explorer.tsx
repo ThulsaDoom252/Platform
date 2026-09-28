@@ -15,6 +15,7 @@ import {
   DEFAULT_SORT,
   MAX_PRESETS,
   captureOrder,
+  siblingsOf,
   sortInsideRoots,
   type SortMode,
   type TreePreset,
@@ -589,11 +590,30 @@ export function MaterialsExplorer({
     });
   }
 
+  /**
+   * Перестановка перетаскиванием.
+   *
+   * Работает при любой включённой сортировке. Вместе с переносом уходит
+   * порядок соседей, каким он был на экране: иначе «после вот этого»
+   * означало бы место в хранимом порядке, а он при сортировке другой.
+   *
+   * После этого вид переключается на свой порядок — учитель сложил
+   * расстановку руками и должен её увидеть. Любая сортировка из меню
+   * снова разложит всё по своему правилу, а расстановку можно сохранить.
+   */
   function performReorder(nodeId: string, targetId: string, where: "before" | "after") {
     finishDrag();
+    const seen = siblingsOf(sortedTree, targetId);
+
     startMove(async () => {
-      const res = await reorderNodeAction(nodeId, targetId, where);
-      if (res.error) setMoveError(res.error);
+      const res = await reorderNodeAction(nodeId, targetId, where, seen);
+      if (res.error) {
+        setMoveError(res.error);
+        return;
+      }
+      if (sortState.mode !== "manual" || sortState.presetId) {
+        setSortState({ ...sortState, mode: "manual", presetId: null });
+      }
     });
   }
 

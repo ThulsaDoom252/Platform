@@ -158,3 +158,32 @@ export function captureOrder(
   walk(nodes, true);
   return into;
 }
+
+/**
+ * Соседи узла в том порядке, в каком они сейчас на экране.
+ *
+ * Нужно перетаскиванию при включённой сортировке. Учитель кладёт файл
+ * «после вот этого», имея в виду то, что видит; а в базе порядок другой,
+ * и та же команда означала бы другое место. Поэтому вместе с переносом
+ * уходит и увиденный порядок уровня — им и переписывается хранимый.
+ *
+ * Корневые разделы не отдаём: их расстановка не меняется.
+ */
+export function siblingsOf(nodes: SortableNode[], id: string): string[] {
+  let found: string[] | null = null;
+
+  const walk = (list: SortableNode[], top: boolean) => {
+    if (found) return;
+    if (!top && list.some((node) => node.id === id)) {
+      found = list.map((node) => node.id);
+      return;
+    }
+    for (const node of list) {
+      walk(node.children, false);
+      if (found) return;
+    }
+  };
+
+  walk(nodes, true);
+  return found ?? [];
+}

@@ -3008,6 +3008,15 @@ export async function reorderNodeAction(
   nodeId: string,
   targetId: string,
   position: "before" | "after",
+  /**
+   * Порядок соседей, каким учитель видел его на экране.
+   *
+   * При включённой сортировке хранимый порядок и показанный расходятся,
+   * и «после вот этого» означало бы другое место. Переданный список
+   * становится новым хранимым порядком уровня — так на экране остаётся
+   * ровно то, что учитель сложил руками.
+   */
+  seenOrder?: string[],
 ): Promise<MoveState> {
   await requireTeacher();
 
@@ -3037,15 +3046,27 @@ export async function reorderNodeAction(
     if (cur === nodeId) return { error: "Нельзя вложить папку в собственную подпапку" };
   }
 
-  const siblings = rows
-    .filter(
-      (r) =>
-        r.id !== nodeId &&
-        (r.parentId ?? null) === newParent &&
-        r.scope === node.scope &&
-        (r.ownerId ?? null) === (node.ownerId ?? null),
-    )
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  const family = rows.filter(
+    (r) =>
+      r.id !== nodeId &&
+      (r.parentId ?? null) === newParent &&
+      r.scope === node.scope &&
+      (r.ownerId ?? null) === (node.ownerId ?? null),
+  );
+
+  // Увиденный порядок сильнее хранимого; чего в нём нет — встаёт следом,
+  // сохранив прежнюю расстановку.
+  const seen = (seenOrder ?? []).filter((id) => id !== nodeId);
+  const place = new Map(seen.map((id, i) => [id, i]));
+
+  const siblings = family.sort((a, b) => {
+    const ai = place.get(a.id);
+    const bi = place.get(b.id);
+    if (ai !== undefined && bi !== undefined) return ai - bi;
+    if (ai !== undefined) return -1;
+    if (bi !== undefined) return 1;
+    return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+  });
 
   const at = siblings.findIndex((r) => r.id === targetId);
   if (at < 0) return { error: "Элемент не найден" };

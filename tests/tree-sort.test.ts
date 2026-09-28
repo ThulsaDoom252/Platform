@@ -4,6 +4,7 @@ import {
   sortTree,
   sortInsideRoots,
   captureOrder,
+  siblingsOf,
   DEFAULT_SORT,
   type SortableNode,
 } from "../src/lib/tree-sort";
@@ -126,4 +127,45 @@ test("расстановка не запоминает верхний урове
     assert.ok(!(root.id in order), `${root.name} попал в расстановку`);
   }
   assert.ok("Tenses" in order, "вложенные узлы должны сохраняться");
+});
+
+test("соседи берутся в том порядке, что на экране", () => {
+  /*
+   * Ради этого порядок и передаётся вместе с переносом: учитель кладёт
+   * файл «после вот этого», глядя на отсортированный список, а в базе
+   * порядок другой и та же команда означала бы другое место.
+   */
+  const tree = [
+    node("root", "FOLDER", "2026-01-01", [
+      node("b", "FILE", "2026-01-01"),
+      node("a", "FILE", "2026-01-02"),
+      node("c", "FILE", "2026-01-03"),
+    ]),
+  ];
+
+  assert.deepEqual(siblingsOf(tree, "a"), ["b", "a", "c"]);
+  assert.deepEqual(siblingsOf(tree, "c"), ["b", "a", "c"]);
+});
+
+test("у корневого раздела соседей не спрашиваем", () => {
+  // Расстановка верхнего уровня не меняется — там и переставлять нечего.
+  const tree = [node("root", "FOLDER", "2026-01-01", [node("a", "FILE", "2026-01-01")])];
+  assert.deepEqual(siblingsOf(tree, "root"), []);
+});
+
+test("соседи находятся на любой глубине", () => {
+  const tree = [
+    node("root", "FOLDER", "2026-01-01", [
+      node("mid", "FOLDER", "2026-01-01", [
+        node("x", "FILE", "2026-01-01"),
+        node("y", "FILE", "2026-01-02"),
+      ]),
+    ]),
+  ];
+  assert.deepEqual(siblingsOf(tree, "y"), ["x", "y"]);
+});
+
+test("неизвестный узел даёт пустой список", () => {
+  const tree = [node("root", "FOLDER", "2026-01-01", [node("a", "FILE", "2026-01-01")])];
+  assert.deepEqual(siblingsOf(tree, "нет-такого"), []);
 });
