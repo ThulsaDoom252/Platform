@@ -581,6 +581,14 @@ export const tongueTwisters = pgTable("tongue_twisters", {
   imageUrl: text("image_url").notNull(),
   /** Ручной порядок в пуле: перетаскивание важнее даты загрузки. */
   sortOrder: integer("sort_order").notNull().default(0),
+  /**
+   * Отпечаток содержимого.
+   *
+   * По нему видно, что тот же файл уже в пуле. Имя и дата для этого не
+   * годятся: один и тот же снимок приходит из разных папок под разными
+   * именами, и пул незаметно набивается повторами.
+   */
+  contentHash: text("content_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -9,6 +9,7 @@
  * сколько раз и когда в последний.
  */
 import { revalidatePath } from "next/cache";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
@@ -25,7 +26,13 @@ export type Twister = {
   createdAt: string;
 };
 
-export type TwisterState = { ok?: boolean; error?: string; added?: number };
+export type TwisterState = {
+  ok?: boolean;
+  error?: string;
+  added?: number;
+  /** Сколько файлов уже были в пуле — их не добавляли повторно. */
+  skipped?: number;
+};
 
 /** Сколько раз эта скороговорка уже была у ученика и когда в последний. */
 export type TwisterSeen = { times: number; lastAt: string | null };
@@ -77,6 +84,10 @@ export async function listTwistersAction(): Promise<Twister[]> {
 /**
  * Загрузка картинок. Сразу нескольких: скороговорки снимают пачкой,
  * и по одной их добавлять — мучение.
+ *
+ * Тот же файл второй раз в пул не попадает. Проверяем по содержимому,
+ * а не по имени: один и тот же снимок приходит из разных папок под
+ * разными именами, и пул незаметно набивается повторами.
  */
 export async function uploadTwistersAction(formData: FormData): Promise<TwisterState> {
   await requireTeacher();
@@ -93,14 +104,29 @@ export async function uploadTwistersAction(formData: FormData): Promise<TwisterS
 
   let order = Number(last);
   let added = 0;
+  let skipped = 0;
 
   for (const file of files) {
     const ext = MIME_EXT[file.type];
     if (!ext) return { error: "Поддерживаются PNG, JPEG, WebP и GIF" };
     if (file.size > MAX_IMAGE_BYTES) return { error: "Картинка больше 8 МБ" };
 
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const hash = createHash("sha256").update(bytes).digest("hex");
+
+    const [twin] = await db
+      .select({ id: tongueTwisters.id })
+      .from(tongueTwisters)
+      .where(eq(tongueTwisters.contentHash, hash))
+      .limit(1);
+
+    if (twin) {
+      skipped += 1;
+      continue;
+    }
+
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    await fs.writeFile(path.join(dir, fileName), Buffer.from(await file.arrayBuffer()));
+    await fs.writeFile(path.join(dir, fileName), bytes);
 
     order += 1;
     added += 1;
@@ -109,11 +135,12 @@ export async function uploadTwistersAction(formData: FormData): Promise<TwisterS
       title: null,
       imageUrl: `/uploads/twisters/${fileName}`,
       sortOrder: order,
+      contentHash: hash,
     });
   }
 
   revalidatePath("/teacher/tongue-twisters");
-  return { ok: true, added };
+  return { ok: true, added, skipped };
 }
 
 /** Название — необязательное, пустое стирает прежнее. */

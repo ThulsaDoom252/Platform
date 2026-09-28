@@ -40,6 +40,7 @@ import {
   IconTrash,
   IconUser,
   IconEye,
+  IconX,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,7 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
   const [view, setView] = useLocalJson<TwisterView>("lingora-twister-view", "grid");
   const [sort, setSort] = useLocalJson<TwisterSort>("lingora-twister-sort", "manual");
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<Twister | null>(null);
   const [watching, setWatching] = useState<Twister | null>(null);
   const [busy, startBusy] = useTransition();
@@ -63,6 +65,14 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
   // Выделение для разбора завала: по одной карточке двадцать шесть
   // штук не убрать, а пачка выбирается мимо цели за один промах.
   const [selection, setSelection] = useState<string[]>([]);
+  /*
+   * Выбранные файлы сначала показываются, и только потом уходят.
+   *
+   * Диалог открывается в последней папке, и одним Ctrl+A туда улетала
+   * вся папка разом — без единого вопроса. Теперь видно, что именно
+   * попадёт в пул, и лишнее убирается до загрузки.
+   */
+  const [staged, setStaged] = useState<{ file: File; preview: string }[]>([]);
 
   // Порядок правится только руками; в остальных режимах перетаскивать
   // нечего — переставленное всё равно не сохранилось бы.
@@ -71,17 +81,46 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
 
   const reload = () => startBusy(async () => setPool(await listTwistersAction()));
 
+  /** Показать выбранное перед отправкой. */
+  function stage(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    setNote(null);
+    setStaged(
+      Array.from(files).map((file) => ({ file, preview: URL.createObjectURL(file) })),
+    );
+  }
+
+  function dropStaged(at: number) {
+    setStaged((prev) => {
+      URL.revokeObjectURL(prev[at].preview);
+      return prev.filter((_, i) => i !== at);
+    });
+  }
+
+  function clearStaged() {
+    setStaged((prev) => {
+      for (const item of prev) URL.revokeObjectURL(item.preview);
+      return [];
+    });
+  }
+
   /*
    * Отправляем по одной картинке за вызов. Выбрать можно сколько угодно,
    * но десяток снимков разом не влезает в ограничение на тело запроса, и
    * вся пачка отваливалась бы целиком из-за одного лишнего мегабайта.
    */
-  function upload(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  function upload() {
+    if (staged.length === 0) return;
+    const files = staged.map((item) => item.file);
 
     setError(null);
+    setNote(null);
     startBusy(async () => {
-      for (const file of Array.from(files)) {
+      let added = 0;
+      let skipped = 0;
+
+      for (const file of files) {
         const form = new FormData();
         form.append("images", file);
         const result = await uploadTwistersAction(form);
@@ -89,7 +128,21 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
           setError(result.error);
           break;
         }
+        added += result.added ?? 0;
+        skipped += result.skipped ?? 0;
       }
+
+      clearStaged();
+      setNote(
+        added === 0
+          ? t.twisters.nothingNew
+          : [
+              fmt(t.twisters.addedCount, { n: added }),
+              skipped > 0 ? fmt(t.twisters.skippedCount, { n: skipped }) : "",
+            ]
+              .filter(Boolean)
+              .join(" · "),
+      );
       setPool(await listTwistersAction());
     });
   }
@@ -182,7 +235,7 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
           multiple
           hidden
           onChange={(e) => {
-            upload(e.target.files);
+            stage(e.target.files);
             e.target.value = "";
           }}
         />
@@ -230,6 +283,61 @@ export function TwisterPool({ initial }: { initial: Twister[] }) {
         </div>
       )}
 
+      {staged.length > 0 && (
+        <div className="rounded-2xl bg-surface p-3 ring-2 ring-accent">
+          <p className="text-sm font-bold text-content">{t.twisters.confirmTitle}</p>
+          <p className="text-[12px] text-faint">{t.twisters.confirmHint}</p>
+
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {staged.map((item, i) => (
+              <span
+                key={item.preview}
+                className="group relative h-20 w-28 shrink-0 overflow-hidden rounded-xl bg-surface-2 ring-1 ring-line"
+              >
+                {/* Своё изображение из памяти браузера: next/image здесь
+                    ни к чему, файл ещё нигде не лежит. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.preview}
+                  alt=""
+                  className="h-full w-full object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={() => dropStaged(i)}
+                  aria-label={t.common.delete}
+                  title={t.common.delete}
+                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-rose-500"
+                >
+                  <IconX className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={upload}
+              className="h-9 rounded-xl bg-accent px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {busy
+                ? t.twisters.uploading
+                : fmt(t.twisters.addCount, { n: staged.length })}
+            </button>
+            <button
+              type="button"
+              onClick={clearStaged}
+              className="h-9 rounded-xl px-3 text-sm font-semibold text-muted transition hover:bg-surface-2"
+            >
+              {t.common.cancel}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {note && <p className="text-[13px] font-semibold text-accent">{note}</p>}
       {error && <p className="text-sm text-rose-500">{error}</p>}
       {manual && pool.length > 1 && (
         <p className="text-[12px] text-faint">{t.twisters.dragHint}</p>
