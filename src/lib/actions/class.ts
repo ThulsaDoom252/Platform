@@ -9,7 +9,7 @@
  * человек в уроке.
  */
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, classMessages, lessons, lessonPackages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
@@ -148,25 +148,29 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
   /*
    * Ближайшее назначенное занятие каждого.
    *
-   * Одним запросом на всех: список открывается на каждом такте опроса,
-   * и ходить в базу за каждым учеником отдельно здесь нельзя.
+   * Время берём обычной выборкой столбца, а не через min() в запросе:
+   * сырое выражение возвращает строку без пояса, и она разъезжается с
+   * тем, что показывает расписание, ровно на местное смещение. Ближайшее
+   * занятие выбираем здесь — сортировка уже сделала всю работу.
+   *
+   * Одним запросом на всех: список обновляется на каждом такте опроса,
+   * и ходить в базу за каждым учеником отдельно тут нельзя.
    */
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+
   const upcoming = await db
-    .select({
-      studentId: lessons.studentId,
-      startTime: sql<Date>`min(${lessons.startTime})`,
-    })
+    .select({ studentId: lessons.studentId, startTime: lessons.startTime })
     .from(lessons)
-    .where(
-      and(
-        eq(lessons.status, "SCHEDULED"),
-        sql`${lessons.startTime} >= date_trunc('day', now())`,
-      ),
-    )
-    .groupBy(lessons.studentId);
-  const nextOf = new Map(
-    upcoming.map((r) => [r.studentId, new Date(r.startTime).toISOString()]),
-  );
+    .where(and(eq(lessons.status, "SCHEDULED"), gte(lessons.startTime, dayStart)))
+    .orderBy(asc(lessons.startTime));
+
+  const nextOf = new Map<string, string>();
+  for (const row of upcoming) {
+    if (!nextOf.has(row.studentId)) {
+      nextOf.set(row.studentId, row.startTime.toISOString());
+    }
+  }
 
   // У общего пакета остаток один на всех участников.
   const packages = await db.select().from(lessonPackages);
