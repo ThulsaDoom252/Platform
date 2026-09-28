@@ -7,6 +7,11 @@ import { cn } from "@/lib/utils";
 import { useLocalNumber } from "@/lib/use-local-number";
 import { useLocalJson } from "@/lib/use-local-json";
 import {
+  descendantIds,
+  selectRangeDeep,
+  toggleWithChildren,
+} from "@/lib/tree-selection";
+import {
   DEFAULT_SORT,
   MAX_PRESETS,
   captureOrder,
@@ -423,6 +428,24 @@ export function MaterialsExplorer({
     [rawSelection, byId],
   );
 
+  /**
+   * Связи всего дерева плоским списком.
+   *
+   * Дерево хранится вложенным, а выбор считает по «кто чей родитель» —
+   * обходим один раз и дальше работаем с плоским.
+   */
+  const links = useMemo(() => {
+    const out: { id: string; parentId: string | null }[] = [];
+    const walk = (list: MaterialNode[], parentId: string | null) => {
+      for (const node of list) {
+        out.push({ id: node.id, parentId });
+        if (node.children.length) walk(node.children, node.id);
+      }
+    };
+    walk(tree, null);
+    return out;
+  }, [tree]);
+
   useEffect(() => {
     if (!menu) return;
     const onDown = (e: MouseEvent) => {
@@ -649,14 +672,29 @@ export function MaterialsExplorer({
 
   // ------------------------------------------------ групповой выбор
 
+  /** Обычное нажатие: папка берётся вместе со всем, что внутри. */
   function toggleSelect(id: string) {
     setAnchorId(id);
-    setSelection((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelection((prev) => toggleWithChildren(prev, links, id));
+  }
+
+  /**
+   * Нажатие по кружку.
+   *
+   * С Ctrl добирается всё между прошлым нажатием и нынешним, без него —
+   * один узел со своим содержимым. Точка отсчёта не сдвигается при
+   * протяжке: иначе следующий Ctrl мерил бы уже от другого места.
+   */
+  function pickNode(e: React.MouseEvent, id: string, order: string[]) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      setSelection((prev) => selectRangeDeep(prev, links, order, anchorId, id));
+      return;
+    }
+
+    toggleSelect(id);
   }
 
   /**
@@ -665,14 +703,7 @@ export function MaterialsExplorer({
    * панель расположены по-разному, диапазон считается внутри своего.
    */
   function selectRange(order: string[], toId: string) {
-    const a = anchorId ? order.indexOf(anchorId) : -1;
-    const b = order.indexOf(toId);
-    if (a < 0 || b < 0) {
-      toggleSelect(toId);
-      return;
-    }
-    const [lo, hi] = a <= b ? [a, b] : [b, a];
-    setSelection(new Set(order.slice(lo, hi + 1)));
+    setSelection((prev) => selectRangeDeep(prev, links, order, anchorId, toId));
   }
 
   /** Ctrl/Shift+клик выделяет диапазон, обычный клик открывает элемент. */
@@ -744,21 +775,40 @@ export function MaterialsExplorer({
     </span>
   );
 
-  const selectBox = (n: MaterialNode) =>
-    editable ? (
-      <input
-        type="checkbox"
-        checked={selection.has(n.id)}
-        onChange={() => toggleSelect(n.id)}
-        onClick={(e) => e.stopPropagation()}
+  /**
+   * Кружок выбора.
+   *
+   * У папки он закрашен наполовину, когда внутри отмечено не всё: так
+   * видно, что ветка тронута, хотя сама папка не выбрана.
+   */
+  const selectBox = (n: MaterialNode, order: string[] = treeOrder) => {
+    if (!editable) return null;
+
+    const on = selection.has(n.id);
+    const inside = n.type === "FOLDER" ? descendantIds(links, n.id) : [];
+    const partly = !on && inside.some((id) => selection.has(id));
+
+    return (
+      <button
+        type="button"
+        onClick={(e) => pickNode(e, n.id, order)}
         onDoubleClick={(e) => e.stopPropagation()}
-        title="Выбрать"
+        aria-pressed={on}
+        title="Выбрать · Ctrl — до этого места"
         className={cn(
-          "h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent)] transition",
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition",
+          on
+            ? "border-accent bg-accent"
+            : partly
+              ? "border-accent bg-accent/30"
+              : "border-faint hover:border-accent",
           selection.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
-      />
-    ) : null;
+      >
+        {on && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+      </button>
+    );
+  };
 
   const selectedNodes = [...selection]
     .map((id) => byId.get(id))
@@ -2411,16 +2461,9 @@ export function MaterialsExplorer({
               <div key={n.id} className="material-grid-item group relative">
                 {dropLine(n.id, "x")}
                 {editable && (
-                  <input
-                    type="checkbox"
-                    checked={selection.has(n.id)}
-                    onChange={() => toggleSelect(n.id)}
-                    title="Выбрать"
-                    className={cn(
-                      "absolute right-2.5 top-2.5 z-10 h-4 w-4 cursor-pointer accent-[var(--accent)] transition",
-                      selection.size > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                    )}
-                  />
+                  <span className="absolute right-2.5 top-2.5 z-10">
+                    {selectBox(n, items.map((x) => x.id))}
+                  </span>
                 )}
               <button
                 type="button"
