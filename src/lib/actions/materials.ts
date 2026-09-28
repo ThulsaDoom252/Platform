@@ -29,6 +29,7 @@ import {
 } from "@/lib/materials";
 import { getSession } from "@/lib/session";
 import { storeRemoteImage } from "@/lib/image-store";
+import { carryImages, type CarryImage } from "@/lib/phrase-carry";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { parseRuleText } from "@/lib/rule-parser";
 import { transcribe } from "@/lib/transcription";
@@ -2419,28 +2420,37 @@ export async function reformatMaterialPageAction(nodeId: string): Promise<BulkSt
   }
 
   const current = await loadPhrases(id);
+  const kept = await takeImagesOff(id);
 
   // Словник заменяется целиком под снимок, как и правило: «стало меньше»
   // чаще означает правку формата, а не поломку.
   await db.transaction(async (tx) => {
     await snapshotContent(tx, id, node.pageKind);
     await tx.delete(materialPhrases).where(eq(materialPhrases.nodeId, id));
-    await tx.insert(materialPhrases).values(
-      parsed.phrases.map((phrase, index) => ({
-        nodeId: id,
-        sortOrder: index + 1,
-        icon: phrase.icon,
-        phrase: phrase.phrase,
-        transcription: phrase.transcription,
-        transcriptionUs: phrase.transcriptionUs ?? null,
-        transcriptionUk: phrase.transcriptionUk ?? null,
-        translation: phrase.translation,
-        note: phrase.note ?? null,
-        section: phrase.section,
-        kind: phrase.kind,
-        examples: phrase.examples,
-      })),
-    );
+    const saved = await tx
+      .insert(materialPhrases)
+      .values(
+        parsed.phrases.map((phrase, index) => ({
+          nodeId: id,
+          sortOrder: index + 1,
+          icon: phrase.icon,
+          phrase: phrase.phrase,
+          transcription: phrase.transcription,
+          transcriptionUs: phrase.transcriptionUs ?? null,
+          transcriptionUk: phrase.transcriptionUk ?? null,
+          translation: phrase.translation,
+          note: phrase.note ?? null,
+          description: phrase.description ?? null,
+          section: phrase.section,
+          kind: phrase.kind,
+          examples: phrase.examples,
+        })),
+      )
+      .returning({ id: materialPhrases.id, phrase: materialPhrases.phrase });
+
+    // Картинки, подобранные руками, переезжают на те же слова.
+    const carried = carryImages(kept.phrases, kept.images, saved);
+    if (carried.length > 0) await tx.insert(phraseImages).values(carried);
   });
 
   const words = parsed.phrases.filter((phrase) => phrase.kind === "PHRASE").length;
@@ -3285,6 +3295,36 @@ export async function updateVocabularyCoverAction(
  * Разобрать вставленный текст и заменить им содержимое страницы.
  * Старые фразы страницы удаляются — это осознанная замена, а не дополнение.
  */
+/**
+ * Снимает картинки страницы перед тем, как её фразы будут заменены.
+ *
+ * Подбирал их учитель руками, а наполнение и переформатирование стирают
+ * фразы вместе с привязанными картинками. Возвращённое кладётся обратно
+ * функцией carryImages — по самому слову, а не по идентификатору.
+ */
+async function takeImagesOff(nodeId: string) {
+  const phrases = await db
+    .select({ id: materialPhrases.id, phrase: materialPhrases.phrase })
+    .from(materialPhrases)
+    .where(eq(materialPhrases.nodeId, nodeId));
+
+  if (phrases.length === 0) return { phrases, images: [] as CarryImage[] };
+
+  const images = await db
+    .select({
+      phraseId: phraseImages.phraseId,
+      url: phraseImages.url,
+      thumbUrl: phraseImages.thumbUrl,
+      origin: phraseImages.origin,
+      sortOrder: phraseImages.sortOrder,
+      picked: phraseImages.picked,
+    })
+    .from(phraseImages)
+    .where(inArray(phraseImages.phraseId, phrases.map((p) => p.id)));
+
+  return { phrases, images };
+}
+
 export async function savePageContentAction(
   _prev: ParseState,
   formData: FormData,
@@ -3312,6 +3352,9 @@ export async function savePageContentAction(
     coverImageUrl = stored.imageUrl;
   }
 
+  // Картинки снимаем до замены: фразы сейчас исчезнут вместе с ними.
+  const kept = await takeImagesOff(nodeId);
+
   await db.delete(materialPhrases).where(eq(materialPhrases.nodeId, nodeId));
 
   const saved = await db
@@ -3332,7 +3375,11 @@ export async function savePageContentAction(
         examples: p.examples,
       })),
     )
-    .returning({ id: materialPhrases.id });
+    .returning({ id: materialPhrases.id, phrase: materialPhrases.phrase });
+
+  // Возвращаем подобранное руками тем словам, что остались на странице.
+  const carried = carryImages(kept.phrases, kept.images, saved);
+  if (carried.length > 0) await db.insert(phraseImages).values(carried);
 
   /*
    * Картинки из исходника забираем к себе.
