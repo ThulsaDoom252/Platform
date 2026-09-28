@@ -5,6 +5,10 @@
  * следом завтрашние и так до конца недели. Так экран отвечает на вопрос
  * «с кем я сейчас работаю», а не «кто у меня вообще есть».
  *
+ * Группируются именно занятия, а не ученики: у одного человека за
+ * неделю их несколько, и он должен стоять в каждом своём дне. Список
+ * «по одному ближайшему уроку» показывал бы неделю в два дня.
+ *
  * Считает только порядок, поэтому живёт отдельно от разметки и
  * проверяется тестами: день и часовой пояс — то место, где ошибка
  * заметна лишь на живом расписании.
@@ -18,15 +22,18 @@ export type Orderable = {
   name: string;
   /** Остаток уроков — по нему сортируют, когда решают, кому напомнить. */
   balance: number;
-  /** Ближайшее занятие. Пусто — уроков впереди нет. */
-  nextLessonAt: string | null;
+  /** Все назначенные занятия на эту неделю, от раннего к позднему. */
+  lessons: string[];
 };
 
-/** Группа списка: день и те, у кого в этот день занятие. */
+/** Кружок в списке: ученик и занятие, из-за которого он здесь. */
+export type ClassEntry<T> = { person: T; at: string | null };
+
+/** Группа списка: день и занятия этого дня. */
 export type ClassGroup<T> = {
   /** Начало дня в ISO. Пусто — «без занятий на этой неделе». */
   day: string | null;
-  people: T[];
+  entries: ClassEntry<T>[];
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,8 +51,13 @@ export function daysLeftInWeek(now: Date): number {
   return 7 - weekday;
 }
 
+/** Ближайшее занятие — по нему сортируют плоские списки. */
+export function nextLessonOf(person: Orderable): string | null {
+  return person.lessons[0] ?? null;
+}
+
 /**
- * Разложить учеников по дням недели.
+ * Разложить занятия по дням недели.
  *
  * Дни без занятий пропускаются — пустая строка «среда» на экране только
  * мешает. Те, у кого на этой неделе занятий нет, уходят в последнюю
@@ -59,39 +71,42 @@ export function groupByDay<T extends Orderable>(
   const days = daysLeftInWeek(now);
   const weekEnd = new Date(today.getTime() + days * DAY_MS);
 
+  // Раскладываем все занятия недели разом: так ученик попадает в каждый
+  // свой день, а не только в ближайший.
+  const occurrences = people.flatMap((person) =>
+    person.lessons
+      .map((at) => ({ person, at, time: new Date(at).getTime() }))
+      .filter(
+        (row) => row.time >= today.getTime() && row.time < weekEnd.getTime(),
+      ),
+  );
+
   const groups: ClassGroup<T>[] = [];
-  const placed = new Set<string>();
+  const busy = new Set<string>();
 
   for (let i = 0; i < days; i += 1) {
-    const from = new Date(today.getTime() + i * DAY_MS);
-    const to = new Date(from.getTime() + DAY_MS);
+    const from = today.getTime() + i * DAY_MS;
+    const to = from + DAY_MS;
 
-    const ofDay = people
-      .filter((person) => {
-        if (!person.nextLessonAt) return false;
-        const at = new Date(person.nextLessonAt).getTime();
-        return at >= from.getTime() && at < to.getTime();
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.nextLessonAt!).getTime() - new Date(b.nextLessonAt!).getTime(),
-      );
+    const ofDay = occurrences
+      .filter((row) => row.time >= from && row.time < to)
+      .sort((a, b) => a.time - b.time);
 
     if (ofDay.length === 0) continue;
 
-    for (const person of ofDay) placed.add(person.id);
-    groups.push({ day: from.toISOString(), people: ofDay });
+    for (const row of ofDay) busy.add(row.person.id);
+    groups.push({
+      day: new Date(from).toISOString(),
+      entries: ofDay.map((row) => ({ person: row.person, at: row.at })),
+    });
   }
 
-  // Остальные — и те, у кого урок позже этой недели, и те, у кого его нет.
-  const rest = people.filter((person) => {
-    if (placed.has(person.id)) return false;
-    if (!person.nextLessonAt) return true;
-    return new Date(person.nextLessonAt).getTime() >= weekEnd.getTime();
-  });
-
+  const rest = people.filter((person) => !busy.has(person.id));
   if (rest.length > 0) {
-    groups.push({ day: null, people: sortBy(rest, "name", false) });
+    groups.push({
+      day: null,
+      entries: sortBy(rest, "name", false).map((person) => ({ person, at: null })),
+    });
   }
 
   return groups;
@@ -112,13 +127,13 @@ export function sortBy<T extends Orderable>(
       return a.balance - b.balance || collator.compare(a.name, b.name);
     }
     if (key === "lessons") {
+      const first = nextLessonOf(a);
+      const second = nextLessonOf(b);
       // Без урока — в конец при любом направлении: «скоро» их не касается.
-      if (!a.nextLessonAt && !b.nextLessonAt) return collator.compare(a.name, b.name);
-      if (!a.nextLessonAt) return 1;
-      if (!b.nextLessonAt) return -1;
-      return (
-        new Date(a.nextLessonAt).getTime() - new Date(b.nextLessonAt).getTime()
-      );
+      if (!first && !second) return collator.compare(a.name, b.name);
+      if (!first) return 1;
+      if (!second) return -1;
+      return new Date(first).getTime() - new Date(second).getTime();
     }
     return collator.compare(a.name, b.name);
   };
@@ -126,7 +141,7 @@ export function sortBy<T extends Orderable>(
   return people.slice().sort((a, b) => {
     const by = compare(a, b);
     // Безурочных не переворачиваем: иначе они возглавили бы список.
-    if (key === "lessons" && (!a.nextLessonAt || !b.nextLessonAt)) return by;
+    if (key === "lessons" && (!nextLessonOf(a) || !nextLessonOf(b))) return by;
     return desc ? -by : by;
   });
 }
@@ -144,7 +159,17 @@ export function orderClassPeople<T extends Orderable>(
   now: Date = new Date(),
   locale?: string,
 ): ClassGroup<T>[] {
-  if (key !== "lessons") return [{ day: null, people: sortBy(people, key, desc, locale) }];
+  if (key !== "lessons") {
+    return [
+      {
+        day: null,
+        entries: sortBy(people, key, desc, locale).map((person) => ({
+          person,
+          at: null,
+        })),
+      },
+    ];
+  }
 
   const groups = groupByDay(people, now);
   return desc ? groups.slice().reverse() : groups;

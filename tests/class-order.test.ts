@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   daysLeftInWeek,
   groupByDay,
+  nextLessonOf,
   orderClassPeople,
   sortBy,
   type Orderable,
@@ -17,9 +18,13 @@ const at = (day: number, hour: number) =>
 const person = (
   id: string,
   name: string,
-  nextLessonAt: string | null,
+  lessons: string[],
   balance = 5,
-): Orderable => ({ id, name, balance, nextLessonAt });
+): Orderable => ({ id, name, balance, lessons });
+
+/** Имена в группе — с ними проверки читаются короче. */
+const names = <T extends Orderable>(group: { entries: { person: T }[] }) =>
+  group.entries.map((e) => e.person.name);
 
 test("до конца недели считаются оставшиеся дни, включая сегодня", () => {
   assert.equal(daysLeftInWeek(new Date(2026, 8, 28)), 7); // понедельник
@@ -27,24 +32,61 @@ test("до конца недели считаются оставшиеся дн�
   assert.equal(daysLeftInWeek(new Date(2026, 9, 4)), 1); // воскресенье
 });
 
-test("сначала сегодняшние, потом завтрашние", () => {
+test("ученик стоит в каждом своём дне, а не только в ближайшем", () => {
+  /*
+   * Из-за этого неделя и схлопывалась в два дня: брался один ближайший
+   * урок, и человек с занятиями в понедельник и среду попадал только в
+   * понедельник.
+   */
   const people = [
-    person("c", "Ksenia", at(29, 12)),
-    person("a", "Alla", at(28, 15)),
-    person("b", "Bogdan", at(28, 9)),
+    person("v", "Victoria", [at(28, 17), at(29, 17), at(30, 17)]),
+    person("k", "Ksenia", [at(28, 9)]),
   ];
 
   const groups = groupByDay(people, MONDAY);
 
-  assert.equal(groups.length, 2);
-  // Внутри дня — по времени урока, а не по имени.
-  assert.deepEqual(groups[0].people.map((p) => p.name), ["Bogdan", "Alla"]);
-  assert.deepEqual(groups[1].people.map((p) => p.name), ["Ksenia"]);
+  assert.equal(groups.length, 3);
+  assert.deepEqual(names(groups[0]), ["Ksenia", "Victoria"]);
+  assert.deepEqual(names(groups[1]), ["Victoria"]);
+  assert.deepEqual(names(groups[2]), ["Victoria"]);
+});
+
+test("вся неделя видна целиком", () => {
+  const people = [
+    person("a", "Alla", [at(28, 9), at(29, 9), at(30, 9), at(31, 9)]),
+    person("b", "Bogdan", [at(32, 9), at(33, 9), at(34, 9)]),
+  ];
+
+  const groups = groupByDay(people, MONDAY);
+
+  // Понедельник … воскресенье: семь дней, и ни один не потерян.
+  assert.equal(groups.filter((g) => g.day).length, 7);
+});
+
+test("в каждом дне показывается время именно этого занятия", () => {
+  const people = [person("v", "Victoria", [at(28, 17), at(29, 11)])];
+  const groups = groupByDay(people, MONDAY);
+
+  assert.equal(groups[0].entries[0].at, at(28, 17));
+  assert.equal(groups[1].entries[0].at, at(29, 11));
+});
+
+test("внутри дня — по времени урока, а не по имени", () => {
+  const groups = groupByDay(
+    [
+      person("c", "Ksenia", [at(28, 15)]),
+      person("b", "Bogdan", [at(28, 9)]),
+      person("a", "Alla", [at(28, 12)]),
+    ],
+    MONDAY,
+  );
+
+  assert.deepEqual(names(groups[0]), ["Bogdan", "Alla", "Ksenia"]);
 });
 
 test("дни без занятий в списке не появляются", () => {
   const groups = groupByDay(
-    [person("a", "Alla", at(28, 9)), person("b", "Bogdan", at(30, 9))],
+    [person("a", "Alla", [at(28, 9)]), person("b", "Bogdan", [at(30, 9)])],
     MONDAY,
   );
 
@@ -54,21 +96,33 @@ test("дни без занятий в списке не появляются", (
   assert.equal(new Date(groups[1].day!).getDate(), 30);
 });
 
+test("снятый с расписания уходит в «без занятий»", () => {
+  const withLesson = [person("a", "Alla", [at(28, 9)])];
+  assert.equal(groupByDay(withLesson, MONDAY)[0].day !== null, true);
+
+  // Тот же ученик после отмены урока: остаётся на экране, но в конце.
+  const without = [person("a", "Alla", [])];
+  const groups = groupByDay(without, MONDAY);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].day, null);
+  assert.deepEqual(names(groups[0]), ["Alla"]);
+});
+
 test("без уроков на этой неделе — в последнюю группу, по имени", () => {
   const groups = groupByDay(
     [
-      person("z", "Zoryana", null),
-      person("a", "Alla", at(28, 9)),
-      person("o", "Oksana", null),
+      person("z", "Zoryana", []),
+      person("a", "Alla", [at(28, 9)]),
+      person("o", "Oksana", []),
       // Урок есть, но уже на следующей неделе.
-      person("n", "Nazar", at(35, 9)),
+      person("n", "Nazar", [at(35, 9)]),
     ],
     MONDAY,
   );
 
   const last = groups.at(-1)!;
   assert.equal(last.day, null);
-  assert.deepEqual(last.people.map((p) => p.name), ["Nazar", "Oksana", "Zoryana"]);
+  assert.deepEqual(names(last), ["Nazar", "Oksana", "Zoryana"]);
 });
 
 test("неделя обрывается воскресеньем", () => {
@@ -76,22 +130,33 @@ test("неделя обрывается воскресеньем", () => {
   const friday = new Date(2026, 9, 2, 10, 0, 0);
   const groups = groupByDay(
     [
-      person("a", "Alla", at(32, 9)), // 2 октября, пятница
-      person("s", "Sofia", at(34, 9)), // 4 октября, воскресенье
-      person("m", "Maria", at(35, 9)), // 5 октября, понедельник
+      person("a", "Alla", [at(32, 9)]), // 2 октября, пятница
+      person("s", "Sofia", [at(34, 9)]), // 4 октября, воскресенье
+      person("m", "Maria", [at(35, 9)]), // 5 октября, понедельник
     ],
     friday,
   );
 
   assert.equal(groups.filter((g) => g.day).length, 2);
-  assert.deepEqual(groups.at(-1)!.people.map((p) => p.name), ["Maria"]);
+  assert.deepEqual(names(groups.at(-1)!), ["Maria"]);
+});
+
+test("прошедшее сегодня занятие день не занимает", () => {
+  // Список строится от начала дня, поэтому утренний урок виден и в обед.
+  const groups = groupByDay([person("k", "Ksenia", [at(28, 9)])], MONDAY);
+  assert.equal(groups[0].entries.length, 1);
+});
+
+test("ближайшее занятие — первое из списка", () => {
+  assert.equal(nextLessonOf(person("a", "Alla", [at(28, 9), at(29, 9)])), at(28, 9));
+  assert.equal(nextLessonOf(person("b", "Bogdan", [])), null);
 });
 
 test("по имени — в обе стороны", () => {
   const people = [
-    person("b", "Bogdan", null),
-    person("a", "Alla", null),
-    person("k", "Ksenia", null),
+    person("b", "Bogdan", []),
+    person("a", "Alla", []),
+    person("k", "Ksenia", []),
   ];
 
   assert.deepEqual(sortBy(people, "name", false).map((p) => p.name), [
@@ -108,9 +173,9 @@ test("по имени — в обе стороны", () => {
 
 test("по остатку — в обе стороны, при равенстве по имени", () => {
   const people = [
-    person("b", "Bogdan", null, 10),
-    person("a", "Alla", null, 2),
-    person("k", "Ksenia", null, 2),
+    person("b", "Bogdan", [], 10),
+    person("a", "Alla", [], 2),
+    person("k", "Ksenia", [], 2),
   ];
 
   assert.deepEqual(sortBy(people, "balance", false).map((p) => p.name), [
@@ -126,37 +191,36 @@ test("по остатку — в обе стороны, при равенств�
 });
 
 test("сортировка не портит исходный список", () => {
-  const people = [person("b", "Bogdan", null), person("a", "Alla", null)];
+  const people = [person("b", "Bogdan", []), person("a", "Alla", [])];
   sortBy(people, "name", false);
   assert.deepEqual(people.map((p) => p.name), ["Bogdan", "Alla"]);
 });
 
 test("по имени и остатку список не делится по дням", () => {
-  const people = [person("a", "Alla", at(28, 9)), person("b", "Bogdan", at(29, 9))];
+  const people = [person("a", "Alla", [at(28, 9)]), person("b", "Bogdan", [at(29, 9)])];
 
   const byName = orderClassPeople(people, "name", false, MONDAY);
   assert.equal(byName.length, 1);
   assert.equal(byName[0].day, null);
-  assert.equal(byName[0].people.length, 2);
+  assert.equal(byName[0].entries.length, 2);
 });
 
 test("обратный порядок расписания переворачивает дни, а не людей внутри дня", () => {
   const people = [
-    person("a", "Alla", at(28, 15)),
-    person("b", "Bogdan", at(28, 9)),
-    person("k", "Ksenia", at(29, 9)),
+    person("a", "Alla", [at(28, 15)]),
+    person("b", "Bogdan", [at(28, 9)]),
+    person("k", "Ksenia", [at(29, 9)]),
   ];
 
   const groups = orderClassPeople(people, "lessons", true, MONDAY);
 
   assert.equal(new Date(groups[0].day!).getDate(), 29);
-  // Внутри понедельника порядок по времени сохранился.
-  assert.deepEqual(groups[1].people.map((p) => p.name), ["Bogdan", "Alla"]);
+  assert.deepEqual(names(groups[1]), ["Bogdan", "Alla"]);
 });
 
 test("пустой список не падает", () => {
   assert.deepEqual(groupByDay([], MONDAY), []);
   assert.deepEqual(orderClassPeople([], "name", false, MONDAY), [
-    { day: null, people: [] },
+    { day: null, entries: [] },
   ]);
 });

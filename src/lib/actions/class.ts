@@ -9,10 +9,11 @@
  * человек в уроке.
  */
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, gte, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, classMessages, lessons, lessonPackages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { daysLeftInWeek } from "@/lib/class-order";
 import { IRREGULAR_VERBS_BASE, verbKey } from "@/lib/irregular-verbs-base";
 
 /** Сколько отметка держится за «онлайн». */
@@ -29,8 +30,8 @@ export type ClassPerson = {
   /** Учитель уже ведёт класс с этим учеником. */
   inClass: boolean;
   unread: number;
-  /** Ближайшее занятие — по нему строится порядок списка. */
-  nextLessonAt: string | null;
+  /** Все занятия этой недели — по ним строится порядок списка. */
+  lessons: string[];
   /** Остаток уроков: у общего пакета — общий, иначе личный. */
   balance: number;
 };
@@ -146,30 +147,41 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
     .orderBy(asc(users.name));
 
   /*
-   * Ближайшее назначенное занятие каждого.
+   * Все назначенные занятия до конца недели.
    *
-   * Время берём обычной выборкой столбца, а не через min() в запросе:
-   * сырое выражение возвращает строку без пояса, и она разъезжается с
-   * тем, что показывает расписание, ровно на местное смещение. Ближайшее
-   * занятие выбираем здесь — сортировка уже сделала всю работу.
+   * Не одно ближайшее: за неделю у человека их несколько, и он должен
+   * стоять в каждом своём дне. По одному уроку неделя схлопывалась в
+   * пару дней.
+   *
+   * Время берём обычной выборкой столбца, а не выражением в sql``:
+   * сырой агрегат возвращает строку без пояса, и она разъезжается с
+   * расписанием ровно на местное смещение.
    *
    * Одним запросом на всех: список обновляется на каждом такте опроса,
    * и ходить в базу за каждым учеником отдельно тут нельзя.
    */
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(dayStart);
+  weekEnd.setDate(weekEnd.getDate() + daysLeftInWeek(dayStart));
 
-  const upcoming = await db
+  const week = await db
     .select({ studentId: lessons.studentId, startTime: lessons.startTime })
     .from(lessons)
-    .where(and(eq(lessons.status, "SCHEDULED"), gte(lessons.startTime, dayStart)))
+    .where(
+      and(
+        eq(lessons.status, "SCHEDULED"),
+        gte(lessons.startTime, dayStart),
+        lt(lessons.startTime, weekEnd),
+      ),
+    )
     .orderBy(asc(lessons.startTime));
 
-  const nextOf = new Map<string, string>();
-  for (const row of upcoming) {
-    if (!nextOf.has(row.studentId)) {
-      nextOf.set(row.studentId, row.startTime.toISOString());
-    }
+  const lessonsOf = new Map<string, string[]>();
+  for (const row of week) {
+    const list = lessonsOf.get(row.studentId) ?? [];
+    list.push(row.startTime.toISOString());
+    lessonsOf.set(row.studentId, list);
   }
 
   // У общего пакета остаток один на всех участников.
@@ -203,7 +215,7 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
     presence: isOnline(r.lastSeenAt) ? "online" : "offline",
     inClass: me?.classWithId === r.id,
     unread: unreadOf.get(r.id) ?? 0,
-    nextLessonAt: nextOf.get(r.id) ?? null,
+    lessons: lessonsOf.get(r.id) ?? [],
     balance: (r.packageId ? packageOf.get(r.packageId) : null) ?? r.balance,
   }));
 }

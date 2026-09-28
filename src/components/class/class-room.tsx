@@ -197,9 +197,25 @@ export function ClassRoom({
 
     beat();
     const t = setInterval(beat, BEAT_MS);
+
+    /*
+     * Правку расписания подхватываем сразу по возвращении на вкладку.
+     *
+     * Урок назначают и отменяют в соседнем окне, а сюда возвращаются
+     * через секунду — ждать полминуты до следующего такта и видеть уже
+     * несуществующее занятие незачем.
+     */
+    const wake = () => {
+      if (document.visibilityState === "visible") beat();
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+
     return () => {
       alive = false;
       clearInterval(t);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
     };
   }, [teacher, nonce]);
 
@@ -330,10 +346,18 @@ export function ClassRoom({
     balance: t.classRoom.sortBalance,
   };
 
-  /** Кружок ученика. Сам кружок начинает класс, уголок ведёт в карточку. */
-  const circle = (p: ClassPerson) => (
+  /**
+   * Кружок ученика. Сам кружок начинает класс, уголок ведёт в карточку.
+   *
+   * Время приходит снаружи: у человека за неделю несколько занятий, и в
+   * каждом дне он стоит со своим.
+   */
+  const circle = (p: ClassPerson, at: string | null) => (
     /* Ссылку нельзя вложить в кнопку, поэтому они рядом. */
-    <div key={p.id} className="group relative flex w-24 flex-col items-center gap-2">
+    <div
+      key={`${p.id}-${at ?? "x"}`}
+      className="group relative flex w-24 flex-col items-center gap-2"
+    >
       <button
         type="button"
         disabled={busy}
@@ -365,9 +389,9 @@ export function ClassRoom({
 
       <span className="flex flex-col items-center gap-0.5 text-[11px] text-faint">
         {/* Время урока важнее уровня: по нему список и построен. */}
-        {p.nextLessonAt && sort === "lessons" && (
+        {at && sort === "lessons" && (
           <span className="font-mono font-bold text-muted">
-            {hhmm.format(new Date(p.nextLessonAt))}
+            {hhmm.format(new Date(at))}
           </span>
         )}
         {sort === "balance" && (
@@ -447,7 +471,9 @@ export function ClassRoom({
               )}
             </p>
           )}
-          <div className="flex flex-wrap gap-5">{group.people.map(circle)}</div>
+          <div className="flex flex-wrap gap-5">
+            {group.entries.map((entry) => circle(entry.person, entry.at))}
+          </div>
         </div>
       ))}
     </div>
