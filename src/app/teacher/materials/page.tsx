@@ -183,6 +183,7 @@ export default async function TeacherMaterialsPage({
                   ? chosen?.id
                   : undefined
             }
+            ownerName={chosen?.name}
             emptyText={
               current === "mine"
                 ? t.materials.personalEmpty

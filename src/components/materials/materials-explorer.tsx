@@ -38,6 +38,7 @@ import {
   IconPencil,
   IconTrash,
   IconSearch,
+  IconCap,
 } from "@/components/icons";
 import { Modal } from "@/components/modal";
 
@@ -54,6 +55,7 @@ import { VerbsShareDialog, type ShareVerbsTarget } from "./verbs-share-dialog";
 import { VerbsFiller, type VerbsTarget } from "./verbs-filler";
 import { ContentImporter } from "./content-importer";
 import { PhraseImagesPanel } from "./phrase-images-panel";
+import { RevisionSetup } from "@/components/revision/revision-setup";
 import { VocabularyCoverActions } from "./vocabulary-cover";
 import { RuleImporter } from "./rule-importer";
 import { BulkIconEditor } from "./bulk-icon-editor";
@@ -227,6 +229,7 @@ export function MaterialsExplorer({
   editable = false,
   scope = "MATERIAL",
   ownerId,
+  ownerName,
   emptyText,
   canExport = false,
 }: {
@@ -240,6 +243,8 @@ export function MaterialsExplorer({
   scope?: TreeScope;
   /** Владелец личного дерева (для scope MISTAKE). */
   ownerId?: string;
+  /** Его имя — нужно там, где ему что-то выдают. */
+  ownerName?: string;
   /** Выгрузка страницы в текст и docx. Учитель может её отключить ученику. */
   canExport?: boolean;
 }) {
@@ -370,6 +375,7 @@ export function MaterialsExplorer({
   // пользуются каждый урок.
   const [moreTools, setMoreTools] = useState(false);
   const [picturesFor, setPicturesFor] = useState<MaterialNode | null>(null);
+  const [revisionFor, setRevisionFor] = useState<MaterialNode | null>(null);
   const [kindChange, setKindChange] = useState<{
     node: MaterialNode;
     next: PageFlavour;
@@ -2324,6 +2330,19 @@ export function MaterialsExplorer({
 
                 {/* Картинки к словам: нужны игре «Угадай по картинке»,
                     поэтому кнопка стоит у словника, а не в активностях. */}
+                {/* Повторение слов выдаётся из словника того ученика,
+                    чьи материалы сейчас открыты. */}
+                {pageKind(selected) === "VOCAB" && scope === "STUDENT" && ownerId && (
+                  <button
+                    type="button"
+                    onClick={() => setRevisionFor(selected)}
+                    className={pageBtn}
+                    title={t.revision.assign}
+                  >
+                    <IconCap className="h-4 w-4" /> {t.revision.title}
+                  </button>
+                )}
+
                 {pageKind(selected) === "VOCAB" && (
                   <button
                     type="button"
@@ -2953,6 +2972,16 @@ export function MaterialsExplorer({
       )}
 
       {contextMenu}
+
+      {revisionFor && ownerId && (
+        <RevisionSetup
+          studentId={ownerId}
+          studentName={ownerName ?? ""}
+          nodeId={revisionFor.id}
+          nodeName={revisionFor.name}
+          onClose={() => setRevisionFor(null)}
+        />
+      )}
 
       {picturesFor && (
         <PhraseImagesPanel

@@ -82,6 +82,7 @@ const LOCALIZED_FILES = [
   "src/app/teacher/tongue-twisters/page.tsx",
   "src/app/teacher/activities/page.tsx",
   "src/components/materials/phrase-images-panel.tsx",
+  "src/components/revision/revision-setup.tsx",
   "src/components/game/guess-setup.tsx",
   "src/components/game/guess-play.tsx",
   "src/components/game/guess-card.tsx",

@@ -146,6 +146,7 @@ export default async function StudentMaterialsForTeacherPage({
           editable
           scope="STUDENT"
           ownerId={student.id}
+          ownerName={student.name}
           /* Пустое личное дерево пугает, когда у ученика всё лежит в общей
              базе: раньше это трижды выглядело как «материалы пропали».
              Поэтому сразу говорим, сколько разделов ему открыто. */
