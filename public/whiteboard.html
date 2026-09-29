@@ -384,11 +384,19 @@ function fontStr(o){
   return (o.italic?'italic ':'')+(o.bold?'bold ':'')+(o.size||16)+'px '+(o.font||'Arial');
 }
 function textMetrics(o){
+  /*
+   * Меряем так же, как рисуем: по строкам. measureText на всей строке с
+   * переносами давал одну длинную ширину и высоту в одну строку, из-за
+   * чего у многострочной надписи рамка выделения была шире текста и
+   * накрывала только первую строку — во вторую нельзя было и попасть
+   * мышью.
+   */
   ctx.save(); ctx.font=fontStr(o);
-  const m=ctx.measureText(o.text||'');
+  const lines=(o.text||'').split('\n');
+  let w=0;
+  for(const ln of lines) w=Math.max(w,ctx.measureText(ln).width);
   ctx.restore();
-  const w=m.width;
-  const h=(o.size||16)*1.25;
+  const h=(o.size||16)*1.25*Math.max(1,lines.length);
   return {w,h};
 }
 function bbox(o){
@@ -441,7 +449,14 @@ function render(){
   for(const o of objects) drawObj(o);
   // draft
   if(draft) drawObj(draft);
-  ctx.setTransform(1,0,0,1,0,0);
+  /*
+   * Рамка выделения и рамка охвата считаются в css-пикселях — в тех же,
+   * в каких ловится мышь, — а холст растянут под devicePixelRatio.
+   * Без этого преобразования на экране с масштабом (Windows 125–200 %)
+   * рамка рисовалась вдвое меньше и уезжала вверх-влево от объекта,
+   * хотя ручки ловились там, где положено.
+   */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
   drawSelection();
   drawMarquee();
   schedulePersist();
