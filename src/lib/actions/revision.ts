@@ -293,9 +293,15 @@ export async function startRevisionAction(
   const plan = buildRevision(words, (revision.modes ?? []) as RevisionMode[]);
   if (plan.length === 0) return { error: "Для этих слов нечего показать" };
 
+  /*
+   * Время старта ставим из приложения, а не default'ом базы: now() в
+   * колонке без часового пояса кладёт местное время, а читается оно как
+   * UTC. Разница в три часа превращала общий таймер задания в лишние
+   * три часа форы.
+   */
   const [attempt] = await db
     .insert(wordRevisionAttempts)
-    .values({ revisionId, plan })
+    .values({ revisionId, plan, startedAt: new Date() })
     .returning({ id: wordRevisionAttempts.id });
 
   revalidatePath("/student/homework");

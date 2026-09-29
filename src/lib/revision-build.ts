@@ -169,3 +169,89 @@ export function buildRevision(
     .map((mode) => ({ mode, steps: buildMode(mode, words, options, random) }))
     .filter((section) => section.steps.length > 0);
 }
+
+/**
+ * Сколько ответов даёт один шаг.
+ *
+ * Карточки и пары закрывают сразу несколько слов, остальные режимы — по
+ * одному. Без этого не понять, где ученик остановился: ответов больше,
+ * чем шагов.
+ */
+export function stepSize(step: RevisionStep): number {
+  return stepWords(step).length;
+}
+
+/** Слова одного шага — по одному на ответ. */
+export function stepWords(step: RevisionStep): RevisionWord[] {
+  switch (step.mode) {
+    case "flashcards":
+    case "pairs":
+    case "definitionPairs":
+      return step.words;
+    default:
+      return [step.word];
+  }
+}
+
+/** Все слова задания в порядке прохождения — по одному на ответ. */
+export function planWords(plan: RevisionSection[]): {
+  mode: RevisionMode;
+  word: RevisionWord;
+}[] {
+  const out: { mode: RevisionMode; word: RevisionWord }[] = [];
+
+  for (const section of plan) {
+    for (const step of section.steps) {
+      for (const word of stepWords(step)) out.push({ mode: section.mode, word });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Где ученик остановился.
+ *
+ * Прерванная попытка продолжается с того же места: закрытая вкладка не
+ * повод проходить задание заново. Позиция считается по числу ответов,
+ * потому что план на попытку уже зафиксирован.
+ */
+export function positionOf(
+  plan: RevisionSection[],
+  answered: number,
+): { section: number; step: number } {
+  let used = 0;
+
+  for (let s = 0; s < plan.length; s++) {
+    for (let q = 0; q < plan[s].steps.length; q++) {
+      const size = stepSize(plan[s].steps[q]);
+      if (used + size > answered) return { section: s, step: q };
+      used += size;
+    }
+  }
+
+  return { section: plan.length, step: 0 };
+}
+
+/**
+ * Хвост задания как просроченный.
+ *
+ * Когда кончилось время на всю работу, непройденное не исчезает: учитель
+ * должен видеть, что слова остались без ответа, а не только высокий
+ * процент по тем, что успели.
+ */
+export function timeoutRest(
+  plan: RevisionSection[],
+  answered: number,
+): { mode: RevisionMode; phraseId: string; word: string; correct: false; reason: "timeout"; ms: number }[] {
+  return planWords(plan)
+    .slice(answered)
+    .map(({ mode, word }) => ({
+      mode,
+      phraseId: word.phraseId,
+      word: word.word,
+      correct: false as const,
+      reason: "timeout" as const,
+      ms: 0,
+    }));
+}

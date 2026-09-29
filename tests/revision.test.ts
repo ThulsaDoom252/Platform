@@ -4,7 +4,7 @@ import {
   canStart,
   readiness,
   wordFits,
-  wordsFor,
+
   TEST_MODES,
   type RevisionWord,
 } from "../src/lib/revision-modes";
@@ -12,6 +12,9 @@ import {
   buildRevision,
   makeOptions,
   splitPairs,
+  positionOf,
+  stepSize,
+  timeoutRest,
   CHOICE_OPTIONS,
   DEFINITION_OPTIONS,
 } from "../src/lib/revision-build";
@@ -286,4 +289,70 @@ test("пустая попытка не делит на ноль", () => {
   assert.equal(result.accuracy, 0);
   assert.equal(result.fastestMs, null);
   assert.deepEqual(result.sections, []);
+});
+
+// ---------- где остановился ----------
+
+test("шаг знает, сколько ответов он закрывает", () => {
+  const sections = buildRevision(FIVE, ["flashcards", "pairs", "choose"], {}, seeded(6));
+  const cards = sections.find((s) => s.mode === "flashcards")!;
+  const choose = sections.find((s) => s.mode === "choose")!;
+
+  // Карточки закрывают всю пачку разом, выбор — по слову за шаг.
+  assert.equal(stepSize(cards.steps[0]), 5);
+  assert.equal(stepSize(choose.steps[0]), 1);
+});
+
+test("позиция считается по числу ответов", () => {
+  const plan = buildRevision(FIVE, ["flashcards", "choose"], {}, seeded(8));
+
+  assert.deepEqual(positionOf(plan, 0), { section: 0, step: 0 });
+  // Пять ответов — это ровно пачка карточек: дальше первый шаг выбора.
+  assert.deepEqual(positionOf(plan, 5), { section: 1, step: 0 });
+  assert.deepEqual(positionOf(plan, 7), { section: 1, step: 2 });
+});
+
+test("на середине пачки позиция остаётся на ней", () => {
+  // Карточки — один шаг: три просмотренных из пяти его не закрывают.
+  const plan = buildRevision(FIVE, ["flashcards", "choose"], {}, seeded(8));
+  assert.deepEqual(positionOf(plan, 3), { section: 0, step: 0 });
+});
+
+test("пройденное задание даёт позицию за концом плана", () => {
+  const plan = buildRevision(FIVE, ["choose"], {}, seeded(2));
+  assert.deepEqual(positionOf(plan, 5), { section: 1, step: 0 });
+});
+
+test("непройденный хвост уходит в просрочку", () => {
+  const plan = buildRevision(FIVE, ["choose", "unscramble"], {}, seeded(3));
+  const rest = timeoutRest(plan, 7);
+
+  assert.equal(rest.length, 3);
+  assert.equal(rest.every((a) => !a.correct && a.reason === "timeout"), true);
+  // Слова берутся в порядке прохождения, а не в порядке словника.
+  assert.deepEqual(
+    rest.map((a) => a.mode),
+    ["unscramble", "unscramble", "unscramble"],
+  );
+});
+
+test("у пройденного задания хвоста нет", () => {
+  const plan = buildRevision(FIVE, ["choose"], {}, seeded(3));
+  assert.deepEqual(timeoutRest(plan, 5), []);
+});
+
+test("просрочка хвоста роняет точность", () => {
+  /*
+   * Иначе брошенное на середине задание выглядело бы отличным: пять
+   * верных из пяти отвеченных.
+   */
+  const plan = buildRevision(FIVE, ["choose", "unscramble"], {}, seeded(3));
+  const answered = plan[0].steps.map((step) =>
+    answer("choose", step.mode === "choose" ? step.word.word : "", true, 500),
+  );
+
+  const result = scoreRevision([...answered, ...timeoutRest(plan, answered.length)]);
+  assert.equal(result.total, 10);
+  assert.equal(result.accuracy, 50);
+  assert.equal(result.timeouts, 5);
 });

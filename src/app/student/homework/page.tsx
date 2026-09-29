@@ -6,6 +6,8 @@ import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { submitHomeworkAction } from "@/lib/actions/student";
 import { IconMaterials } from "@/components/icons";
+import { myRevisionsAction } from "@/lib/actions/revision";
+import { RevisionList } from "@/components/revision/revision-list";
 
 const statusTint: Record<string, string> = {
   NOT_DONE: "tint-amber",
@@ -18,6 +20,9 @@ const statusTint: Record<string, string> = {
 export default async function StudentHomeworkPage() {
   const session = await getSession();
   const { t } = await getDict();
+
+  // Повторение слов приходит из словника и живёт рядом с домашкой.
+  const revisions = await myRevisionsAction();
 
   const items = await db
     .select()
@@ -32,7 +37,9 @@ export default async function StudentHomeworkPage() {
         <p className="mt-1 text-sm text-muted">{t.studentArea.homeworkSubtitle}</p>
       </div>
 
-      {items.length === 0 && (
+      {revisions.length > 0 && <RevisionList items={revisions} />}
+
+      {items.length === 0 && revisions.length === 0 && (
         <div className="rounded-2xl bg-surface px-6 py-16 text-center ring-1 ring-line shadow-sm">
           <p className="text-sm text-faint">{t.studentArea.homeworkEmpty}</p>
         </div>
