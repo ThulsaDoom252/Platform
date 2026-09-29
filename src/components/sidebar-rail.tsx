@@ -7,17 +7,22 @@
  *
  * Раскрытие сделано на :hover без единой строчки скрипта: состояние
  * панели не переживает перезагрузку и никому, кроме курсора, не нужно.
- * focus-within добавлен ради клавиатуры — иначе до пунктов табом не
- * добраться, они за краем.
+ *
+ * Клавиатуре нужен свой повод раскрыться — табом до пунктов иначе не
+ * добраться, они за краем, — но именно :focus-visible, а не
+ * :focus-within. Обычный фокус остаётся на пункте после щелчка мышью,
+ * и панель уже не закрывалась, даже когда курсор уходил.
  *
  * На телефоне панели нет вовсе, там своя нижняя навигация.
  */
 const OPEN =
-  "hover:w-[272px] hover:shadow-xl focus-within:w-[272px] focus-within:shadow-xl";
+  "hover:w-[272px] hover:shadow-xl " +
+  "has-[:focus-visible]:w-[272px] has-[:focus-visible]:shadow-xl";
 
 /** Что видно только в раскрытой панели: подписи, цитата, карточка. */
 export const RAIL_ONLY_OPEN =
-  "opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100";
+  "opacity-0 transition-opacity duration-150 " +
+  "group-hover/rail:opacity-100 group-has-[:focus-visible]/rail:opacity-100";
 
 export function SidebarRail({ children }: { children: React.ReactNode }) {
   return (
