@@ -92,7 +92,29 @@ export function splitPairs<T>(items: T[]): T[][] {
 export type BuildOptions = {
   /** Перемешивать слова внутри режима. */
   shuffleWords?: boolean;
+  /**
+   * Чем закрывать каждый режим.
+   *
+   * Учитель набирает секции по отдельности: карточки на всём словнике,
+   * «собери слово» — на пяти трудных. Режим, которого здесь нет, берёт
+   * всё, что ему подходит.
+   */
+  byMode?: Partial<Record<RevisionMode, string[]>>;
 };
+
+/** Слова одного режима с учётом того, что отобрал учитель. */
+export function wordsOfMode(
+  mode: RevisionMode,
+  words: RevisionWord[],
+  byMode: BuildOptions["byMode"],
+): RevisionWord[] {
+  const picked = byMode?.[mode];
+  if (!picked) return words;
+
+  // Порядок словника важнее порядка галочек: так задание читается ровно.
+  const keep = new Set(picked);
+  return words.filter((w) => keep.has(w.phraseId));
+}
 
 /**
  * Шаги одного режима.
@@ -107,7 +129,7 @@ export function buildMode(
   options: BuildOptions = {},
   random: () => number = Math.random,
 ): RevisionStep[] {
-  const usable = wordsFor(words, mode);
+  const usable = wordsFor(wordsOfMode(mode, words, options.byMode), mode);
   if (usable.length < MIN_WORDS[mode]) return [];
 
   const list = options.shuffleWords === false ? usable : shuffle(usable, random);

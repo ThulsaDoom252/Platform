@@ -49,6 +49,8 @@ export type StepProps = {
 function useStepTimer(
   seconds: number | null,
   stopped: boolean,
+  /** Номер попытки: меняется — отсчёт начинается заново. */
+  round: number,
   onOut: () => void,
 ) {
   const [left, setLeft] = useState(seconds ?? 0);
@@ -72,7 +74,7 @@ function useStepTimer(
     }, 100);
 
     return () => clearInterval(id);
-  }, [seconds, stopped]);
+  }, [seconds, stopped, round]);
 
   return seconds ? left : null;
 }
@@ -214,10 +216,25 @@ function Flashcards({
   const { t } = useT();
   const speech = useSpeech();
   const [at, setAt] = useState(0);
-  const [flipped, setFlipped] = useState(false);
 
   const spent = useRef<number[]>(words.map(() => 0));
   const watch = useStopwatch();
+
+  const word = words[at];
+
+  /*
+   * Карточка сама произносит слово один раз при появлении: ученик
+   * должен услышать его, даже если не догадался нажать на динамик.
+   * Ссылка на speak живёт в ref — сам объект речи пересобирается на
+   * каждый рендер и в зависимостях гонял бы озвучку по кругу.
+   */
+  const say = useRef(speech.speak);
+  useEffect(() => {
+    say.current = speech.speak;
+  });
+  useEffect(() => {
+    say.current(`card-${word.phraseId}`, word.word, "en-US");
+  }, [word.phraseId, word.word]);
 
   /** Записать время на текущую карточку и начать отсчёт заново. */
   const charge = () => {
@@ -227,7 +244,6 @@ function Flashcards({
   const go = (to: number) => {
     charge();
     setAt(to);
-    setFlipped(false);
   };
 
   const finish = () => {
@@ -239,46 +255,32 @@ function Flashcards({
     );
   };
 
-  const word = words[at];
-
   return (
     <div className="flex flex-col gap-4">
       <p className="text-center text-[12px] font-semibold text-faint">
         {fmt(t.revision.stepOf, { n: at + 1, total: words.length })}
       </p>
 
-      <button
-        type="button"
-        onClick={() => setFlipped((v) => !v)}
-        className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-4 rounded-3xl bg-surface p-6 text-center ring-1 ring-line shadow-sm transition hover:ring-accent"
-      >
-        {!flipped ? (
-          <>
-            <span className="text-3xl font-black leading-tight text-content sm:text-4xl">
-              {word.word}
-            </span>
-            <span onClick={(e) => e.stopPropagation()}>
-              <SpeakPair text={word.word} id={word.phraseId} speech={speech} />
-            </span>
-          </>
-        ) : (
-          <>
-            {word.imageUrl && (
-              <div className="w-full max-w-xs">
-                <WordImage url={word.imageUrl} alt={word.word} />
-              </div>
-            )}
-            {word.translation && (
-              <span className="text-2xl font-bold text-accent">
-                {word.translation}
-              </span>
-            )}
-            {word.description && (
-              <span className="text-sm text-muted">{word.description}</span>
-            )}
-          </>
+      {/* Карточка показывает всё сразу: переворачивать нечего. */}
+      <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-surface p-6 text-center ring-1 ring-line shadow-sm">
+        {word.imageUrl && (
+          <div className="w-full max-w-[220px]">
+            <WordImage url={word.imageUrl} alt={word.word} />
+          </div>
         )}
-      </button>
+
+        <span className="flex flex-wrap items-center justify-center gap-2 text-3xl font-black leading-tight text-content sm:text-4xl">
+          {word.word}
+          <SpeakPair text={word.word} id={word.phraseId} speech={speech} />
+        </span>
+
+        {word.translation && (
+          <span className="text-xl font-bold text-accent">{word.translation}</span>
+        )}
+        {word.description && (
+          <span className="text-sm text-muted">{word.description}</span>
+        )}
+      </div>
 
       <div className="flex gap-2.5">
         <button
@@ -318,6 +320,9 @@ function Flashcards({
 /* Выбор из вариантов                                                  */
 /* ------------------------------------------------------------------ */
 
+/** Сколько раз можно промахнуться, прежде чем ответ покажут. */
+export const CHOICE_TRIES = 2;
+
 function ChoiceScreen({
   mode,
   word,
@@ -335,27 +340,68 @@ function ChoiceScreen({
   seconds: number | null;
   onDone: StepProps["onDone"];
 }) {
-  const [picked, setPicked] = useState<string | null>(null);
+  const { t } = useT();
+  const [missed, setMissed] = useState<string[]>([]);
+  const [solved, setSolved] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [shakeOn, setShakeOn] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+
   const watch = useStopwatch();
   const took = useRef(0);
+  const sent = useRef(false);
 
-  const answered = picked !== null || timedOut;
-  const left = useStepTimer(seconds, answered, () => {
+  const over = solved !== null || revealed;
+
+  /*
+   * На вторую попытку отсчёт начинается заново: иначе промах на
+   * четырнадцатой секунде оставляет секунду на всё про всё.
+   */
+  const left = useStepTimer(seconds, over, missed.length, () => {
     took.current = (seconds ?? 0) * 1000;
     setTimedOut(true);
+    setRevealed(true);
+    close(false, "timeout", missed.length);
   });
 
-  const ok = picked !== null && same(picked, correct);
+  /** Отдать ответ наверх — один раз, чем бы шаг ни кончился. */
+  function close(right: boolean, reason: RevisionAnswer["reason"], tries: number) {
+    if (sent.current) return;
+    sent.current = true;
+    setTimeout(
+      () =>
+        onDone([
+          { ...entry(mode, word, right, took.current, reason), tries },
+        ]),
+      right ? 1000 : 1600,
+    );
+  }
 
   const pick = (option: string) => {
-    if (answered) return;
-    took.current = watch.ms();
-    setPicked(option);
+    if (over || missed.includes(option)) return;
+
+    if (same(option, correct)) {
+      took.current = watch.ms();
+      setSolved(option);
+      // Верно со второго раза — это всё-таки заминка, и учитель её увидит.
+      close(missed.length === 0, missed.length === 0 ? undefined : "wrong", missed.length + 1);
+      return;
+    }
+
+    const used = [...missed, option];
+    setMissed(used);
+    setShakeOn(true);
+    setTimeout(() => setShakeOn(false), 450);
+
+    if (used.length >= CHOICE_TRIES) {
+      took.current = watch.ms();
+      setRevealed(true);
+      close(false, "wrong", used.length);
+    }
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", shakeOn && "shake")}>
       <TimerBar left={left} total={seconds} />
 
       <div className="flex min-h-[22vh] items-center justify-center rounded-3xl bg-surface px-5 py-8 text-center ring-1 ring-line shadow-sm">
@@ -365,44 +411,42 @@ function ChoiceScreen({
       <div className="flex flex-col gap-2">
         {options.map((option) => {
           const isRight = same(option, correct);
-          const chosen = picked === option;
+          const wrong = missed.includes(option);
+          // Верный вариант зеленеет сам: когда его нашли или когда показали.
+          const green = solved === option || (revealed && isRight);
 
           return (
             <button
               key={option}
               type="button"
               onClick={() => pick(option)}
-              disabled={answered}
+              disabled={over || wrong}
               className={cn(
-                "min-h-12 rounded-xl px-4 py-2.5 text-sm font-semibold ring-1 transition",
-                !answered && "bg-surface text-content ring-line hover:ring-accent",
-                answered && isRight && "tint-green ring-transparent",
-                answered && chosen && !isRight && "tint-rose ring-transparent",
-                answered && !chosen && !isRight && "bg-surface-2 text-faint ring-transparent",
+                "relative min-h-12 rounded-xl px-4 py-2.5 text-sm font-semibold ring-1 transition",
+                green && "tint-green ring-transparent",
+                !green && wrong && "tint-rose ring-transparent",
+                !green && !wrong && over && "bg-surface-2 text-faint ring-transparent",
+                !green && !wrong && !over && "bg-surface text-content ring-line hover:ring-accent",
               )}
             >
               {option}
+
+              {/* Счастливый смайлик вылетает из угаданного варианта. */}
+              {solved === option && (
+                <span className="pop-emoji pointer-events-none absolute -top-1 right-3 text-2xl">
+                  🎉
+                </span>
+              )}
             </button>
           );
         })}
       </div>
 
-      {answered && (
-        <Verdict
-          ok={ok}
-          right={correct}
-          onNext={() =>
-            onDone([
-              entry(
-                mode,
-                word,
-                ok,
-                took.current,
-                ok ? undefined : timedOut ? "timeout" : "wrong",
-              ),
-            ])
-          }
-        />
+      {/* Две попытки — про это надо знать заранее, а не после промаха. */}
+      {!over && !timedOut && (
+        <p className="text-center text-[11px] text-faint">
+          {fmt(t.revision.triesLeft, { n: CHOICE_TRIES - missed.length })}
+        </p>
       )}
     </div>
   );
@@ -441,7 +485,7 @@ function Pairs({
   const done = out || matched.length === words.length;
   // На группу из четырёх времени дают вчетверо: это один шаг, но четыре ответа.
   const total = seconds ? seconds * words.length : null;
-  const leftMs = useStepTimer(total, done, () => setOut(true));
+  const leftMs = useStepTimer(total, done, 0, () => setOut(true));
 
   const faceOf = (w: RevisionWord) =>
     mode === "pairs" ? (w.translation ?? "") : (w.description ?? "");
@@ -575,7 +619,7 @@ function Unscramble({
   const watch = useStopwatch();
   const took = useRef(0);
 
-  const left = useStepTimer(seconds, result !== null, () => {
+  const left = useStepTimer(seconds, result !== null, 0, () => {
     took.current = (seconds ?? 0) * 1000;
     setResult("timeout");
   });
@@ -712,7 +756,7 @@ function Picture({
   const watch = useStopwatch();
   const took = useRef(0);
 
-  const left = useStepTimer(seconds, result !== null, () => {
+  const left = useStepTimer(seconds, result !== null, 0, () => {
     took.current = (seconds ?? 0) * 1000;
     setResult("timeout");
   });

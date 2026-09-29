@@ -890,3 +890,30 @@ body {
     animation: none;
   }
 }
+
+/* Счастливый смайлик вылетает из угаданного варианта. */
+@keyframes revision-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-14px) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-38px) scale(1);
+  }
+}
+
+.pop-emoji {
+  animation: revision-pop 0.9s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop-emoji {
+    animation: none;
+    opacity: 1;
+  }
+}

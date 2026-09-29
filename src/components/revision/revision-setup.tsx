@@ -3,9 +3,13 @@
 /**
  * Выдача повторения слов.
  *
- * Учитель видит слова словника и готовность каждого режима на них:
- * «по картинке — 20 из 25». Молча выбросить пять слов посреди задания
- * нельзя, поэтому счёт показан до выдачи.
+ * Секции набираются по отдельности: карточки можно дать на всём
+ * словнике, а «собери слово» — на пяти трудных. Поэтому у каждого
+ * режима свой список слов, а не один общий на всё задание.
+ *
+ * По умолчанию режим берёт всё, что ему подходит, и рядом честно
+ * написано, сколько это — «по картинке: 20 из 25». Молча выбросить
+ * пять слов посреди задания нельзя.
  *
  * Режимы идут в том порядке, в каком их отметили: порядок — это часть
  * задания, а не мелочь оформления.
@@ -19,14 +23,16 @@ import {
   revisionWordsAction,
 } from "@/lib/actions/revision";
 import {
-  canStart,
+  canStartWith,
   isTestMode,
-  readiness,
+  modeReady,
+  MIN_WORDS,
   REVISION_MODES,
+  wordsFor,
   type RevisionMode,
   type RevisionWord,
 } from "@/lib/revision-modes";
-import { IconCheck, IconX } from "@/components/icons";
+import { IconCheck, IconChevronDown, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const inputCls =
@@ -49,8 +55,10 @@ export function RevisionSetup({
 }) {
   const { t } = useT();
   const [words, setWords] = useState<RevisionWord[] | null>(null);
-  const [picked, setPicked] = useState<string[]>([]);
   const [modes, setModes] = useState<RevisionMode[]>([]);
+  /** Снятые галочки по режимам: пусто — взяты все подходящие слова. */
+  const [dropped, setDropped] = useState<Partial<Record<RevisionMode, string[]>>>({});
+  const [open, setOpen] = useState<RevisionMode | null>(null);
   const [title, setTitle] = useState(nodeName);
   const [due, setDue] = useState("");
   const [perAnswer, setPerAnswer] = useState<number | null>(null);
@@ -61,24 +69,27 @@ export function RevisionSetup({
   useEffect(() => {
     let alive = true;
     revisionWordsAction(nodeId)
-      .then((list) => {
-        if (!alive) return;
-        setWords(list);
-        // По умолчанию отмечены все: снять проще, чем набрать заново.
-        setPicked(list.map((w) => w.phraseId));
-      })
+      .then((list) => alive && setWords(list))
       .catch(() => alive && setWords([]));
     return () => {
       alive = false;
     };
   }, [nodeId]);
 
-  const chosen = useMemo(
-    () => (words ?? []).filter((w) => picked.includes(w.phraseId)),
-    [words, picked],
-  );
+  const all = useMemo(() => words ?? [], [words]);
 
-  const state = useMemo(() => new Map(readiness(chosen).map((r) => [r.mode, r])), [chosen]);
+  /** Что режим вообще может взять — без учёта галочек. */
+  const fitting = useMemo(() => {
+    const map = new Map<RevisionMode, RevisionWord[]>();
+    for (const mode of REVISION_MODES) map.set(mode, wordsFor(all, mode));
+    return map;
+  }, [all]);
+
+  /** Что режим возьмёт на самом деле. */
+  const taken = (mode: RevisionMode): RevisionWord[] => {
+    const off = new Set(dropped[mode] ?? []);
+    return (fitting.get(mode) ?? []).filter((w) => !off.has(w.phraseId));
+  };
 
   const MODE_LABEL: Record<RevisionMode, string> = {
     flashcards: t.revision.modeFlashcards,
@@ -105,23 +116,54 @@ export function RevisionSetup({
       prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode],
     );
 
-  const ready = chosen.length > 0 && title.trim() && canStart(chosen, modes);
+  const toggleWord = (mode: RevisionMode, phraseId: string) =>
+    setDropped((prev) => {
+      const off = prev[mode] ?? [];
+      return {
+        ...prev,
+        [mode]: off.includes(phraseId)
+          ? off.filter((id) => id !== phraseId)
+          : [...off, phraseId],
+      };
+    });
+
+  /** «Взять N» — оставить первые N по порядку словника, остальные снять. */
+  const takeFirst = (mode: RevisionMode, n: number) => {
+    const list = fitting.get(mode) ?? [];
+    const keep = Math.max(0, Math.min(n, list.length));
+    setDropped((prev) => ({
+      ...prev,
+      [mode]: list.slice(keep).map((w) => w.phraseId),
+    }));
+  };
+
+  const ready =
+    all.length > 0 && title.trim() && canStartWith((mode) => taken(mode), modes);
 
   function give() {
     setError(null);
-    if (!canStart(chosen, modes)) {
+    if (!canStartWith((mode) => taken(mode), modes)) {
       setError(t.revision.needTest);
       return;
     }
 
     startBusy(async () => {
+      const modeWords: Record<string, string[]> = {};
+      const union = new Set<string>();
+      for (const mode of modes) {
+        const ids = taken(mode).map((w) => w.phraseId);
+        modeWords[mode] = ids;
+        for (const id of ids) union.add(id);
+      }
+
       const minutes = Number(wholeMinutes) || 0;
       const result = await createRevisionAction({
         studentId,
         nodeId,
         title: title.trim(),
-        phraseIds: picked,
+        phraseIds: [...union],
         modes,
+        modeWords,
         answerSeconds: perAnswer,
         totalSeconds: minutes > 0 ? minutes * 60 : null,
         dueAt: due ? new Date(due).toISOString() : null,
@@ -135,6 +177,15 @@ export function RevisionSetup({
       onClose();
     });
   }
+
+  /*
+   * Грубая прикидка длины задания. Пять минут на семь секций по
+   * двадцать пять слов — это не строгий срок, а гарантированный обрыв
+   * на середине, и увидеть это надо до выдачи, а не по результату.
+   */
+  const steps = modes.reduce((sum, mode) => sum + taken(mode).length, 0);
+  const estimate = Math.max(1, Math.ceil((steps * (perAnswer ?? 8)) / 60));
+  const whole = Number(wholeMinutes) || 0;
 
   return (
     <Modal
@@ -154,135 +205,160 @@ export function RevisionSetup({
           />
         </label>
 
-        {/* Слова */}
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-content">{t.revision.words}</span>
-            <span className="text-[12px] text-faint">
-              {fmt(t.revision.selected, { n: picked.length })}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPicked((words ?? []).map((w) => w.phraseId))}
-              className="ml-auto h-7 rounded-lg px-2 text-[11px] font-semibold text-accent transition hover:bg-surface-2"
-            >
-              {t.revision.allWords}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPicked([])}
-              className="h-7 rounded-lg px-2 text-[11px] font-semibold text-muted transition hover:bg-surface-2"
-            >
-              {t.revision.none}
-            </button>
-          </div>
-
-          {words === null ? (
-            <p className="mt-2 text-sm text-faint">{t.common.loading}</p>
-          ) : (
-            <div className="mt-2 grid max-h-56 gap-1 overflow-y-auto rounded-xl bg-surface-2 p-2 sm:grid-cols-2">
-              {words.map((w) => {
-                const on = picked.includes(w.phraseId);
-                return (
-                  <label
-                    key={w.phraseId}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() =>
-                        setPicked((prev) =>
-                          on
-                            ? prev.filter((id) => id !== w.phraseId)
-                            : [...prev, w.phraseId],
-                        )
-                      }
-                      className="h-3.5 w-3.5 accent-[var(--accent)]"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-content">
-                      {w.word}
-                    </span>
-                    {/* Что у слова есть — по этому видно, каким режимам оно годится. */}
-                    <span className="shrink-0 text-[10px] text-faint">
-                      {w.imageUrl ? "🖼" : ""}
-                      {w.description ? "📝" : ""}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Режимы */}
         <div>
           <span className="text-sm font-bold text-content">{t.revision.modes}</span>
           <p className="text-[12px] text-faint">{t.revision.modesHint}</p>
 
-          <div className="mt-2 flex flex-col gap-1.5">
-            {REVISION_MODES.map((mode) => {
-              const info = state.get(mode);
-              const on = modes.includes(mode);
-              const at = modes.indexOf(mode);
+          {words === null ? (
+            <p className="mt-2 text-sm text-faint">{t.common.loading}</p>
+          ) : (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {REVISION_MODES.map((mode) => {
+                const pool = fitting.get(mode) ?? [];
+                const list = taken(mode);
+                const on = modes.includes(mode);
+                const at = modes.indexOf(mode);
+                const works = modeReady(list, mode);
+                const expanded = open === mode;
 
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => toggleMode(mode)}
-                  disabled={!info?.ready}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2 text-left ring-1 transition disabled:opacity-40",
-                    on ? "bg-accent-soft ring-accent" : "bg-surface-2 ring-transparent",
-                  )}
-                >
-                  <span
+                return (
+                  <div
+                    key={mode}
                     className={cn(
-                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-md ring-1",
-                      on ? "bg-accent text-white ring-accent" : "ring-line",
+                      "rounded-xl ring-1 transition",
+                      on ? "bg-accent-soft ring-accent" : "bg-surface-2 ring-transparent",
+                      pool.length < MIN_WORDS[mode] && "opacity-40",
                     )}
                   >
-                    {on && <IconCheck className="h-3 w-3" />}
-                  </span>
+                    <div className="flex items-center gap-3 px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleMode(mode)}
+                        disabled={pool.length < MIN_WORDS[mode]}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-not-allowed"
+                      >
+                        <span
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md ring-1",
+                            on ? "bg-accent text-white ring-accent" : "ring-line",
+                          )}
+                        >
+                          {on && <IconCheck className="h-3 w-3" />}
+                        </span>
 
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        "block text-[13px] font-semibold",
-                        on ? "text-accent" : "text-content",
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={cn(
+                              "block text-[13px] font-semibold",
+                              on ? "text-accent" : "text-content",
+                            )}
+                          >
+                            {MODE_LABEL[mode]}
+                            {!isTestMode(mode) && (
+                              <span className="ml-1.5 text-[10px] font-normal text-faint">
+                                ({t.revision.noScore})
+                              </span>
+                            )}
+                          </span>
+                          <span className="block text-[11px] text-faint">
+                            {MODE_HINT[mode]}
+                          </span>
+                        </span>
+                      </button>
+
+                      {/* Сколько слов возьмёт режим — видно до выдачи. */}
+                      <span
+                        className={cn(
+                          "shrink-0 text-[11px] font-semibold",
+                          works ? "text-faint" : "text-rose-500",
+                        )}
+                      >
+                        {works
+                          ? fmt(t.revision.ready, { n: list.length, total: pool.length })
+                          : t.revision.notReady}
+                      </span>
+
+                      {on && (
+                        <button
+                          type="button"
+                          onClick={() => setOpen(expanded ? null : mode)}
+                          className="flex h-7 shrink-0 items-center gap-0.5 rounded-lg px-1.5 text-[11px] font-semibold text-accent transition hover:bg-surface"
+                        >
+                          {t.revision.pickWords}
+                          <IconChevronDown
+                            className={cn("h-3.5 w-3.5 transition", expanded && "rotate-180")}
+                          />
+                        </button>
                       )}
-                    >
-                      {MODE_LABEL[mode]}
-                      {!isTestMode(mode) && (
-                        <span className="ml-1.5 text-[10px] font-normal text-faint">
-                          ({t.revision.hintFlashcards.toLowerCase()})
+
+                      {on && modes.length > 1 && (
+                        <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-white">
+                          {at + 1}
                         </span>
                       )}
-                    </span>
-                    <span className="block text-[11px] text-faint">
-                      {MODE_HINT[mode]}
-                    </span>
-                  </span>
+                    </div>
 
-                  <span className="shrink-0 text-[11px] text-faint">
-                    {info?.ready
-                      ? fmt(t.revision.ready, {
-                          n: info.usable,
-                          total: chosen.length,
-                        })
-                      : t.revision.notReady}
-                  </span>
+                    {on && expanded && (
+                      <div className="border-t border-line px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDropped((prev) => ({ ...prev, [mode]: [] }))}
+                            className="h-7 rounded-lg bg-surface px-2 text-[11px] font-semibold text-accent transition hover:opacity-80"
+                          >
+                            {t.revision.allWords}
+                          </button>
+                          <label className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-faint">
+                              {t.revision.takeFirst}
+                            </span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={pool.length}
+                              value={list.length}
+                              onChange={(e) => takeFirst(mode, Number(e.target.value))}
+                              className="h-7 w-16 rounded-lg border border-line bg-surface px-2 text-[12px] text-content outline-none focus:border-accent"
+                            />
+                            <span className="text-[11px] text-faint">
+                              {fmt(t.revision.outOf, { total: pool.length })}
+                            </span>
+                          </label>
+                        </div>
 
-                  {on && modes.length > 1 && (
-                    <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-white">
-                      {at + 1}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                        <div className="mt-2 grid max-h-44 gap-0.5 overflow-y-auto rounded-lg bg-surface p-1.5 sm:grid-cols-2">
+                          {pool.map((w) => {
+                            const off = (dropped[mode] ?? []).includes(w.phraseId);
+                            return (
+                              <label
+                                key={w.phraseId}
+                                className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-surface-2"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={!off}
+                                  onChange={() => toggleWord(mode, w.phraseId)}
+                                  className="h-3.5 w-3.5 accent-[var(--accent)]"
+                                />
+                                <span
+                                  className={cn(
+                                    "min-w-0 flex-1 truncate text-[12px]",
+                                    off ? "text-faint line-through" : "text-content",
+                                  )}
+                                >
+                                  {w.word}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Время и срок */}
@@ -321,6 +397,19 @@ export function RevisionSetup({
               placeholder={t.revision.whole}
               className={`${inputCls} mt-2`}
             />
+            {steps > 0 && (
+              <p
+                className={cn(
+                  "mt-1.5 text-[11px]",
+                  whole > 0 && whole < estimate
+                    ? "font-semibold text-rose-500"
+                    : "text-faint",
+                )}
+              >
+                {fmt(t.revision.estimate, { minutes: estimate })}
+                {whole > 0 && whole < estimate && ` — ${t.revision.tooShort}`}
+              </p>
+            )}
           </div>
 
           <label className="block">

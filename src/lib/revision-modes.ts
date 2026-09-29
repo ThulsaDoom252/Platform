@@ -126,8 +126,25 @@ export function readiness(words: RevisionWord[]): ModeReadiness[] {
   });
 }
 
-/** Можно ли пускать задание: нужен хотя бы один работающий проверочный режим. */
+/** Заработает ли режим на этих словах. */
+export function modeReady(words: RevisionWord[], mode: RevisionMode): boolean {
+  return wordsFor(words, mode).length >= MIN_WORDS[mode];
+}
+
+/**
+ * Можно ли пускать задание, когда у каждого режима свой набор слов.
+ *
+ * Нужен хотя бы один работающий проверочный режим: задание из одних
+ * карточек ничего не спрашивает.
+ */
+export function canStartWith(
+  wordsOf: (mode: RevisionMode) => RevisionWord[],
+  modes: RevisionMode[],
+): boolean {
+  return modes.some((mode) => isTestMode(mode) && modeReady(wordsOf(mode), mode));
+}
+
+/** То же на одном общем наборе слов. */
 export function canStart(words: RevisionWord[], modes: RevisionMode[]): boolean {
-  const state = new Map(readiness(words).map((r) => [r.mode, r]));
-  return modes.some((mode) => isTestMode(mode) && state.get(mode)?.ready);
+  return canStartWith(() => words, modes);
 }

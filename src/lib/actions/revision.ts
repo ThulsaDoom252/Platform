@@ -81,6 +81,8 @@ export type RevisionSetup = {
   title: string;
   phraseIds: string[];
   modes: string[];
+  /** Слова по режимам: пустой режим берёт всё, что ему подходит. */
+  modeWords: Record<string, string[]>;
   answerSeconds: number | null;
   totalSeconds: number | null;
   dueAt: string | null;
@@ -98,6 +100,17 @@ export async function createRevisionAction(setup: RevisionSetup): Promise<Revisi
     REVISION_MODES.includes(m as RevisionMode),
   );
 
+  /*
+   * Набор режима чистим по общему списку слов: пришедшие с формы id
+   * должны быть из этого же словника, а не откуда придётся.
+   */
+  const inTask = new Set(phraseIds);
+  const modeWords: Record<string, string[]> = {};
+  for (const mode of modes) {
+    const own = (setup?.modeWords?.[mode] ?? []).map(String).filter((id) => inTask.has(id));
+    if (own.length > 0) modeWords[mode] = own;
+  }
+
   if (!studentId || !nodeId) return { error: "Не выбран ученик или словник" };
   if (!title) return { error: "Дай заданию название" };
   if (phraseIds.length === 0) return { error: "Не выбрано ни одного слова" };
@@ -113,6 +126,7 @@ export async function createRevisionAction(setup: RevisionSetup): Promise<Revisi
       title,
       phraseIds,
       modes,
+      modeWords,
       answerSeconds: setup?.answerSeconds ?? null,
       totalSeconds: setup?.totalSeconds ?? null,
       dueAt: due && !Number.isNaN(due.getTime()) ? due : null,
@@ -290,7 +304,9 @@ export async function startRevisionAction(
   if (running) return { ok: true, attemptId: running.id };
 
   const words = await wordsOf(revision.phraseIds ?? []);
-  const plan = buildRevision(words, (revision.modes ?? []) as RevisionMode[]);
+  const plan = buildRevision(words, (revision.modes ?? []) as RevisionMode[], {
+    byMode: revision.modeWords ?? undefined,
+  });
   if (plan.length === 0) return { error: "Для этих слов нечего показать" };
 
   /*

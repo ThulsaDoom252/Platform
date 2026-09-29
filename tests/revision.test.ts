@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   canStart,
+  canStartWith,
   readiness,
   wordFits,
 
@@ -12,6 +13,7 @@ import {
   buildRevision,
   makeOptions,
   splitPairs,
+  wordsOfMode,
   positionOf,
   stepSize,
   timeoutRest,
@@ -355,4 +357,54 @@ test("просрочка хвоста роняет точность", () => {
   assert.equal(result.total, 10);
   assert.equal(result.accuracy, 50);
   assert.equal(result.timeouts, 5);
+});
+
+// ---------- свой набор слов на каждую секцию ----------
+
+test("режим берёт только отданные ему слова", () => {
+  const plan = buildRevision(
+    FIVE,
+    ["flashcards", "choose"],
+    { byMode: { choose: ["a", "b", "c"] } },
+    seeded(12),
+  );
+
+  const cards = plan.find((s) => s.mode === "flashcards")!;
+  const choose = plan.find((s) => s.mode === "choose")!;
+
+  // Карточкам набор не задали — берут весь словник.
+  assert.equal(stepSize(cards.steps[0]), 5);
+  assert.equal(choose.steps.length, 3);
+});
+
+test("порядок словника важнее порядка галочек", () => {
+  // Учитель мог тыкать вразнобой — задание всё равно идёт по словнику.
+  const picked = wordsOfMode("choose", FIVE, { choose: ["d", "a", "c"] });
+  assert.deepEqual(picked.map((w) => w.phraseId), ["a", "c", "d"]);
+});
+
+test("режим без своего набора берёт всё", () => {
+  assert.equal(wordsOfMode("choose", FIVE, undefined).length, 5);
+  assert.equal(wordsOfMode("choose", FIVE, { picture: ["a"] }).length, 5);
+});
+
+test("урезанный набор может уронить режим ниже минимума", () => {
+  /*
+   * Выбор из трёх на двух словах собрать нечем: секция должна исчезнуть
+   * до старта, а не показать ученику вопрос с двумя вариантами.
+   */
+  const plan = buildRevision(
+    FIVE,
+    ["choose", "unscramble"],
+    { byMode: { choose: ["a", "b"] } },
+    seeded(13),
+  );
+
+  assert.deepEqual(plan.map((s) => s.mode), ["unscramble"]);
+});
+
+test("задание не пускают, если проверочный режим остался без слов", () => {
+  const enough = (mode: string) => (mode === "choose" ? FIVE.slice(0, 2) : FIVE);
+  assert.equal(canStartWith(enough, ["flashcards", "choose"]), false);
+  assert.equal(canStartWith(() => FIVE, ["flashcards", "choose"]), true);
 });

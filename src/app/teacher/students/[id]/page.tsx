@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StudentNotes } from "@/components/teacher/student-notes";
+import { RevisionTeacherList } from "@/components/revision/revision-teacher-list";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -270,6 +271,18 @@ export default async function StudentDetailPage({
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Words revision</CardTitle>
+          <CardDescription>
+            Выданные повторения слов: разбор по секциям, время и повторные попытки
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RevisionTeacherList studentId={id} />
         </CardContent>
       </Card>
 
