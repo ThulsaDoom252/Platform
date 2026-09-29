@@ -18,9 +18,14 @@ import { fmt } from "@/lib/i18n";
 import { SpeakPair, useSpeech } from "@/components/materials/speech";
 import { shuffle } from "@/lib/game-deck";
 import { stopwatch } from "@/lib/stopwatch";
-import type { RevisionStep } from "@/lib/revision-build";
+import {
+  pairOrder,
+  scrambleParts,
+  type RevisionStep,
+  type ScrambledPart,
+} from "@/lib/revision-build";
 import type { RevisionAnswer } from "@/lib/revision-score";
-import type { RevisionWord } from "@/lib/revision-modes";
+import type { RevisionShow, RevisionWord } from "@/lib/revision-modes";
 import {
   IconCheck,
   IconChevronLeft,
@@ -33,6 +38,8 @@ export type StepProps = {
   step: RevisionStep;
   /** Секунд на шаг; null — без ограничения. */
   seconds: number | null;
+  /** Что учитель разрешил показывать рядом с заданием. */
+  show: RevisionShow;
   onDone: (entries: RevisionAnswer[]) => void;
 };
 
@@ -208,9 +215,11 @@ function entry(
 
 function Flashcards({
   words,
+  show,
   onDone,
 }: {
   words: RevisionWord[];
+  show: RevisionShow;
   onDone: StepProps["onDone"];
 }) {
   const { t } = useT();
@@ -261,9 +270,13 @@ function Flashcards({
         {fmt(t.revision.stepOf, { n: at + 1, total: words.length })}
       </p>
 
-      {/* Карточка показывает всё сразу: переворачивать нечего. */}
+      {/*
+       * На карточке только английское слово. Перевод, картинка и
+       * описание появляются, если учитель их включил: иначе карточка
+       * отвечает сама за себя и повторять нечего.
+       */}
       <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-surface p-6 text-center ring-1 ring-line shadow-sm">
-        {word.imageUrl && (
+        {show.cardImage && word.imageUrl && (
           <div className="w-full max-w-[220px]">
             <WordImage url={word.imageUrl} alt={word.word} />
           </div>
@@ -274,10 +287,10 @@ function Flashcards({
           <SpeakPair text={word.word} id={word.phraseId} speech={speech} />
         </span>
 
-        {word.translation && (
+        {show.cardTranslation && word.translation && (
           <span className="text-xl font-bold text-accent">{word.translation}</span>
         )}
-        {word.description && (
+        {show.cardDescription && word.description && (
           <span className="text-sm text-muted">{word.description}</span>
         )}
       </div>
@@ -470,8 +483,12 @@ function Pairs({
   const { t } = useT();
 
   // Перемешано один раз: иначе колонки прыгали бы на каждый клик.
-  const left = useMemo(() => shuffle(words), [words]);
-  const right = useMemo(() => shuffle(words), [words]);
+  const left = useMemo(() => shuffle(words).map((w) => w.phraseId), [words]);
+  const right = useMemo(() => shuffle(words).map((w) => w.phraseId), [words]);
+  const wordOf = useMemo(
+    () => new Map(words.map((w) => [w.phraseId, w])),
+    [words],
+  );
 
   const [picked, setPicked] = useState<string | null>(null);
   const [matched, setMatched] = useState<string[]>([]);
@@ -482,7 +499,9 @@ function Pairs({
   const spent = useRef<Record<string, number>>({});
   const watch = useStopwatch();
 
-  const done = out || matched.length === words.length;
+  const full = matched.length === words.length;
+  const done = out || full;
+  const sent = useRef(false);
   // На группу из четырёх времени дают вчетверо: это один шаг, но четыре ответа.
   const total = seconds ? seconds * words.length : null;
   const leftMs = useStepTimer(total, done, 0, () => setOut(true));
@@ -513,7 +532,14 @@ function Pairs({
     setPicked(null);
   };
 
-  const finish = () =>
+  /*
+   * Набор собран — значит собран. Показывать после этого «неверно» за
+   * промахи по дороге незачем: ошибки уже записаны, а ученик видит
+   * ровно то, что сделал.
+   */
+  const finish = () => {
+    if (sent.current) return;
+    sent.current = true;
     onDone(
       words.map((w) => {
         const solved = matched.includes(w.phraseId);
@@ -530,6 +556,17 @@ function Pairs({
         );
       }),
     );
+  };
+
+  const end = useRef(finish);
+  useEffect(() => {
+    end.current = finish;
+  });
+  useEffect(() => {
+    if (!done) return;
+    const id = setTimeout(() => end.current(), full ? 650 : 1200);
+    return () => clearTimeout(id);
+  }, [done, full]);
 
   const cell = (id: string, text: string, side: "left" | "right") => {
     const solved = matched.includes(id);
@@ -560,21 +597,19 @@ function Pairs({
       <TimerBar left={leftMs} total={total} />
       <p className="text-center text-[12px] text-faint">{t.revision.matchHint}</p>
 
+      {/* Собранные пары поднимаются наверх в порядке, в каком их нашли. */}
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-2">
-          {left.map((w) => cell(w.phraseId, w.word, "left"))}
+          {pairOrder(left, matched).map((id) =>
+            cell(id, wordOf.get(id)!.word, "left"),
+          )}
         </div>
         <div className="flex flex-col gap-2">
-          {right.map((w) => cell(w.phraseId, faceOf(w), "right"))}
+          {pairOrder(right, matched).map((id) =>
+            cell(id, faceOf(wordOf.get(id)!), "right"),
+          )}
         </div>
       </div>
-
-      {done && (
-        <Verdict
-          ok={matched.length === words.length && missed.length === 0}
-          onNext={finish}
-        />
-      )}
     </div>
   );
 }
@@ -585,33 +620,38 @@ function Pairs({
 
 const UNSCRAMBLE_TRIES = 3;
 
+/**
+ * Собери слово.
+ *
+ * На каждое слово фразы — своя коробка с его буквами вперемешку и своя
+ * строка сверху, куда они складываются. Буквы из второго слова в первую
+ * строку не попадают: иначе на длинной фразе ученик собирает кашу из
+ * общей кучи, а не слова.
+ */
 function Unscramble({
   word,
+  parts: given,
   seconds,
+  show,
   onDone,
 }: {
   word: RevisionWord;
+  /** Приходят из плана. У попыток, начатых до появления букв, их нет. */
+  parts?: ScrambledPart[];
   seconds: number | null;
+  show: RevisionShow;
   onDone: StepProps["onDone"];
 }) {
   const { t } = useT();
 
   /*
-   * Фразу собираем из слов, одиночное слово — из букв. Рассыпать фразу
-   * на буквы — это уже не повторение, а головоломка.
+   * Старый план букв не нёс: рассыпаем на месте, иначе начатая до
+   * обновления попытка падает на ровном месте.
    */
-  const target = word.word.trim();
-  const byWords = /\s/.test(target);
-  const parts = useMemo(
-    () => (byWords ? target.split(/\s+/) : [...target]),
-    [target, byWords],
-  );
-  const tiles = useMemo(
-    () => shuffle(parts.map((text, i) => ({ id: i, text }))),
-    [parts],
-  );
+  const [parts] = useState(() => given ?? scrambleParts(word.word));
 
-  const [placed, setPlaced] = useState<number[]>([]);
+  /** Что уже положено в каждую строку — индексами букв своей коробки. */
+  const [placed, setPlaced] = useState<number[][]>(() => parts.map(() => []));
   const [tries, setTries] = useState(0);
   const [shakeOn, setShakeOn] = useState(false);
   const [result, setResult] = useState<"ok" | "fail" | "timeout" | null>(null);
@@ -624,16 +664,19 @@ function Unscramble({
     setResult("timeout");
   });
 
-  const textOf = (ids: number[]) =>
-    ids.map((id) => tiles.find((tile) => tile.id === id)!.text).join(byWords ? " " : "");
+  const textOf = (rows: number[][]) =>
+    rows.map((row, i) => row.map((at) => parts[i].letters[at]).join("")).join(" ");
 
-  const add = (id: number) => {
+  const full = (rows: number[][]) =>
+    rows.every((row, i) => row.length === parts[i].letters.length);
+
+  const add = (part: number, at: number) => {
     if (result) return;
-    const next = [...placed, id];
+    const next = placed.map((row, i) => (i === part ? [...row, at] : row));
     setPlaced(next);
-    if (next.length < parts.length) return;
+    if (!full(next)) return;
 
-    if (same(textOf(next), target)) {
+    if (same(textOf(next), word.word)) {
       took.current = watch.ms();
       setResult("ok");
       return;
@@ -643,68 +686,77 @@ function Unscramble({
     setTries(used);
     setShakeOn(true);
     setTimeout(() => setShakeOn(false), 450);
-    setPlaced([]);
+    setPlaced(parts.map(() => []));
     if (used >= UNSCRAMBLE_TRIES) {
       took.current = watch.ms();
       setResult("fail");
     }
   };
 
-  const drop = (at: number) => {
+  const drop = (part: number, index: number) => {
     if (result) return;
-    setPlaced((prev) => prev.filter((_, i) => i !== at));
+    setPlaced((prev) =>
+      prev.map((row, i) => (i === part ? row.filter((_, k) => k !== index) : row)),
+    );
   };
 
   return (
     <div className="flex flex-col gap-4">
       <TimerBar left={left} total={seconds} />
 
-      <div className="flex min-h-[18vh] flex-col items-center justify-center gap-3 rounded-3xl bg-surface px-5 py-6 text-center ring-1 ring-line shadow-sm">
-        {word.translation && (
-          <p className="text-lg font-bold text-accent">{word.translation}</p>
-        )}
-        {word.imageUrl && (
-          <div className="w-full max-w-[200px]">
-            <WordImage url={word.imageUrl} alt="" />
+      {/* Подсказки — только если учитель их включил. */}
+      {((show.scrambleTranslation && word.translation) ||
+        (show.scrambleImage && word.imageUrl)) && (
+        <div className="flex flex-col items-center gap-3 rounded-3xl bg-surface px-5 py-5 text-center ring-1 ring-line shadow-sm">
+          {show.scrambleTranslation && word.translation && (
+            <p className="text-lg font-bold text-accent">{word.translation}</p>
+          )}
+          {show.scrambleImage && word.imageUrl && (
+            <div className="w-full max-w-[200px]">
+              <WordImage url={word.imageUrl} alt="" />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={cn("flex flex-col gap-4", shakeOn && "shake")}>
+        {parts.map((part, i) => (
+          <div key={i} className="flex flex-col gap-1.5">
+            {/* Строка слова: сюда падают его буквы. */}
+            <div className="flex min-h-12 flex-wrap items-center justify-center gap-1.5 rounded-2xl bg-surface-2 px-3 py-2">
+              {placed[i].length === 0 ? (
+                <span className="text-[11px] text-faint">
+                  {fmt(t.revision.wordNo, { n: i + 1 })}
+                </span>
+              ) : (
+                placed[i].map((at, k) => (
+                  <button
+                    key={`${at}-${k}`}
+                    type="button"
+                    onClick={() => drop(i, k)}
+                    className="h-9 w-9 rounded-lg bg-accent text-sm font-bold text-white"
+                  >
+                    {part.letters[at]}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Коробка букв этого слова. */}
+            <div className="flex flex-wrap justify-center gap-1.5 rounded-2xl border border-dashed border-line px-3 py-2">
+              {part.letters.map((letter, at) => (
+                <button
+                  key={at}
+                  type="button"
+                  onClick={() => add(i, at)}
+                  disabled={placed[i].includes(at) || result !== null}
+                  className="h-9 w-9 rounded-lg bg-surface text-sm font-bold text-content ring-1 ring-line transition hover:ring-accent disabled:opacity-20"
+                >
+                  {letter}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Собранное */}
-      <div
-        className={cn(
-          "flex min-h-14 flex-wrap items-center justify-center gap-1.5 rounded-2xl bg-surface-2 px-3 py-2.5",
-          shakeOn && "shake",
-        )}
-      >
-        {placed.length === 0 ? (
-          <span className="text-[12px] text-faint">{t.revision.typeWord}</span>
-        ) : (
-          placed.map((id, at) => (
-            <button
-              key={`${id}-${at}`}
-              type="button"
-              onClick={() => drop(at)}
-              className="min-w-9 rounded-lg bg-accent px-2.5 py-1.5 text-sm font-bold text-white"
-            >
-              {tiles.find((tile) => tile.id === id)!.text}
-            </button>
-          ))
-        )}
-      </div>
-
-      {/* Рассыпанное */}
-      <div className="flex flex-wrap justify-center gap-1.5">
-        {tiles.map((tile) => (
-          <button
-            key={tile.id}
-            type="button"
-            onClick={() => add(tile.id)}
-            disabled={placed.includes(tile.id) || result !== null}
-            className="min-w-9 rounded-lg bg-surface px-2.5 py-1.5 text-sm font-bold text-content ring-1 ring-line transition hover:ring-accent disabled:opacity-25"
-          >
-            {tile.text}
-          </button>
         ))}
       </div>
 
@@ -717,7 +769,7 @@ function Unscramble({
       {result && (
         <Verdict
           ok={result === "ok"}
-          right={target}
+          right={word.word}
           onNext={() =>
             onDone([
               entry(
@@ -833,12 +885,12 @@ function Picture({
 /* Диспетчер                                                           */
 /* ------------------------------------------------------------------ */
 
-export function RevisionStepScreen({ step, seconds, onDone }: StepProps) {
+export function RevisionStepScreen({ step, seconds, show, onDone }: StepProps) {
   const speech = useSpeech();
 
   switch (step.mode) {
     case "flashcards":
-      return <Flashcards words={step.words} onDone={onDone} />;
+      return <Flashcards words={step.words} show={show} onDone={onDone} />;
 
     case "choose":
       return (
@@ -891,7 +943,15 @@ export function RevisionStepScreen({ step, seconds, onDone }: StepProps) {
       );
 
     case "unscramble":
-      return <Unscramble word={step.word} seconds={seconds} onDone={onDone} />;
+      return (
+        <Unscramble
+          word={step.word}
+          parts={step.parts}
+          seconds={seconds}
+          show={show}
+          onDone={onDone}
+        />
+      );
 
     case "picture":
       return <Picture word={step.word} seconds={seconds} onDone={onDone} />;

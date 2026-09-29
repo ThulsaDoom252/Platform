@@ -14,7 +14,11 @@ import {
   makeOptions,
   splitPairs,
   wordsOfMode,
-  positionOf,
+  scrambleLetters,
+  scrambleParts,
+  pairOrder,
+  planProgress,
+  nextSection,
   stepSize,
   timeoutRest,
   CHOICE_OPTIONS,
@@ -305,26 +309,6 @@ test("шаг знает, сколько ответов он закрывает",
   assert.equal(stepSize(choose.steps[0]), 1);
 });
 
-test("позиция считается по числу ответов", () => {
-  const plan = buildRevision(FIVE, ["flashcards", "choose"], {}, seeded(8));
-
-  assert.deepEqual(positionOf(plan, 0), { section: 0, step: 0 });
-  // Пять ответов — это ровно пачка карточек: дальше первый шаг выбора.
-  assert.deepEqual(positionOf(plan, 5), { section: 1, step: 0 });
-  assert.deepEqual(positionOf(plan, 7), { section: 1, step: 2 });
-});
-
-test("на середине пачки позиция остаётся на ней", () => {
-  // Карточки — один шаг: три просмотренных из пяти его не закрывают.
-  const plan = buildRevision(FIVE, ["flashcards", "choose"], {}, seeded(8));
-  assert.deepEqual(positionOf(plan, 3), { section: 0, step: 0 });
-});
-
-test("пройденное задание даёт позицию за концом плана", () => {
-  const plan = buildRevision(FIVE, ["choose"], {}, seeded(2));
-  assert.deepEqual(positionOf(plan, 5), { section: 1, step: 0 });
-});
-
 test("непройденный хвост уходит в просрочку", () => {
   const plan = buildRevision(FIVE, ["choose", "unscramble"], {}, seeded(3));
   const rest = timeoutRest(plan, 7);
@@ -407,4 +391,98 @@ test("задание не пускают, если проверочный реж
   const enough = (mode: string) => (mode === "choose" ? FIVE.slice(0, 2) : FIVE);
   assert.equal(canStartWith(enough, ["flashcards", "choose"]), false);
   assert.equal(canStartWith(() => FIVE, ["flashcards", "choose"]), true);
+});
+
+// ---------- рассыпанные буквы ----------
+
+test("буквы перемешиваются, а не остаются на местах", () => {
+  /*
+   * Случайная перестановка иногда возвращает слово как есть — и задание
+   * превращается в «нажми по порядку». Это и была жалоба.
+   */
+  for (let seed = 1; seed <= 40; seed++) {
+    const mixed = scrambleLetters("grateful", seeded(seed)).join("");
+    assert.notEqual(mixed, "grateful", `seed=${seed}`);
+  }
+});
+
+test("рассыпанное слово состоит из тех же букв", () => {
+  const mixed = scrambleLetters("refugee", seeded(5));
+  assert.deepEqual([...mixed].sort(), [..."refugee"].sort());
+});
+
+test("переставлять нечего — слово остаётся собой", () => {
+  assert.deepEqual(scrambleLetters("a", seeded(1)), ["a"]);
+  assert.deepEqual(scrambleLetters("aaa", seeded(1)), ["a", "a", "a"]);
+});
+
+test("фраза рассыпается по коробке на слово", () => {
+  const parts = scrambleParts("to push for", seeded(9));
+
+  assert.deepEqual(parts.map((p) => p.text), ["to", "push", "for"]);
+  // В каждой коробке буквы своего слова, чужих там нет.
+  for (const part of parts) {
+    assert.deepEqual([...part.letters].sort(), [...part.text].sort());
+  }
+});
+
+test("шаг «собери слово» приносит буквы с собой", () => {
+  const plan = buildRevision([word("grateful")], ["unscramble"], {}, seeded(3));
+  const step = plan[0].steps[0];
+
+  assert.equal(step.mode, "unscramble");
+  if (step.mode !== "unscramble") return;
+  assert.equal(step.parts.length, 1);
+  assert.notEqual(step.parts[0].letters.join(""), "grateful");
+});
+
+// ---------- собранные пары наверх ----------
+
+test("собранные пары уходят наверх в порядке находок", () => {
+  assert.deepEqual(pairOrder(["a", "b", "c", "d"], ["c", "a"]), ["c", "a", "b", "d"]);
+});
+
+test("несобранное сохраняет свой порядок", () => {
+  assert.deepEqual(pairOrder(["a", "b", "c"], []), ["a", "b", "c"]);
+  // Чужой id в собранных колонку не ломает.
+  assert.deepEqual(pairOrder(["a", "b"], ["z", "b"]), ["b", "a"]);
+});
+
+// ---------- свободный ход между секциями ----------
+
+const answerIn = (mode: RevisionAnswer["mode"], n: number): RevisionAnswer[] =>
+  Array.from({ length: n }, (_, i) => answer(mode, `w${i}`, true, 100));
+
+test("прогресс считается по каждой секции отдельно", () => {
+  const plan = buildRevision(FIVE, ["choose", "unscramble"], {}, seeded(4));
+  // Ученик ушёл во вторую секцию и ответил там два раза.
+  const progress = planProgress(plan, answerIn("unscramble", 2));
+
+  assert.deepEqual(progress[0], { mode: "choose", step: 0, answered: 0, total: 5, done: false });
+  assert.equal(progress[1].step, 2);
+  assert.equal(progress[1].answered, 2);
+});
+
+test("карточки закрываются одним шагом целиком", () => {
+  const plan = buildRevision(FIVE, ["flashcards", "choose"], {}, seeded(4));
+  const half = planProgress(plan, answerIn("flashcards", 5));
+
+  assert.equal(half[0].done, true);
+  assert.equal(half[1].done, false);
+});
+
+test("следующая секция ищется по кругу", () => {
+  const plan = buildRevision(FIVE, ["choose", "unscramble", "picture"], {}, seeded(4));
+  const progress = planProgress(plan, answerIn("unscramble", 5));
+
+  // Со второй (уже пройденной) уходим на третью.
+  assert.equal(nextSection(progress, 1), 2);
+  // С третьей — обратно на первую, она ещё не тронута.
+  assert.equal(nextSection(progress, 2), 2);
+  assert.equal(nextSection(progress, 0), 0);
+});
+
+test("пройдено всё — следующей секции нет", () => {
+  const plan = buildRevision(FIVE, ["choose"], {}, seeded(4));
+  assert.equal(nextSection(planProgress(plan, answerIn("choose", 5))), -1);
 });

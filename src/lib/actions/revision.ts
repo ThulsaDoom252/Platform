@@ -22,7 +22,13 @@ import {
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { buildRevision, type RevisionSection } from "@/lib/revision-build";
-import { REVISION_MODES, type RevisionMode, type RevisionWord } from "@/lib/revision-modes";
+import {
+  readShow,
+  REVISION_MODES,
+  type RevisionMode,
+  type RevisionShow,
+  type RevisionWord,
+} from "@/lib/revision-modes";
 import { scoreRevision, type RevisionAnswer } from "@/lib/revision-score";
 
 export type RevisionState = { ok?: boolean; error?: string; id?: string };
@@ -83,6 +89,8 @@ export type RevisionSetup = {
   modes: string[];
   /** Слова по режимам: пустой режим берёт всё, что ему подходит. */
   modeWords: Record<string, string[]>;
+  /** Что показывать рядом с заданием: картинка, перевод, описание. */
+  show: Record<string, boolean>;
   answerSeconds: number | null;
   totalSeconds: number | null;
   dueAt: string | null;
@@ -127,6 +135,7 @@ export async function createRevisionAction(setup: RevisionSetup): Promise<Revisi
       phraseIds,
       modes,
       modeWords,
+      show: setup?.show ?? {},
       answerSeconds: setup?.answerSeconds ?? null,
       totalSeconds: setup?.totalSeconds ?? null,
       dueAt: due && !Number.isNaN(due.getTime()) ? due : null,
@@ -360,6 +369,8 @@ export type AttemptView = {
   finishedAt: string | null;
   answerSeconds: number | null;
   totalSeconds: number | null;
+  /** Что показывать рядом с заданием. */
+  show: RevisionShow;
 };
 
 /** Текущая попытка со всем, что нужно для прохождения. */
@@ -390,6 +401,7 @@ export async function attemptAction(attemptId: string): Promise<AttemptView | nu
     finishedAt: row.attempt.finishedAt?.toISOString() ?? null,
     answerSeconds: row.revision.answerSeconds,
     totalSeconds: row.revision.totalSeconds,
+    show: readShow(row.revision.show),
   };
 }
 

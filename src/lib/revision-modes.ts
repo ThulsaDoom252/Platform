@@ -148,3 +148,38 @@ export function canStartWith(
 export function canStart(words: RevisionWord[], modes: RevisionMode[]): boolean {
   return canStartWith(() => words, modes);
 }
+
+/**
+ * Что показывать рядом с заданием.
+ *
+ * Карточка — это английское слово, а «собери слово» — буквы. Перевод,
+ * картинка и описание рядом превращают и то и другое в чтение вслух,
+ * поэтому по умолчанию их нет, а включает их учитель под конкретный
+ * класс: начинающему картинка помогает, продвинутому мешает.
+ */
+export type RevisionShow = {
+  cardImage: boolean;
+  cardTranslation: boolean;
+  cardDescription: boolean;
+  scrambleImage: boolean;
+  scrambleTranslation: boolean;
+};
+
+export const DEFAULT_SHOW: RevisionShow = {
+  cardImage: false,
+  cardTranslation: false,
+  cardDescription: false,
+  scrambleImage: false,
+  scrambleTranslation: false,
+};
+
+/** Ключи настроек по режимам — чтобы форма не выдумывала их заново. */
+export const SHOW_KEYS: Partial<Record<RevisionMode, (keyof RevisionShow)[]>> = {
+  flashcards: ["cardImage", "cardTranslation", "cardDescription"],
+  unscramble: ["scrambleImage", "scrambleTranslation"],
+};
+
+/** Настройки из базы: чего там нет — того и не показываем. */
+export function readShow(stored: Record<string, boolean> | null | undefined): RevisionShow {
+  return { ...DEFAULT_SHOW, ...(stored ?? {}) };
+}

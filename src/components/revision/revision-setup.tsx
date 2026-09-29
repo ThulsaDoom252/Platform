@@ -24,16 +24,28 @@ import {
 } from "@/lib/actions/revision";
 import {
   canStartWith,
+  DEFAULT_SHOW,
   isTestMode,
   modeReady,
   MIN_WORDS,
   REVISION_MODES,
+  SHOW_KEYS,
   wordsFor,
   type RevisionMode,
+  type RevisionShow,
   type RevisionWord,
 } from "@/lib/revision-modes";
 import { IconCheck, IconChevronDown, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
+
+/** Подписи настроек показа. Отдельно — их две группы на один словарь. */
+const SHOW_LABEL = (t: ReturnType<typeof useT>["t"]): Record<keyof RevisionShow, string> => ({
+  cardImage: t.revision.showImage,
+  cardTranslation: t.revision.showTranslation,
+  cardDescription: t.revision.showDescription,
+  scrambleImage: t.revision.showImage,
+  scrambleTranslation: t.revision.showTranslation,
+});
 
 const inputCls =
   "h-10 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
@@ -59,6 +71,8 @@ export function RevisionSetup({
   /** Снятые галочки по режимам: пусто — взяты все подходящие слова. */
   const [dropped, setDropped] = useState<Partial<Record<RevisionMode, string[]>>>({});
   const [open, setOpen] = useState<RevisionMode | null>(null);
+  /** Что показывать рядом с заданием: по умолчанию ничего. */
+  const [show, setShow] = useState<RevisionShow>(DEFAULT_SHOW);
   const [title, setTitle] = useState(nodeName);
   const [due, setDue] = useState("");
   const [perAnswer, setPerAnswer] = useState<number | null>(null);
@@ -164,6 +178,7 @@ export function RevisionSetup({
         phraseIds: [...union],
         modes,
         modeWords,
+        show,
         answerSeconds: perAnswer,
         totalSeconds: minutes > 0 ? minutes * 60 : null,
         dueAt: due ? new Date(due).toISOString() : null,
@@ -300,6 +315,32 @@ export function RevisionSetup({
 
                     {on && expanded && (
                       <div className="border-t border-line px-3 py-2.5">
+                        {/* Подсказки режима: перевод рядом с заданием его обнуляет. */}
+                        {SHOW_KEYS[mode] && (
+                          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-faint">
+                              {t.revision.showAlso}
+                            </span>
+                            {SHOW_KEYS[mode]!.map((key) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() =>
+                                  setShow((prev) => ({ ...prev, [key]: !prev[key] }))
+                                }
+                                className={cn(
+                                  "h-7 rounded-lg px-2 text-[11px] font-semibold transition",
+                                  show[key]
+                                    ? "bg-accent text-white"
+                                    : "bg-surface text-muted hover:text-content",
+                                )}
+                              >
+                                {SHOW_LABEL(t)[key]}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"

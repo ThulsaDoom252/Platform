@@ -22,7 +22,11 @@ import {
   type AttemptView,
   type RevisionCard,
 } from "@/lib/actions/revision";
-import { positionOf, timeoutRest } from "@/lib/revision-build";
+import {
+  nextSection,
+  planProgress,
+  timeoutRest,
+} from "@/lib/revision-build";
 import { scoreRevision, type RevisionAnswer } from "@/lib/revision-score";
 import type { RevisionMode } from "@/lib/revision-modes";
 import { RevisionStepScreen } from "@/components/revision/revision-steps";
@@ -37,7 +41,8 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   const [answers, setAnswers] = useState<RevisionAnswer[]>([]);
   const [phase, setPhase] = useState<Phase>("intro");
-  const [at, setAt] = useState({ section: 0, step: 0 });
+  /** Какая секция открыта. Шаг внутри неё считается по ответам. */
+  const [section, setSection] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [timeUp, setTimeUp] = useState(false);
   const [busy, startBusy] = useTransition();
@@ -69,9 +74,10 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
 
       // Прерванная попытка продолжается с места остановки, без поздравлений.
       const done = view.answers ?? [];
+      const where = nextSection(planProgress(view.plan, done));
       setAttempt(view);
       setAnswers(done);
-      setAt(positionOf(view.plan, done.length));
+      setSection(where < 0 ? 0 : where);
       setPhase("play");
     });
   }
@@ -87,16 +93,15 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
     if (!attempt) return;
 
     const next = [...answers, ...entries];
-    const section = attempt.plan[at.section];
-    const lastStep = at.step + 1 >= section.steps.length;
-    const lastSection = at.section + 1 >= attempt.plan.length;
-    const finished = lastStep && lastSection;
+    const after = planProgress(attempt.plan, next);
+    const finished = after.every((p) => p.done);
 
     setAnswers(next);
     void saveAnswersAction(attempt.id, next, finished);
 
-    if (!lastStep) setAt({ section: at.section, step: at.step + 1 });
-    else setPhase(finished ? "done" : "between");
+    if (finished) setPhase("done");
+    // Секция кончилась — поздравляем; иначе просто следующий шаг.
+    else if (after[section].done) setPhase("between");
   }
 
   if (phase === "done" || (attempt && attempt.finishedAt)) {
@@ -171,7 +176,9 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
     );
   }
 
-  const section = attempt.plan[at.section];
+  const progress = planProgress(attempt.plan, answers);
+  const here = attempt.plan[section];
+  const step = progress[section].step;
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
@@ -180,10 +187,11 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
           <p className="truncate text-sm font-bold text-content">{card.title}</p>
           <p className="text-[11px] text-faint">
             {fmt(t.revision.sectionOf, {
-              n: at.section + 1,
+              n: section + 1,
               total: attempt.plan.length,
             })}{" "}
-            · {MODE_LABEL[section.mode]}
+            · {MODE_LABEL[here.mode]} · {progress[section].answered}/
+            {progress[section].total}
           </p>
         </div>
 
@@ -200,22 +208,76 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
         )}
       </div>
 
+      {/*
+       * Переключатель секций. Застрять на режиме, который сегодня не
+       * идёт, нельзя: ученик уходит на другой и возвращается — секция
+       * ждёт его на том же шаге.
+       */}
+      <div className="flex flex-wrap gap-1">
+        {attempt.plan.map((s, i) => {
+          const p = progress[i];
+          return (
+            <button
+              key={s.mode}
+              type="button"
+              onClick={() => {
+                setSection(i);
+                setPhase("play");
+              }}
+              className={cn(
+                "flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold transition",
+                i === section
+                  ? "bg-accent text-white"
+                  : p.done
+                    ? "tint-green"
+                    : "bg-surface-2 text-muted hover:text-content",
+              )}
+            >
+              {p.done && <IconCheck className="h-3 w-3" />}
+              {MODE_LABEL[s.mode]}
+              <span className="opacity-70">
+                {p.answered}/{p.total}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {phase === "between" ? (
-        /* Между секциями `at` ещё показывает на только что пройденную. */
         <Between
           answers={answers}
-          mode={section.mode}
+          mode={here.mode}
           label={MODE_LABEL}
+          last={progress.every((p) => p.done)}
           onNext={() => {
-            setAt({ section: at.section + 1, step: 0 });
+            const to = nextSection(progress, section + 1);
+            if (to >= 0) setSection(to);
             setPhase("play");
           }}
         />
+      ) : progress[section].done ? (
+        /* Секцию уже прошли — здесь больше нечего спрашивать. */
+        <div className="flex min-h-[30vh] flex-col items-center justify-center gap-3 rounded-3xl bg-surface p-8 text-center ring-1 ring-line shadow-sm">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full tint-green">
+            <IconCheck className="h-7 w-7" />
+          </span>
+          <p className="text-sm font-bold text-content">{t.revision.sectionDone}</p>
+          {nextSection(progress, section + 1) >= 0 && (
+            <button
+              type="button"
+              onClick={() => setSection(nextSection(progress, section + 1))}
+              className="h-11 w-full max-w-xs rounded-xl bg-accent text-sm font-bold text-white transition hover:opacity-90"
+            >
+              {t.revision.nextSection}
+            </button>
+          )}
+        </div>
       ) : (
         <RevisionStepScreen
-          key={`${at.section}-${at.step}`}
-          step={section.steps[at.step]}
+          key={`${section}-${step}`}
+          step={here.steps[step]}
           seconds={attempt.answerSeconds}
+          show={attempt.show}
           onDone={stepDone}
         />
       )}
@@ -297,11 +359,14 @@ function Between({
   answers,
   mode,
   label,
+  last,
   onNext,
 }: {
   answers: RevisionAnswer[];
   mode: RevisionMode;
   label: Record<RevisionMode, string>;
+  /** Секций больше нет — значит это уже конец задания. */
+  last: boolean;
   onNext: () => void;
 }) {
   const { t } = useT();
@@ -330,7 +395,7 @@ function Between({
         autoFocus
         className="h-12 w-full max-w-xs rounded-xl bg-accent text-sm font-bold text-white transition hover:opacity-90"
       >
-        {t.revision.nextSection}
+        {last ? t.revision.finish : t.revision.nextSection}
       </button>
     </div>
   );

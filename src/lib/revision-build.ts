@@ -36,7 +36,12 @@ export type RevisionStep =
       options: string[];
     }
   | { mode: "pairs" | "definitionPairs"; words: RevisionWord[] }
-  | { mode: "unscramble"; word: RevisionWord }
+  | {
+      mode: "unscramble";
+      word: RevisionWord;
+      /** Слова фразы, у каждого свои буквы вперемешку. */
+      parts: ScrambledPart[];
+    }
   | { mode: "picture"; word: RevisionWord }
   | {
       mode: "definition";
@@ -44,6 +49,60 @@ export type RevisionStep =
       /** Английские слова на выбор; верное среди них одно. */
       options: string[];
     };
+
+/** Одно слово фразы: как пишется и как рассыпано. */
+export type ScrambledPart = { text: string; letters: string[] };
+
+/**
+ * Буквы слова вперемешку — так, чтобы не совпасть с исходным порядком.
+ *
+ * Случайная перестановка иногда возвращает слово как есть, и задание
+ * «собери слово» превращается в «нажми по порядку». Поэтому совпадение
+ * отбрасывается, а если переставлять нечего (одна буква, одинаковые
+ * буквы) — слово и остаётся собой.
+ */
+export function scrambleLetters(
+  word: string,
+  random: () => number = Math.random,
+): string[] {
+  const letters = [...word];
+  if (new Set(letters).size < 2) return letters;
+
+  for (let i = 0; i < 12; i++) {
+    const mixed = shuffle(letters, random);
+    if (mixed.join("") !== word) return mixed;
+  }
+
+  // Двенадцать неудач подряд — просто меняем местами две разные буквы.
+  const mixed = [...letters];
+  const at = mixed.findIndex((c) => c !== mixed[0]);
+  [mixed[0], mixed[at]] = [mixed[at], mixed[0]];
+  return mixed;
+}
+
+/** Фраза как набор рассыпанных слов: по коробке на слово. */
+export function scrambleParts(
+  phrase: string,
+  random: () => number = Math.random,
+): ScrambledPart[] {
+  return phrase
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((text) => ({ text, letters: scrambleLetters(text, random) }));
+}
+
+/**
+ * Собранные пары уходят наверх.
+ *
+ * Иначе решённое остаётся вперемешку с нерешённым, и к концу ученик
+ * ищет оставшуюся пару глазами по всему столбцу.
+ */
+export function pairOrder(ids: string[], matched: string[]): string[] {
+  const done = matched.filter((id) => ids.includes(id));
+  const left = new Set(done);
+  return [...done, ...ids.filter((id) => !left.has(id))];
+}
 
 /**
  * Чужие варианты к правильному ответу.
@@ -168,6 +227,12 @@ export function buildMode(
       return splitPairs(list).map((group) => ({ mode, words: group }));
 
     case "unscramble":
+      return list.map((word) => ({
+        mode,
+        word,
+        parts: scrambleParts(word.word, random),
+      }));
+
     case "picture":
       return list.map((word) => ({ mode, word }));
   }
@@ -231,28 +296,63 @@ export function planWords(plan: RevisionSection[]): {
   return out;
 }
 
-/**
- * Где ученик остановился.
- *
- * Прерванная попытка продолжается с того же места: закрытая вкладка не
- * повод проходить задание заново. Позиция считается по числу ответов,
- * потому что план на попытку уже зафиксирован.
- */
-export function positionOf(
-  plan: RevisionSection[],
-  answered: number,
-): { section: number; step: number } {
-  let used = 0;
+export type SectionProgress = {
+  mode: RevisionMode;
+  /** На каком шаге секция стоит сейчас. */
+  step: number;
+  /** Сколько слов уже отвечено и сколько их всего. */
+  answered: number;
+  total: number;
+  done: boolean;
+};
 
-  for (let s = 0; s < plan.length; s++) {
-    for (let q = 0; q < plan[s].steps.length; q++) {
-      const size = stepSize(plan[s].steps[q]);
-      if (used + size > answered) return { section: s, step: q };
+/**
+ * Продвижение по каждой секции в отдельности.
+ *
+ * Ученик ходит между секциями свободно, поэтому «сколько всего
+ * ответов» больше ничего не говорит: считать надо по режимам. Режим в
+ * плане встречается один раз, так что ответы по нему и есть прогресс
+ * его секции.
+ */
+export function planProgress(
+  plan: RevisionSection[],
+  answers: { mode: RevisionMode }[],
+): SectionProgress[] {
+  const byMode = new Map<RevisionMode, number>();
+  for (const a of answers) byMode.set(a.mode, (byMode.get(a.mode) ?? 0) + 1);
+
+  return plan.map((section) => {
+    const total = section.steps.reduce((sum, step) => sum + stepSize(step), 0);
+    const answered = Math.min(byMode.get(section.mode) ?? 0, total);
+
+    let used = 0;
+    let step = section.steps.length;
+    for (let q = 0; q < section.steps.length; q++) {
+      const size = stepSize(section.steps[q]);
+      if (used + size > answered) {
+        step = q;
+        break;
+      }
       used += size;
     }
-  }
 
-  return { section: plan.length, step: 0 };
+    return {
+      mode: section.mode,
+      step: Math.min(step, Math.max(0, section.steps.length - 1)),
+      answered,
+      total,
+      done: answered >= total,
+    };
+  });
+}
+
+/** Первая непройденная секция; −1 — пройдено всё. */
+export function nextSection(progress: SectionProgress[], from = 0): number {
+  for (let i = 0; i < progress.length; i++) {
+    const at = (from + i) % progress.length;
+    if (!progress[at].done) return at;
+  }
+  return -1;
 }
 
 /**
