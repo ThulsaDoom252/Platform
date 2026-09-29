@@ -24,6 +24,7 @@ import {
   type LessonSection,
 } from "@/lib/lesson-unit";
 import type { LessonView as Lesson } from "@/lib/actions/lessons";
+import { IconEyeOff } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 /** Цвет подсветки — в цвет фона, а не текста: читаемость важнее. */
@@ -37,8 +38,16 @@ const MARK: Record<string, string> = {
 
 export type LessonViewProps = {
   lesson: Lesson;
-  /** Какие секции открыты этому ученику. */
+  /** Какие секции показывать. */
   open: LessonSection[];
+  /**
+   * Что из показанного закрыто ученику.
+   *
+   * Учителю показываем все секции: подсветить место в закрытой секции
+   * надо до того, как её откроют, а не после. Но какие ученик видит, а
+   * какие нет — должно быть написано.
+   */
+  closed?: LessonSection[];
   highlights: Record<string, string>;
   /** Куда смотреть прямо сейчас — ключ места из lesson-unit. */
   focus?: string | null;
@@ -49,6 +58,7 @@ export type LessonViewProps = {
 export function LessonView({
   lesson,
   open,
+  closed,
   highlights,
   focus,
   onPick,
@@ -70,21 +80,27 @@ export function LessonView({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-1 rounded-2xl bg-surface p-1 ring-1 ring-line">
-        {open.map((section) => (
-          <button
-            key={section}
-            type="button"
-            onClick={() => setTab(section)}
-            className={cn(
-              "h-9 rounded-xl px-3.5 text-sm font-semibold transition",
-              current === section
-                ? "bg-accent text-white"
-                : "text-muted hover:bg-surface-2 hover:text-content",
-            )}
-          >
-            {LABEL[section]}
-          </button>
-        ))}
+        {open.map((section) => {
+          const hidden = closed?.includes(section);
+          return (
+            <button
+              key={section}
+              type="button"
+              onClick={() => setTab(section)}
+              title={hidden ? t.lessonUnits.hiddenFromStudent : undefined}
+              className={cn(
+                "flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-sm font-semibold transition",
+                current === section
+                  ? "bg-accent text-white"
+                  : "text-muted hover:bg-surface-2 hover:text-content",
+                hidden && current !== section && "opacity-50",
+              )}
+            >
+              {LABEL[section]}
+              {hidden && <IconEyeOff className="h-3.5 w-3.5" />}
+            </button>
+          );
+        })}
       </div>
 
       {current === "vocab" && (
@@ -209,29 +225,43 @@ function Vocab({
   );
 }
 
-/** Ссылка на YouTube — во встраиваемый вид; остальное отдаём как есть. */
-function embedUrl(url: string): string | null {
+/**
+ * Чем показывать ссылку.
+ *
+ * YouTube идёт своим плеером, обычный файл — родным браузерным: у него
+ * есть и перемотка, и скорость, и громкость, и полный экран. Всё
+ * остальное — просто ссылка: чужой плеер в iframe может и не открыться,
+ * а битый кадр вместо видео посреди урока хуже честной ссылки.
+ */
+const VIDEO_FILE = /\.(mp4|webm|ogv|ogg|mov|m4v)(\?.*)?$/i;
+
+export function videoSource(
+  url: string,
+): { kind: "youtube" | "file" | "link"; src: string } {
+  const raw = String(url ?? "").trim();
+
   try {
-    const u = new URL(url);
-    if (u.hostname === "youtu.be") return `https://www.youtube.com/embed${u.pathname}`;
+    const u = new URL(raw);
+    if (u.hostname === "youtu.be" && u.pathname.length > 1) {
+      return { kind: "youtube", src: `https://www.youtube.com/embed${u.pathname}` };
+    }
     if (u.hostname.endsWith("youtube.com")) {
       const id = u.searchParams.get("v");
-      if (id) return `https://www.youtube.com/embed/${id}`;
-      if (u.pathname.startsWith("/embed/")) return u.toString();
+      if (id) return { kind: "youtube", src: `https://www.youtube.com/embed/${id}` };
+      if (u.pathname.startsWith("/embed/")) return { kind: "youtube", src: u.toString() };
     }
-    return null;
+    if (VIDEO_FILE.test(u.pathname)) return { kind: "file", src: raw };
+    return { kind: "link", src: raw };
   } catch {
-    return null;
+    // Не адрес целиком, а путь вроде /uploads/video/lesson.mp4 — тоже файл.
+    if (VIDEO_FILE.test(raw)) return { kind: "file", src: raw };
+    return { kind: "link", src: raw };
   }
 }
 
 function Video({ lesson }: { lesson: Lesson }) {
   const { t } = useT();
-  const src = lesson.videoUrl ? embedUrl(lesson.videoUrl) : null;
-
-  if (!lesson.videoUrl) {
-    return <p className="text-sm text-faint">{t.lessonUnits.empty}</p>;
-  }
+  const video = lesson.videoUrl ? videoSource(lesson.videoUrl) : null;
 
   return (
     <section className="overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
@@ -241,23 +271,36 @@ function Video({ lesson }: { lesson: Lesson }) {
         </p>
       )}
 
-      {src ? (
+      {!video ? (
+        /* Видео ещё нет: место под него уже стоит, чтобы урок не прыгал. */
+        <div className="flex aspect-video w-full items-center justify-center bg-surface-2">
+          <p className="text-sm text-faint">{t.lessonUnits.videoSoon}</p>
+        </div>
+      ) : video.kind === "youtube" ? (
         <iframe
-          src={src}
+          src={video.src}
           title={lesson.videoTitle ?? "video"}
           allowFullScreen
           allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
           className="aspect-video w-full border-0"
         />
+      ) : video.kind === "file" ? (
+        <video
+          src={video.src}
+          controls
+          controlsList="nodownload"
+          preload="metadata"
+          playsInline
+          className="aspect-video w-full bg-black"
+        />
       ) : (
-        /* Не YouTube — отдаём ссылкой: чужой плеер в iframe может и не открыться. */
         <a
-          href={lesson.videoUrl}
+          href={video.src}
           target="_blank"
           rel="noreferrer"
           className="block px-4 py-6 text-sm font-semibold text-accent underline"
         >
-          {lesson.videoUrl}
+          {video.src}
         </a>
       )}
     </section>

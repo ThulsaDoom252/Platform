@@ -424,6 +424,7 @@ export const en = {
     noVocab: "No vocabulary yet",
     videoLink: "Video link",
     videoName: "Video title",
+    videoSoon: "The video will be here.",
     transcriptHint: "One line per reply: «Name: what they say».",
     afterVideo: "After the video",
     afterReading: "After the reading",
@@ -441,6 +442,7 @@ export const en = {
     pinTo: "Pin to a student",
     pinned: "Pinned",
     openForStudent: "Open for the student",
+    hiddenFromStudent: "The student does not see this yet",
     onlyVocabAtFirst: "The student starts with the vocabulary; open the rest when you need it.",
   },
   revision: {

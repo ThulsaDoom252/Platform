@@ -11,7 +11,12 @@ import { useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { highlightAction } from "@/lib/actions/lessons";
 import type { LessonAssignmentCard, LessonView as Lesson } from "@/lib/actions/lessons";
-import { HIGHLIGHTS, type HighlightColor, type LessonSection } from "@/lib/lesson-unit";
+import {
+  HIGHLIGHTS,
+  LESSON_SECTIONS,
+  type HighlightColor,
+  type LessonSection,
+} from "@/lib/lesson-unit";
 import { LessonView } from "@/components/lessons/lesson-view";
 import { cn } from "@/lib/utils";
 
@@ -78,9 +83,13 @@ export function AssignedLesson({
         </div>
       )}
 
+      {/* Учителю видны все секции, ученику — только открытые ему. */}
       <LessonView
         lesson={data.lesson}
-        open={data.open}
+        open={teacher ? [...LESSON_SECTIONS] : data.open}
+        closed={
+          teacher ? LESSON_SECTIONS.filter((s) => !data.open.includes(s)) : undefined
+        }
         highlights={marks}
         onPick={teacher ? pick : undefined}
       />

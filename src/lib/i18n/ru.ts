@@ -497,6 +497,7 @@ export const ru: Dict = {
     noVocab: "Словников пока нет",
     videoLink: "Ссылка на видео",
     videoName: "Название видео",
+    videoSoon: "Здесь будет видео.",
     transcriptHint: "По реплике в строке: «Имя: что говорит».",
     afterVideo: "После просмотра",
     afterReading: "После чтения",
@@ -514,6 +515,7 @@ export const ru: Dict = {
     pinTo: "Закрепить за учеником",
     pinned: "Закреплён",
     openForStudent: "Открыть ученику",
+    hiddenFromStudent: "Ученик этого пока не видит",
     onlyVocabAtFirst: "Ученик начинает со словника, остальное открываешь по ходу.",
   },
   revision: {
