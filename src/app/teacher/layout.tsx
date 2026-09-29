@@ -9,16 +9,11 @@ import { getDict } from "@/lib/i18n/server";
 import { I18nProvider } from "@/components/i18n-provider";
 import { logoutAction } from "@/lib/actions/auth";
 import { SidebarNav } from "@/components/teacher/sidebar-nav";
-import { SidebarShell } from "@/components/teacher/sidebar-shell";
+import { RAIL_ONLY_OPEN, SidebarRail } from "@/components/sidebar-rail";
 import { MobileNav } from "@/components/teacher/mobile-nav";
 import { NotificationBell } from "@/components/teacher/notification-bell";
 import { Avatar } from "@/components/avatar";
-import {
-  IconCap,
-  IconSearch,
-  IconLogout,
-  IconChevronDown,
-} from "@/components/icons";
+import { IconCap, IconLogout, IconChevronDown } from "@/components/icons";
 
 export default async function TeacherLayout({
   children,
@@ -43,26 +38,25 @@ export default async function TeacherLayout({
     <I18nProvider locale={locale}>
       <div className="min-h-screen bg-page">
         <div className="mx-auto flex w-full max-w-[1920px]">
-          {/* Sidebar — сворачивается в кружок, см. SidebarShell */}
-          <SidebarShell
-            expandLabel={t.topbar.expandSidebar}
-            collapseLabel={t.topbar.collapseSidebar}
-          >
-            <div className="flex items-center gap-3 px-1">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
+          {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}
+          <SidebarRail>
+            <Link href="/teacher" className="flex items-center gap-3 px-1">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
                 <IconCap className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-lg font-bold leading-none text-content">Lingora</p>
-                <p className="mt-1 text-[11px] font-medium tracking-wide text-faint">
+              </span>
+              <span className={`min-w-0 ${RAIL_ONLY_OPEN}`}>
+                <span className="block text-lg font-bold leading-none text-content">
+                  Lingora
+                </span>
+                <span className="mt-1 block whitespace-nowrap text-[11px] font-medium tracking-wide text-faint">
                   {t.brand.tagline}
-                </p>
-              </div>
-            </div>
+                </span>
+              </span>
+            </Link>
 
             <SidebarNav />
 
-            <div className="mt-auto flex flex-col gap-4">
+            <div className={`mt-auto flex flex-col gap-4 ${RAIL_ONLY_OPEN}`}>
               <div className="rounded-2xl bg-accent-soft p-4">
                 <p className="text-sm font-semibold text-content">{t.brand.smallSteps}</p>
               </div>
@@ -71,26 +65,19 @@ export default async function TeacherLayout({
                 <br />— Lingora
               </p>
             </div>
-          </SidebarShell>
+          </SidebarRail>
 
           {/* Main column */}
           <div className="flex min-w-0 flex-1 flex-col">
             <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-3.5">
-              <div className="flex items-center gap-2 lg:hidden">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent text-white">
+              {/* Логотип слева: боковая полоса свёрнута, и опознать
+                  платформу больше негде. */}
+              <Link href="/teacher" className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent text-white">
                   <IconCap className="h-5 w-5" />
-                </div>
+                </span>
                 <span className="font-bold text-content">Lingora</span>
-              </div>
-
-              <label className="relative hidden max-w-md flex-1 items-center sm:flex">
-                <IconSearch className="absolute left-3.5 h-4.5 w-4.5 text-faint" />
-                <input
-                  type="text"
-                  placeholder={t.topbar.searchPlaceholder}
-                  className="h-10 w-full rounded-xl border border-line bg-surface-2 pl-10 pr-4 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent"
-                />
-              </label>
+              </Link>
 
               <div className="ml-auto flex items-center gap-2 sm:gap-3">
                 <NotificationBell items={items} unreadCount={unreadCount} />

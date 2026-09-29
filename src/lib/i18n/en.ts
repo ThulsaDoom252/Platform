@@ -32,14 +32,11 @@ export const en = {
   },
 
   topbar: {
-    searchPlaceholder: "Search students, materials, or anything…",
     notifications: "Notifications",
     logout: "Log out",
     roleTeacher: "English Teacher",
     roleStudent: "Student",
     profile: "My profile",
-    collapseSidebar: "Collapse sidebar",
-    expandSidebar: "Show sidebar",
   },
 
   common: {

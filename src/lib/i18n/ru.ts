@@ -29,14 +29,11 @@ export const ru: Dict = {
   },
 
   topbar: {
-    searchPlaceholder: "Поиск учеников, материалов, чего угодно…",
     notifications: "Уведомления",
     logout: "Выйти",
     roleTeacher: "Учитель английского",
     roleStudent: "Ученик",
     profile: "Мой профиль",
-    collapseSidebar: "Свернуть панель",
-    expandSidebar: "Показать панель",
   },
 
   common: {

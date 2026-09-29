@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { RAIL_ONLY_OPEN } from "@/components/sidebar-rail";
 import { useT } from "@/components/i18n-provider";
 import {
   IconCap,
@@ -42,6 +43,8 @@ export function SidebarNav() {
           <Link
             key={href}
             href={href}
+            /* В свёрнутой полосе подписи не видно — выручает подсказка. */
+            title={label}
             className={cn(
               "group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all",
               active
@@ -55,7 +58,7 @@ export function SidebarNav() {
                 active ? "text-accent" : "text-faint group-hover:text-muted",
               )}
             />
-            {label}
+            <span className={cn("whitespace-nowrap", RAIL_ONLY_OPEN)}>{label}</span>
           </Link>
         );
       })}
