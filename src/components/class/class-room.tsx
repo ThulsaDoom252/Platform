@@ -43,6 +43,7 @@ import {
   IconUser,
 } from "@/components/icons";
 import { ClassScript } from "./class-script";
+import { ClassBoard } from "./class-board";
 import { ClassTwister } from "./class-twister";
 import { ClassActivities } from "./class-activities";
 import { StudentGuess } from "@/components/game/student-guess";
@@ -573,7 +574,9 @@ export function ClassRoom({
             <StudentGuess />
           )}
           {open.dictionary && stub(t.classRoom.dictionary)}
-          {open.board && stub(t.classRoom.board)}
+          {open.board && (
+            <ClassBoard teacher={teacher} onClose={() => toggle("board")} />
+          )}
         </div>
 
         <div className={cn("flex flex-col gap-4", !open.chat && !open.verbs && "hidden")}>

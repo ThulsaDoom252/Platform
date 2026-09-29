@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Universal Whiteboard</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#ffffff; --panel2:#f0f1f3; --line:#d9dce1;
+    --text:#1f2328; --muted:#6b7280; --accent:#2f6fed; --accent2:#e7efff;
+    --danger:#e5484d; --handle:#2f6fed;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:var(--text);background:var(--bg)}
+  #app{position:fixed;inset:0}
+  canvas{display:block;position:absolute;inset:0;touch-action:none}
+
+  /* Top toolbar */
+  #toolbar{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    display:flex;gap:6px;align-items:center;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:6px 8px;
+    box-shadow:0 6px 24px rgba(0,0,0,.10);z-index:10;flex-wrap:wrap;max-width:96vw
+  }
+  .tbtn{
+    display:flex;align-items:center;justify-content:center;gap:5px;
+    min-width:34px;height:34px;padding:0 8px;border-radius:8px;border:1px solid transparent;
+    background:transparent;color:var(--text);cursor:pointer;font-size:13px;user-select:none;white-space:nowrap
+  }
+  .tbtn:hover{background:var(--panel2)}
+  .tbtn.active{background:var(--accent2);border-color:var(--accent);color:var(--accent)}
+  .tbtn svg{width:18px;height:18px;pointer-events:none}
+  .sep{width:1px;height:24px;background:var(--line);margin:0 2px}
+  .group{display:flex;gap:4px;align-items:center}
+
+  /* Properties panel */
+  #props{
+    position:absolute;top:64px;right:12px;width:230px;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:10px;z-index:10;
+    box-shadow:0 6px 24px rgba(0,0,0,.10);display:none
+  }
+  #props h4{margin:0 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+  .row label{font-size:12px;color:var(--muted);width:52px;flex:none}
+  .row input[type=text], .row select, .row input[type=number]{
+    flex:1;min-width:0;height:30px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font-size:13px;background:#fff;color:var(--text)
+  }
+  .row input[type=color]{width:34px;height:30px;padding:0;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer}
+  .styleRow{display:flex;gap:4px}
+  .sbtn{flex:1;height:30px;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+  .sbtn.active{background:var(--accent2);border-color:var(--accent);color:var(--accent)}
+  .sbtn b{font-weight:700}.sbtn i{font-style:italic}.sbtn u{text-decoration:underline}.sbtn s{text-decoration:line-through}
+
+  /* Zoom control */
+  #zoombar{
+    position:absolute;bottom:14px;right:14px;display:flex;gap:4px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;z-index:10;box-shadow:0 6px 24px rgba(0,0,0,.08)
+  }
+  #zoombar button{width:30px;height:30px;border:none;background:transparent;border-radius:7px;cursor:pointer;font-size:16px}
+  #zoombar button:hover{background:var(--panel2)}
+  #zoomval{min-width:52px;text-align:center;font-size:13px;color:var(--muted);cursor:pointer}
+
+  .colorDot{width:16px;height:16px;border-radius:50%;border:1px solid rgba(0,0,0,.15)}
+  input[type=file]{display:none}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;font-size:11px}
+
+  /* Доска у ученика без инструментов: смотреть можно, рисовать нельзя. */
+  body.view-only #toolbar, body.view-only #props{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <div id="toolbar">
+    <div class="group">
+      <button class="tbtn" data-tool="select" title="Выделение / перемещение (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3l14 7-6 2-2 6z"/></svg></button>
+      <button class="tbtn" data-tool="hand" title="Рука — двигать холст (H, или пробел)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 12V6a1.5 1.5 0 013 0v5m0-5.5a1.5 1.5 0 013 0V11m0-4a1.5 1.5 0 013 0v6a5 5 0 01-5 5h-2.5a4 4 0 01-3-1.4L7 18c-1-1.2-2-2.5-2.7-3.6a1.5 1.5 0 012.3-1.9L8 14"/></svg></button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button class="tbtn" data-tool="text" title="Текст / слово (T)"><b style="font-size:16px">T</b></button>
+      <button class="tbtn" data-tool="rect" title="Прямоугольник (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
+      <button class="tbtn" data-tool="ellipse" title="Овал (O)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
+      <button class="tbtn" data-tool="line" title="Линия (L)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20L20 4"/></svg></button>
+      <button class="tbtn" data-tool="arrow" title="Стрелка (A)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20L20 4M20 4h-7M20 4v7"/></svg></button>
+      <button class="tbtn" data-tool="pen" title="Карандаш (P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20l4-1L19 8a2 2 0 00-3-3L5 16l-1 4z"/></svg></button>
+      <button class="tbtn" id="imgBtn" title="Вставить картинку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 17l4-4 3 3 3-4 4 5"/></svg></button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button class="tbtn" id="undoBtn" title="Отменить (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 010 10h-1"/></svg></button>
+      <button class="tbtn" id="redoBtn" title="Повторить (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 000 10h1"/></svg></button>
+      <button class="tbtn" id="delBtn" title="Удалить (Del)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13"/></svg></button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button class="tbtn" id="saveBtn" title="Сохранить JSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7M8 20v-6h8v6"/></svg><span>JSON</span></button>
+      <button class="tbtn" id="loadBtn" title="Загрузить JSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15V4m0 0l-4 4m4-4l4 4M4 15v4a1 1 0 001 1h14a1 1 0 001-1v-4"/></svg><span>Открыть</span></button>
+    </div>
+  </div>
+
+  <div id="props">
+    <h4 id="propTitle">Свойства</h4>
+    <div id="propText">
+      <div class="row"><label>Текст</label><input id="pText" type="text"></div>
+      <div class="row"><label>Шрифт</label>
+        <select id="pFont">
+          <option>Arial</option><option>Helvetica</option><option>Georgia</option>
+          <option>Times New Roman</option><option>Courier New</option><option>Verdana</option>
+          <option>Tahoma</option><option>Trebuchet MS</option><option>Comic Sans MS</option>
+          <option>Impact</option>
+        </select>
+      </div>
+      <div class="row"><label>Размер</label><input id="pSize" type="number" min="6" max="400" step="1"></div>
+      <div class="row"><label>Стиль</label>
+        <div class="styleRow" style="flex:1">
+          <button class="sbtn" data-st="bold"><b>B</b></button>
+          <button class="sbtn" data-st="italic"><i>I</i></button>
+          <button class="sbtn" data-st="underline"><u>U</u></button>
+          <button class="sbtn" data-st="strike"><s>S</s></button>
+        </div>
+      </div>
+    </div>
+    <div id="propStroke">
+      <div class="row"><label>Толщина</label><input id="pLw" type="number" min="0" max="80" step="1"></div>
+    </div>
+    <div class="row" id="rowColor"><label>Цвет</label><input id="pColor" type="color"><span id="pColorHex" style="font-size:12px;color:var(--muted)"></span></div>
+    <div class="row" id="rowFill"><label>Заливка</label><input id="pFill" type="color"><button class="sbtn" id="pFillNone" style="flex:none;width:auto;padding:0 8px">нет</button></div>
+    <div class="row"><label>&nbsp;</label><button class="sbtn" id="dupBtn" style="flex:1">Дублировать (Ctrl+D)</button></div>
+  </div>
+
+  <div id="zoombar">
+    <button id="zoomOut">−</button>
+    <div id="zoomval" title="Сброс к 100%">100%</div>
+    <button id="zoomIn">+</button>
+    <button id="zoomFit" title="Показать всё">⤢</button>
+  </div>
+
+  <input type="file" id="fileImg" accept="image/*">
+  <input type="file" id="fileJson" accept="application/json,.json">
+</div>
+
+<script>
+"use strict";
+(function(){
+/*
+ * Кто открыл доску. Доска живёт в iframe и своей сессии не имеет,
+ * поэтому роль приходит адресом: ?role=teacher. Это не защита — доска
+ * у всех своя, — а разделение ролей на экране: ученику панель
+ * инструментов не нужна и только мешает.
+ */
+const CAN_EDIT=new URLSearchParams(location.search).get('role')==='teacher';
+if(!CAN_EDIT)document.body.classList.add('view-only');
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let DPR=Math.max(1,window.devicePixelRatio||1);
+
+// ---------- State ----------
+let objects=[];           // scene
+let nextId=1;
+let boardName="whiteboard";
+let scale=1, offX=0, offY=0;   // world->screen: sx = x*scale+offX
+let tool='select';
+let selection=new Set();      // ids
+let clipboard=[];             // internal copy buffer (deep copies, unoffset)
+
+// ---------- English: Lesson 2 — Possessive adjectives & Special questions ----------
+const POSSESSIVES=[
+  ['I','my','я → мой / моя / мои','my name'],
+  ['you','your','ты, вы → твой, ваш','your friend'],
+  ['he','his','он → его','his teacher'],
+  ['she','her','она → её','her tea'],
+  ['it','its','оно → его / её (не человек)','its name'],
+  ['we','our','мы → наш','our teacher'],
+  ['they','their','они → их','their coffee']
+];
+
+const POSSESSIVE_EXAMPLES=[
+  ['My name is Kateryna.','Меня зовут Катерина.  (досл. Моё имя — Катерина.)'],
+  ['Your friend is happy.','Твой друг счастлив.'],
+  ['His teacher is Vladimir.','Его учитель — Владимир.'],
+  ['She likes her tea.','Она любит свой чай.'],
+  ['We love our teacher.','Мы любим нашего учителя.'],
+  ['Their friend lives in America.','Их друг живёт в Америке.']
+];
+
+const WH_WORDS=[
+  ['What','что? какой?','What is your name?'],
+  ['Which','который? (выбор)','Which do you like?'],
+  ['Who','кто?','Who is he?'],
+  ['Where','где? куда? откуда?','Where do you live?'],
+  ['When','когда?','When are you busy?'],
+  ['Why','почему? зачем?','Why are you tired?'],
+  ['How','как?','How are you?']
+];
+
+const WH_TABLE=[
+  ['What','is','your name','?','Как тебя зовут?'],
+  ['Where','are','you','from?','Откуда ты?'],
+  ['Who','is','your teacher','?','Кто твой учитель?'],
+  ['How','are','you','?','Как дела? / Как ты?'],
+  ['Why','is','she','tired?','Почему она уставшая?'],
+  ['Where','do','you','live?','Где ты живёшь?'],
+  ['What','do','you','want?','Что ты хочешь?'],
+  ['Which','do','you','like: tea or coffee?','Что тебе нравится: чай или кофе?'],
+  ['When','does','he','drink coffee?','Когда он пьёт кофе?'],
+  ['Why','does','she','want to live in America?','Почему она хочет жить в Америке?']
+];
+
+function buildLessonBoard(){
+  const scene=[];let id=1;
+  const add=o=>{scene.push({id:id++,...o});};
+  const text=(x,y,value,size=18,color='#111827',bold=false,italic=false)=>add({type:'text',x,y,text:value,color,size,font:'Arial',bold,italic,underline:false,strike:false});
+  const rect=(x,y,w,h,fill,color=fill,lw=0)=>add({type:'rect',x,y,w,h,color,fill,lw});
+  const arrow=(x,y,size=44)=>text(x,y,'→',size,'#94a3b8',true);
+  const block=(x,y,w,label,fill)=>{rect(x,y,w,70,fill);text(x+22,y+17,label,30,'#ffffff',true);};
+  const plus=(x,y)=>text(x,y+10,'+',40,'#94a3b8',true);
+
+  // Title.
+  rect(-1210,-760,2400,92,'#0f172a');
+  text(-1168,-742,'ENGLISH — LESSON 2',45,'#ffffff',true);
+  text(-1168,-690,'Possessive adjectives  •  Special (Wh-) questions  •  Стрелки — прокрутка, Shift + стрелки — быстро',18,'#cbd5e1',false,true);
+
+  // ===== 1. Possessive adjectives, shown right after the subject pronoun: I → my.
+  rect(-1210,-630,2400,72,'#7c3aed');
+  text(-1174,-616,'1. POSSESSIVE ADJECTIVES — ЧЕЙ?  (притяжательные местоимения)',31,'#ffffff',true);
+  POSSESSIVES.forEach((item,index)=>{
+    const x=-1210+index*343,y=-535;
+    rect(x,y,323,200,'#ffffff','#c4b5fd',2);
+    text(x+22,y+18,item[0],36,'#111827',true);
+    text(x+118,y+16,'→',38,'#94a3b8',true);
+    text(x+170,y+18,item[1],36,'#6d28d9',true);
+    text(x+22,y+78,item[2],19,'#64748b',false);
+    rect(x+14,y+128,295,54,'#f5f3ff','#ddd6fe',1);
+    text(x+28,y+140,item[3],24,'#5b21b6',true);
+  });
+
+  // Rule: possessive always goes before the noun.
+  rect(-1210,-305,2400,310,'#faf5ff','#c4b5fd',2);
+  text(-1168,-282,'ПРАВИЛО:  притяжательное слово ВСЕГДА стоит ПЕРЕД существительным.',28,'#111827',true);
+  block(-1168,-225,300,'POSSESSIVE','#7c3aed');plus(-846,-225);
+  block(-790,-225,190,'NOUN','#0f766e');
+  text(-570,-215,'=',40,'#94a3b8',true);
+  text(-520,-210,'my friend   •   her tea   •   our teacher',30,'#6d28d9',true);
+  text(-1168,-130,'✅ my friend',27,'#15803d',true);
+  text(-880,-130,'❌ friend my',27,'#be123c',true);
+  text(-590,-130,'❌ a my friend  /  the my friend',27,'#be123c',true);
+  text(-1168,-80,'Само по себе не стоит — после него всегда нужно слово:   ❌ This is my.   ✅ This is my tea.',22,'#475569',false);
+  text(-1168,-40,"Не путай:   its = его / её (чей?)      it's = it is",22,'#475569',false);
+
+  // Examples in sentences.
+  rect(-1210,40,2400,445,'#ffffff','#ddd6fe',2);
+  text(-1168,60,'ПРИМЕРЫ В ПРЕДЛОЖЕНИЯХ',24,'#6d28d9',true);
+  POSSESSIVE_EXAMPLES.forEach((item,index)=>{
+    const y=108+index*52;
+    rect(-1198,y,2376,44,index%2===0?'#faf5ff':'#ffffff');
+    text(-1168,y+8,item[0],25,'#5b21b6',true);
+    text(-420,y+10,item[1],22,'#334155',false);
+  });
+  text(-1168,432,'Русское «свой» переводим по человеку:  I love my…   he loves his…   she loves her…   they love their…',22,'#b45309',true);
+
+  // ===== 2. Special questions.
+  rect(-1210,530,2400,72,'#0369a1');
+  text(-1174,544,'2. SPECIAL QUESTIONS — СПЕЦИАЛЬНЫЕ ВОПРОСЫ  (What, Which, Who, Where, When, Why, How)',29,'#ffffff',true);
+  WH_WORDS.forEach((item,index)=>{
+    const x=-1210+index*343,y=625;
+    rect(x,y,323,200,'#ffffff','#bae6fd',2);
+    text(x+22,y+18,item[0],38,'#0369a1',true);
+    text(x+22,y+80,item[1],20,'#64748b',false);
+    rect(x+14,y+128,295,54,'#f0f9ff','#bae6fd',1);
+    text(x+28,y+143,item[2],21,'#075985',true);
+  });
+
+  // Main idea.
+  rect(-1210,850,2400,110,'#f0f9ff','#bae6fd',2);
+  text(-1168,868,'ГЛАВНАЯ ИДЕЯ:  специальный вопрос = вопросительное слово + обычный вопрос.',28,'#111827',true);
+  text(-1168,914,'Ответ на него — не «да / нет», а информация:  Where do you live?  —  I live in Ukraine.',22,'#64748b',false);
+
+  // Formulas.
+  rect(-1210,985,2400,560,'#ffffff','#bae6fd',2);
+  text(-1168,1005,'ФОРМУЛА 1 — С AM / IS / ARE',26,'#075985',true);
+  block(-1168,1050,250,'WH-WORD','#0369a1');plus(-896,1050);
+  block(-840,1050,300,'AM / IS / ARE','#b45309');plus(-518,1050);
+  block(-462,1050,90,'S','#4338ca');plus(-350,1050);
+  block(-294,1050,160,'… ?','#64748b');
+  text(-1168,1145,'Are you from Ukraine?',25,'#334155',false);arrow(-860,1134,36);text(-790,1143,'Where are you from?',28,'#0369a1',true);
+  text(-1168,1190,'Is his name Vladimir?',25,'#334155',false);arrow(-860,1179,36);text(-790,1188,'What is his name?',28,'#0369a1',true);
+
+  text(-1168,1255,'ФОРМУЛА 2 — С ОБЫЧНЫМИ ГЛАГОЛАМИ (Present Simple)',26,'#166534',true);
+  block(-1168,1300,250,'WH-WORD','#0369a1');plus(-896,1300);
+  block(-840,1300,250,'DO / DOES','#166534');plus(-568,1300);
+  block(-512,1300,90,'S','#4338ca');plus(-400,1300);
+  block(-344,1300,90,'V','#0f766e');plus(-232,1300);
+  block(-176,1300,160,'… ?','#64748b');
+  text(-1168,1395,'Do you live in Ukraine?',25,'#334155',false);arrow(-860,1384,36);text(-790,1393,'Where do you live?',28,'#166534',true);
+  text(-1168,1440,'Does he like coffee?',25,'#334155',false);arrow(-860,1429,36);text(-790,1438,'Why does he like coffee?',28,'#166534',true);
+  text(-1168,1492,'he / she / it  →  DOES, а глагол БЕЗ -s:     ✅ Where does he live?     ❌ Where does he lives?',24,'#b45309',true);
+
+  // Table: build the question step by step.
+  text(-1210,1580,'СОБИРАЕМ ВОПРОС ПО ФОРМУЛЕ',26,'#0f172a',true);
+  rect(-1210,1625,2400,56,'#0f172a');
+  const cols=[-1180,-900,-620,-330,330];
+  ['WH-WORD','AM/IS/ARE · DO/DOES','S','ОСТАЛЬНОЕ','ПЕРЕВОД'].forEach((h,i)=>text(cols[i],1641,h,20,'#ffffff',true));
+  WH_TABLE.forEach((row,index)=>{
+    const y=1689+index*52;
+    rect(-1210,y,2400,48,index%2===0?'#f8fafc':'#ffffff','#e2e8f0',1);
+    const auxColor=(row[1]==='do'||row[1]==='does')?'#166534':'#b45309';
+    const colors=['#0369a1',auxColor,'#4338ca','#111827','#64748b'];
+    row.forEach((cell,i)=>text(cols[i],y+10,cell,i===4?21:24,colors[i],i<4));
+  });
+
+  return {version:1,name:'english-lesson-2-possessives-wh-questions',objects:scene};
+}
+
+const MENDEL_STARTER_BOARD=buildLessonBoard();
+const PERSIST_KEY='universal-whiteboard:english-lesson-2-possessives-wh:v1';
+let persistReady=false,persistTimer=null;
+
+function schedulePersist(){
+  if(!persistReady)return;
+  clearTimeout(persistTimer);
+  persistTimer=setTimeout(()=>{
+    try{
+      localStorage.setItem(PERSIST_KEY,JSON.stringify({
+        boardName,objects,nextId,scale,offX,offY
+      }));
+    }catch(_){ }
+  },120);
+}
+
+function restorePersistedBoard(){
+  let data;
+  try{data=JSON.parse(localStorage.getItem(PERSIST_KEY)||'null');}catch(_){return false;}
+  if(!data||!Array.isArray(data.objects)||!data.objects.length)return false;
+  boardName=data.boardName||'english-lesson-2-possessives-wh-questions';
+  objects=data.objects.map(o=>normalizeLoaded(o));
+  nextId=Math.max(+data.nextId||0,objects.reduce((m,o)=>Math.max(m,o.id||0),0)+1);
+  scale=Number.isFinite(data.scale)?data.scale:1;
+  offX=Number.isFinite(data.offX)?data.offX:innerWidth/2;
+  offY=Number.isFinite(data.offY)?data.offY:innerHeight/2;
+  selection.clear();
+  for(const o of objects)if(o.type==='image'&&o._imgSrc)getImg(o._imgSrc);
+  syncProps();updateZoomLabel();render();
+  return true;
+}
+
+const undoStack=[], redoStack=[];
+function snapshot(){ return JSON.stringify({objects,nextId}); }
+function pushUndo(){ undoStack.push(snapshot()); if(undoStack.length>100)undoStack.shift(); redoStack.length=0; }
+function restore(s){ const d=JSON.parse(s); objects=d.objects; nextId=d.nextId; selection.clear(); render(); syncProps(); }
+function undo(){ if(!undoStack.length)return; redoStack.push(snapshot()); restore(undoStack.pop()); }
+function redo(){ if(!redoStack.length)return; undoStack.push(snapshot()); restore(redoStack.pop()); }
+
+// image cache: data-url -> HTMLImageElement
+const imgCache=new Map();
+function getImg(src,onload){
+  if(!src)return null;
+  let im=imgCache.get(src);
+  if(im)return im;
+  im=new Image(); im.onload=()=>{ if(onload)onload(); render(); }; im.src=src;
+  imgCache.set(src,im); return im;
+}
+
+// ---------- Coordinate helpers ----------
+function sx(x){return x*scale+offX;}
+function sy(y){return y*scale+offY;}
+function wx(px){return (px-offX)/scale;}
+function wy(py){return (py-offY)/scale;}
+
+function resize(){
+  DPR=Math.max(1,window.devicePixelRatio||1);
+  canvas.width=Math.round(innerWidth*DPR);
+  canvas.height=Math.round(innerHeight*DPR);
+  canvas.style.width=innerWidth+'px';
+  canvas.style.height=innerHeight+'px';
+  render();
+}
+window.addEventListener('resize',resize);
+
+// ---------- Object geometry (world-space bounding box) ----------
+function fontStr(o){
+  return (o.italic?'italic ':'')+(o.bold?'bold ':'')+(o.size||16)+'px '+(o.font||'Arial');
+}
+function textMetrics(o){
+  ctx.save(); ctx.font=fontStr(o);
+  const m=ctx.measureText(o.text||'');
+  ctx.restore();
+  const w=m.width;
+  const h=(o.size||16)*1.25;
+  return {w,h};
+}
+function bbox(o){
+  if(o.type==='text'){ const m=textMetrics(o); return {x:o.x,y:o.y,w:m.w,h:m.h}; }
+  if(o.type==='line'||o.type==='arrow'){
+    const x=Math.min(o.x1,o.x2), y=Math.min(o.y1,o.y2);
+    return {x,y,w:Math.abs(o.x2-o.x1),h:Math.abs(o.y2-o.y1)};
+  }
+  if(o.type==='pen'){
+    let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+    for(const p of o.pts){minx=Math.min(minx,p[0]);miny=Math.min(miny,p[1]);maxx=Math.max(maxx,p[0]);maxy=Math.max(maxy,p[1]);}
+    return {x:minx,y:miny,w:maxx-minx,h:maxy-miny};
+  }
+  return {x:o.x,y:o.y,w:o.w||0,h:o.h||0};
+}
+function normBox(b){ // handle negative w/h
+  let {x,y,w,h}=b;
+  if(w<0){x+=w;w=-w;} if(h<0){y+=h;h=-h;}
+  return {x,y,w,h};
+}
+function hit(o,px,py){
+  const pad=6/scale;
+  if(o.type==='line'||o.type==='arrow'){
+    return distToSeg(px,py,o.x1,o.y1,o.x2,o.y2)<Math.max(pad,(o.lw||2)/scale+4/scale);
+  }
+  if(o.type==='pen'){
+    for(let i=1;i<o.pts.length;i++){
+      if(distToSeg(px,py,o.pts[i-1][0],o.pts[i-1][1],o.pts[i][0],o.pts[i][1])<Math.max(pad,(o.lw||2)/scale+3/scale))return true;
+    }
+    return false;
+  }
+  const b=normBox(bbox(o));
+  return px>=b.x-pad&&px<=b.x+b.w+pad&&py>=b.y-pad&&py<=b.y+b.h+pad;
+}
+function distToSeg(px,py,x1,y1,x2,y2){
+  const dx=x2-x1,dy=y2-y1; const l2=dx*dx+dy*dy;
+  let t=l2? ((px-x1)*dx+(py-y1)*dy)/l2 : 0; t=Math.max(0,Math.min(1,t));
+  const cx=x1+t*dx, cy=y1+t*dy; return Math.hypot(px-cx,py-cy);
+}
+function getById(id){return objects.find(o=>o.id===id);}
+
+// ---------- Rendering ----------
+function render(){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bg')||'#f4f5f7';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  drawGrid();
+  ctx.setTransform(DPR*scale,0,0,DPR*scale,DPR*offX,DPR*offY);
+  for(const o of objects) drawObj(o);
+  // draft
+  if(draft) drawObj(draft);
+  ctx.setTransform(1,0,0,1,0,0);
+  drawSelection();
+  drawMarquee();
+  schedulePersist();
+}
+function drawGrid(){
+  const step=50*scale; if(step<8)return;
+  const startX=((offX%step)+step)%step, startY=((offY%step)+step)%step;
+  ctx.strokeStyle='rgba(0,0,0,0.05)'; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let x=startX;x<canvas.width/DPR;x+=step){ctx.moveTo(x,0);ctx.lineTo(x,canvas.height/DPR);}
+  for(let y=startY;y<canvas.height/DPR;y+=step){ctx.moveTo(0,y);ctx.lineTo(canvas.width/DPR,y);}
+  ctx.save();ctx.setTransform(DPR,0,0,DPR,0,0);ctx.stroke();ctx.restore();
+}
+function drawObj(o){
+  ctx.save();
+  if(o.type==='text'){
+    ctx.font=fontStr(o);
+    ctx.textBaseline='top';
+    ctx.fillStyle=o.color||'#000';
+    const lines=(o.text||'').split('\n');
+    let yy=o.y; const lh=(o.size||16)*1.25;
+    for(const ln of lines){
+      ctx.fillText(ln,o.x,yy);
+      const w=ctx.measureText(ln).width;
+      if(o.underline){ctx.strokeStyle=o.color||'#000';ctx.lineWidth=Math.max(1,(o.size||16)/14);ctx.beginPath();ctx.moveTo(o.x,yy+(o.size||16)*1.02);ctx.lineTo(o.x+w,yy+(o.size||16)*1.02);ctx.stroke();}
+      if(o.strike){ctx.strokeStyle=o.color||'#000';ctx.lineWidth=Math.max(1,(o.size||16)/14);ctx.beginPath();ctx.moveTo(o.x,yy+(o.size||16)*0.58);ctx.lineTo(o.x+w,yy+(o.size||16)*0.58);ctx.stroke();}
+      yy+=lh;
+    }
+  } else if(o.type==='rect'){
+    if(o.fill && o.fill!=='none'){ctx.fillStyle=o.fill;ctx.fillRect(o.x,o.y,o.w,o.h);}
+    if((o.lw||0)>0){ctx.strokeStyle=o.color||'#111';ctx.lineWidth=o.lw;ctx.strokeRect(o.x,o.y,o.w,o.h);}
+  } else if(o.type==='ellipse'){
+    ctx.beginPath();ctx.ellipse(o.x+o.w/2,o.y+o.h/2,Math.abs(o.w/2),Math.abs(o.h/2),0,0,Math.PI*2);
+    if(o.fill&&o.fill!=='none'){ctx.fillStyle=o.fill;ctx.fill();}
+    if((o.lw||0)>0){ctx.strokeStyle=o.color||'#111';ctx.lineWidth=o.lw;ctx.stroke();}
+  } else if(o.type==='line'||o.type==='arrow'){
+    ctx.strokeStyle=o.color||'#111';ctx.lineWidth=o.lw||2;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(o.x1,o.y1);ctx.lineTo(o.x2,o.y2);ctx.stroke();
+    if(o.type==='arrow'){
+      const ang=Math.atan2(o.y2-o.y1,o.x2-o.x1);const hl=Math.max(10,(o.lw||2)*4);
+      ctx.beginPath();ctx.moveTo(o.x2,o.y2);
+      ctx.lineTo(o.x2-hl*Math.cos(ang-0.4),o.y2-hl*Math.sin(ang-0.4));
+      ctx.moveTo(o.x2,o.y2);
+      ctx.lineTo(o.x2-hl*Math.cos(ang+0.4),o.y2-hl*Math.sin(ang+0.4));
+      ctx.stroke();
+    }
+  } else if(o.type==='pen'){
+    ctx.strokeStyle=o.color||'#111';ctx.lineWidth=o.lw||2;ctx.lineJoin='round';ctx.lineCap='round';
+    ctx.beginPath();o.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.stroke();
+  } else if(o.type==='image'){
+    const im=getImg(o._imgSrc);
+    if(im&&im.complete&&im.naturalWidth) ctx.drawImage(im,o.x,o.y,o.w,o.h);
+    else {ctx.fillStyle='#e5e7eb';ctx.fillRect(o.x,o.y,o.w,o.h);ctx.strokeStyle='#cbd0d6';ctx.strokeRect(o.x,o.y,o.w,o.h);}
+  }
+  ctx.restore();
+}
+function drawSelection(){
+  if(!selection.size)return;
+  ctx.lineWidth=1.5;
+  let ux=Infinity,uy=Infinity,uxx=-Infinity,uyy=-Infinity;
+  for(const id of selection){
+    const o=getById(id);if(!o)continue;
+    const b=normBox(bbox(o));
+    const x=sx(b.x),y=sy(b.y),w=b.w*scale,h=b.h*scale;
+    ctx.strokeStyle='rgba(47,111,237,.9)';
+    ctx.strokeRect(x-2,y-2,w+4,h+4);
+    ux=Math.min(ux,x);uy=Math.min(uy,y);uxx=Math.max(uxx,x+w);uyy=Math.max(uyy,y+h);
+  }
+  // resize handles on the union box (single or multi)
+  if(selection.size>=1 && ux<uxx){
+    const hs=[[ux,uy],[uxx,uy],[ux,uyy],[uxx,uyy]];
+    ctx.fillStyle='#fff';ctx.strokeStyle='var(--handle)';
+    for(const [hx,hy] of hs){ctx.beginPath();ctx.rect(hx-5,hy-5,10,10);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#2f6fed';ctx.lineWidth=1.5;ctx.stroke();}
+  }
+}
+function unionScreenBox(){
+  let ux=Infinity,uy=Infinity,uxx=-Infinity,uyy=-Infinity;
+  for(const id of selection){const o=getById(id);if(!o)continue;const b=normBox(bbox(o));ux=Math.min(ux,b.x);uy=Math.min(uy,b.y);uxx=Math.max(uxx,b.x+b.w);uyy=Math.max(uyy,b.y+b.h);}
+  return {x:ux,y:uy,w:uxx-ux,h:uyy-uy};
+}
+let marquee=null;
+function drawMarquee(){
+  if(!marquee)return;
+  ctx.fillStyle='rgba(47,111,237,.10)';ctx.strokeStyle='rgba(47,111,237,.8)';ctx.lineWidth=1;
+  const x=Math.min(marquee.x0,marquee.x1),y=Math.min(marquee.y0,marquee.y1);
+  const w=Math.abs(marquee.x1-marquee.x0),h=Math.abs(marquee.y1-marquee.y0);
+  ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);
+}
+
+// ---------- Interaction ----------
+let draft=null;           // object being drawn
+let action=null;          // {type:'move'|'resize'|'pan', ...}
+let spaceDown=false;
+
+function screenPt(e){const r=canvas.getBoundingClientRect();return {px:e.clientX-r.left,py:e.clientY-r.top};}
+
+function handleAt(px,py){
+  if(!selection.size)return null;
+  let ux=Infinity,uy=Infinity,uxx=-Infinity,uyy=-Infinity;
+  for(const id of selection){const o=getById(id);if(!o)continue;const b=normBox(bbox(o));const x=sx(b.x),y=sy(b.y);ux=Math.min(ux,x);uy=Math.min(uy,y);uxx=Math.max(uxx,x+b.w*scale);uyy=Math.max(uyy,y+b.h*scale);}
+  const hs={nw:[ux,uy],ne:[uxx,uy],sw:[ux,uyy],se:[uxx,uyy]};
+  for(const k in hs){if(Math.abs(px-hs[k][0])<8&&Math.abs(py-hs[k][1])<8)return k;}
+  return null;
+}
+
+canvas.addEventListener('pointerdown',e=>{
+  canvas.setPointerCapture(e.pointerId);
+  const {px,py}=screenPt(e);
+  const wxp=wx(px), wyp=wy(py);
+
+  // panning
+  if(e.button===1||tool==='hand'||spaceDown){
+    action={type:'pan',px,py,offX,offY};return;
+  }
+  if(e.button!==0)return;
+
+  // drawing tools
+  if(tool==='text'){
+    e.preventDefault();
+    try{canvas.releasePointerCapture(e.pointerId);}catch(_){}
+    startTextEdit(wxp,wyp,null);return;
+  }
+  if(tool==='rect'||tool==='ellipse'){
+    draft={id:-1,type:tool,x:wxp,y:wyp,w:0,h:0,color:curColor,fill:curFill,lw:curLw};return;
+  }
+  if(tool==='line'||tool==='arrow'){
+    draft={id:-1,type:tool,x1:wxp,y1:wyp,x2:wxp,y2:wyp,color:curColor,lw:Math.max(1,curLw||2)};return;
+  }
+  if(tool==='pen'){
+    draft={id:-1,type:'pen',pts:[[wxp,wyp]],color:curColor,lw:Math.max(1,curLw||2)};return;
+  }
+
+  // select tool
+  const hk=handleAt(px,py);
+  if(hk && selection.size){
+    const u=unionScreenBox();
+    action={type:'resize',handle:hk,startW:u.w,startH:u.h,box:u,
+      orig:[...selection].map(id=>({o:getById(id),copy:JSON.parse(JSON.stringify(getById(id)))}))};
+    pushUndo();return;
+  }
+  // hit test topmost
+  let hitObj=null;
+  for(let i=objects.length-1;i>=0;i--){if(hit(objects[i],wxp,wyp)){hitObj=objects[i];break;}}
+  if(hitObj){
+    if(e.shiftKey){ selection.has(hitObj.id)?selection.delete(hitObj.id):selection.add(hitObj.id); }
+    else if(!selection.has(hitObj.id)){ selection.clear(); selection.add(hitObj.id); }
+    syncProps();
+    pushUndo();
+    action={type:'move',px,py,orig:[...selection].map(id=>{const o=getById(id);return {o,snap:JSON.parse(JSON.stringify(o))};}),moved:false};
+  } else {
+    if(!e.shiftKey)selection.clear();
+    marquee={x0:px,y0:py,x1:px,y1:py,add:e.shiftKey?new Set(selection):null};
+    syncProps();
+  }
+  render();
+});
+
+canvas.addEventListener('pointermove',e=>{
+  const {px,py}=screenPt(e);
+  const wxp=wx(px),wyp=wy(py);
+  if(action?.type==='pan'){
+    offX=action.offX+(px-action.px); offY=action.offY+(py-action.py); render();return;
+  }
+  if(draft){
+    if(draft.type==='rect'||draft.type==='ellipse'){draft.w=wxp-draft.x;draft.h=wyp-draft.y;
+      if(e.shiftKey){const s=Math.max(Math.abs(draft.w),Math.abs(draft.h));draft.w=Math.sign(draft.w||1)*s;draft.h=Math.sign(draft.h||1)*s;}}
+    else if(draft.type==='line'||draft.type==='arrow'){draft.x2=wxp;draft.y2=wyp;
+      if(e.shiftKey){const a=Math.atan2(draft.y2-draft.y1,draft.x2-draft.x1);const snap=Math.round(a/(Math.PI/4))*(Math.PI/4);const d=Math.hypot(draft.x2-draft.x1,draft.y2-draft.y1);draft.x2=draft.x1+d*Math.cos(snap);draft.y2=draft.y1+d*Math.sin(snap);}}
+    else if(draft.type==='pen'){draft.pts.push([wxp,wyp]);}
+    render();return;
+  }
+  if(action?.type==='move'){
+    const dx=(px-action.px)/scale, dy=(py-action.py)/scale;
+    if(Math.abs(px-action.px)+Math.abs(py-action.py)>2)action.moved=true;
+    for(const {o,snap} of action.orig){ moveObj(o,snap,dx,dy); }
+    render();return;
+  }
+  if(action?.type==='resize'){
+    doResize(action,wxp,wyp,e.shiftKey);render();return;
+  }
+  if(marquee){marquee.x1=px;marquee.y1=py;
+    const x0=Math.min(wx(marquee.x0),wxp),y0=Math.min(wy(marquee.y0),wyp),x1=Math.max(wx(marquee.x0),wxp),y1=Math.max(wy(marquee.y0),wyp);
+    selection=new Set(marquee.add?[...marquee.add]:[]);
+    for(const o of objects){const b=normBox(bbox(o));if(b.x>=x0&&b.y>=y0&&b.x+b.w<=x1&&b.y+b.h<=y1)selection.add(o.id);}
+    render();return;
+  }
+  // cursor feedback
+  updateCursor(px,py);
+});
+
+canvas.addEventListener('pointerup',e=>{
+  const {px,py}=screenPt(e);
+  if(draft){
+    finalizeDraft();
+  }
+  if(action?.type==='move'&&!action.moved){/* click w/o move */}
+  if(marquee){marquee=null;syncProps();}
+  action=null;
+  render();
+});
+
+function moveObj(o,snap,dx,dy){
+  if(o.type==='line'||o.type==='arrow'){o.x1=snap.x1+dx;o.y1=snap.y1+dy;o.x2=snap.x2+dx;o.y2=snap.y2+dy;}
+  else if(o.type==='pen'){o.pts=snap.pts.map(p=>[p[0]+dx,p[1]+dy]);}
+  else{o.x=snap.x+dx;o.y=snap.y+dy;}
+}
+function doResize(a,wxp,wyp,keep){
+  const b=a.box; let nx=b.x,ny=b.y,nw=b.w,nh=b.h;
+  const H=a.handle;
+  if(H.includes('e'))nw=wxp-b.x;
+  if(H.includes('s'))nh=wyp-b.y;
+  if(H.includes('w')){nw=b.x+b.w-wxp;nx=wxp;}
+  if(H.includes('n')){nh=b.y+b.h-wyp;ny=wyp;}
+  const fx=b.w? nw/b.w:1, fy=b.h? nh/b.h:1;
+  let sfx=fx,sfy=fy;
+  if(keep){const s=Math.min(Math.abs(fx),Math.abs(fy));sfx=s*Math.sign(fx||1);sfy=s*Math.sign(fy||1);}
+  for(const {o,copy} of a.orig){
+    scaleObj(o,copy,b.x,b.y,sfx,sfy,nx,ny);
+  }
+}
+function scaleObj(o,c,ax,ay,fx,fy,nx,ny){
+  const tx=v=>nx+(v-ax)*fx, ty=v=>ny+(v-ay)*fy;
+  if(o.type==='line'||o.type==='arrow'){o.x1=tx(c.x1);o.y1=ty(c.y1);o.x2=tx(c.x2);o.y2=ty(c.y2);}
+  else if(o.type==='pen'){o.pts=c.pts.map(p=>[tx(p[0]),ty(p[1])]);}
+  else if(o.type==='text'){o.x=tx(c.x);o.y=ty(c.y);o.size=Math.max(4,Math.round((c.size||16)*Math.abs(fy)));}
+  else{o.x=tx(c.x);o.y=ty(c.y);o.w=(c.w)*fx;o.h=(c.h)*fy; if(o.w<0){o.x+=o.w;o.w=-o.w;} if(o.h<0){o.y+=o.h;o.h=-o.h;}}
+}
+function finalizeDraft(){
+  const d=draft;draft=null;
+  if(d.type==='rect'||d.type==='ellipse'){
+    if(Math.abs(d.w)<3&&Math.abs(d.h)<3){return;}
+    if(d.w<0){d.x+=d.w;d.w=-d.w;} if(d.h<0){d.y+=d.h;d.h=-d.h;}
+  }
+  if((d.type==='line'||d.type==='arrow')&&Math.hypot(d.x2-d.x1,d.y2-d.y1)<3)return;
+  if(d.type==='pen'&&d.pts.length<2)return;
+  pushUndo();
+  d.id=nextId++; objects.push(d);
+  selection=new Set([d.id]);
+  setTool('select'); syncProps();
+}
+function updateCursor(px,py){
+  if(tool==='hand'||spaceDown){canvas.style.cursor='grab';return;}
+  if(tool!=='select'){canvas.style.cursor='crosshair';return;}
+  const hk=handleAt(px,py);
+  if(hk){canvas.style.cursor=(hk==='nw'||hk==='se')?'nwse-resize':'nesw-resize';return;}
+  const wxp=wx(px),wyp=wy(py);
+  for(let i=objects.length-1;i>=0;i--){if(hit(objects[i],wxp,wyp)){canvas.style.cursor='move';return;}}
+  canvas.style.cursor='default';
+}
+
+// double-click to edit text
+canvas.addEventListener('dblclick',e=>{
+  if(!CAN_EDIT)return;
+  e.preventDefault();
+  const {px,py}=screenPt(e);const wxp=wx(px),wyp=wy(py);
+  for(let i=objects.length-1;i>=0;i--){const o=objects[i];if(o.type==='text'&&hit(o,wxp,wyp)){startTextEdit(o.x,o.y,o);return;}}
+});
+
+// ---------- Text editing overlay ----------
+let editEl=null, editTarget=null;
+function startTextEdit(wxp,wyp,existing){
+  finishTextEdit();
+  editTarget=existing;
+  const o=existing||{type:'text',x:wxp,y:wyp,text:'',color:curColor,size:curSize,font:curFont,bold:curBold,italic:curItalic,underline:curUnderline,strike:curStrike};
+  editEl=document.createElement('textarea');
+  editEl.value=o.text||'';
+  Object.assign(editEl.style,{position:'absolute',left:sx(o.x)+'px',top:sy(o.y)+'px',
+    font:(o.italic?'italic ':'')+(o.bold?'bold ':'')+((o.size||16)*scale)+'px '+(o.font||'Arial'),
+    color:o.color||'#000',background:'rgba(255,255,255,.85)',border:'1px solid #2f6fed',
+    borderRadius:'4px',padding:'0 2px',margin:0,resize:'none',outline:'none',zIndex:50,
+    lineHeight:1.25,minWidth:'20px',overflow:'hidden',whiteSpace:'pre'});
+  document.body.appendChild(editEl);
+  const autos=()=>{editEl.style.height='auto';editEl.style.height=editEl.scrollHeight+'px';editEl.style.width='auto';editEl.style.width=(editEl.scrollWidth+4)+'px';};
+  editEl.addEventListener('input',autos);
+  autos();
+  if(!existing)editTarget=o; // stash pending new
+  editEl._pending=existing?null:o;
+  editEl._ready=false;                 // ignore blur until focus has landed
+  editEl.addEventListener('keydown',ev=>{
+    ev.stopPropagation();
+    if(ev.key==='Escape'){ev.preventDefault();cancelTextEdit();}
+    if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();finishTextEdit();}
+  });
+  editEl.addEventListener('blur',()=>{ if(editEl&&editEl._ready)finishTextEdit(); });
+  const el=editEl;
+  // Defer focus past the browser's default pointer-focus handling so it sticks.
+  setTimeout(()=>{ if(el!==editEl)return; try{el.focus();el.setSelectionRange(el.value.length,el.value.length);}catch(_){} el._ready=true; },0);
+}
+function finishTextEdit(){
+  if(!editEl)return;
+  const val=editEl.value; const pending=editEl._pending; const el=editEl; editEl=null;
+  el.remove();
+  if(editTarget && !pending){ // editing existing
+    if(val.trim()===''){pushUndo();objects=objects.filter(o=>o!==editTarget);}
+    else if(val!==editTarget.text){pushUndo();editTarget.text=val;}
+  } else if(pending){ // new text
+    if(val.trim()!==''){pushUndo();pending.text=val;pending.id=nextId++;objects.push(pending);selection=new Set([pending.id]);setTool('select');}
+  }
+  editTarget=null;syncProps();render();
+}
+function cancelTextEdit(){if(editEl){editEl._pending=null;editTarget=null;editEl.remove();editEl=null;render();}}
+
+// ---------- Zoom / Pan ----------
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  if(e.ctrlKey||true){ // wheel = zoom (to cursor)
+    const {px,py}=screenPt(e);
+    const factor=Math.exp(-e.deltaY*0.0015);
+    const ns=Math.min(20,Math.max(0.05,scale*factor));
+    const wxp=wx(px),wyp=wy(py);
+    scale=ns; offX=px-wxp*scale; offY=py-wyp*scale;
+    updateZoomLabel();render();
+  }
+},{passive:false});
+function zoomBy(f){const cx=innerWidth/2,cy=innerHeight/2;const wxp=wx(cx),wyp=wy(cy);scale=Math.min(20,Math.max(0.05,scale*f));offX=cx-wxp*scale;offY=cy-wyp*scale;updateZoomLabel();render();}
+function updateZoomLabel(){document.getElementById('zoomval').textContent=Math.round(scale*100)+'%';}
+function zoomFit(){
+  if(!objects.length){scale=1;offX=innerWidth/2;offY=innerHeight/2;updateZoomLabel();render();return;}
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+  for(const o of objects){const b=normBox(bbox(o));minx=Math.min(minx,b.x);miny=Math.min(miny,b.y);maxx=Math.max(maxx,b.x+b.w);maxy=Math.max(maxy,b.y+b.h);}
+  const pad=80;const bw=maxx-minx,bh=maxy-miny;
+  scale=Math.min(20,Math.max(0.05,Math.min((innerWidth-pad*2)/bw,(innerHeight-pad*2)/bh)));
+  offX=innerWidth/2-(minx+bw/2)*scale;offY=innerHeight/2-(miny+bh/2)*scale;
+  updateZoomLabel();render();
+}
+document.getElementById('zoomIn').onclick=()=>zoomBy(1.2);
+document.getElementById('zoomOut').onclick=()=>zoomBy(1/1.2);
+document.getElementById('zoomFit').onclick=zoomFit;
+document.getElementById('zoomval').onclick=()=>{const cx=innerWidth/2,cy=innerHeight/2;const wxp=wx(cx),wyp=wy(cy);scale=1;offX=cx-wxp;offY=cy-wyp;updateZoomLabel();render();};
+
+// ---------- Tools ----------
+const toolNames={select:'Выделение',hand:'Рука',text:'Текст',rect:'Прямоугольник',ellipse:'Овал',line:'Линия',arrow:'Стрелка',pen:'Карандаш'};
+function setTool(t){
+  // Без прав остаётся одна рука: двигать холст и смотреть.
+  if(!CAN_EDIT)t='hand';
+  tool=t;
+  document.querySelectorAll('.tbtn[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===t));
+  canvas.style.cursor=t==='select'?'default':(t==='hand'?'grab':'crosshair');
+}
+document.querySelectorAll('.tbtn[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+
+// ---------- Current style defaults (from last selection / props) ----------
+let curColor='#1a1a1a',curFill='#111111',curLw=2,curSize=16,curFont='Arial',
+    curBold=false,curItalic=false,curUnderline=false,curStrike=false;
+
+// ---------- Properties panel ----------
+const props=document.getElementById('props');
+function syncProps(){
+  const ids=[...selection];
+  if(!ids.length){props.style.display='none';return;}
+  props.style.display='block';
+  const o=getById(ids[0]);
+  const isText=o.type==='text';
+  document.getElementById('propText').style.display=isText?'block':'none';
+  const hasStroke=['rect','ellipse','line','arrow','pen'].includes(o.type);
+  document.getElementById('propStroke').style.display=hasStroke?'block':'none';
+  document.getElementById('rowFill').style.display=(o.type==='rect'||o.type==='ellipse')?'flex':'none';
+  document.getElementById('rowColor').style.display=(o.type==='image')?'none':'flex';
+  document.getElementById('propTitle').textContent=ids.length>1?ids.length+' объектов':({text:'Текст',rect:'Прямоугольник',ellipse:'Овал',line:'Линия',arrow:'Стрелка',pen:'Рисунок',image:'Картинка'}[o.type]||o.type);
+  if(isText){
+    document.getElementById('pText').value=o.text||'';
+    document.getElementById('pFont').value=o.font||'Arial';
+    document.getElementById('pSize').value=o.size||16;
+    document.querySelectorAll('#propText .sbtn').forEach(b=>b.classList.toggle('active',!!o[b.dataset.st]));
+  }
+  if(hasStroke)document.getElementById('pLw').value=o.lw||0;
+  const col=o.color||'#111111';
+  document.getElementById('pColor').value=toHex(col);
+  document.getElementById('pColorHex').textContent=col;
+  if(o.type==='rect'||o.type==='ellipse')document.getElementById('pFill').value=toHex(o.fill&&o.fill!=='none'?o.fill:'#ffffff');
+}
+function toHex(c){if(!c)return '#000000';if(c[0]==='#'){if(c.length===4)return '#'+c[1]+c[1]+c[2]+c[2]+c[3]+c[3];return c.slice(0,7);}return '#000000';}
+function applyToSelection(fn){if(!selection.size)return;pushUndo();for(const id of selection){const o=getById(id);if(o)fn(o);}render();}
+
+document.getElementById('pText').addEventListener('input',e=>{const o=getById([...selection][0]);if(o&&o.type==='text'){o.text=e.target.value;render();}});
+document.getElementById('pText').addEventListener('change',()=>pushUndo());
+document.getElementById('pFont').addEventListener('change',e=>{curFont=e.target.value;applyToSelection(o=>{if(o.type==='text')o.font=curFont;});});
+document.getElementById('pSize').addEventListener('input',e=>{curSize=+e.target.value||16;applyToSelection(o=>{if(o.type==='text')o.size=curSize;});});
+document.querySelectorAll('#propText .sbtn').forEach(b=>b.addEventListener('click',()=>{
+  const st=b.dataset.st;const o=getById([...selection][0]);const nv=o?!o[st]:true;
+  if(st==='bold')curBold=nv;if(st==='italic')curItalic=nv;if(st==='underline')curUnderline=nv;if(st==='strike')curStrike=nv;
+  applyToSelection(o=>{if(o.type==='text')o[st]=nv;});syncProps();
+}));
+document.getElementById('pLw').addEventListener('input',e=>{curLw=+e.target.value||0;applyToSelection(o=>{if('lw' in o||['rect','ellipse','line','arrow','pen'].includes(o.type))o.lw=curLw;});});
+document.getElementById('pColor').addEventListener('input',e=>{curColor=e.target.value;document.getElementById('pColorHex').textContent=curColor;applyToSelection(o=>{o.color=curColor;});});
+document.getElementById('pFill').addEventListener('input',e=>{curFill=e.target.value;applyToSelection(o=>{if(o.type==='rect'||o.type==='ellipse')o.fill=curFill;});});
+document.getElementById('pFillNone').addEventListener('click',()=>{applyToSelection(o=>{if(o.type==='rect'||o.type==='ellipse')o.fill='none';});});
+document.getElementById('dupBtn').addEventListener('click',duplicateSelection);
+
+// ---------- Toolbar actions ----------
+document.getElementById('undoBtn').onclick=undo;
+document.getElementById('redoBtn').onclick=redo;
+document.getElementById('delBtn').onclick=deleteSelection;
+document.getElementById('imgBtn').onclick=()=>document.getElementById('fileImg').click();
+document.getElementById('saveBtn').onclick=saveJson;
+document.getElementById('loadBtn').onclick=()=>document.getElementById('fileJson').click();
+
+function deleteSelection(){if(!selection.size)return;pushUndo();objects=objects.filter(o=>!selection.has(o.id));selection.clear();syncProps();render();}
+function duplicateSelection(){
+  if(!selection.size)return;pushUndo();
+  const copies=[...selection].map(id=>getById(id)).filter(Boolean).map(o=>{const c=JSON.parse(JSON.stringify(o));c.id=nextId++;return c;});
+  const off=20/scale;
+  for(const c of copies)moveObj(c,JSON.parse(JSON.stringify(c)),off,off);
+  objects.push(...copies);selection=new Set(copies.map(c=>c.id));syncProps();render();
+}
+
+// ---------- Image insert ----------
+document.getElementById('fileImg').addEventListener('change',e=>{const f=e.target.files[0];if(f)loadImageFile(f);e.target.value='';});
+function loadImageFile(file){
+  const r=new FileReader();
+  r.onload=()=>placeImage(r.result);
+  r.readAsDataURL(file);
+}
+function placeImage(dataUrl,atWorld){
+  const im=new Image();
+  im.onload=()=>{
+    imgCache.set(dataUrl,im);
+    let w=im.naturalWidth,h=im.naturalHeight;
+    const maxw=600/scale;if(w>maxw){h*=maxw/w;w=maxw;}
+    const cx=atWorld?atWorld.x:wx(innerWidth/2), cy=atWorld?atWorld.y:wy(innerHeight/2);
+    pushUndo();
+    const o={id:nextId++,type:'image',x:cx-w/2,y:cy-h/2,w,h,color:'#000',_imgSrc:dataUrl};
+    objects.push(o);selection=new Set([o.id]);setTool('select');syncProps();render();
+  };
+  im.src=dataUrl;
+}
+// drag & drop images
+window.addEventListener('dragover',e=>e.preventDefault());
+window.addEventListener('drop',e=>{
+  if(!CAN_EDIT)return;
+  e.preventDefault();
+  const {px,py}=screenPt(e);const at={x:wx(px),y:wy(py)};
+  for(const f of e.dataTransfer.files){if(f.type.startsWith('image/'))loadImageFile2(f,at);}
+});
+function loadImageFile2(file,at){const r=new FileReader();r.onload=()=>placeImage(r.result,at);r.readAsDataURL(file);}
+
+// ---------- Clipboard (internal + system) ----------
+async function doCopy(){
+  if(!selection.size)return;
+  clipboard=[...selection].map(id=>JSON.parse(JSON.stringify(getById(id)))).filter(Boolean);
+  // also write JSON to system clipboard so it survives across boards/tabs
+  try{ await navigator.clipboard.writeText('WBCLIP:'+JSON.stringify({objects:clipboard})); }catch(_){}
+}
+async function doPaste(){
+  // 1) try system clipboard for images
+  try{
+    if(navigator.clipboard&&navigator.clipboard.read){
+      const items=await navigator.clipboard.read();
+      for(const it of items){
+        const t=it.types.find(t=>t.startsWith('image/'));
+        if(t){const blob=await it.getType(t);const r=new FileReader();r.onload=()=>placeImage(r.result,{x:wx(innerWidth/2),y:wy(innerHeight/2)});r.readAsDataURL(blob);return;}
+      }
+    }
+  }catch(_){}
+  // 2) try system clipboard text (JSON from another board)
+  try{
+    const txt=await navigator.clipboard.readText();
+    if(txt&&txt.startsWith('WBCLIP:')){pasteObjects(JSON.parse(txt.slice(7)).objects);return;}
+    if(txt&&txt.trim().startsWith('{')){const d=JSON.parse(txt);if(Array.isArray(d.objects)){pasteObjects(d.objects);return;}}
+  }catch(_){}
+  // 3) internal buffer
+  if(clipboard.length)pasteObjects(clipboard);
+}
+function pasteObjects(arr){
+  if(!arr||!arr.length)return;pushUndo();
+  const off=24/scale;const created=[];
+  for(const src of arr){const c=JSON.parse(JSON.stringify(src));c.id=nextId++;moveObj(c,JSON.parse(JSON.stringify(c)),off,off);objects.push(c);created.push(c.id);}
+  selection=new Set(created);setTool('select');syncProps();render();
+}
+// paste event (captures OS image/text paste)
+window.addEventListener('paste',e=>{
+  if(!CAN_EDIT)return;
+  if(editEl)return; // let textarea handle it
+  const items=e.clipboardData&&e.clipboardData.items;
+  if(items){
+    for(const it of items){
+      if(it.type.startsWith('image/')){const f=it.getAsFile();if(f){loadImageFile2(f,{x:wx(innerWidth/2),y:wy(innerHeight/2)});e.preventDefault();return;}}
+    }
+    const txt=e.clipboardData.getData('text');
+    if(txt&&txt.startsWith('WBCLIP:')){pasteObjects(JSON.parse(txt.slice(7)).objects);e.preventDefault();return;}
+  }
+  if(clipboard.length){pasteObjects(clipboard);e.preventDefault();}
+});
+
+// ---------- Save / Load JSON ----------
+function saveJson(){
+  const data={version:1,name:boardName,objects:objects.map(o=>{const c={...o};delete c.__x;return c;})};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(boardName||'whiteboard')+'.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+document.getElementById('fileJson').addEventListener('change',e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=()=>loadJsonText(r.result);r.readAsText(f);}e.target.value='';});
+function loadJsonText(txt){
+  let data;try{data=JSON.parse(txt);}catch(err){alert('Не удалось прочитать JSON: '+err.message);return;}
+  if(!data||!Array.isArray(data.objects)){alert('Формат не распознан: нужен объект с полем "objects".');return;}
+  pushUndo();
+  boardName=data.name||'whiteboard';
+  objects=data.objects.map(o=>normalizeLoaded(o));
+  nextId=objects.reduce((m,o)=>Math.max(m,o.id||0),0)+1;
+  selection.clear();
+  // preload images
+  for(const o of objects)if(o.type==='image'&&o._imgSrc)getImg(o._imgSrc);
+  syncProps();zoomFit();
+}
+function normalizeLoaded(o){
+  const n={...o};
+  if(typeof n.id!=='number')n.id=nextId++;
+  if(n.type==='rect'){n.w=+n.w||0;n.h=+n.h||0;if(n.lw==null)n.lw=0;}
+  if(n.type==='text'){n.size=+n.size||16;n.font=n.font||'Arial';}
+  return n;
+}
+
+// ---------- Keyboard ----------
+window.addEventListener('keydown',e=>{
+  if(editEl)return;                 // typing in text overlay
+  const t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'))return;
+  // Ученику оставлены прокрутка и пробел: правки с клавиатуры мимо
+  // спрятанной панели были бы дырой в том же разделении ролей.
+  if(!CAN_EDIT&&!(e.code==='Space'||e.key.startsWith('Arrow')))return;
+  const mod=e.ctrlKey||e.metaKey;
+  if(e.code==='Space'){spaceDown=true;canvas.style.cursor='grab';return;}
+  if(mod&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return;}
+  if(mod&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return;}
+  if(mod&&e.key.toLowerCase()==='c'){e.preventDefault();doCopy();return;}
+  if(mod&&e.key.toLowerCase()==='v'){e.preventDefault();doPaste();return;}
+  if(mod&&e.key.toLowerCase()==='x'){e.preventDefault();doCopy().then(deleteSelection);return;}
+  if(mod&&e.key.toLowerCase()==='d'){e.preventDefault();duplicateSelection();return;}
+  if(mod&&e.key.toLowerCase()==='a'){e.preventDefault();selection=new Set(objects.map(o=>o.id));syncProps();render();return;}
+  if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();saveJson();return;}
+  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelection();return;}
+  if(e.key==='Escape'){selection.clear();syncProps();render();return;}
+  // Arrow keys pan the board along both axes. Shift = faster.
+  // Alt + Arrow keeps the old precise object-nudge behaviour.
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){
+    e.preventDefault();
+    if(CAN_EDIT&&e.altKey&&selection.size){
+      const d=e.shiftKey?10:1;
+      const dx=(e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0),dy=(e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0);
+      pushUndo();for(const id of selection){const o=getById(id);if(o)moveObj(o,JSON.parse(JSON.stringify(o)),dx,dy);}render();return;
+    }
+    const step=e.shiftKey?220:70;
+    if(e.key==='ArrowLeft')offX+=step;
+    if(e.key==='ArrowRight')offX-=step;
+    if(e.key==='ArrowUp')offY+=step;
+    if(e.key==='ArrowDown')offY-=step;
+    render();return;
+  }
+  // tool shortcuts
+  const map={v:'select',h:'hand',t:'text',r:'rect',o:'ellipse',l:'line',a:'arrow',p:'pen'};
+  if(!mod&&map[e.key.toLowerCase()]){setTool(map[e.key.toLowerCase()]);}
+});
+window.addEventListener('keyup',e=>{if(e.code==='Space'){spaceDown=false;canvas.style.cursor=tool==='select'?'default':(tool==='hand'?'grab':'crosshair');}});
+
+// ---------- Boot ----------
+setTool('select');
+offX=innerWidth/2;offY=innerHeight/2;
+resize();updateZoomLabel();
+if(!restorePersistedBoard()){
+  loadJsonText(JSON.stringify(MENDEL_STARTER_BOARD));
+  // Open the long lesson at the top instead of shrinking all slides into one tiny view.
+  scale=Math.min(.65,Math.max(.25,(innerWidth-80)/2400));
+  offX=innerWidth/2+10*scale;
+  offY=70+760*scale;
+  updateZoomLabel();render();
+}
+persistReady=true;
+schedulePersist();
+
+// Programmatic API (handy for tests / embedding): WB.load(jsonStringOrObject)
+window.WB={
+  load:(d)=>loadJsonText(typeof d==='string'?d:JSON.stringify(d)),
+  get:()=>JSON.parse(JSON.stringify(objects))
+};
+})();
+</script>
+</body>
+</html>
