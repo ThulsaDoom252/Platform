@@ -187,6 +187,8 @@ export const uk: Dict = {
     verbs: "Неправильні дієслова",
     script: "Скрипт",
     board: "Дошка",
+    sendStudent: "Перевести сюди: {name}",
+    studentHere: "{name} вже тут",
     timer: "Таймер",
     timerStart: "пуск",
     timerPause: "пауза",

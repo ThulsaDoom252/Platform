@@ -22,6 +22,8 @@ import {
 } from "@/lib/class-order";
 import { useLocalJson } from "@/lib/use-local-json";
 import {
+  classSyncAction,
+  focusStudentAction,
   heartbeatAction,
   listClassPeopleAction,
   enterClassAction,
@@ -50,6 +52,11 @@ import { StudentGuess } from "@/components/game/student-guess";
 import { cn } from "@/lib/utils";
 
 const BEAT_MS = 30_000;
+/*
+ * «Перейди на доску» не должно ждать полминуты до отметки о живости,
+ * поэтому у команд свой такт — короткий и с двумя полями в ответе.
+ */
+const SYNC_MS = 4_000;
 
 /** Короткая точка статуса: зелёная — на платформе, красная — нет. */
 function Dot({ presence, t }: { presence: Presence; t: Dict }) {
@@ -153,6 +160,10 @@ export function ClassRoom({
   const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
   const [sortDesc, setSortDesc] = useLocalJson("class-sort-desc", false);
   const [showTimer, setShowTimer] = useState(false);
+  /** Что открыто у собеседника — учителю, чтобы не звать туда, где он уже есть. */
+  const [partnerWhere, setPartnerWhere] = useState<PanelKey | null>(null);
+  /** Куда смотрю я: последняя открытая панель. */
+  const [where, setWhere] = useState<PanelKey | null>(null);
   const [unread, setUnread] = useState(0);
   const [busy, startBusy] = useTransition();
   const chime = useRef<(() => void) | null>(null);
@@ -242,8 +253,64 @@ export function ClassRoom({
   }, []);
 
   const toggle = (key: PanelKey) => {
-    setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
+    setOpen((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      // Собеседнику важно, на что я смотрю, а не что открыто вообще.
+      setWhere(next[key] ? key : null);
+      return next;
+    });
     if (key === "chat") setUnread(0);
+  };
+
+  /*
+   * Короткий такт на команды: говорю, где я, и узнаю, где собеседник.
+   * Ученику тем же ответом приходит «перейди сюда» — команду узнаём по
+   * времени, поэтому повторный вызов на ту же панель тоже срабатывает.
+   */
+  const applied = useRef<string | null>(null);
+  const whereRef = useRef<PanelKey | null>(null);
+  useEffect(() => {
+    whereRef.current = where;
+  });
+
+  useEffect(() => {
+    let alive = true;
+
+    const tick = () => {
+      classSyncAction(whereRef.current)
+        .then((sync) => {
+          if (!alive) return;
+          setPartnerWhere(sync.partnerWhere);
+          if (!sync.focus || teacher) return;
+          if (applied.current === sync.focus.at) return;
+          applied.current = sync.focus.at;
+          const panel = sync.focus.panel as PanelKey;
+          setOpen((prev) => ({ ...prev, [panel]: true }));
+          setWhere(panel);
+          if (panel === "chat") setUnread(0);
+        })
+        .catch(() => {
+          /* следующий такт подхватит */
+        });
+    };
+
+    tick();
+    const id = setInterval(tick, SYNC_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [teacher]);
+
+  /*
+   * Команду отправляем и ждём — зелёной кнопка станет, когда ученик
+   * действительно окажется на месте и скажет об этом. Красить её сразу
+   * значило бы показывать учителю, что ученик там, хотя он, может,
+   * вообще не в сети.
+   */
+  const send = (key: PanelKey) => {
+    if (!teacher || !partner) return;
+    startBusy(() => focusStudentAction(key).then(() => undefined));
   };
 
   /*
@@ -274,24 +341,59 @@ export function ClassRoom({
 
   const groups = orderClassPeople(people ?? [], sort, sortDesc);
 
-  const tabBtn = (key: PanelKey, icon: React.ReactNode, label: string, badge?: number) => (
-    <button
-      type="button"
-      onClick={() => toggle(key)}
-      className={cn(
-        "relative flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition",
-        open[key] ? "bg-accent text-white" : "text-muted hover:bg-surface-2 hover:text-content",
-      )}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-      {!!badge && badge > 0 && (
-        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-          {badge}
-        </span>
-      )}
-    </button>
-  );
+  const tabBtn = (key: PanelKey, icon: React.ReactNode, label: string, badge?: number) => {
+    const studentHere = partnerWhere === key;
+
+    return (
+      <span key={key} className="flex items-center">
+        <button
+          type="button"
+          onClick={() => toggle(key)}
+          className={cn(
+            "relative flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition",
+            teacher && partner ? "rounded-l-xl" : "rounded-xl",
+            open[key] ? "bg-accent text-white" : "text-muted hover:bg-surface-2 hover:text-content",
+          )}
+        >
+          {icon}
+          <span className="hidden sm:inline">{label}</span>
+          {!!badge && badge > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+              {badge}
+            </span>
+          )}
+        </button>
+
+        {/*
+         * Перевести ученика сюда. Зелёным — когда он уже здесь: звать
+         * туда, где он стоит, незачем, и это видно до нажатия.
+         */}
+        {teacher && partner && (
+          <button
+            type="button"
+            disabled={busy || studentHere}
+            onClick={() => send(key)}
+            title={
+              studentHere
+                ? fmt(t.classRoom.studentHere, { name: partner.name })
+                : fmt(t.classRoom.sendStudent, { name: partner.name })
+            }
+            aria-label={fmt(t.classRoom.sendStudent, { name: partner.name })}
+            className={cn(
+              "flex h-10 w-8 items-center justify-center rounded-r-xl border-l transition",
+              open[key] ? "border-white/25" : "border-line",
+              studentHere
+                ? "tint-green"
+                : "text-faint hover:bg-surface-2 hover:text-accent disabled:opacity-40",
+              open[key] && !studentHere && "bg-accent text-white/70 hover:bg-accent hover:text-white",
+            )}
+          >
+            <IconUser className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </span>
+    );
+  };
 
   const stub = (title: string) => (
     <div className="rounded-2xl bg-surface p-5 text-center ring-1 ring-line">
@@ -574,9 +676,6 @@ export function ClassRoom({
             <StudentGuess />
           )}
           {open.dictionary && stub(t.classRoom.dictionary)}
-          {open.board && (
-            <ClassBoard teacher={teacher} onClose={() => toggle("board")} />
-          )}
         </div>
 
         <div className={cn("flex flex-col gap-4", !open.chat && !open.verbs && "hidden")}>
@@ -607,9 +706,18 @@ export function ClassRoom({
         </div>
       </div>
 
+      {/*
+       * Доска занимает весь экран: на четверти экрана рисовать нечем, а
+       * урок в этот момент всё равно идёт на ней.
+       */}
+      {open.board && (
+        <ClassBoard teacher={teacher} onClose={() => toggle("board")} />
+      )}
+
       {/* Нижняя панель — её видят оба, таймер только у учителя. */}
       <div className="fixed inset-x-0 bottom-[56px] z-20 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur-md lg:bottom-0">
-        <div className="mx-auto flex max-w-[1920px] flex-wrap items-center gap-2">
+        {/* Всё одной группой по центру: таймер такой же элемент панели. */}
+        <div className="mx-auto flex max-w-[1920px] flex-wrap items-center justify-center gap-2">
           {tabBtn("chat", <IconMessage className="h-4 w-4" />, t.classRoom.chat, unread)}
           {tabBtn("dictionary", <IconMaterials className="h-4 w-4" />, t.classRoom.dictionary)}
           {tabBtn("verbs", <IconList className="h-4 w-4" />, t.classRoom.verbs)}
@@ -617,7 +725,7 @@ export function ClassRoom({
           {tabBtn("board", <IconGrid className="h-4 w-4" />, t.classRoom.board)}
 
           {teacher && (
-            <span className="ml-auto flex items-center gap-2">
+            <span className="flex items-center gap-2">
               {showTimer && <Timer t={t} />}
               <button
                 type="button"

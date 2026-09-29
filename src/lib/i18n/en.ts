@@ -180,6 +180,8 @@ export const en = {
     verbs: "Irregular verbs",
     script: "Script",
     board: "Board",
+    sendStudent: "Move {name} here",
+    studentHere: "{name} is already here",
     timer: "Timer",
     timerStart: "start",
     timerPause: "pause",

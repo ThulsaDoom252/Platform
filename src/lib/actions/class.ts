@@ -15,6 +15,7 @@ import { users, classMessages, lessons, lessonPackages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { daysLeftInWeek } from "@/lib/class-order";
 import { IRREGULAR_VERBS_BASE, verbKey } from "@/lib/irregular-verbs-base";
+import { asPanel, type ClassPanel } from "@/lib/class-panels";
 
 /** Сколько отметка держится за «онлайн». */
 const ONLINE_WINDOW_MS = 75_000;
@@ -451,4 +452,99 @@ export async function quickVerbsAction(): Promise<QuickVerb[]> {
       a.base.localeCompare(b.base, "en") ||
       a.past.localeCompare(b.past, "en"),
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Где кто в классе                                                    */
+/* ------------------------------------------------------------------ */
+
+export type ClassSync = {
+  /** Куда учителя просят перейти — никуда: команды идут только ученику. */
+  focus: { panel: ClassPanel; at: string } | null;
+  /** Что открыто у собеседника. */
+  partnerWhere: ClassPanel | null;
+};
+
+/**
+ * Сказать, где я, и узнать, где собеседник.
+ *
+ * Отдельно от heartbeatAction и заметно чаще: отметка о живости может
+ * опоздать на полминуты, а «перейди на доску» посреди урока — нет.
+ * Поэтому здесь только два поля и ни одного лишнего запроса.
+ */
+export async function classSyncAction(where: string | null): Promise<ClassSync> {
+  const session = await requireUser();
+  const mine = asPanel(where);
+
+  await db
+    .update(users)
+    .set({ classWhere: mine, lastSeenAt: new Date() })
+    .where(eq(users.id, session.userId));
+
+  const [me] = await db
+    .select({
+      role: users.role,
+      classWithId: users.classWithId,
+      classFocus: users.classFocus,
+    })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+
+  if (!me) return { focus: null, partnerWhere: null };
+
+  // У учителя собеседник записан в поле, у ученика — тот, кто выбрал его.
+  const [partner] =
+    me.role === "TEACHER"
+      ? me.classWithId
+        ? await db
+            .select({ classWhere: users.classWhere })
+            .from(users)
+            .where(eq(users.id, me.classWithId))
+            .limit(1)
+        : []
+      : await db
+          .select({ classWhere: users.classWhere })
+          .from(users)
+          .where(eq(users.classWithId, session.userId))
+          .limit(1);
+
+  const focus = me.role === "TEACHER" ? null : me.classFocus;
+  const panel = asPanel(focus?.panel);
+
+  return {
+    focus: panel && focus?.at ? { panel, at: focus.at } : null,
+    partnerWhere: asPanel(partner?.classWhere),
+  };
+}
+
+/**
+ * Перевести ученика на нужную часть класса.
+ *
+ * Сам по себе ученик за учителем не ходит: открытая учителем доска у
+ * него не открывается. Это делается вручную и заметным действием,
+ * иначе экран под ним прыгал бы всё занятие.
+ */
+export async function focusStudentAction(
+  panel: string,
+): Promise<{ error?: string }> {
+  const session = await requireUser();
+  const key = asPanel(panel);
+  if (!key) return { error: "Неизвестная часть класса" };
+
+  const [me] = await db
+    .select({ role: users.role, classWithId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+
+  if (me?.role !== "TEACHER") return { error: "Это может только учитель" };
+  if (!me.classWithId) return { error: "Класс не начат" };
+
+  await db
+    .update(users)
+    .set({ classFocus: { panel: key, at: new Date().toISOString() } })
+    .where(eq(users.id, me.classWithId));
+
+  return {};
 }
