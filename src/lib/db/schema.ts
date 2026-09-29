@@ -862,3 +862,105 @@ export const wordRevisionAttemptsRelations = relations(
     }),
   }),
 );
+
+/* ------------------------------------------------------------------ */
+/* Уроки                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Урок как заготовка.
+ *
+ * Это не занятие из расписания (те лежат в lessons) — это материал,
+ * который учитель собирает один раз и потом выдаёт скольким угодно
+ * ученикам. Поэтому таблица отдельная: у занятия есть время и ученик, у
+ * заготовки — только содержимое.
+ *
+ * Обычный урок — заголовок и домашка. Урок-активность собран из секций:
+ * словник, видео, расшифровка, вопросы, домашка. Секции не в отдельной
+ * таблице: их пять, они заранее известны и у каждой своя форма, так что
+ * строки с общим «content» были бы честнее только на вид.
+ */
+export const lessonUnits = pgTable("lesson_units", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  authorId: uuid("author_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** REGULAR — обычный урок, ACTIVITY — с секциями. */
+  kind: text("kind").notNull().default("ACTIVITY"),
+  title: text("title").notNull(),
+  description: text("description"),
+  /**
+   * Словник, на котором держится секция Vocabulary.
+   *
+   * Ссылкой, а не копией: слова с описаниями, транскрипциями и
+   * картинками уже собраны в материалах, и вторая их копия разошлась бы
+   * с первой на первой же правке.
+   */
+  vocabNodeId: uuid("vocab_node_id").references(() => materialNodes.id, {
+    onDelete: "set null",
+  }),
+  videoUrl: text("video_url"),
+  videoTitle: text("video_title"),
+  /** Реплики расшифровки: [{ speaker, text }] в порядке разговора. */
+  transcript: jsonb("transcript").$type<{ speaker: string; text: string }[]>(),
+  /** Вопросы: после просмотра и после чтения — это разные разговоры. */
+  questions: jsonb("questions").$type<{ afterVideo: string[]; afterReading: string[] }>(),
+  /** Задания домашки: [{ title, text }]. */
+  homework: jsonb("homework").$type<{ title: string; text: string }[]>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Урок, закреплённый за учеником.
+ *
+ * Копия состояния, а не содержимого: сам урок лежит в lesson_units и
+ * никогда не меняется. Здесь только то, что нажил конкретный ученик, —
+ * какие секции ему открыли, что подсветил учитель, что он ответил.
+ *
+ * Поэтому один урок раздаётся скольким угодно ученикам, и у каждого
+ * своя история, а исходник остаётся исходником.
+ */
+export const lessonAssignments = pgTable("lesson_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  unitId: uuid("unit_id")
+    .notNull()
+    .references(() => lessonUnits.id, { onDelete: "cascade" }),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /**
+   * Какие секции открыты ученику. Словник открыт всегда — с него урок и
+   * начинается, остальное учитель открывает по ходу.
+   */
+  openSections: jsonb("open_sections").$type<string[]>().default([]).notNull(),
+  /**
+   * Подсветки учителя: ключ места — цвет.
+   *
+   * Ключ говорит, что подсвечено: слово словника, реплика целиком или
+   * слово в реплике. Живёт здесь, а не в уроке: у каждого ученика
+   * подчёркнуто своё.
+   */
+  highlights: jsonb("highlights").$type<Record<string, string>>().default({}).notNull(),
+  /** Ответы ученика по домашке этого урока — его собственная копия. */
+  answers: jsonb("answers").$type<Record<string, string>>().default({}).notNull(),
+  /** Урок пройден: остаётся в истории в том виде, в каком закончили. */
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Доска ученика.
+ *
+ * У каждого своя и поначалу пустая. Всё, что учитель туда загрузил,
+ * поправил или стёр, остаётся у этого ученика и не видно остальным.
+ */
+export const studentBoards = pgTable("student_boards", {
+  studentId: uuid("student_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** Сцена доски целиком, как её отдаёт сама доска. */
+  scene: jsonb("scene"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});

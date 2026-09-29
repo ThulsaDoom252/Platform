@@ -16,6 +16,7 @@ import {
   IconSettings,
   IconVolume,
   IconFire,
+  IconLayers,
 } from "@/components/icons";
 
 export function SidebarNav() {
@@ -27,6 +28,7 @@ export function SidebarNav() {
     { href: "/teacher", label: t.nav.home, Icon: IconHome, exact: true },
     { href: "/teacher/students", label: t.nav.students, Icon: IconUsers },
     { href: "/teacher/schedule", label: t.nav.schedule, Icon: IconCalendar },
+    { href: "/teacher/lessons", label: t.nav.lessons, Icon: IconLayers },
     { href: "/teacher/script", label: t.nav.script, Icon: IconFile },
     { href: "/teacher/tongue-twisters", label: t.nav.twisters, Icon: IconVolume },
     { href: "/teacher/activities", label: t.nav.activities, Icon: IconFire },
