@@ -518,6 +518,8 @@ export const ru: Dict = {
     remove: "Убрать",
     removeConfirm: "Убрать задание вместе с результатами?",
     fromVocab: "Из словника",
+    knew: "Знал",
+    didntKnow: "Не знал",
     wordNo: "слово {n}",
     showAlso: "показывать ещё:",
     showImage: "картинку",

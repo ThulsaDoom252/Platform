@@ -434,6 +434,8 @@ export const en = {
     remove: "Remove",
     removeConfirm: "Remove this task together with its results?",
     fromVocab: "From the vocabulary",
+    knew: "I knew it",
+    didntKnow: "I did not",
     wordNo: "word {n}",
     showAlso: "also show:",
     showImage: "picture",

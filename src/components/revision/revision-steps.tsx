@@ -791,6 +791,17 @@ function Unscramble({
 /* Угадай по картинке                                                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Угадай по картинке.
+ *
+ * Вводить нечего: ученик смотрит на картинку, вспоминает слово и
+ * переворачивает карту. Написание здесь не спрашивают — это делает
+ * «собери слово», а тут проверяется, всплывает ли слово вообще.
+ *
+ * Кто прав, решает сам ученик: машине сравнивать не с чем. Поэтому
+ * после переворота он честно отвечает, знал или нет, — иначе в разборе
+ * у учителя всегда стояло бы двадцать пять из двадцати пяти.
+ */
 function Picture({
   word,
   seconds,
@@ -802,54 +813,63 @@ function Picture({
 }) {
   const { t } = useT();
   const speech = useSpeech();
-  const [typed, setTyped] = useState("");
-  const [result, setResult] = useState<"ok" | "wrong" | "timeout" | null>(null);
+  const [flipped, setFlipped] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
 
   const watch = useStopwatch();
   const took = useRef(0);
 
-  const left = useStepTimer(seconds, result !== null, 0, () => {
+  const left = useStepTimer(seconds, flipped || timedOut, 0, () => {
     took.current = (seconds ?? 0) * 1000;
-    setResult("timeout");
+    setTimedOut(true);
+    setFlipped(true);
   });
 
-  const check = () => {
-    if (result || !typed.trim()) return;
+  const flip = () => {
+    if (flipped) return;
     took.current = watch.ms();
-    setResult(same(typed, word.word) ? "ok" : "wrong");
+    setFlipped(true);
   };
+
+  const answer = (knew: boolean) =>
+    onDone([
+      entry(
+        "picture",
+        word,
+        knew && !timedOut,
+        took.current,
+        knew && !timedOut ? undefined : timedOut ? "timeout" : "wrong",
+      ),
+    ]);
 
   return (
     <div className="flex flex-col gap-4">
       <TimerBar left={left} total={seconds} />
 
-      {word.imageUrl && <WordImage url={word.imageUrl} alt="" />}
+      {word.imageUrl && (
+        <button
+          type="button"
+          onClick={flip}
+          disabled={flipped}
+          className="w-full rounded-2xl transition disabled:cursor-default"
+        >
+          <WordImage url={word.imageUrl} alt="" />
+        </button>
+      )}
 
-      {result === null ? (
-        <div className="flex gap-2">
-          <input
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && check()}
-            placeholder={t.revision.typeWord}
-            autoFocus
-            autoComplete="off"
-            className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-4 text-base text-content outline-none transition placeholder:text-faint focus:border-accent"
-          />
-          <button
-            type="button"
-            onClick={check}
-            disabled={!typed.trim()}
-            className="h-12 shrink-0 rounded-xl bg-accent px-5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-          >
-            {t.revision.check}
-          </button>
-        </div>
+      {!flipped ? (
+        <button
+          type="button"
+          onClick={flip}
+          className="h-12 rounded-xl bg-accent text-sm font-bold text-white transition hover:opacity-90"
+        >
+          {t.revision.reveal}
+        </button>
       ) : (
         <>
-          {/* Карточка переворачивается: сначала догадка, потом ответ. */}
+          {/* Обратная сторона: слово, звук и перевод. */}
           <div className="flex flex-col items-center gap-1 rounded-2xl bg-surface px-4 py-4 text-center ring-1 ring-line">
-            <span className="flex items-center gap-1.5 text-2xl font-black text-content">
+            <span className="flex flex-wrap items-center justify-center gap-1.5 text-2xl font-black text-content">
               {word.word}
               <SpeakPair text={word.word} id={word.phraseId} speech={speech} />
             </span>
@@ -860,21 +880,39 @@ function Picture({
             )}
           </div>
 
-          <Verdict
-            ok={result === "ok"}
-            right={word.word}
-            onNext={() =>
-              onDone([
-                entry(
-                  "picture",
-                  word,
-                  result === "ok",
-                  took.current,
-                  result === "ok" ? undefined : result === "timeout" ? "timeout" : "wrong",
-                ),
-              ])
-            }
-          />
+          {timedOut ? (
+            <>
+              <p className="text-center text-sm font-bold text-rose-500">
+                {t.revision.timeUp}
+              </p>
+              <button
+                type="button"
+                onClick={() => answer(false)}
+                autoFocus
+                className="h-12 rounded-xl bg-accent text-sm font-bold text-white transition hover:opacity-90"
+              >
+                {t.revision.next}
+              </button>
+            </>
+          ) : (
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => answer(false)}
+                className="h-12 flex-1 rounded-xl border border-line text-sm font-semibold text-muted transition hover:border-rose-500 hover:text-rose-500"
+              >
+                {t.revision.didntKnow}
+              </button>
+              <button
+                type="button"
+                onClick={() => answer(true)}
+                autoFocus
+                className="h-12 flex-1 rounded-xl bg-accent text-sm font-bold text-white transition hover:opacity-90"
+              >
+                {t.revision.knew}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

@@ -518,6 +518,8 @@ export const uk: Dict = {
     remove: "Прибрати",
     removeConfirm: "Прибрати завдання разом з результатами?",
     fromVocab: "Зі словника",
+    knew: "Знав",
+    didntKnow: "Не знав",
     wordNo: "слово {n}",
     showAlso: "показувати ще:",
     showImage: "картинку",
