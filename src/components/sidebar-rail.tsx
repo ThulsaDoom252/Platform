@@ -26,9 +26,13 @@ export function SidebarRail({ children }: { children: React.ReactNode }) {
       <aside
         className={`group/rail absolute left-0 top-0 h-screen w-20 overflow-hidden border-r border-line bg-surface transition-[width,box-shadow] duration-150 ease-out ${OPEN}`}
       >
-        {/* Содержимое всегда в полную ширину: при раскрытии оно не
-            перевёрстывается, а просто перестаёт обрезаться. */}
-        <div className="flex h-full w-[272px] flex-col gap-6 px-4 py-6">
+        {/*
+         * Содержимое тянется за полосой, а не обрезается по краю: иначе
+         * подсветка активного пункта уезжает за край и иконка перестаёт
+         * стоять по центру. Сами иконки при этом не двигаются — они
+         * прижаты к левому отступу, который не меняется.
+         */}
+        <div className="flex h-full w-full flex-col gap-6 px-4 py-6">
           {children}
         </div>
       </aside>

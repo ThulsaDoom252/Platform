@@ -56,7 +56,9 @@ export default async function TeacherLayout({
 
             <SidebarNav />
 
-            <div className={`mt-auto flex flex-col gap-4 ${RAIL_ONLY_OPEN}`}>
+            {/* Ширина задана: сплющенная в полосу карточка выросла бы
+                вверх и подвинула навигацию. */}
+            <div className={`mt-auto flex w-[240px] flex-col gap-4 ${RAIL_ONLY_OPEN}`}>
               <div className="rounded-2xl bg-accent-soft p-4">
                 <p className="text-sm font-semibold text-content">{t.brand.smallSteps}</p>
               </div>

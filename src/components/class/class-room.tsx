@@ -135,9 +135,14 @@ export function ClassRoom({
     presence: Presence;
   } | null>(null);
   const { t, locale } = useT();
+  /*
+   * Урок начинается с пустого стола: панели включает учитель, когда они
+   * понадобились. Открытые по умолчанию чат и глаголы отъедали у урока
+   * треть экрана всё занятие, даже если в них не заглядывали.
+   */
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
-    chat: true,
-    verbs: true,
+    chat: false,
+    verbs: false,
     dictionary: false,
     board: false,
     script: false,
@@ -547,7 +552,14 @@ export function ClassRoom({
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {/* Колонка панелей появляется вместе с панелями: пустая она
+          просто отрезала бы от урока триста шестьдесят пикселей. */}
+      <div
+        className={cn(
+          "grid gap-4",
+          (open.chat || open.verbs) && "lg:grid-cols-[minmax(0,1fr)_360px]",
+        )}
+      >
         <div className="flex flex-col gap-4">
           {open.script && teacher && partner ? (
             <ClassScript studentId={partner.id} onClose={() => toggle("script")} />
@@ -564,7 +576,7 @@ export function ClassRoom({
           {open.board && stub(t.classRoom.board)}
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className={cn("flex flex-col gap-4", !open.chat && !open.verbs && "hidden")}>
           {open.chat && (
             <section className="flex h-[420px] flex-col overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
               <ClassChat
