@@ -64,10 +64,12 @@ import { ClassActivities } from "./class-activities";
 import { ClassLesson } from "./class-lesson";
 import {
   ClassVocabulary,
-  type ClassVocabularySeed,
 } from "./class-vocabulary";
 import type { ClassVocabularyWord } from "@/lib/actions/class-vocabulary";
-import { cleanClassVocabularyText } from "@/lib/class-vocabulary";
+import {
+  SelectionTranslationPopover,
+  type ClassTextSelection,
+} from "./selection-translation-popover";
 import { StudentGuess } from "@/components/game/student-guess";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
 import {
@@ -202,7 +204,7 @@ export function ClassRoom({
   const [twisterSession, setTwisterSession] = useState<ClassTwisterSession | null>(null);
   const [focusedWordDeck, setFocusedWordDeck] = useState<ClassWordDeckActivity | null>(null);
   const [videoSync, setVideoSync] = useState<ClassVideoState | null>(null);
-  const [dictionarySeed, setDictionarySeed] = useState<ClassVocabularySeed>(null);
+  const [textSelection, setTextSelection] = useState<ClassTextSelection | null>(null);
   const [vocabularyNotice, setVocabularyNotice] = useState<{
     id: string;
     english: string;
@@ -328,11 +330,12 @@ export function ClassRoom({
     vocabularyNoticeTimer.current = setTimeout(() => setVocabularyNotice(null), 6_000);
   }, []);
 
-  const translateSelectedText = useCallback((value: string) => {
-    const text = cleanClassVocabularyText(value);
-    if (!text) return;
-    setDictionarySeed({ text, nonce: Date.now() });
-    setOpen((current) => ({ ...current, dictionary: true }));
+  const translateSelectedText = useCallback((selection: ClassTextSelection) => {
+    setTextSelection(selection);
+  }, []);
+
+  const closeSelectionTranslation = useCallback(() => {
+    setTextSelection(null);
   }, []);
 
   const toggle = (key: PanelKey) => {
@@ -542,7 +545,7 @@ export function ClassRoom({
             assignmentId={activeLessonId}
             videoSync={videoSync}
             onAssigned={setActiveLessonId}
-            onTextSelect={teacher ? translateSelectedText : undefined}
+            onTextSelect={translateSelectedText}
           />
         ) : lessonTab === "twister" && partner ? (
           <ClassTwister studentId={partner.id} studentName={partner.name} />
@@ -869,7 +872,6 @@ export function ClassRoom({
             <ClassVocabulary
               key={conversation ?? "no-student"}
               ready={!!conversation}
-              seed={dictionarySeed}
               compact
               onAdded={(word: ClassVocabularyWord) => {
                 const alreadyShown = seenVocabularyEvents.current.has(word.id);
@@ -899,7 +901,7 @@ export function ClassRoom({
                     teacher={false}
                     assignmentId={activeLessonId}
                     videoSync={videoSync}
-                    onTextSelect={teacher ? translateSelectedText : undefined}
+                    onTextSelect={translateSelectedText}
                   />
                 )}
               />
@@ -1058,6 +1060,16 @@ export function ClassRoom({
           </section>
         </div>
       )}
+
+      <SelectionTranslationPopover
+        key={textSelection?.nonce ?? "closed-selection"}
+        request={textSelection}
+        onClose={closeSelectionTranslation}
+        onAdded={(word) => {
+          seenVocabularyEvents.current.add(word.id);
+          showVocabularyNotice(word);
+        }}
+      />
 
       {vocabularyNotice && (
         <div className="fixed right-4 top-4 z-[80] w-[min(24rem,calc(100vw-2rem))] rounded-2xl bg-emerald-500 p-4 text-white shadow-2xl ring-4 ring-emerald-300/40">

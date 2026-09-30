@@ -16,6 +16,7 @@ import { LESSON_SECTIONS, type LessonSection } from "@/lib/lesson-unit";
 import { IconCheck, IconPlus } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
+import type { ClassTextSelection } from "./selection-translation-popover";
 
 type Assigned = NonNullable<Awaited<ReturnType<typeof assignedLessonAction>>>;
 
@@ -32,7 +33,7 @@ export function ClassLesson({
   assignmentId: string | null;
   videoSync: ClassVideoState | null;
   onAssigned?: (id: string) => void;
-  onTextSelect?: (text: string) => void;
+  onTextSelect?: (selection: ClassTextSelection) => void;
 }) {
   const { t } = useT();
   const [lessons, setLessons] = useState<LessonCard[]>([]);
@@ -119,16 +120,39 @@ export function ClassLesson({
     homework: t.lessonUnits.secHomework,
   };
 
-  const captureSelection = (event: MouseEvent<HTMLDivElement>) => {
+  const captureSelection = (
+    event: MouseEvent<HTMLDivElement>,
+    fallbackText = "",
+  ) => {
     if (!onTextSelect) return;
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return;
-    if (
-      !event.currentTarget.contains(selection.anchorNode) ||
-      !event.currentTarget.contains(selection.focusNode)
-    ) return;
-    const text = selection.toString().replace(/\s+/g, " ").trim();
-    if (text) onTextSelect(text);
+    const selectionInside = !!selection &&
+      !selection.isCollapsed &&
+      !!selection.anchorNode &&
+      !!selection.focusNode &&
+      event.currentTarget.contains(selection.anchorNode) &&
+      event.currentTarget.contains(selection.focusNode);
+    const text = (selectionInside ? selection.toString() : fallbackText)
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) return;
+    const range = selectionInside && selection.rangeCount > 0
+      ? selection.getRangeAt(0)
+      : null;
+    const rect = range?.getBoundingClientRect();
+    onTextSelect({
+      text,
+      x: event.clientX || rect?.left || 12,
+      y: rect?.bottom || event.clientY || 12,
+      nonce: Date.now(),
+    });
+  };
+
+  const captureDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-lookup-text]")
+      : null;
+    captureSelection(event, target?.dataset.lookupText ?? "");
   };
 
   return (
@@ -217,7 +241,7 @@ export function ClassLesson({
             </div>
           )}
 
-          <div onMouseUp={captureSelection}>
+          <div onMouseUp={captureSelection} onDoubleClick={captureDoubleClick}>
             <AssignedLesson
               key={data.assignment.id}
               data={data}

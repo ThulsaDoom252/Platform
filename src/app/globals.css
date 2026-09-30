@@ -19,13 +19,13 @@
 
 /* ---------- Light (default) ---------- */
 :root {
-  --page: #f6f7fb;
+  --page: color-mix(in srgb, var(--accent) 5%, #f1f5f9);
   --surface: #ffffff;
-  --surface-2: #f5f7fa;
-  --content: #1e2233;
-  --muted: #64748b;
-  --faint: #94a3b8;
-  --line: #eef1f6;
+  --surface-2: color-mix(in srgb, var(--accent) 9%, #f3f6fa);
+  --content: #111827;
+  --muted: #40516a;
+  --faint: #64748b;
+  --line: color-mix(in srgb, var(--accent) 13%, #d8e0eb);
   /* Сетка расписания: разлиновка должна читаться, а не угадываться. */
   --grid-line: #ccd5e2;
   --grid-edge: #9fb0c6;

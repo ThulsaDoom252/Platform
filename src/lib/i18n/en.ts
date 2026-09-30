@@ -468,7 +468,7 @@ export const en = {
     pickStudent: "Pick a student to open their vocabulary.",
     placeholder: "Type or select a word or phrase…",
     translate: "Translate",
-    selectionHint: "Select text in the lesson to translate it here instantly.",
+    selectionHint: "Select text in the lesson to translate it by the cursor. It is added here only when you press Add.",
     translateFailed: "Could not translate this text.",
     add: "Add to vocabulary",
     addFailed: "Could not add the word.",

@@ -55,6 +55,7 @@ export function LessonVocab({
   const [allTr, setAllTr] = useState(false);
   const [allDesc, setAllDesc] = useState(false);
   const focusedCard = useRef<HTMLDivElement>(null);
+  const pickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const groups = useMemo(() => groupWords(words), [words]);
   const categories = useMemo(() => groups.map((g) => g.category), [groups]);
@@ -79,6 +80,10 @@ export function LessonVocab({
     if (!focus || !focusedCard.current) return;
     focusedCard.current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focus]);
+
+  useEffect(() => () => {
+    if (pickTimer.current) clearTimeout(pickTimer.current);
+  }, []);
 
   /*
    * Кнопка «показать всё» переключает общий режим и разом забывает
@@ -192,16 +197,24 @@ export function LessonVocab({
                          */}
                         <button
                           type="button"
-                          onClick={() =>
-                            onPick
-                              ? onPick(key)
-                              : canReveal
-                                ? setShownTr((p) => flip(p, w.id))
-                                : undefined
-                          }
-                          disabled={!onPick && !canReveal}
+                          data-lookup-text={w.word}
+                          onClick={(event) => {
+                            if (onPick) {
+                              // Небольшая пауза отделяет одиночный фокус от
+                              // двойного клика для быстрого перевода.
+                              if (event.detail > 1) return;
+                              if (pickTimer.current) clearTimeout(pickTimer.current);
+                              pickTimer.current = setTimeout(() => onPick(key), 240);
+                              return;
+                            }
+                            if (canReveal) setShownTr((p) => flip(p, w.id));
+                          }}
+                          onDoubleClick={() => {
+                            if (pickTimer.current) clearTimeout(pickTimer.current);
+                            pickTimer.current = null;
+                          }}
                           className={cn(
-                            "text-left text-[15px] font-bold text-content transition",
+                            "select-text text-left text-[15px] font-bold text-content transition",
                             (onPick || canReveal) && "hover:text-accent",
                           )}
                         >

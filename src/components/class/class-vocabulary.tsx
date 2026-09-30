@@ -17,16 +17,12 @@ import { cn } from "@/lib/utils";
 
 const POLL_MS = 4_000;
 
-export type ClassVocabularySeed = { text: string; nonce: number } | null;
-
 export function ClassVocabulary({
   ready,
-  seed,
   onAdded,
   compact = false,
 }: {
   ready: boolean;
-  seed: ClassVocabularySeed;
   onAdded: (word: ClassVocabularyWord) => void;
   /** Панель уже имеет общий заголовок и собственную фиксированную высоту. */
   compact?: boolean;
@@ -48,7 +44,6 @@ export function ClassVocabulary({
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
   const translateRun = useRef(0);
-  const handledSeed = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!ready) {
@@ -90,14 +85,6 @@ export function ClassVocabulary({
       setDraft(result.draft);
     });
   }, [lang, t.classVocabulary.translateFailed]);
-
-  useEffect(() => {
-    if (!seed?.text || !ready) return;
-    if (handledSeed.current === seed.nonce) return;
-    handledSeed.current = seed.nonce;
-    translate(seed.text);
-    panel.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [ready, seed, translate]);
 
   const switchLang = (next: ClassVocabularyLang) => {
     setLang(next);
