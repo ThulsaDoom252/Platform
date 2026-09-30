@@ -10,13 +10,12 @@
  */
 import { revalidatePath } from "next/cache";
 import { createHash, randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tongueTwisters, tongueTwisterAssignments, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { isStoredImage, removeStoredImage } from "@/lib/image-store";
+import { storePublicFile } from "@/lib/public-file-store";
 import {
   sanitizeTwisterStroke,
   type TwisterDrawingSession,
@@ -112,9 +111,6 @@ export async function uploadTwistersAction(formData: FormData): Promise<TwisterS
     .select({ value: sql<number>`coalesce(max(${tongueTwisters.sortOrder}), 0)::int` })
     .from(tongueTwisters);
 
-  const dir = path.join(process.cwd(), "public", "uploads", "twisters");
-  await fs.mkdir(dir, { recursive: true });
-
   let order = Number(last);
   let added = 0;
   let skipped = 0;
@@ -139,14 +135,18 @@ export async function uploadTwistersAction(formData: FormData): Promise<TwisterS
     }
 
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    await fs.writeFile(path.join(dir, fileName), bytes);
+    const imageUrl = await storePublicFile(
+      `uploads/twisters/${fileName}`,
+      bytes,
+      file.type,
+    );
 
     order += 1;
     added += 1;
     await db.insert(tongueTwisters).values({
       // Имя файла в названии не помогает: у снимка оно вроде IMG_4821.
       title: null,
-      imageUrl: `/uploads/twisters/${fileName}`,
+      imageUrl,
       sortOrder: order,
       contentHash: hash,
     });

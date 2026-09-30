@@ -1,8 +1,6 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { and, asc, count, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -29,6 +27,7 @@ import {
 } from "@/lib/materials";
 import { getSession } from "@/lib/session";
 import { storeRemoteImage } from "@/lib/image-store";
+import { removePublicFile, storePublicFile } from "@/lib/public-file-store";
 import { carryImages, type CarryImage } from "@/lib/phrase-carry";
 import { parseMaterial, type ParserMode } from "@/lib/materials-parser";
 import { parseRuleText } from "@/lib/rule-parser";
@@ -3154,31 +3153,21 @@ async function storeVocabularyCover(file: File, nodeId: string) {
     return { error: "Файл не похож на настоящую картинку" } as const;
   }
 
-  const dir = path.join(process.cwd(), "public", "uploads", "materials");
-  await fs.mkdir(dir, { recursive: true });
   const fileName = `${nodeId}-${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
-  await fs.writeFile(path.join(dir, fileName), bytes);
-  return { imageUrl: `/uploads/materials/${fileName}` } as const;
+  const imageUrl = await storePublicFile(
+    `uploads/materials/${fileName}`,
+    bytes,
+    file.type,
+  );
+  return { imageUrl } as const;
 }
 
 /** Удаляем только файлы, которые сами создали в своей папке обложек. */
 async function removeLocalVocabularyCover(imageUrl: string | null) {
-  const prefix = "/uploads/materials/";
-  if (!imageUrl?.startsWith(prefix)) return;
-
-  const fileName = imageUrl.slice(prefix.length);
-  if (!fileName || fileName !== path.basename(fileName)) return;
-
-  const dir = path.resolve(process.cwd(), "public", "uploads", "materials");
-  const target = path.resolve(dir, fileName);
-  if (path.dirname(target) !== dir) return;
-
   try {
-    await fs.unlink(target);
+    if (imageUrl) await removePublicFile(imageUrl, "materials");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.error("Не удалось удалить старую обложку словаря", error);
-    }
+    console.error("Не удалось удалить старую обложку словаря", error);
   }
 }
 

@@ -8,6 +8,22 @@ test("своя картинка опознаётся по пути", () => {
   assert.equal(isStoredImage("/uploads/words/x.webp"), true);
 });
 
+test("картинка из Vercel Blob остаётся своей", () => {
+  const url =
+    "https://store.public.blob.vercel-storage.com/uploads/words/abc-123.png";
+  assert.equal(isStoredImage(url), true);
+  assert.equal(storedFileName(url), "abc-123.png");
+});
+
+test("похожий чужой Blob-домен не считается своим", () => {
+  assert.equal(
+    isStoredImage(
+      "https://store.public.blob.vercel-storage.com.evil.test/uploads/words/x.png",
+    ),
+    false,
+  );
+});
+
 test("чужая ссылка своей не считается", () => {
   assert.equal(isStoredImage("https://pixabay.com/get/x.jpg"), false);
   assert.equal(isStoredImage("/uploads/twisters/x.jpg"), false);

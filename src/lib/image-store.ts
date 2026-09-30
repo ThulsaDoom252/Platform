@@ -9,8 +9,11 @@
  * живёт ровно столько, сколько её держит Pixabay, а словник учителя
  * должен пережить и это.
  */
-import { promises as fs } from "node:fs";
-import path from "node:path";
+import {
+  managedUploadPath,
+  removePublicFile,
+  storePublicFile,
+} from "@/lib/public-file-store";
 
 /** Папки внутри public/uploads, которыми владеет платформа. */
 export const STORE_DIRS = ["words", "twisters", "activities"] as const;
@@ -38,20 +41,18 @@ const MAX_BYTES = 8 * 1024 * 1024;
  */
 export function isStoredImage(url: string, dir: StoreDir = STORE_DIR): boolean {
   if (!STORE_DIRS.includes(dir)) return false;
+  const pathname = managedUploadPath(url);
+  if (!pathname) return false;
   const pattern = new RegExp(
-    `^/uploads/${dir}/[A-Za-z0-9_-]+\.(png|jpg|jpeg|webp|gif)$`,
+    `^uploads/${dir}/[A-Za-z0-9_-]+\.(png|jpg|jpeg|webp|gif)$`,
   );
-  return pattern.test(String(url ?? ""));
+  return pattern.test(pathname);
 }
 
 /** Имя файла из нашей ссылки. Для чужой — null. */
 export function storedFileName(url: string, dir: StoreDir = STORE_DIR): string | null {
   if (!isStoredImage(url, dir)) return null;
-  return String(url).slice(`/uploads/${dir}/`.length);
-}
-
-function storeRoot(dir: StoreDir): string {
-  return path.join(process.cwd(), "public", "uploads", dir);
+  return managedUploadPath(url)?.slice(`uploads/${dir}/`.length) ?? null;
 }
 
 /**
@@ -77,13 +78,8 @@ export async function storeRemoteImage(url: string): Promise<string | null> {
     const buffer = Buffer.from(await response.arrayBuffer());
     if (buffer.byteLength === 0 || buffer.byteLength > MAX_BYTES) return null;
 
-    const dir = storeRoot(STORE_DIR);
-    await fs.mkdir(dir, { recursive: true });
-
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-    await fs.writeFile(path.join(dir, name), buffer);
-
-    return `/uploads/${STORE_DIR}/${name}`;
+    return await storePublicFile(`uploads/${STORE_DIR}/${name}`, buffer, type);
   } catch {
     // Сеть моргнула или отдали не картинку — подбор из-за этого падать
     // не должен, останется ссылка на источник.
@@ -109,13 +105,13 @@ export async function storeUploadedImage(
   if (file.size === 0 || file.size > MAX_BYTES) return { error: "size" };
 
   try {
-    const target = storeRoot(dir);
-    await fs.mkdir(target, { recursive: true });
-
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-    await fs.writeFile(path.join(target, name), Buffer.from(await file.arrayBuffer()));
-
-    return { url: `/uploads/${dir}/${name}` };
+    const url = await storePublicFile(
+      `uploads/${dir}/${name}`,
+      Buffer.from(await file.arrayBuffer()),
+      file.type,
+    );
+    return { url };
   } catch {
     return { error: "failed" };
   }
@@ -131,11 +127,8 @@ export async function removeStoredImage(
   url: string,
   dir: StoreDir = STORE_DIR,
 ): Promise<void> {
-  const name = storedFileName(url, dir);
-  if (!name) return;
-
   try {
-    await fs.unlink(path.join(storeRoot(dir), name));
+    await removePublicFile(url, dir);
   } catch {
     /* файла уже нет — и хорошо */
   }

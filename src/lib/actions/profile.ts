@@ -1,13 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, notifications } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import type { Locale } from "@/lib/i18n";
+import { storePublicFile } from "@/lib/public-file-store";
 
 const ALLOWED_LOCALES: Locale[] = ["en", "ru", "uk"];
 
@@ -96,14 +95,12 @@ export async function updateProfileAction(
       if (!ext) return { error: "Поддерживаются только PNG, JPEG и WebP" };
       if (file.size > MAX_AVATAR_BYTES) return { error: "Файл больше 2 МБ" };
 
-      const dir = path.join(process.cwd(), "public", "uploads");
-      await fs.mkdir(dir, { recursive: true });
       const fileName = `${session.userId}-${Date.now()}.${ext}`;
-      await fs.writeFile(
-        path.join(dir, fileName),
+      avatarUrl = await storePublicFile(
+        `uploads/avatars/${fileName}`,
         Buffer.from(await file.arrayBuffer()),
+        file.type,
       );
-      avatarUrl = `/uploads/${fileName}`;
     }
   }
 

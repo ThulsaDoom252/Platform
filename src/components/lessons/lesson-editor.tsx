@@ -15,6 +15,7 @@
  * ломается он молча, а замечается на уроке.
  */
 import { useMemo, useState, useTransition } from "react";
+import { upload } from "@vercel/blob/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
@@ -110,13 +111,38 @@ export function LessonEditor({
     setVideoUploading(true);
     setVideoUploadError(null);
     try {
-      const response = await fetch(`/api/lesson-video/${lesson.id}`, {
-        method: "PUT",
-        headers: {
-          "content-type": file.type || "application/octet-stream",
-          "x-file-name": encodeURIComponent(file.name),
+      const suppliedExtension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const byMime: Record<string, string> = {
+        "video/mp4": "mp4",
+        "video/webm": "webm",
+        "video/ogg": "ogv",
+        "video/quicktime": "mov",
+        "video/x-m4v": "m4v",
+      };
+      const allowed = new Set(["mp4", "webm", "ogv", "ogg", "mov", "m4v"]);
+      const extension = allowed.has(suppliedExtension)
+        ? suppliedExtension
+        : byMime[file.type];
+      if (!extension) {
+        setVideoUploadError(t.lessonUnits.videoUploadFailed);
+        return;
+      }
+
+      const nextTitle = file.name.replace(/\.[^.]+$/, "").trim() || "Video";
+      const blob = await upload(
+        `uploads/lesson-videos/${lesson.id}-${crypto.randomUUID()}.${extension}`,
+        file,
+        {
+          access: "public",
+          handleUploadUrl: `/api/lesson-video/${lesson.id}`,
+          clientPayload: JSON.stringify({ lessonId: lesson.id, title: nextTitle }),
+          multipart: true,
         },
-        body: file,
+      );
+      const response = await fetch(`/api/lesson-video/${lesson.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: blob.url, title: nextTitle }),
       });
       const result = (await response.json()) as {
         url?: string;
@@ -128,7 +154,7 @@ export function LessonEditor({
         return;
       }
       setVideoUrl(result.url);
-      setVideoTitle(result.title ?? file.name.replace(/\.[^.]+$/, ""));
+      setVideoTitle(result.title ?? nextTitle);
       setSaved(true);
     } catch {
       setVideoUploadError(t.lessonUnits.videoUploadFailed);
@@ -430,7 +456,7 @@ export function LessonEditor({
           placeholder={t.lessonUnits.videoName}
           className={`${inputCls} mt-2`}
         />
-        {videoUrl.startsWith("/uploads/lesson-videos/") && (
+        {videoUrl.includes("/uploads/lesson-videos/") && (
           <video
             src={videoUrl}
             controls
