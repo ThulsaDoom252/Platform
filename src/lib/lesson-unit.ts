@@ -301,6 +301,31 @@ export function lineWords(text: string): string[] {
   return String(text ?? "").split(/(\s+)/).filter((part) => part.length > 0);
 }
 
+export type RichLineWord = { text: string; bold: boolean };
+
+/**
+ * Разбить реплику на кликабельные части и убрать служебные **маркеры**.
+ *
+ * Индексы обычных реплик остаются прежними, поэтому сохранённые фокусы и
+ * жёлтые выделения не съезжают. Незакрытый маркер показываем как обычный
+ * текст: опечатка в редакторе не должна съедать половину реплики.
+ */
+export function richLineWords(text: string): RichLineWord[] {
+  const source = String(text ?? "");
+  const markers = source.match(/\*\*/g)?.length ?? 0;
+  if (markers === 0 || markers % 2 !== 0) {
+    return lineWords(source).map((part) => ({ text: part, bold: false }));
+  }
+
+  const out: RichLineWord[] = [];
+  let bold = false;
+  for (const section of source.split("**")) {
+    for (const part of lineWords(section)) out.push({ text: part, bold });
+    bold = !bold;
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ */
 /* Словник урока                                                       */
 /* ------------------------------------------------------------------ */

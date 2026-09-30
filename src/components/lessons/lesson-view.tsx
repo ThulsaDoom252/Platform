@@ -17,7 +17,7 @@ import {
   lineKey,
   lexisBlockKey,
   lineWordKey,
-  lineWords,
+  richLineWords,
   parseKey,
   speakerTint,
   speakersOf,
@@ -713,8 +713,8 @@ function Transcript({
                 phraseMarked ? "text-slate-950" : "text-content",
               )}
             >
-              {lineWords(line.text).map((part, at) => {
-                if (!part.trim()) return <span key={at}>{part}</span>;
+              {richLineWords(line.text).map((part, at) => {
+                if (!part.text.trim()) return <span key={at}>{part.text}</span>;
                 const wKey = lineWordKey(i, at);
                 const wMark = highlights[wKey];
                 return (
@@ -736,9 +736,10 @@ function Transcript({
                         : onPick && "hover:bg-accent-soft",
                       wMark && "bg-yellow-300 text-slate-950 ring-1 ring-yellow-500/70",
                       focus === wKey && "ring-2 ring-accent",
+                      part.bold && "font-extrabold",
                     )}
                   >
-                    {part}
+                    {part.text}
                   </span>
                 );
               })}

@@ -14,6 +14,7 @@ import {
   lexisBlockKey,
   lineWordKey,
   lineWords,
+  richLineWords,
   openSections,
   parseKey,
   parseTranscript,
@@ -201,6 +202,23 @@ test("реплика режется на слова с сохранением п
 
 test("пустая реплика не даёт слов", () => {
   assert.deepEqual(lineWords(""), []);
+});
+
+test("парные маркеры делают часть реплики жирной и не меняют текст", () => {
+  const parts = richLineWords("He was **imprisoned for ten years** yesterday.");
+  assert.equal(parts.map((part) => part.text).join(""), "He was imprisoned for ten years yesterday.");
+  assert.deepEqual(
+    parts.filter((part) => part.bold).map((part) => part.text).join(""),
+    "imprisoned for ten years",
+  );
+});
+
+test("незакрытый жирный маркер остаётся видимым", () => {
+  const source = "This **stays visible";
+  assert.deepEqual(
+    richLineWords(source),
+    lineWords(source).map((text) => ({ text, bold: false })),
+  );
 });
 
 test("лексика идёт сразу после словника", () => {
