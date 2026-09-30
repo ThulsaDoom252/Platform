@@ -61,6 +61,8 @@ export type LessonViewProps = {
   onHighlight?: (key: string) => void;
   /** Показать ученику UK-звук и UK-транскрипцию одиночных слов. */
   showBritish?: boolean;
+  /** Может ли этот зритель сам раскрывать перевод и описание слов. */
+  canRevealVocabulary?: boolean;
   /** Какая лексическая группа сейчас выбрана учителем для ученика. */
   selectedLexisId?: string | null;
   onSelectLexis?: (groupId: string) => void;
@@ -86,6 +88,7 @@ export function LessonView({
   highlightMode = false,
   onHighlight,
   showBritish = false,
+  canRevealVocabulary = true,
   selectedLexisId,
   onSelectLexis,
   videoSession,
@@ -261,6 +264,7 @@ export function LessonView({
                   focus={focus}
                   onPick={onPick}
                   showBritish={showBritish}
+                  canReveal={canRevealVocabulary}
                 />
               )}
               {section === "lexis" &&

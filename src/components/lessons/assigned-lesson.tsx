@@ -146,13 +146,18 @@ export function AssignedLesson({
       {/* Учителю видны все секции, ученику — только открытые ему. */}
       <LessonView
         lesson={data.lesson}
-        open={teacher ? [...LESSON_SECTIONS] : data.open}
+        open={
+          teacher
+            ? [...LESSON_SECTIONS]
+            : data.open.filter((section) => section !== "homework")
+        }
         closed={
           teacher ? LESSON_SECTIONS.filter((s) => !data.open.includes(s)) : undefined
         }
         highlights={yellow}
         focus={focus}
         showBritish={british}
+        canRevealVocabulary={teacher || !liveClass}
         selectedLexisId={lexisGroup}
         onSelectLexis={teacher ? selectLexis : undefined}
         onPick={teacher ? pick : undefined}

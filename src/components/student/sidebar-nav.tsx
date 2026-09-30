@@ -12,8 +12,6 @@ import {
   IconMessage,
   IconChart,
   IconSettings,
-  IconCheckCircle,
-  IconXCircle,
 } from "@/components/icons";
 
 export function StudentSidebarNav() {
@@ -22,8 +20,6 @@ export function StudentSidebarNav() {
 
   const items = [
     { href: "/student/class", label: t.nav.myClass, Icon: IconCap },
-    { href: "/student/homework", label: t.nav.homework, Icon: IconCheckCircle },
-    { href: "/student/mistakes", label: t.nav.mistakes, Icon: IconXCircle },
     { href: "/student/materials", label: t.nav.materials, Icon: IconMaterials },
     { href: "/student/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/student/messages", label: t.nav.messages, Icon: IconMessage },

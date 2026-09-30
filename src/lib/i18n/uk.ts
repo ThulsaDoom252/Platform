@@ -213,6 +213,8 @@ export const uk: Dict = {
     chat: "Чат",
     dictionary: "Словник",
     verbs: "Неправильні дієслова",
+    detachPanel: "Відкріпити й переміщати",
+    dockPanel: "Повернути на початкове місце",
     script: "Скрипт",
     board: "Дошка",
     sendStudent: "Перевести сюди: {name}",

@@ -34,6 +34,13 @@ import {
 } from "@/lib/actions/class";
 import { ClassChat } from "./class-chat";
 import { QuickVerbs } from "./quick-verbs";
+import {
+  DEFAULT_CLASS_PANEL_LAYOUT,
+  DockablePanel,
+  normalizeClassPanelPlacement,
+  type ClassPanelPlacement,
+  type ClassUtilityPanel,
+} from "./dockable-panel";
 import { Avatar } from "@/components/avatar";
 import {
   IconMessage,
@@ -176,6 +183,9 @@ export function ClassRoom({
     board: false,
     script: false,
   });
+  const [panelLayout, setPanelLayout] = useLocalJson<
+    Record<ClassUtilityPanel, ClassPanelPlacement>
+  >(`class-panel-layout:${selfId}`, DEFAULT_CLASS_PANEL_LAYOUT);
   const [lessonTab, setLessonTab] = useState<LessonTab>("lesson");
   // Порядок в списке — привычка учителя, поэтому живёт в браузере.
   const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
@@ -328,6 +338,35 @@ export function ClassRoom({
   const toggle = (key: PanelKey) => {
     setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
     if (key === "chat") setUnread(0);
+  };
+
+  const placementOf = (key: ClassUtilityPanel) =>
+    normalizeClassPanelPlacement(panelLayout[key], DEFAULT_CLASS_PANEL_LAYOUT[key]);
+
+  const updatePlacement = (key: ClassUtilityPanel, placement: ClassPanelPlacement) => {
+    setPanelLayout({
+      ...DEFAULT_CLASS_PANEL_LAYOUT,
+      ...panelLayout,
+      [key]: placement,
+    });
+  };
+
+  const detachPanel = (key: ClassUtilityPanel) => {
+    const right = Math.max(12, window.innerWidth - 372);
+    updatePlacement(key, {
+      floating: true,
+      x: key === "dictionary" ? 12 : right,
+      y: key === "verbs" ? Math.max(12, window.innerHeight - 432) : 84,
+    });
+  };
+
+  const dockPanel = (key: ClassUtilityPanel) => {
+    const current = placementOf(key);
+    updatePlacement(key, { ...current, floating: false });
+  };
+
+  const movePanel = (key: ClassUtilityPanel, x: number, y: number) => {
+    updatePlacement(key, { floating: true, x, y });
   };
 
   /*
@@ -688,6 +727,17 @@ export function ClassRoom({
       ].filter((row): row is [string, string] => Boolean(row[1]))
     : [];
 
+  const dictionaryPlacement = placementOf("dictionary");
+  const chatPlacement = placementOf("chat");
+  const verbsPlacement = placementOf("verbs");
+  const dockedDictionary = open.dictionary && !dictionaryPlacement.floating;
+  const dockedRight =
+    (open.chat && !chatPlacement.floating) ||
+    (open.verbs && !verbsPlacement.floating);
+  const chatTitle = partner
+    ? fmt(t.classRoom.chatWith, { name: partner.name })
+    : t.classRoom.chat;
+
   return (
     <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
       <div className="flex flex-wrap items-center gap-3">
@@ -790,15 +840,47 @@ export function ClassRoom({
         )}
       </div>
 
-      {/* Колонка панелей появляется вместе с панелями: пустая она
-          просто отрезала бы от урока триста шестьдесят пикселей. */}
+      {/* Закреплённые панели занимают свои колонки и идут вслед за экраном.
+          Откреплённые становятся плавающими, поэтому урок сразу расширяется. */}
       <div
         className={cn(
           "grid gap-4",
-          (open.chat || open.verbs) && "lg:grid-cols-[minmax(0,1fr)_360px]",
+          dockedDictionary && dockedRight
+            ? "lg:grid-cols-[360px_minmax(0,1fr)_360px]"
+            : dockedDictionary
+              ? "lg:grid-cols-[360px_minmax(0,1fr)]"
+              : dockedRight
+                ? "lg:grid-cols-[minmax(0,1fr)_360px]"
+                : "grid-cols-1",
         )}
       >
-        <div className="flex flex-col gap-4">
+        {open.dictionary && (
+          <DockablePanel
+            title={t.classRoom.dictionary}
+            placement={dictionaryPlacement}
+            dockedClassName="order-2 h-[620px] max-h-[calc(100dvh-9rem)] lg:sticky lg:top-20 lg:order-none"
+            floatingHeight={620}
+            detachLabel={t.classRoom.detachPanel}
+            dockLabel={t.classRoom.dockPanel}
+            onDetach={() => detachPanel("dictionary")}
+            onDock={() => dockPanel("dictionary")}
+            onMove={(x, y) => movePanel("dictionary", x, y)}
+          >
+            <ClassVocabulary
+              key={conversation ?? "no-student"}
+              ready={!!conversation}
+              seed={dictionarySeed}
+              compact
+              onAdded={(word: ClassVocabularyWord) => {
+                const alreadyShown = seenVocabularyEvents.current.has(word.id);
+                seenVocabularyEvents.current.add(word.id);
+                if (!alreadyShown) showVocabularyNotice(word);
+              }}
+            />
+          </DockablePanel>
+        )}
+
+        <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-none">
           {open.script && teacher && partner ? (
             <ClassScript studentId={partner.id} onClose={() => toggle("script")} />
           ) : teacher && !partner ? (
@@ -823,44 +905,53 @@ export function ClassRoom({
               />
             )
           )}
-          {open.dictionary && (
-            <ClassVocabulary
-              key={conversation ?? "no-student"}
-              ready={!!conversation}
-              seed={dictionarySeed}
-              onAdded={(word: ClassVocabularyWord) => {
-                const alreadyShown = seenVocabularyEvents.current.has(word.id);
-                seenVocabularyEvents.current.add(word.id);
-                if (!alreadyShown) showVocabularyNotice(word);
-              }}
-            />
-          )}
         </div>
 
-        <div className={cn("flex flex-col gap-4", !open.chat && !open.verbs && "hidden")}>
+        <div
+          className={cn(
+            "order-3 flex min-w-0 flex-col gap-4 lg:order-none",
+            dockedRight
+              ? "lg:sticky lg:top-20 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto"
+              : "contents",
+          )}
+        >
           {open.chat && (
-            <section className="flex h-[420px] flex-col overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
+            <DockablePanel
+              title={chatTitle}
+              placement={chatPlacement}
+              dockedClassName="h-[420px] shrink-0"
+              floatingHeight={420}
+              detachLabel={t.classRoom.detachPanel}
+              dockLabel={t.classRoom.dockPanel}
+              onDetach={() => detachPanel("chat")}
+              onDock={() => dockPanel("chat")}
+              onMove={(x, y) => movePanel("chat", x, y)}
+            >
               <ClassChat
                 key={conversation ?? "none"}
                 studentId={conversation}
-                title={
-                  partner
-                    ? fmt(t.classRoom.chatWith, { name: partner.name })
-                    : t.classRoom.chat
-                }
+                title={chatTitle}
                 canArchive={teacher}
                 onUnread={onUnread}
+                compact
               />
-            </section>
+            </DockablePanel>
           )}
 
           {open.verbs && (
-            <section className="flex h-[360px] flex-col overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
-              <div className="border-b border-line px-3 py-2 text-sm font-semibold text-content">
-                {t.classRoom.verbsTitle}
-              </div>
+            <DockablePanel
+              title={t.classRoom.verbsTitle}
+              placement={verbsPlacement}
+              dockedClassName="h-[360px] shrink-0"
+              floatingHeight={360}
+              detachLabel={t.classRoom.detachPanel}
+              dockLabel={t.classRoom.dockPanel}
+              onDetach={() => detachPanel("verbs")}
+              onDock={() => dockPanel("verbs")}
+              onMove={(x, y) => movePanel("verbs", x, y)}
+            >
               <QuickVerbs />
-            </section>
+            </DockablePanel>
           )}
         </div>
       </div>

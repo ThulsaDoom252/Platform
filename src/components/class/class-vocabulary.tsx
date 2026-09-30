@@ -23,10 +23,13 @@ export function ClassVocabulary({
   ready,
   seed,
   onAdded,
+  compact = false,
 }: {
   ready: boolean;
   seed: ClassVocabularySeed;
   onAdded: (word: ClassVocabularyWord) => void;
+  /** Панель уже имеет общий заголовок и собственную фиксированную высоту. */
+  compact?: boolean;
 }) {
   const { t, locale } = useT();
   const speech = useSpeech();
@@ -126,13 +129,22 @@ export function ClassVocabulary({
   }
 
   return (
-    <section ref={panel} className="scroll-mt-4 overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
+    <section
+      ref={panel}
+      className={cn(
+        "scroll-mt-4 overflow-hidden bg-surface",
+        compact ? "flex h-full min-h-0 flex-col" : "rounded-2xl ring-1 ring-line",
+      )}
+    >
       <div className="border-b border-line p-4 sm:p-5">
         <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-black text-content">{t.classVocabulary.title}</h2>
-            <p className="mt-0.5 text-xs text-faint">{t.classVocabulary.subtitle}</p>
-          </div>
+          {!compact && (
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-black text-content">{t.classVocabulary.title}</h2>
+              <p className="mt-0.5 text-xs text-faint">{t.classVocabulary.subtitle}</p>
+            </div>
+          )}
+          {compact && <div className="min-w-0 flex-1" />}
           <div className="flex rounded-xl bg-surface-2 p-1">
             {(["UK", "RU"] as const).map((value) => (
               <button
@@ -236,7 +248,7 @@ export function ClassVocabulary({
         <button type="button" onClick={() => setSort("ALPHA")} className={cn("rounded-lg px-2.5 py-1.5 text-[11px] font-bold", sort === "ALPHA" ? "bg-accent text-white" : "text-muted")}>{t.classVocabulary.alphabetical}</button>
       </div>
 
-      <div className="max-h-[32rem] overflow-y-auto p-3">
+      <div className={cn("overflow-y-auto p-3", compact ? "min-h-0 flex-1" : "max-h-[32rem]")}>
         {!loaded && <p className="p-6 text-center text-sm text-faint">{t.common.loading}</p>}
         {loaded && ordered.length === 0 && <p className="p-8 text-center text-sm text-faint">{t.classVocabulary.empty}</p>}
         <div className="flex flex-col gap-2">

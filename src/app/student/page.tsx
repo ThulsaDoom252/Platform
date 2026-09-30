@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users, lessons, homework, materialNodes, lessonPackages } from "@/lib/db/schema";
+import { users, lessons, materialNodes, lessonPackages } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
@@ -9,7 +9,6 @@ import { Avatar } from "@/components/avatar";
 import {
   IconCheckCircle,
   IconLayers,
-  IconMaterials,
   IconStar,
   IconChevronRight,
   IconVideo,
@@ -80,17 +79,6 @@ export default async function StudentHomePage() {
     .orderBy(asc(lessons.startTime))
     .limit(1);
 
-  const myHomework = await db
-    .select()
-    .from(homework)
-    .where(eq(homework.studentId, me.id))
-    .orderBy(desc(homework.createdAt))
-    .limit(3);
-
-  const pendingHw = myHomework.filter(
-    (h) => h.status === "NOT_DONE" || h.status === "NEEDS_REVISION",
-  ).length;
-
   const materials = await db
     .select({
       id: materialNodes.id,
@@ -121,12 +109,6 @@ export default async function StudentHomePage() {
       label: t.studentDash.lessonsLeft,
       Icon: IconLayers,
       grad: "grad-c2",
-    },
-    {
-      value: String(pendingHw),
-      label: t.studentDash.homeworkToDo,
-      Icon: IconMaterials,
-      grad: "grad-c3",
     },
     { value: "4.9", label: t.studentDash.avgRating, Icon: IconStar, grad: "grad-c4" },
   ].filter((s): s is { value: string; label: string; Icon: typeof IconStar; grad: string } => !!s);
@@ -186,7 +168,7 @@ export default async function StudentHomePage() {
           </div>
 
           {/* Статистика */}
-          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3">
             {stats.map((s) => (
               <div key={s.label} className="rounded-xl bg-surface-2 p-3.5">
                 <span
@@ -226,8 +208,8 @@ export default async function StudentHomePage() {
         </section>
       </div>
 
-      {/* Ближайший урок | Домашка | Учитель */}
-      <div className="grid gap-6 xl:grid-cols-3">
+      {/* Ближайший урок | Учитель */}
+      <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-2">
             <h2 className="font-semibold text-content">{t.studentDash.nextClass}</h2>
@@ -293,46 +275,6 @@ export default async function StudentHomePage() {
               </Link>
             </>
           )}
-        </section>
-
-        <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="font-semibold text-content">{t.nav.homework}</h2>
-            <Link
-              href="/student/homework"
-              className="flex shrink-0 items-center gap-1 text-sm font-medium text-accent hover:opacity-80"
-            >
-              {t.common.all} <IconChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          {myHomework.length === 0 && (
-            <p className="py-6 text-center text-sm text-faint">
-              {t.studentArea.homeworkEmpty}
-            </p>
-          )}
-
-          <div className="flex flex-col gap-3">
-            {myHomework.map((h) => (
-              <Link
-                key={h.id}
-                href="/student/homework"
-                className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5 transition hover:brightness-95"
-              >
-                <span className="tint-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
-                  <IconMaterials className="h-4.5 w-4.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-content">
-                    {h.title}
-                  </span>
-                  <span className="block text-[11px] text-faint">
-                    {t.homeworkStatus[h.status as keyof typeof t.homeworkStatus]}
-                  </span>
-                </span>
-              </Link>
-            ))}
-          </div>
         </section>
 
         <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">

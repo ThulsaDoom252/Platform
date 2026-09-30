@@ -27,6 +27,7 @@ export function ClassChat({
   title,
   canArchive,
   onUnread,
+  compact = false,
 }: {
   /** Чей разговор. Пусто — учитель ещё не выбрал класс. */
   studentId: string | null;
@@ -34,6 +35,8 @@ export function ClassChat({
   canArchive: boolean;
   /** Сколько чужих сообщений пришло, пока панель свёрнута. */
   onUnread?: (n: number) => void;
+  /** Заголовок уже показан общей оболочкой плавающей панели. */
+  compact?: boolean;
 }) {
   const { t, locale } = useT();
   const [messages, setMessages] = useState<ClassMessage[]>([]);
@@ -107,8 +110,12 @@ export function ClassChat({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {(!compact || canArchive) && (
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-content">{title}</span>
+        {!compact && (
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-content">{title}</span>
+        )}
+        {compact && <span className="flex-1" />}
         {canArchive && (
           <button
             type="button"
@@ -123,6 +130,7 @@ export function ClassChat({
           </button>
         )}
       </div>
+      )}
 
       <div ref={feed} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
         {messages.length === 0 && (

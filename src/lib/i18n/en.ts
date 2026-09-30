@@ -206,6 +206,8 @@ export const en = {
     chat: "Chat",
     dictionary: "Vocabulary",
     verbs: "Irregular verbs",
+    detachPanel: "Detach and move",
+    dockPanel: "Return to its original place",
     script: "Script",
     board: "Board",
     sendStudent: "Move {name} here",

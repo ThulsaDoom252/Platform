@@ -34,12 +34,15 @@ export function LessonVocab({
   focus,
   onPick,
   showBritish = false,
+  canReveal = true,
 }: {
   words: LessonWord[];
   highlights: Record<string, string>;
   focus?: string | null;
   onPick?: (key: string) => void;
   showBritish?: boolean;
+  /** В живом классе ученик видит раскрытие только по решению учителя. */
+  canReveal?: boolean;
 }) {
   const { t } = useT();
   const speech = useSpeech();
@@ -91,8 +94,8 @@ export function LessonVocab({
     setShownDesc([]);
   };
 
-  const trShown = (id: string) => allTr !== shownTr.includes(id);
-  const descShown = (id: string) => allDesc !== shownDesc.includes(id);
+  const trShown = (id: string) => canReveal && allTr !== shownTr.includes(id);
+  const descShown = (id: string) => canReveal && allDesc !== shownDesc.includes(id);
 
   const flip = (list: string[], id: string) =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -105,10 +108,12 @@ export function LessonVocab({
           {fmt(t.lessonUnits.words, { n: words.length })}
         </span>
 
-        <span className="ml-auto flex items-center gap-1">
-          <Toggle on={allTr} onClick={toggleAllTr} label={t.lessonUnits.showTranslations} />
-          <Toggle on={allDesc} onClick={toggleAllDesc} label={t.lessonUnits.showDescriptions} />
-        </span>
+        {canReveal && (
+          <span className="ml-auto flex items-center gap-1">
+            <Toggle on={allTr} onClick={toggleAllTr} label={t.lessonUnits.showTranslations} />
+            <Toggle on={allDesc} onClick={toggleAllDesc} label={t.lessonUnits.showDescriptions} />
+          </span>
+        )}
       </div>
 
       <label className="relative flex items-center">
@@ -188,9 +193,17 @@ export function LessonVocab({
                         <button
                           type="button"
                           onClick={() =>
-                            onPick ? onPick(key) : setShownTr((p) => flip(p, w.id))
+                            onPick
+                              ? onPick(key)
+                              : canReveal
+                                ? setShownTr((p) => flip(p, w.id))
+                                : undefined
                           }
-                          className="text-left text-[15px] font-bold text-content transition hover:text-accent"
+                          disabled={!onPick && !canReveal}
+                          className={cn(
+                            "text-left text-[15px] font-bold text-content transition",
+                            (onPick || canReveal) && "hover:text-accent",
+                          )}
                         >
                           {w.word}
                         </button>
@@ -206,7 +219,7 @@ export function LessonVocab({
                           <span className="text-[13px] text-accent">
                             — {w.translation ?? "—"}
                           </span>
-                        ) : (
+                        ) : canReveal ? (
                           <button
                             type="button"
                             onClick={() => setShownTr((p) => flip(p, w.id))}
@@ -215,6 +228,10 @@ export function LessonVocab({
                           >
                             ···
                           </button>
+                        ) : (
+                          <span className="h-5 rounded bg-surface-2 px-3 text-[11px] text-faint">
+                            ···
+                          </span>
                         )}
                       </p>
 
@@ -232,7 +249,7 @@ export function LessonVocab({
                           <p className="mt-1 text-[12px] leading-snug text-muted">
                             {w.description}
                           </p>
-                        ) : (
+                        ) : canReveal ? (
                           <button
                             type="button"
                             onClick={() => setShownDesc((p) => flip(p, w.id))}
@@ -240,6 +257,8 @@ export function LessonVocab({
                           >
                             {t.lessonUnits.revealDescription}
                           </button>
+                        ) : (
+                          <span className="mt-1 block text-[11px] text-faint">•••</span>
                         ))}
                     </div>
                   </div>

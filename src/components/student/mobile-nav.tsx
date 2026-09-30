@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n-provider";
 import {
   IconHome,
-  IconCheckCircle,
   IconMaterials,
   IconCalendar,
   IconGrid,
@@ -18,7 +17,6 @@ export function StudentMobileNav() {
 
   const items = [
     { href: "/student", label: t.nav.home, Icon: IconHome, exact: true },
-    { href: "/student/homework", label: t.nav.homework, Icon: IconCheckCircle },
     { href: "/student/materials", label: t.nav.shortFiles, Icon: IconMaterials },
     { href: "/student/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/student/settings", label: t.nav.shortMore, Icon: IconGrid },
