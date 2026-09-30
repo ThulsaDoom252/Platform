@@ -31,6 +31,7 @@ import {
 import {
   groupWords,
   parseTranscript,
+  richLineWords,
   speakerTint,
   speakersOf,
 } from "@/lib/lesson-unit";
@@ -486,7 +487,13 @@ export function LessonEditor({
                 >
                   {line.speaker || "—"}
                 </span>
-                <span className="text-[13px] text-content">{line.text}</span>
+                <span className="text-[13px] text-content">
+                  {richLineWords(line.text).map((part, at) => (
+                    <span key={at} className={part.bold ? "font-extrabold" : undefined}>
+                      {part.text}
+                    </span>
+                  ))}
+                </span>
               </p>
             ))}
           </div>
