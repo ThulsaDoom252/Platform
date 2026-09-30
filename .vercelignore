@@ -1,0 +1,6 @@
+.env
+.env.*
+.vercel
+.next
+node_modules
+public/uploads
