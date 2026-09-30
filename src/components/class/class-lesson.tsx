@@ -13,7 +13,7 @@ import {
   type LessonCard,
 } from "@/lib/actions/lessons";
 import { LESSON_SECTIONS, type LessonSection } from "@/lib/lesson-unit";
-import { IconCheck, IconPlus } from "@/components/icons";
+import { IconCheck, IconPencil, IconPlus, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTextSelection } from "./selection-translation-popover";
@@ -40,6 +40,7 @@ export function ClassLesson({
   const [selected, setSelected] = useState("");
   const [data, setData] = useState<Assigned | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [changingLesson, setChangingLesson] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
 
@@ -108,6 +109,7 @@ export function ClassLesson({
       const next = await assignedLessonAction(result.id);
       setData(next);
       setLoaded(true);
+      setChangingLesson(false);
     });
   };
 
@@ -157,7 +159,7 @@ export function ClassLesson({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      {teacher && (
+      {teacher && loaded && (!data || changingLesson) && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 p-2.5">
           {lessons.length > 0 ? (
             <>
@@ -179,8 +181,19 @@ export function ClassLesson({
                 className="flex h-10 items-center gap-1.5 rounded-xl bg-accent px-3.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
               >
                 <IconPlus className="h-4 w-4" />
-                {t.lessonUnits.addToClass}
+                {data ? t.lessonUnits.changeClass : t.lessonUnits.addToClass}
               </button>
+              {data && (
+                <button
+                  type="button"
+                  onClick={() => setChangingLesson(false)}
+                  aria-label={t.common.cancel}
+                  title={t.common.cancel}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-muted transition hover:bg-surface hover:text-content"
+                >
+                  <IconX className="h-4 w-4" />
+                </button>
+              )}
             </>
           ) : (
             <Link
@@ -238,6 +251,14 @@ export function ClassLesson({
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setChangingLesson(true)}
+                className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-accent-soft px-3 text-[11px] font-bold text-accent transition hover:brightness-95"
+              >
+                <IconPencil className="h-3.5 w-3.5" />
+                {t.lessonUnits.changeClass}
+              </button>
             </div>
           )}
 

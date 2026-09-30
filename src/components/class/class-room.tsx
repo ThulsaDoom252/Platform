@@ -355,8 +355,10 @@ export function ClassRoom({
   };
 
   const detachPanel = (key: ClassUtilityPanel) => {
+    const current = placementOf(key);
     const right = Math.max(12, window.innerWidth - 372);
     updatePlacement(key, {
+      ...current,
       floating: true,
       x: key === "dictionary" ? 12 : right,
       y: key === "verbs" ? Math.max(12, window.innerHeight - 432) : 84,
@@ -369,7 +371,11 @@ export function ClassRoom({
   };
 
   const movePanel = (key: ClassUtilityPanel, x: number, y: number) => {
-    updatePlacement(key, { floating: true, x, y });
+    updatePlacement(key, { ...placementOf(key), floating: true, x, y });
+  };
+
+  const resizePanel = (key: ClassUtilityPanel, width: number, height: number) => {
+    updatePlacement(key, { ...placementOf(key), width, height });
   };
 
   /*
@@ -862,12 +868,13 @@ export function ClassRoom({
             title={t.classRoom.dictionary}
             placement={dictionaryPlacement}
             dockedClassName="order-2 h-[620px] max-h-[calc(100dvh-9rem)] lg:sticky lg:top-20 lg:order-none"
-            floatingHeight={620}
             detachLabel={t.classRoom.detachPanel}
             dockLabel={t.classRoom.dockPanel}
+            resizeLabel={t.classRoom.resizePanel}
             onDetach={() => detachPanel("dictionary")}
             onDock={() => dockPanel("dictionary")}
             onMove={(x, y) => movePanel("dictionary", x, y)}
+            onResize={(width, height) => resizePanel("dictionary", width, height)}
           >
             <ClassVocabulary
               key={conversation ?? "no-student"}
@@ -922,12 +929,13 @@ export function ClassRoom({
               title={chatTitle}
               placement={chatPlacement}
               dockedClassName="h-[420px] shrink-0"
-              floatingHeight={420}
               detachLabel={t.classRoom.detachPanel}
               dockLabel={t.classRoom.dockPanel}
+              resizeLabel={t.classRoom.resizePanel}
               onDetach={() => detachPanel("chat")}
               onDock={() => dockPanel("chat")}
               onMove={(x, y) => movePanel("chat", x, y)}
+              onResize={(width, height) => resizePanel("chat", width, height)}
             >
               <ClassChat
                 key={conversation ?? "none"}
@@ -945,12 +953,13 @@ export function ClassRoom({
               title={t.classRoom.verbsTitle}
               placement={verbsPlacement}
               dockedClassName="h-[360px] shrink-0"
-              floatingHeight={360}
               detachLabel={t.classRoom.detachPanel}
               dockLabel={t.classRoom.dockPanel}
+              resizeLabel={t.classRoom.resizePanel}
               onDetach={() => detachPanel("verbs")}
               onDock={() => dockPanel("verbs")}
               onMove={(x, y) => movePanel("verbs", x, y)}
+              onResize={(width, height) => resizePanel("verbs", width, height)}
             >
               <QuickVerbs />
             </DockablePanel>
