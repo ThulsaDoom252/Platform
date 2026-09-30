@@ -17,7 +17,9 @@ import {
   DEFAULT_WORD_DECK_SETTINGS,
   MIN_WORD_DECK_WORDS,
   hasEnoughWordDeckWords,
+  normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
+  type WordDeckLiveState,
   type WordDeckSettings,
   type WordDeckSourceCard,
 } from "@/lib/word-deck";
@@ -241,6 +243,7 @@ export type ClassWordDeckActivity = {
   cards: WordDeckSourceCard[];
   settings: WordDeckSettings;
   backgroundImageUrl: string | null;
+  liveState: WordDeckLiveState | null;
   createdAt: string;
 };
 
@@ -255,6 +258,11 @@ const classWordDeckOf = (
     cards: row.wordDeck.cards ?? [],
     settings: normalizeWordDeckSettings(row.wordDeck.settings),
     backgroundImageUrl: row.wordDeck.backgroundImageUrl ?? null,
+    liveState: normalizeWordDeckLiveState(
+      row.wordDeck.cards ?? [],
+      row.wordDeck.settings,
+      row.wordDeck.liveState,
+    ),
     createdAt: row.createdAt.toISOString(),
   };
 };
@@ -381,6 +389,77 @@ export async function focusedClassWordDeckAction(): Promise<ClassWordDeckActivit
     )
     .limit(1);
   return row ? classWordDeckOf(row) : null;
+}
+
+/** Текущий стол для учителя и наблюдающего ученика выбранного класса. */
+export async function classWordDeckLiveStateAction(
+  gameId: string,
+): Promise<WordDeckLiveState | null> {
+  const session = await getSession();
+  if (!session) return null;
+  let studentId = session.userId;
+  if (session.role === "TEACHER") {
+    const [teacher] = await db
+      .select({ classWithId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+    if (!teacher?.classWithId) return null;
+    studentId = teacher.classWithId;
+  }
+
+  const [row] = await db
+    .select()
+    .from(activityGames)
+    .where(
+      and(
+        eq(activityGames.id, String(gameId ?? "")),
+        eq(activityGames.studentId, studentId),
+        eq(activityGames.kind, "WORD_DECK"),
+      ),
+    )
+    .limit(1);
+  return row ? classWordDeckOf(row)?.liveState ?? null : null;
+}
+
+/** Учитель публикует стол; ученик не может прислать ни карту, ни ход. */
+export async function saveClassWordDeckLiveStateAction(
+  gameId: string,
+  input: WordDeckLiveState,
+): Promise<{ state?: WordDeckLiveState; error?: string }> {
+  const session = await requireTeacher();
+  const [teacher] = await db
+    .select({ classWithId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (!teacher?.classWithId) return { error: "Класс не начат" };
+
+  const [row] = await db
+    .select()
+    .from(activityGames)
+    .where(
+      and(
+        eq(activityGames.id, String(gameId ?? "")),
+        eq(activityGames.studentId, teacher.classWithId),
+        eq(activityGames.kind, "WORD_DECK"),
+      ),
+    )
+    .limit(1);
+  if (!row?.wordDeck) return { error: "Колода в классе не найдена" };
+
+  const normalized = normalizeWordDeckLiveState(
+    row.wordDeck.cards ?? [],
+    row.wordDeck.settings,
+    input,
+  );
+  if (!normalized) return { error: "Состояние колоды повреждено" };
+  const state = { ...normalized, updatedAt: new Date().toISOString() };
+  await db
+    .update(activityGames)
+    .set({ wordDeck: { ...row.wordDeck, liveState: state }, updatedAt: new Date() })
+    .where(eq(activityGames.id, row.id));
+  return { state };
 }
 
 /** Удаляется только назначение из класса; сохранённый шаблон остаётся. */

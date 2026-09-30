@@ -2,6 +2,7 @@ import type { RuleBlock, RuleBlockVariant } from "@/lib/rule-blocks";
 import type { TwisterStroke } from "@/lib/twister-drawing";
 import type { ClassVideoState } from "@/lib/class-video";
 import type {
+  WordDeckLiveState,
   WordDeckSettings,
   WordDeckSourceCard,
 } from "@/lib/word-deck";
@@ -770,6 +771,8 @@ export const activityGames = pgTable("activity_games", {
     backgroundImageUrl: string | null;
     /** Снимок выбранных слов: назначение не зависит от дальнейших правок шаблона. */
     cards: WordDeckSourceCard[];
+    /** Текущий стол живого класса. Управляет только учитель. */
+    liveState?: WordDeckLiveState;
   }>(),
   /**
    * Чем спрашиваем.

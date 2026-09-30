@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildWordDeck,
   hasEnoughWordDeckWords,
+  normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
   randomWordDeckPercentage,
   shuffleWordDeckTail,
@@ -71,4 +72,29 @@ test("быстрый процент выбирает нужную случайн
   assert.equal(randomWordDeckPercentage(twelve, 50, () => 0.5).length, 6);
   assert.equal(randomWordDeckPercentage(twelve, 75, () => 0.5).length, 9);
   assert.equal(randomWordDeckPercentage([1], 25, () => 0.5).length, 1);
+});
+
+test("живой стол сохраняет порядок, но не принимает подменённый текст", () => {
+  const deck = buildWordDeck(words, { repeats: 1, alternate: true }, () => 0.5);
+  const reversed = [...deck].reverse().map((card) => ({ ...card, word: "подмена" }));
+  const state = normalizeWordDeckLiveState(words, { repeats: 1, alternate: true }, {
+    deck: reversed,
+    at: 1,
+    faceUp: true,
+    sound: false,
+    time: 7,
+    expired: false,
+    updatedAt: "now",
+  });
+  assert.deepEqual(state?.deck.map((card) => card.instanceId), reversed.map((card) => card.instanceId));
+  assert.ok(state?.deck.every((card) => card.word !== "подмена"));
+  assert.equal(state?.at, 1);
+  assert.equal(state?.faceUp, true);
+});
+
+test("ученик не может прислать неполную или повторённую колоду", () => {
+  const deck = buildWordDeck(words, { repeats: 1 }, () => 0.5);
+  const base = { at: 0, faceUp: true, sound: true, time: 10, expired: false, updatedAt: "now" };
+  assert.equal(normalizeWordDeckLiveState(words, { repeats: 1 }, { ...base, deck: deck.slice(1) }), null);
+  assert.equal(normalizeWordDeckLiveState(words, { repeats: 1 }, { ...base, deck: [deck[0], deck[0], deck[2]] }), null);
 });

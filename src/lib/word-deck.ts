@@ -29,6 +29,17 @@ export type WordDeckRuntimeCard = WordDeckSourceCard & {
   owner: WordDeckOwner;
 };
 
+/** Единое состояние колоды в живом классе: учитель меняет, ученик наблюдает. */
+export type WordDeckLiveState = {
+  deck: WordDeckRuntimeCard[];
+  at: number;
+  faceUp: boolean;
+  sound: boolean;
+  time: number;
+  expired: boolean;
+  updatedAt: string;
+};
+
 export type WordDeckSettings = {
   timerMode: WordDeckTimerMode;
   gameSeconds: number;
@@ -149,4 +160,51 @@ export function shuffleWordDeckTail<T>(
 ): T[] {
   const split = Math.min(cards.length, Math.max(0, Math.trunc(at)));
   return [...cards.slice(0, split), ...shuffled(cards.slice(split), random)];
+}
+
+/**
+ * Сервер не доверяет присланным карточкам: принимает только порядок и роли,
+ * а слово, иконку и источник восстанавливает из сохранённого снимка игры.
+ */
+export function normalizeWordDeckLiveState(
+  source: WordDeckSourceCard[],
+  rawSettings: Partial<WordDeckSettings>,
+  value: Partial<WordDeckLiveState> | null | undefined,
+): WordDeckLiveState | null {
+  if (!value || !Array.isArray(value.deck)) return null;
+  const settings = normalizeWordDeckSettings(rawSettings);
+  const allowed = new Map<string, WordDeckRuntimeCard>();
+  for (let repeat = 0; repeat < settings.repeats; repeat++) {
+    source.forEach((card, index) => {
+      const instanceId = `${card.phraseId}:${repeat}:${index}`;
+      allowed.set(instanceId, { ...card, instanceId, owner: null });
+    });
+  }
+  if (value.deck.length !== allowed.size) return null;
+
+  const seen = new Set<string>();
+  const deck: WordDeckRuntimeCard[] = [];
+  for (const candidate of value.deck) {
+    const canonical = allowed.get(String(candidate?.instanceId ?? ""));
+    if (!canonical || seen.has(canonical.instanceId)) return null;
+    seen.add(canonical.instanceId);
+    const owner: WordDeckOwner = settings.alternate &&
+      (candidate.owner === "TEACHER" || candidate.owner === "STUDENT")
+      ? candidate.owner
+      : null;
+    deck.push({ ...canonical, owner });
+  }
+
+  const at = Math.min(deck.length - 1, Math.max(-1, Math.trunc(Number(value.at) || 0)));
+  const maxTime = settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds;
+  const time = Math.min(maxTime, Math.max(0, Math.trunc(Number(value.time) || 0)));
+  return {
+    deck,
+    at,
+    faceUp: value.faceUp === true && at >= 0,
+    sound: value.sound !== false,
+    time,
+    expired: value.expired === true,
+    updatedAt: String(value.updatedAt ?? "").slice(0, 64) || new Date().toISOString(),
+  };
 }

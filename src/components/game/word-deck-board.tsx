@@ -4,11 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
   buildWordDeck,
+  normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
   shuffleWordDeckTail,
+  type WordDeckLiveState,
   type WordDeckSettings,
   type WordDeckSourceCard,
 } from "@/lib/word-deck";
+import {
+  classWordDeckLiveStateAction,
+  saveClassWordDeckLiveStateAction,
+} from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
 
 export type WordDeckPlayable = {
@@ -17,6 +23,7 @@ export type WordDeckPlayable = {
   cards: WordDeckSourceCard[];
   settings: WordDeckSettings;
   backgroundImageUrl: string | null;
+  liveState?: WordDeckLiveState | null;
 };
 
 const backgrounds: Record<Exclude<WordDeckSettings["background"], "CUSTOM">, string> = {
@@ -54,9 +61,13 @@ function beep(kind: "deal" | "shuffle") {
   window.setTimeout(() => void audio.close(), 450);
 }
 
-export function WordDeckBoard({ activity, compact = false }: {
+export function WordDeckBoard({ activity, compact = false, live = false, observer = false }: {
   activity: WordDeckPlayable;
   compact?: boolean;
+  /** Публиковать действия учителя в живой класс. */
+  live?: boolean;
+  /** Ученик видит общий стол, но не может им управлять. */
+  observer?: boolean;
 }) {
   const { t } = useT();
   const settings = useMemo(() => normalizeWordDeckSettings(activity.settings), [activity.settings]);
@@ -64,21 +75,27 @@ export function WordDeckBoard({ activity, compact = false }: {
     () => buildWordDeck(activity.cards, settings),
     [activity.cards, settings],
   );
-  const [deck, setDeck] = useState(initial);
-  const [at, setAt] = useState(-1);
-  const [faceUp, setFaceUp] = useState(false);
-  const [sound, setSound] = useState(settings.sound);
-  const [time, setTime] = useState(
-    settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds,
+  const saved = useMemo(
+    () => normalizeWordDeckLiveState(activity.cards, settings, activity.liveState),
+    [activity.cards, activity.liveState, settings],
   );
-  const [expired, setExpired] = useState(false);
+  const [deck, setDeck] = useState(saved?.deck ?? initial);
+  const [at, setAt] = useState(saved?.at ?? -1);
+  const [faceUp, setFaceUp] = useState(saved?.faceUp ?? false);
+  const [sound, setSound] = useState(saved?.sound ?? settings.sound);
+  const [time, setTime] = useState(
+    saved?.time ?? (settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds),
+  );
+  const [expired, setExpired] = useState(saved?.expired ?? false);
   const started = at >= 0;
   const finished = at >= deck.length - 1 && started;
   const current = deck[at] ?? null;
   const flipTimer = useRef<number | null>(null);
+  const lastRemoteAt = useRef(saved?.updatedAt ?? "");
+  const publishQueue = useRef(Promise.resolve());
 
   const deal = useCallback(() => {
-    if (deck.length === 0 || finished) return;
+    if (observer || deck.length === 0 || finished) return;
     if (sound) beep("deal");
     setFaceUp(false);
     setExpired(false);
@@ -86,28 +103,77 @@ export function WordDeckBoard({ activity, compact = false }: {
     if (settings.timerMode === "CARD") setTime(settings.cardSeconds);
     if (flipTimer.current) window.clearTimeout(flipTimer.current);
     flipTimer.current = window.setTimeout(() => setFaceUp(true), 260);
-  }, [deck.length, finished, settings.cardSeconds, settings.timerMode, sound]);
+  }, [deck.length, finished, observer, settings.cardSeconds, settings.timerMode, sound]);
 
   useEffect(() => () => {
     if (flipTimer.current) window.clearTimeout(flipTimer.current);
   }, []);
 
   useEffect(() => {
-    if (!started || expired || settings.timerMode === "NONE" || time <= 0) return;
+    if (observer || !started || expired || settings.timerMode === "NONE" || time <= 0) return;
     const timer = window.setTimeout(() => {
       setTime((value) => Math.max(0, value - 1));
       if (time <= 1) setExpired(true);
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [expired, settings.timerMode, started, time]);
+  }, [expired, observer, settings.timerMode, started, time]);
+
+  useEffect(() => {
+    if (!observer) return;
+    let alive = true;
+    let pulling = false;
+    const pull = async () => {
+      if (pulling) return;
+      pulling = true;
+      try {
+        const state = await classWordDeckLiveStateAction(activity.id);
+        if (!alive || !state || state.updatedAt === lastRemoteAt.current) return;
+        lastRemoteAt.current = state.updatedAt;
+        setDeck(state.deck);
+        setAt(state.at);
+        setFaceUp(state.faceUp);
+        setSound(state.sound);
+        setTime(state.time);
+        setExpired(state.expired);
+      } finally {
+        pulling = false;
+      }
+    };
+    void pull();
+    const timer = window.setInterval(() => void pull(), 250);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [activity.id, observer]);
+
+  useEffect(() => {
+    if (!live || observer) return;
+    const state: WordDeckLiveState = {
+      deck,
+      at,
+      faceUp,
+      sound,
+      time,
+      expired,
+      updatedAt: new Date().toISOString(),
+    };
+    const timer = window.setTimeout(() => {
+      publishQueue.current = publishQueue.current.then(async () => {
+        await saveClassWordDeckLiveStateAction(activity.id, state);
+      });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [activity.id, at, deck, expired, faceUp, live, observer, sound, time]);
 
   const shuffle = () => {
+    if (observer) return;
     if (sound) beep("shuffle");
     setDeck((cards) => shuffleWordDeckTail(cards, Math.max(0, at + 1)));
   };
 
   const previous = () => {
-    if (at <= 0) return;
+    if (observer || at <= 0) return;
     setAt((value) => value - 1);
     setFaceUp(true);
     setExpired(false);
@@ -115,6 +181,7 @@ export function WordDeckBoard({ activity, compact = false }: {
   };
 
   const reset = () => {
+    if (observer) return;
     setDeck(buildWordDeck(activity.cards, settings));
     setAt(-1);
     setFaceUp(false);
@@ -151,18 +218,20 @@ export function WordDeckBoard({ activity, compact = false }: {
             {Math.floor(time / 60).toString().padStart(2, "0")}:{(time % 60).toString().padStart(2, "0")}
           </span>
         )}
-        <button
-          type="button"
-          onClick={() => setSound((value) => !value)}
-          className="rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-xs font-bold backdrop-blur transition hover:bg-white/15"
-        >
-          {sound ? `🔊 ${t.wordDeck.soundOn}` : `🔇 ${t.wordDeck.soundOff}`}
-        </button>
+        {!observer && (
+          <button
+            type="button"
+            onClick={() => setSound((value) => !value)}
+            className="rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-xs font-bold backdrop-blur transition hover:bg-white/15"
+          >
+            {sound ? `🔊 ${t.wordDeck.soundOn}` : `🔇 ${t.wordDeck.soundOff}`}
+          </button>
+        )}
       </div>
 
       <div className="relative mx-auto mt-7 flex min-h-[18rem] max-w-xl items-center justify-center sm:min-h-[23rem]">
         {!started ? (
-          <button type="button" onClick={deal} className="group relative h-60 w-44 sm:h-72 sm:w-52">
+          <button type="button" onClick={deal} disabled={observer} className="group relative h-60 w-44 disabled:cursor-default sm:h-72 sm:w-52">
             {[2, 1, 0].map((layer) => (
               <span
                 key={layer}
@@ -180,7 +249,7 @@ export function WordDeckBoard({ activity, compact = false }: {
           <button
             type="button"
             onClick={deal}
-            disabled={finished || expired}
+            disabled={observer || finished || expired}
             className="word-deck-card h-60 w-full max-w-[23rem] [perspective:1200px] disabled:cursor-default sm:h-72"
           >
             <span className={cn(
@@ -218,15 +287,17 @@ export function WordDeckBoard({ activity, compact = false }: {
           <div className="absolute inset-0 flex items-center justify-center rounded-3xl bg-slate-950/70 backdrop-blur-sm">
             <div className="text-center">
               <p className="text-3xl font-black">{t.wordDeck.timeUp}</p>
-              <button type="button" onClick={reset} className="mt-4 rounded-xl bg-white px-5 py-2.5 text-sm font-black text-slate-950">
-                {t.wordDeck.again}
-              </button>
+              {!observer && (
+                <button type="button" onClick={reset} className="mt-4 rounded-xl bg-white px-5 py-2.5 text-sm font-black text-slate-950">
+                  {t.wordDeck.again}
+                </button>
+              )}
             </div>
           </div>
         )}
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-2">
+      {!observer && <div className="mt-5 grid grid-cols-3 gap-2">
         <button type="button" onClick={previous} disabled={at <= 0} className="rounded-xl border border-white/15 bg-black/20 px-2 py-3 text-xs font-black backdrop-blur transition hover:bg-white/15 disabled:opacity-35">
           ↶ {t.wordDeck.previous}
         </button>
@@ -236,7 +307,7 @@ export function WordDeckBoard({ activity, compact = false }: {
         <button type="button" onClick={finished ? reset : deal} disabled={expired} className="rounded-xl bg-white px-2 py-3 text-xs font-black text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-40">
           {finished ? `↻ ${t.wordDeck.again}` : `➜ ${t.wordDeck.deal}`}
         </button>
-      </div>
+      </div>}
     </section>
   );
 }

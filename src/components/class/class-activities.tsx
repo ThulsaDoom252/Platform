@@ -163,7 +163,7 @@ export function ClassActivities({ studentId }: { studentId: string }) {
           </button>
         </div>
         {showError && <p className="text-sm font-semibold text-rose-500">{showError}</p>}
-        <WordDeckBoard activity={openDeck} compact />
+        <WordDeckBoard key={openDeck.id} activity={openDeck} compact live />
       </div>
     );
   }

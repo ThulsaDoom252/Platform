@@ -900,7 +900,12 @@ export function ClassRoom({
             /* У ученика секция урока не разложена на части: ему нужна
                карта, а не то, из чего урок собран. */
             focusedWordDeck ? (
-              <WordDeckBoard activity={focusedWordDeck} />
+              <WordDeckBoard
+                key={focusedWordDeck.id}
+                activity={focusedWordDeck}
+                live
+                observer
+              />
             ) : (
               <StudentGuess
                 fallback={(
