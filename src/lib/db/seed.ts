@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "./index";
 import {
@@ -12,6 +13,7 @@ import {
   materialPhrases,
 } from "./schema";
 import { eq, sql } from "drizzle-orm";
+import { encryptStudentPassword } from "../password-vault";
 import {
   sportPage,
   upbringingPage,
@@ -129,13 +131,17 @@ async function main() {
   console.log("Создаю учеников...");
   const studentPassword = requireEnv("STUDENT_DEFAULT_PASSWORD");
   const demoHash = await bcrypt.hash(studentPassword, 10);
+  const olexanderId = randomUUID();
+  const sofiaId = randomUUID();
 
   const [olexander] = await db
     .insert(users)
     .values({
+      id: olexanderId,
       name: "Olexander",
       login: "olexander",
       passwordHash: demoHash,
+      passwordVault: encryptStudentPassword(studentPassword, olexanderId),
       role: "STUDENT",
       level: "B1 · Intermediate",
       progressPercent: 72,
@@ -147,9 +153,11 @@ async function main() {
   const [sofia] = await db
     .insert(users)
     .values({
+      id: sofiaId,
       name: "Sofia",
       login: "sofia",
       passwordHash: demoHash,
+      passwordVault: encryptStudentPassword(studentPassword, sofiaId),
       role: "STUDENT",
       level: "A2 · Elementary",
       progressPercent: 64,

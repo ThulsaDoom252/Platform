@@ -3899,10 +3899,14 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
       .where(inArray(materialPhrases.nodeId, srcIds));
     if (phrases.length) {
       await db.insert(materialPhrases).values(
-        phrases.map(({ id: _id, createdAt: _c, nodeId, ...rest }) => ({
-          ...rest,
-          nodeId: idOf.get(nodeId)!,
-        })),
+        phrases.map(({ id: _id, createdAt: _c, nodeId, ...rest }) => {
+          void _id;
+          void _c;
+          return {
+            ...rest,
+            nodeId: idOf.get(nodeId)!,
+          };
+        }),
       );
     }
 
@@ -3912,10 +3916,14 @@ export async function copyNodesAction(input: CopyInput): Promise<BulkState> {
       .where(inArray(materialBlocks.nodeId, srcIds));
     if (blocks.length) {
       await db.insert(materialBlocks).values(
-        blocks.map(({ id: _id, createdAt: _c, nodeId, ...rest }) => ({
-          ...rest,
-          nodeId: idOf.get(nodeId)!,
-        })),
+        blocks.map(({ id: _id, createdAt: _c, nodeId, ...rest }) => {
+          void _id;
+          void _c;
+          return {
+            ...rest,
+            nodeId: idOf.get(nodeId)!,
+          };
+        }),
       );
     }
   }

@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseKeyed, detectKeyedType } from "../src/lib/keyed-parser";
+import {
+  parseKeyed,
+  detectKeyedType,
+  parseLexisDocuments,
+} from "../src/lib/keyed-parser";
 
 const fixture = (name: string) =>
   readFileSync(join(process.cwd(), "scripts", "fixtures", name), "utf8");
@@ -113,10 +117,109 @@ test("лексика разбирается в карточки слов", () =>
   // CONTRAST собирается в ту же таблицу, что и COMPARE у правил.
   const tables = r.blocks.filter((b) => b.type === "table");
   assert.equal(tables.length, 1);
-  if (tables[0].type === "table") assert.equal(tables[0].rows.length, 2);
+  if (tables[0].type === "table") {
+    assert.equal(tables[0].rows.length, 2);
+    assert.deepEqual(tables[0].rows[1], [
+      "speak",
+      "talk",
+      "формально, про язык",
+      "по-дружески, обмен репликами",
+    ]);
+  }
 
   const traps = r.blocks.filter((b) => b.type === "callout" && b.tone === "warn");
   assert.equal(traps.length, 2);
+});
+
+test("ain't-лексика разбирает карточки, сравнения и ошибки", () => {
+  const source = `TYPE: LEXIS
+TITLE: ain't / ain't nothing
+INTRO: ain't — розмовна форма замість am not, isn't, aren't.
+
+ITEM: ain't
+ICON: 🎤
+US: /eɪnt/
+UK: /eɪnt/
+TR: не (є), не маю (розмовне)
+SENSE: одна форма замість am not, is not, are not, has not, have not
+PATTERN: підмет + ain't + ...
+EX: I ain't going. | Я не піду.
+NOTE: Стандартно: I'm not going.
+
+ITEM: ain't nothing
+ICON: 🚫
+US: /ˌeɪnt ˈnʌθɪŋ/
+UK: /ˌeɪnt ˈnʌθɪŋ/
+TR: нічого немає
+SENSE: подвійне заперечення
+PATTERN: ain't nothing + ...
+EX: There ain't nothing to eat. | Нема чого їсти.
+
+ITEM: ain't nobody
+ICON: 🙅
+US: /ˌeɪnt ˈnoʊbɑːdi/
+UK: /ˌeɪnt ˈnəʊbədi/
+TR: ніхто не
+SENSE: подвійне заперечення з nobody
+PATTERN: ain't nobody + V-ing / got
+EX: Ain't nobody got time for that! | Нема в нікого на це часу!
+NOTE: Ain't nobody got time for that — популярний мем.
+
+ITEM: ain't nothing but
+ICON: 🎶
+US: /ˌeɪnt ˈnʌθɪŋ bət/
+UK: /ˌeɪnt ˈnʌθɪŋ bət/
+TR: не що інше, як; просто
+SENSE: підкреслює: це всього лише щось одне
+PATTERN: ain't nothing but + іменник
+EX: It ain't nothing but a game. | Це просто гра.
+
+CONTRAST: ain't | isn't / aren't / haven't | розмовне, пісні, сленг | стандартна англійська
+CONTRAST: ain't nothing | is nothing | подвійне заперечення | одне заперечення, норма
+CONTRAST: слухати й розуміти | писати й говорити | так | лише жартома або в неформальному чаті
+TRAP: ❌ Dear Sir, I ain't able to attend. ✅ Dear Sir, I'm unable to attend.
+TRAP: ❌ I don't have nothing. (A2 exam) ✅ I don't have anything.
+TRAP: ❌ He ain't not coming. ✅ He isn't coming.`;
+
+  const parsed = parseKeyed(source);
+  assert.ok(parsed && parsed.type === "LEXIS");
+  if (!parsed || parsed.type !== "LEXIS") return;
+
+  assert.equal(parsed.blocks.filter((block) => block.type === "word").length, 4);
+  const table = parsed.blocks.find((block) => block.type === "table");
+  assert.ok(table?.type === "table");
+  if (table?.type === "table") {
+    assert.equal(table.rows.length, 3);
+    assert.deepEqual(table.rows[1].slice(0, 2), ["ain't nothing", "is nothing"]);
+  }
+  assert.equal(
+    parsed.blocks.filter((block) => block.type === "callout" && block.tone === "warn")
+      .length,
+    3,
+  );
+});
+
+test("одна вставка может содержать неограниченно много LEXIS-групп", () => {
+  const parsed = parseLexisDocuments(`### got to
+\`\`\`
+TYPE: LEXIS
+TITLE: got to
+ITEM: gotta
+TR: мушу
+EX: Gotta go. | Мушу йти.
+\`\`\`
+
+### though
+\`\`\`
+TYPE: LEXIS
+TITLE: though
+ITEM: even though
+TR: навіть попри те, що
+EX: Even though it rained, we went out. | Хоча йшов дощ, ми вийшли.
+\`\`\``);
+
+  assert.deepEqual(parsed.map((group) => group.title), ["got to", "though"]);
+  assert.ok(parsed.every((group) => group.blocks.some((block) => block.type === "word")));
 });
 
 test("ссылка на разбор необязательна и принимается всеми тремя типами", () => {

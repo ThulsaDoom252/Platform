@@ -57,6 +57,7 @@ export function LessonPin({
 
   const LABEL: Record<LessonSection, string> = {
     vocab: t.lessonUnits.secVocab,
+    lexis: t.lessonUnits.secLexis,
     video: t.lessonUnits.secVideo,
     transcript: t.lessonUnits.secTranscript,
     questions: t.lessonUnits.secQuestions,

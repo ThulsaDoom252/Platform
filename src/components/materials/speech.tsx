@@ -111,11 +111,14 @@ export function SpeakPair({
   text,
   id,
   speech,
+  showUk = true,
 }: {
   text: string;
   /** Свой ключ на каждое слово, чтобы подсвечивалось только звучащее. */
   id: string;
   speech: ReturnType<typeof useSpeech>;
+  /** В уроке британский вариант учитель открывает ученику отдельно. */
+  showUk?: boolean;
 }) {
   if (!speech.supported) return null;
 
@@ -151,7 +154,7 @@ export function SpeakPair({
   return (
     <span className="inline-flex shrink-0 items-center gap-0.5 align-middle">
       {button("en-US", "US")}
-      {button("en-GB", "UK")}
+      {showUk && button("en-GB", "UK")}
     </span>
   );
 }

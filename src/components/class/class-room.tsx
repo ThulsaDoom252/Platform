@@ -23,12 +23,13 @@ import {
 import { useLocalJson } from "@/lib/use-local-json";
 import {
   classSyncAction,
-  focusStudentAction,
+  classTeacherProfileAction,
   heartbeatAction,
   listClassPeopleAction,
   enterClassAction,
   leaveClassAction,
   type ClassPerson,
+  type ClassPartnerProfile,
   type Presence,
 } from "@/lib/actions/class";
 import { ClassChat } from "./class-chat";
@@ -47,9 +48,27 @@ import {
 import { ClassScript } from "./class-script";
 import { ClassBoard } from "./class-board";
 import { ClassTwister } from "./class-twister";
+import { TwisterViewer } from "@/components/twisters/twister-viewer";
+import {
+  twisterSessionAction,
+  type ClassTwisterSession,
+} from "@/lib/actions/tongue-twisters";
 import { ClassActivities } from "./class-activities";
+import { ClassLesson } from "./class-lesson";
+import {
+  ClassVocabulary,
+  type ClassVocabularySeed,
+} from "./class-vocabulary";
+import type { ClassVocabularyWord } from "@/lib/actions/class-vocabulary";
+import { cleanClassVocabularyText } from "@/lib/class-vocabulary";
 import { StudentGuess } from "@/components/game/student-guess";
+import { WordDeckBoard } from "@/components/game/word-deck-board";
+import {
+  focusedClassWordDeckAction,
+  type ClassWordDeckActivity,
+} from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
+import type { ClassVideoState } from "@/lib/class-video";
 
 const BEAT_MS = 30_000;
 /*
@@ -57,6 +76,7 @@ const BEAT_MS = 30_000;
  * поэтому у команд свой такт — короткий и с двумя полями в ответе.
  */
 const SYNC_MS = 4_000;
+const STUDENT_FOCUS_SYNC_MS = 1_000;
 
 /** Короткая точка статуса: зелёная — на платформе, красная — нет. */
 function Dot({ presence, t }: { presence: Presence; t: Dict }) {
@@ -140,6 +160,7 @@ export function ClassRoom({
   const [partner, setPartner] = useState<{
     id: string;
     name: string;
+    avatarUrl: string | null;
     presence: Presence;
   } | null>(null);
   const { t, locale } = useT();
@@ -160,13 +181,38 @@ export function ClassRoom({
   const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
   const [sortDesc, setSortDesc] = useLocalJson("class-sort-desc", false);
   const [showTimer, setShowTimer] = useState(false);
-  /** Что открыто у собеседника — учителю, чтобы не звать туда, где он уже есть. */
-  const [partnerWhere, setPartnerWhere] = useState<PanelKey | null>(null);
-  /** Куда смотрю я: последняя открытая панель. */
-  const [where, setWhere] = useState<PanelKey | null>(null);
   const [unread, setUnread] = useState(0);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
+  const [partnerOnBoard, setPartnerOnBoard] = useState(false);
+  const [boardFocus, setBoardFocus] = useState<{
+    objectId: number | null;
+    command: "SHOW" | "FOCUS" | "FLASH";
+    at: string;
+  } | null>(null);
+  const [twisterSession, setTwisterSession] = useState<ClassTwisterSession | null>(null);
+  const [focusedWordDeck, setFocusedWordDeck] = useState<ClassWordDeckActivity | null>(null);
+  const [videoSync, setVideoSync] = useState<ClassVideoState | null>(null);
+  const [dictionarySeed, setDictionarySeed] = useState<ClassVocabularySeed>(null);
+  const [vocabularyNotice, setVocabularyNotice] = useState<{
+    id: string;
+    english: string;
+    translation: string;
+  } | null>(null);
   const [busy, startBusy] = useTransition();
+  const [profileBusy, startProfile] = useTransition();
+  const [avatarPreview, setAvatarPreview] = useState(false);
+  const [teacherProfile, setTeacherProfile] = useState<ClassPartnerProfile | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const chime = useRef<(() => void) | null>(null);
+  const boardOpen = useRef(false);
+  const appliedView = useRef<string | null>(null);
+  const seenVocabularyEvents = useRef(new Set<string>());
+  const vocabularyEventsReady = useRef(false);
+  const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    boardOpen.current = open.board;
+  }, [open.board]);
 
   // Короткий сигнал на новое сообщение: файл не нужен, хватает генератора.
   useEffect(() => {
@@ -239,6 +285,15 @@ export function ClassRoom({
   // У учителя разговор принадлежит ученику, у ученика — ему самому.
   const conversation = teacher ? (partner?.id ?? null) : selfId;
 
+  useEffect(() => {
+    seenVocabularyEvents.current.clear();
+    vocabularyEventsReady.current = false;
+  }, [conversation]);
+
+  useEffect(() => () => {
+    if (vocabularyNoticeTimer.current) clearTimeout(vocabularyNoticeTimer.current);
+  }, []);
+
   // Свёрнутость нужна обработчику чата, а не разметке, поэтому живёт
   // в ref: перерисовывать панель из-за неё незачем.
   const chatOpen = useRef(true);
@@ -252,42 +307,90 @@ export function ClassRoom({
     chime.current?.();
   }, []);
 
+  const showVocabularyNotice = useCallback((word: {
+    id: string;
+    english: string;
+    translation: string;
+  }) => {
+    setVocabularyNotice(word);
+    chime.current?.();
+    if (vocabularyNoticeTimer.current) clearTimeout(vocabularyNoticeTimer.current);
+    vocabularyNoticeTimer.current = setTimeout(() => setVocabularyNotice(null), 6_000);
+  }, []);
+
+  const translateSelectedText = useCallback((value: string) => {
+    const text = cleanClassVocabularyText(value);
+    if (!text) return;
+    setDictionarySeed({ text, nonce: Date.now() });
+    setOpen((current) => ({ ...current, dictionary: true }));
+  }, []);
+
   const toggle = (key: PanelKey) => {
-    setOpen((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      // Собеседнику важно, на что я смотрю, а не что открыто вообще.
-      setWhere(next[key] ? key : null);
-      return next;
-    });
+    setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
     if (key === "chat") setUnread(0);
   };
 
   /*
-   * Короткий такт на команды: говорю, где я, и узнаю, где собеседник.
-   * Ученику тем же ответом приходит «перейди сюда» — команду узнаём по
-   * времени, поэтому повторный вызов на ту же панель тоже срабатывает.
+   * Нижние панели остаются индивидуальными. Исключение — две явные команды
+   * учителя: показать доску и вернуть ученика к сфокусированному элементу
+   * урока. Текущее положение нужно только для подписи на кнопке доски.
    */
-  const applied = useRef<string | null>(null);
-  const whereRef = useRef<PanelKey | null>(null);
-  useEffect(() => {
-    whereRef.current = where;
-  });
-
   useEffect(() => {
     let alive = true;
 
     const tick = () => {
-      classSyncAction(whereRef.current)
+      classSyncAction(boardOpen.current)
         .then((sync) => {
           if (!alive) return;
-          setPartnerWhere(sync.partnerWhere);
-          if (!sync.focus || teacher) return;
-          if (applied.current === sync.focus.at) return;
-          applied.current = sync.focus.at;
-          const panel = sync.focus.panel as PanelKey;
-          setOpen((prev) => ({ ...prev, [panel]: true }));
-          setWhere(panel);
-          if (panel === "chat") setUnread(0);
+          setActiveLessonId(sync.lessonAssignmentId);
+          setPartnerOnBoard(sync.partnerOnBoard);
+          setVideoSync(sync.video);
+
+          if (!vocabularyEventsReady.current) {
+            sync.vocabularyEvents.forEach((event) => seenVocabularyEvents.current.add(event.id));
+            vocabularyEventsReady.current = true;
+          } else {
+            const fresh = sync.vocabularyEvents.filter(
+              (event) => !seenVocabularyEvents.current.has(event.id),
+            );
+            sync.vocabularyEvents.forEach((event) => seenVocabularyEvents.current.add(event.id));
+            if (fresh.length > 0) showVocabularyNotice(fresh[0]);
+          }
+
+          if (teacher || !sync.view || appliedView.current === sync.view.at) return;
+          appliedView.current = sync.view.at;
+          if (sync.view.target === "TWISTER") {
+            setFocusedWordDeck(null);
+            setOpen((prev) => ({ ...prev, board: false }));
+            void twisterSessionAction().then(setTwisterSession);
+            return;
+          }
+          setTwisterSession(null);
+          if (sync.view.target === "BOARD") {
+            setFocusedWordDeck(null);
+            setBoardFocus({
+              objectId: sync.view.boardObjectId,
+              command: sync.view.boardCommand ?? "SHOW",
+              at: sync.view.at,
+            });
+            setOpen((prev) => ({ ...prev, board: true }));
+          } else if (sync.view.target === "GAME" && sync.view.gameId) {
+            setOpen((prev) => ({ ...prev, board: false }));
+            const commandAt = sync.view.at;
+            void focusedClassWordDeckAction().then((activity) => {
+              if (alive && appliedView.current === commandAt) {
+                setFocusedWordDeck(activity);
+              }
+            });
+          } else {
+            setFocusedWordDeck(null);
+            /*
+             * Урок и игра лежат в той же колонке, поверх которой стоит
+             * доска во весь экран. Поэтому «покажи игру» — это прежде
+             * всего «убери доску»: игра под ней уже идёт сама.
+             */
+            setOpen((prev) => ({ ...prev, board: false }));
+          }
         })
         .catch(() => {
           /* следующий такт подхватит */
@@ -295,23 +398,14 @@ export function ClassRoom({
     };
 
     tick();
-    const id = setInterval(tick, SYNC_MS);
+    // Учителю достаточно редкой проверки положения ученика, а ученик
+    // должен получать явную команду фокусировки почти сразу.
+    const id = setInterval(tick, teacher ? SYNC_MS : STUDENT_FOCUS_SYNC_MS);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, [teacher]);
-
-  /*
-   * Команду отправляем и ждём — зелёной кнопка станет, когда ученик
-   * действительно окажется на месте и скажет об этом. Красить её сразу
-   * значило бы показывать учителю, что ученик там, хотя он, может,
-   * вообще не в сети.
-   */
-  const send = (key: PanelKey) => {
-    if (!teacher || !partner) return;
-    startBusy(() => focusStudentAction(key).then(() => undefined));
-  };
+  }, [showVocabularyNotice, teacher]);
 
   /*
    * Сегодня и завтра называем словами, остальные дни — днём недели: на
@@ -342,56 +436,24 @@ export function ClassRoom({
   const groups = orderClassPeople(people ?? [], sort, sortDesc);
 
   const tabBtn = (key: PanelKey, icon: React.ReactNode, label: string, badge?: number) => {
-    const studentHere = partnerWhere === key;
-
     return (
-      <span key={key} className="flex items-center">
-        <button
-          type="button"
-          onClick={() => toggle(key)}
-          className={cn(
-            "relative flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition",
-            teacher && partner ? "rounded-l-xl" : "rounded-xl",
-            open[key] ? "bg-accent text-white" : "text-muted hover:bg-surface-2 hover:text-content",
-          )}
-        >
-          {icon}
-          <span className="hidden sm:inline">{label}</span>
-          {!!badge && badge > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-              {badge}
-            </span>
-          )}
-        </button>
-
-        {/*
-         * Перевести ученика сюда. Зелёным — когда он уже здесь: звать
-         * туда, где он стоит, незачем, и это видно до нажатия.
-         */}
-        {teacher && partner && (
-          <button
-            type="button"
-            disabled={busy || studentHere}
-            onClick={() => send(key)}
-            title={
-              studentHere
-                ? fmt(t.classRoom.studentHere, { name: partner.name })
-                : fmt(t.classRoom.sendStudent, { name: partner.name })
-            }
-            aria-label={fmt(t.classRoom.sendStudent, { name: partner.name })}
-            className={cn(
-              "flex h-10 w-8 items-center justify-center rounded-r-xl border-l transition",
-              open[key] ? "border-white/25" : "border-line",
-              studentHere
-                ? "tint-green"
-                : "text-faint hover:bg-surface-2 hover:text-accent disabled:opacity-40",
-              open[key] && !studentHere && "bg-accent text-white/70 hover:bg-accent hover:text-white",
-            )}
-          >
-            <IconUser className="h-3.5 w-3.5" />
-          </button>
+      <button
+        key={key}
+        type="button"
+        onClick={() => toggle(key)}
+        className={cn(
+          "relative flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition",
+          open[key] ? "bg-accent text-white" : "text-muted hover:bg-surface-2 hover:text-content",
         )}
-      </span>
+      >
+        {icon}
+        <span className="hidden sm:inline">{label}</span>
+        {!!badge && badge > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+            {badge}
+          </span>
+        )}
+      </button>
     );
   };
 
@@ -435,7 +497,15 @@ export function ClassRoom({
       </div>
 
       <div className="flex flex-1 flex-col justify-center">
-        {lessonTab === "twister" && partner ? (
+        {lessonTab === "lesson" && partner ? (
+          <ClassLesson
+            teacher
+            assignmentId={activeLessonId}
+            videoSync={videoSync}
+            onAssigned={setActiveLessonId}
+            onTextSelect={teacher ? translateSelectedText : undefined}
+          />
+        ) : lessonTab === "twister" && partner ? (
           <ClassTwister studentId={partner.id} studentName={partner.name} />
         ) : lessonTab === "activities" && partner ? (
           <ClassActivities studentId={partner.id} />
@@ -470,6 +540,7 @@ export function ClassRoom({
         type="button"
         disabled={busy}
         onClick={() => startBusy(async () => {
+          setActiveLessonId(null);
           await enterClassAction(p.id);
           setNonce((n) => n + 1);
         })}
@@ -593,6 +664,30 @@ export function ClassRoom({
     </div>
   );
 
+  function openTeacherProfile() {
+    setProfileError(null);
+    startProfile(async () => {
+      const result = await classTeacherProfileAction();
+      if (result.profile) setTeacherProfile(result.profile);
+      else setProfileError(result.error ?? t.classRoom.profileUnavailable);
+    });
+  }
+
+  const profileRows = teacherProfile
+    ? [
+        [t.profile.email, teacherProfile.email],
+        [t.profile.phone, teacherProfile.phone],
+        [t.profile.telegram, teacherProfile.telegram],
+        [t.profile.viber, teacherProfile.viber],
+        [t.profile.hobby, teacherProfile.hobby],
+        [t.profile.goal, teacherProfile.goal],
+        [t.profile.homeland, teacherProfile.homeland],
+        [t.profile.country, teacherProfile.country],
+        [t.profile.city, teacherProfile.city],
+        [t.profile.contactNote, teacherProfile.contactNote],
+      ].filter((row): row is [string, string] => Boolean(row[1]))
+    : [];
+
   return (
     <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
       <div className="flex flex-wrap items-center gap-3">
@@ -603,33 +698,68 @@ export function ClassRoom({
         </div>
 
         {partner ? (
-          /* У учителя плашка ученика — вход в его карточку: во время урока
-             профиль нужен чаще всего, а искать его в «Учениках» долго. */
+          /* Аватар ученика раскрывается отдельно и не уводит учителя из
+             класса. Имя по-прежнему ведёт в рабочую карточку ученика. */
           teacher ? (
-            <Link
-              href={`/teacher/students/${partner.id}`}
-              title={fmt(t.classRoom.profileOf, { name: partner.name })}
-              className="group flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line transition hover:ring-accent"
-            >
-              <Dot presence={partner.presence} t={t} />
-              <span className="text-sm font-semibold text-content group-hover:text-accent">
-                {partner.name}
-              </span>
-              <span className="text-[11px] text-faint">
-                {partner.presence === "online"
-                  ? t.classRoom.online
-                  : t.classRoom.offline}
-              </span>
-              <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
-            </Link>
+            <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
+              <button
+                type="button"
+                onClick={() => setAvatarPreview(true)}
+                title={fmt(t.classRoom.viewAvatar, { name: partner.name })}
+                aria-label={fmt(t.classRoom.viewAvatar, { name: partner.name })}
+                className="relative rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <Avatar
+                  name={partner.name}
+                  src={partner.avatarUrl}
+                  className="h-9 w-9 text-sm ring-1 ring-line"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5">
+                  <Dot presence={partner.presence} t={t} />
+                </span>
+              </button>
+              <Link
+                href={`/teacher/students/${partner.id}`}
+                title={fmt(t.classRoom.profileOf, { name: partner.name })}
+                className="group flex items-center gap-2"
+              >
+                <span className="text-sm font-semibold text-content group-hover:text-accent">
+                  {partner.name}
+                </span>
+                <span className="text-[11px] text-faint">
+                  {partner.presence === "online"
+                    ? t.classRoom.online
+                    : t.classRoom.offline}
+                </span>
+                <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
+              </Link>
+            </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
-              <Dot presence={partner.presence} t={t} />
+            <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
+              <button
+                type="button"
+                disabled={profileBusy}
+                onClick={openTeacherProfile}
+                title={fmt(t.classRoom.openTeacherProfile, { name: partner.name })}
+                aria-label={fmt(t.classRoom.openTeacherProfile, { name: partner.name })}
+                className="relative rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
+              >
+                <Avatar
+                  name={partner.name}
+                  src={partner.avatarUrl}
+                  className="h-9 w-9 text-sm ring-1 ring-line"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5">
+                  <Dot presence={partner.presence} t={t} />
+                </span>
+              </button>
               <span className="text-sm font-semibold text-content">{partner.name}</span>
               <span className="text-[11px] text-faint">
-                {partner.presence === "online"
-                  ? t.classRoom.online
-                  : t.classRoom.offline}
+                {profileBusy
+                  ? t.common.loading
+                  : partner.presence === "online"
+                    ? t.classRoom.online
+                    : t.classRoom.offline}
               </span>
             </div>
           )
@@ -639,6 +769,10 @@ export function ClassRoom({
           </span>
         )}
 
+        {profileError && (
+          <span className="text-xs font-semibold text-rose-500">{profileError}</span>
+        )}
+
         {teacher && partner && (
           <button
             type="button"
@@ -646,6 +780,7 @@ export function ClassRoom({
             onClick={() => startBusy(async () => {
               await leaveClassAction();
               setPartner(null);
+              setActiveLessonId(null);
               setNonce((n) => n + 1);
             })}
             className="ml-auto flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-content transition hover:border-rose-400 hover:text-rose-500"
@@ -673,9 +808,33 @@ export function ClassRoom({
           ) : (
             /* У ученика секция урока не разложена на части: ему нужна
                карта, а не то, из чего урок собран. */
-            <StudentGuess />
+            focusedWordDeck ? (
+              <WordDeckBoard activity={focusedWordDeck} />
+            ) : (
+              <StudentGuess
+                fallback={(
+                  <ClassLesson
+                    teacher={false}
+                    assignmentId={activeLessonId}
+                    videoSync={videoSync}
+                    onTextSelect={teacher ? translateSelectedText : undefined}
+                  />
+                )}
+              />
+            )
           )}
-          {open.dictionary && stub(t.classRoom.dictionary)}
+          {open.dictionary && (
+            <ClassVocabulary
+              key={conversation ?? "no-student"}
+              ready={!!conversation}
+              seed={dictionarySeed}
+              onAdded={(word: ClassVocabularyWord) => {
+                const alreadyShown = seenVocabularyEvents.current.has(word.id);
+                seenVocabularyEvents.current.add(word.id);
+                if (!alreadyShown) showVocabularyNotice(word);
+              }}
+            />
+          )}
         </div>
 
         <div className={cn("flex flex-col gap-4", !open.chat && !open.verbs && "hidden")}>
@@ -711,7 +870,121 @@ export function ClassRoom({
        * урок в этот момент всё равно идёт на ней.
        */}
       {open.board && (
-        <ClassBoard teacher={teacher} onClose={() => toggle("board")} />
+        <ClassBoard
+          teacher={teacher}
+          studentName={partner?.name ?? null}
+          studentHere={partnerOnBoard}
+          focus={teacher ? null : boardFocus}
+          onStudentShown={() => setPartnerOnBoard(true)}
+          onClose={() => toggle("board")}
+        />
+      )}
+
+      {!teacher && twisterSession && (
+        <TwisterViewer
+          items={[twisterSession.twister]}
+          startId={twisterSession.twisterId}
+          initialSession={twisterSession}
+          onClose={() => setTwisterSession(null)}
+        />
+      )}
+
+      {teacher && partner && avatarPreview && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={fmt(t.classRoom.viewAvatar, { name: partner.name })}
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+        >
+          <button
+            type="button"
+            onClick={() => setAvatarPreview(false)}
+            aria-label={t.common.close}
+            className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm"
+          />
+          <div className="relative flex max-h-[90dvh] w-full max-w-xl flex-col items-center rounded-3xl bg-surface p-6 shadow-2xl ring-1 ring-line sm:p-8">
+            <button
+              type="button"
+              onClick={() => setAvatarPreview(false)}
+              aria-label={t.common.close}
+              className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-content"
+            >
+              <IconX className="h-5 w-5" />
+            </button>
+            <Avatar
+              name={partner.name}
+              src={partner.avatarUrl}
+              className="h-64 w-64 max-w-full text-7xl shadow-xl ring-4 ring-accent-soft sm:h-80 sm:w-80"
+            />
+            <p className="mt-5 text-xl font-black text-content">{partner.name}</p>
+          </div>
+        </div>
+      )}
+
+      {!teacher && teacherProfile && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t.classRoom.teacherProfile}
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+        >
+          <button
+            type="button"
+            onClick={() => setTeacherProfile(null)}
+            aria-label={t.common.close}
+            className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+          />
+          <section className="relative max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line sm:p-7">
+            <button
+              type="button"
+              onClick={() => setTeacherProfile(null)}
+              aria-label={t.common.close}
+              className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-content"
+            >
+              <IconX className="h-5 w-5" />
+            </button>
+            <div className="flex flex-col items-center text-center">
+              <Avatar
+                name={teacherProfile.name}
+                src={teacherProfile.avatarUrl}
+                className="h-28 w-28 text-4xl shadow-lg ring-4 ring-accent-soft"
+              />
+              <p className="mt-4 text-[11px] font-black uppercase tracking-[.18em] text-accent">
+                {t.classRoom.teacherProfile}
+              </p>
+              <h2 className="mt-1 text-2xl font-black text-content">{teacherProfile.name}</h2>
+            </div>
+            {profileRows.length > 0 && (
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                {profileRows.map(([label, value]) => (
+                  <div key={label} className="rounded-xl bg-surface-2 px-3.5 py-3 ring-1 ring-line">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-faint">{label}</p>
+                    <p className="mt-1 break-words text-sm font-semibold text-content">{value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {vocabularyNotice && (
+        <div className="fixed right-4 top-4 z-[80] w-[min(24rem,calc(100vw-2rem))] rounded-2xl bg-emerald-500 p-4 text-white shadow-2xl ring-4 ring-emerald-300/40">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl">✓</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black uppercase tracking-wide text-white/75">
+                {t.classVocabulary.addedNotice}
+              </p>
+              <p className="mt-1 break-words text-base font-black">
+                {vocabularyNotice.english} — {vocabularyNotice.translation}
+              </p>
+            </div>
+            <button type="button" onClick={() => setVocabularyNotice(null)} className="rounded-lg p-1 text-white/80 hover:bg-white/15 hover:text-white" aria-label="Close">
+              <IconX className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Нижняя панель — её видят оба, таймер только у учителя. */}

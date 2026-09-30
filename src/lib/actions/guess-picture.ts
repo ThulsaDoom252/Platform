@@ -80,6 +80,69 @@ export type GameSetup = {
   seconds: number;
 };
 
+/** Моментально очистить всю секцию Activities выбранного ученика. */
+export async function clearClassActivitiesAction(
+  studentId: string,
+): Promise<{ error?: string }> {
+  await requireTeacher();
+  const target = String(studentId ?? "");
+  if (!target) return { error: "Не выбран ученик" };
+  await db.delete(activityGames).where(eq(activityGames.studentId, target));
+  return {};
+}
+
+/**
+ * Добавить расклад секции другому ученику, не стирая его активности.
+ * Результаты и текущий таймер не копируются: у получателя все игры
+ * начинают с чистого состояния, но с теми же карточками и настройками.
+ */
+export async function duplicateClassActivitiesAction(
+  sourceStudentId: string,
+  targetStudentId: string,
+): Promise<{ error?: string }> {
+  await requireTeacher();
+  const source = String(sourceStudentId ?? "");
+  const target = String(targetStudentId ?? "");
+  if (!source || !target || source === target) return { error: "Выбери другого ученика" };
+
+  const [student] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, target), eq(users.role, "STUDENT")))
+    .limit(1);
+  if (!student) return { error: "Ученик не найден" };
+
+  const rows = await db
+    .select()
+    .from(activityGames)
+    .where(eq(activityGames.studentId, source))
+    .orderBy(asc(activityGames.createdAt));
+
+  if (rows.length > 0) {
+    await db.insert(activityGames).values(
+      rows.map((row) => ({
+        studentId: target,
+        kind: row.kind,
+        templateId: row.templateId,
+        wordDeck: row.wordDeck,
+        mode: row.mode,
+        title: row.title,
+        status: "LOBBY",
+        cards: row.kind === "WORD_DECK" ? [] : row.cards,
+        verdicts: row.kind === "WORD_DECK" ? [] : row.cards.map(() => null),
+        timings: row.kind === "WORD_DECK" ? [] : row.cards.map(() => null),
+        at: 0,
+        revealed: false,
+        seconds: row.seconds,
+        paused: true,
+        pausedLeftMs: row.seconds * 1000,
+        deadline: null,
+      })),
+    );
+  }
+  return {};
+}
+
 async function requireTeacher() {
   const session = await getSession();
   if (!session || session.role !== "TEACHER") throw new Error("Только для учителя");
@@ -223,7 +286,11 @@ async function currentGame(studentId: string) {
     .select()
     .from(activityGames)
     .where(
-      and(eq(activityGames.studentId, studentId), eq(activityGames.status, "RUNNING")),
+      and(
+        eq(activityGames.studentId, studentId),
+        eq(activityGames.status, "RUNNING"),
+        eq(activityGames.kind, "GUESS_PICTURE"),
+      ),
     )
     .orderBy(desc(activityGames.updatedAt))
     .limit(1);
@@ -233,7 +300,11 @@ async function currentGame(studentId: string) {
     .select()
     .from(activityGames)
     .where(
-      and(eq(activityGames.studentId, studentId), eq(activityGames.status, "LOBBY")),
+      and(
+        eq(activityGames.studentId, studentId),
+        eq(activityGames.status, "LOBBY"),
+        eq(activityGames.kind, "GUESS_PICTURE"),
+      ),
     )
     .orderBy(asc(activityGames.createdAt))
     .limit(1);
@@ -245,7 +316,7 @@ async function gameById(id: string) {
   const [row] = await db
     .select()
     .from(activityGames)
-    .where(eq(activityGames.id, id))
+    .where(and(eq(activityGames.id, id), eq(activityGames.kind, "GUESS_PICTURE")))
     .limit(1);
   return row ?? null;
 }
@@ -323,7 +394,12 @@ export async function listGamesAction(studentId: string): Promise<QueuedGame[]> 
   const rows = await db
     .select()
     .from(activityGames)
-    .where(eq(activityGames.studentId, student))
+    .where(
+      and(
+        eq(activityGames.studentId, student),
+        eq(activityGames.kind, "GUESS_PICTURE"),
+      ),
+    )
     .orderBy(asc(activityGames.createdAt));
 
   return rows.map((row) => {
@@ -366,6 +442,7 @@ export async function playGameAction(gameId: string): Promise<GameActionState> {
       and(
         eq(activityGames.studentId, row.studentId),
         eq(activityGames.status, "RUNNING"),
+        eq(activityGames.kind, "GUESS_PICTURE"),
         ne(activityGames.id, row.id),
       ),
     );
@@ -411,7 +488,9 @@ export async function removeGameAction(gameId: string): Promise<GameActionState>
   const id = String(gameId ?? "");
   if (!id) return { error: "Не выбрана активность" };
 
-  await db.delete(activityGames).where(eq(activityGames.id, id));
+  await db
+    .delete(activityGames)
+    .where(and(eq(activityGames.id, id), eq(activityGames.kind, "GUESS_PICTURE")));
   return { ok: true };
 }
 
@@ -516,7 +595,13 @@ export async function stopGameAction(studentId: string): Promise<GameActionState
   await db
     .update(activityGames)
     .set({ status: "DONE", deadline: null, updatedAt: new Date() })
-    .where(and(eq(activityGames.studentId, id), ne(activityGames.status, "DONE")));
+    .where(
+      and(
+        eq(activityGames.studentId, id),
+        eq(activityGames.kind, "GUESS_PICTURE"),
+        ne(activityGames.status, "DONE"),
+      ),
+    );
 
   return { ok: true };
 }

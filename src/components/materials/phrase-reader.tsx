@@ -476,7 +476,7 @@ export function PhraseReader({
   /* Одно поле выбора на весь словник: к какому слову грузим — рядом. */
   const gamePicker = useRef<HTMLInputElement>(null);
   const gameFor = useRef<string | null>(null);
-  const [gameBusy, startGameUpload] = useTransition();
+  const [, startGameUpload] = useTransition();
 
   function pickGameImage(phraseId: string) {
     gameFor.current = phraseId;

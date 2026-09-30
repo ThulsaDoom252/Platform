@@ -151,7 +151,14 @@
  * инструментов не нужна и только мешает.
  */
 const CAN_EDIT=new URLSearchParams(location.search).get('role')==='teacher';
+const EMBEDDED=parent!==window;
+const BRIDGE_CHANNEL='lingora-whiteboard';
 if(!CAN_EDIT)document.body.classList.add('view-only');
+
+function bridge(type,payload={}){
+  if(!EMBEDDED)return;
+  parent.postMessage({channel:BRIDGE_CHANNEL,type,...payload},location.origin);
+}
 
 const canvas=document.getElementById('c');
 const ctx=canvas.getContext('2d');
@@ -165,6 +172,10 @@ let scale=1, offX=0, offY=0;   // world->screen: sx = x*scale+offX
 let tool='select';
 let selection=new Set();      // ids
 let clipboard=[];             // internal copy buffer (deep copies, unoffset)
+let focusedObjectId=null;     // объект, который учитель показал ученику
+let flashedObjectId=null;     // объект, которым учитель привлёк внимание
+let flashVisible=false;
+let flashRun=0;
 
 // ---------- English: Lesson 2 — Possessive adjectives & Special questions ----------
 const POSSESSIVES=[
@@ -316,7 +327,15 @@ function buildLessonBoard(){
 
 const MENDEL_STARTER_BOARD=buildLessonBoard();
 const PERSIST_KEY='universal-whiteboard:english-lesson-2-possessives-wh:v1';
-let persistReady=false,persistTimer=null;
+let persistReady=false,persistTimer=null,lastBridgedScene='';
+
+function exportScene(){
+  return {
+    version:1,
+    name:boardName,
+    objects:objects.map(o=>{const c={...o};delete c.__x;return c;})
+  };
+}
 
 function schedulePersist(){
   if(!persistReady)return;
@@ -327,6 +346,16 @@ function schedulePersist(){
         boardName,objects,nextId,scale,offX,offY
       }));
     }catch(_){ }
+    if(CAN_EDIT){
+      const scene=exportScene();
+      const serialized=JSON.stringify(scene);
+      // Панорамирование и масштаб не меняют сцену и не должны создавать
+      // лишнюю запись в БД или дёргать доску ученика.
+      if(serialized!==lastBridgedScene){
+        lastBridgedScene=serialized;
+        bridge('SCENE',{scene});
+      }
+    }
   },120);
 }
 
@@ -457,6 +486,7 @@ function render(){
    * хотя ручки ловились там, где положено.
    */
   ctx.setTransform(DPR,0,0,DPR,0,0);
+  drawFlashedObject();
   drawSelection();
   drawMarquee();
   schedulePersist();
@@ -531,6 +561,18 @@ function drawSelection(){
     ctx.fillStyle='#fff';ctx.strokeStyle='var(--handle)';
     for(const [hx,hy] of hs){ctx.beginPath();ctx.rect(hx-5,hy-5,10,10);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#2f6fed';ctx.lineWidth=1.5;ctx.stroke();}
   }
+}
+function drawFlashedObject(){
+  if(!flashVisible||flashedObjectId==null)return;
+  const o=getById(flashedObjectId);if(!o)return;
+  const b=normBox(bbox(o));
+  const x=sx(b.x),y=sy(b.y),w=b.w*scale,h=b.h*scale;
+  ctx.save();
+  ctx.strokeStyle='#facc15';ctx.fillStyle='rgba(250,204,21,.38)';ctx.lineWidth=8;
+  ctx.shadowColor='rgba(245,158,11,.95)';ctx.shadowBlur=24;
+  ctx.fillRect(x-14,y-14,Math.max(28,w+28),Math.max(28,h+28));
+  ctx.strokeRect(x-14,y-14,Math.max(28,w+28),Math.max(28,h+28));
+  ctx.restore();
 }
 function unionScreenBox(){
   let ux=Infinity,uy=Infinity,uxx=-Infinity,uyy=-Infinity;
@@ -806,6 +848,16 @@ let curColor='#1a1a1a',curFill='#111111',curLw=2,curSize=16,curFont='Arial',
 const props=document.getElementById('props');
 function syncProps(){
   const ids=[...selection];
+  const selected=ids.length===1?getById(ids[0]):null;
+  const names={text:'Текст',rect:'Прямоугольник',ellipse:'Овал',line:'Линия',arrow:'Стрелка',pen:'Рисунок',image:'Картинка'};
+  bridge('SELECTION',{
+    objectId:selected?.id??null,
+    label:selected
+      ? (selected.type==='text'&&selected.text
+          ? String(selected.text).replace(/\s+/g,' ').trim().slice(0,70)
+          : (names[selected.type]||selected.type)+' #'+selected.id)
+      : null
+  });
   if(!ids.length){props.style.display='none';return;}
   props.style.display='block';
   const o=getById(ids[0]);
@@ -943,24 +995,87 @@ window.addEventListener('paste',e=>{
 
 // ---------- Save / Load JSON ----------
 function saveJson(){
-  const data={version:1,name:boardName,objects:objects.map(o=>{const c={...o};delete c.__x;return c;})};
+  const data=exportScene();
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(boardName||'whiteboard')+'.json';a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 document.getElementById('fileJson').addEventListener('change',e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=()=>loadJsonText(r.result);r.readAsText(f);}e.target.value='';});
-function loadJsonText(txt){
+function loadJsonText(txt,fromBridge=false){
   let data;try{data=JSON.parse(txt);}catch(err){alert('Не удалось прочитать JSON: '+err.message);return;}
   if(!data||!Array.isArray(data.objects)){alert('Формат не распознан: нужен объект с полем "objects".');return;}
-  pushUndo();
+  if(CAN_EDIT&&!fromBridge)pushUndo();
   boardName=data.name||'whiteboard';
   objects=data.objects.map(o=>normalizeLoaded(o));
   nextId=objects.reduce((m,o)=>Math.max(m,o.id||0),0)+1;
   selection.clear();
+  if(focusedObjectId!=null&&!getById(focusedObjectId))focusedObjectId=null;
+  if(flashedObjectId!=null&&!getById(flashedObjectId)){
+    flashedObjectId=null;flashVisible=false;flashRun++;
+  }
   // preload images
   for(const o of objects)if(o.type==='image'&&o._imgSrc)getImg(o._imgSrc);
-  syncProps();zoomFit();
+  syncProps();
+  if(focusedObjectId!=null)focusObject(focusedObjectId);else zoomFit();
 }
+
+function focusObject(id){
+  const objectId=id==null?null:Math.trunc(Number(id));
+  const o=objectId==null?null:getById(objectId);
+  focusedObjectId=o?objectId:null;
+  selection.clear();syncProps();
+  if(!o){render();return;}
+
+  const b=normBox(bbox(o));
+  scale=1;
+  offX=innerWidth/2-(b.x+b.w/2)*scale;
+  offY=innerHeight/2-(b.y+b.h/2)*scale;
+  updateZoomLabel();render();
+}
+
+function flashObject(id){
+  const objectId=Math.trunc(Number(id));
+  const o=Number.isFinite(objectId)?getById(objectId):null;
+  const run=++flashRun;
+  flashedObjectId=o?objectId:null;
+  flashVisible=false;
+  if(!o){render();return;}
+
+  // Подсветка не трогает выбранный учеником масштаб. Если объект ушёл за
+  // экран после его собственного панорамирования, только возвращаем объект
+  // в центр — иначе две вспышки пройдут там, где ученик их не увидит.
+  const b=normBox(bbox(o));
+  const left=sx(b.x),top=sy(b.y),right=sx(b.x+b.w),bottom=sy(b.y+b.h);
+  const visible=right>=0&&left<=innerWidth&&bottom>=0&&top<=innerHeight;
+  if(!visible){
+    offX=innerWidth/2-(b.x+b.w/2)*scale;
+    offY=innerHeight/2-(b.y+b.h/2)*scale;
+  }
+  render();
+
+  // Две длинные яркие вспышки хорошо заметны даже во время разговора.
+  [[0,true],[360,false],[560,true],[920,false]].forEach(([delay,visible])=>{
+    setTimeout(()=>{
+      if(run!==flashRun)return;
+      flashVisible=visible;
+      if(!visible&&delay===920)flashedObjectId=null;
+      render();
+    },delay);
+  });
+}
+
+window.addEventListener('message',event=>{
+  if(event.origin!==location.origin||event.source!==parent)return;
+  const message=event.data;
+  if(!message||message.channel!==BRIDGE_CHANNEL)return;
+  if(message.type==='LOAD'&&message.scene){
+    loadJsonText(JSON.stringify(message.scene),true);
+  }else if(message.type==='FOCUS'){
+    focusObject(message.objectId);
+  }else if(message.type==='FLASH'){
+    flashObject(message.objectId);
+  }
+});
 function normalizeLoaded(o){
   const n={...o};
   if(typeof n.id!=='number')n.id=nextId++;
@@ -1014,7 +1129,7 @@ window.addEventListener('keyup',e=>{if(e.code==='Space'){spaceDown=false;canvas.
 setTool('select');
 offX=innerWidth/2;offY=innerHeight/2;
 resize();updateZoomLabel();
-if(!restorePersistedBoard()){
+if(EMBEDDED||!restorePersistedBoard()){
   loadJsonText(JSON.stringify(MENDEL_STARTER_BOARD));
   // Open the long lesson at the top instead of shrinking all slides into one tiny view.
   scale=Math.min(.65,Math.max(.25,(innerWidth-80)/2400));
@@ -1024,6 +1139,7 @@ if(!restorePersistedBoard()){
 }
 persistReady=true;
 schedulePersist();
+bridge('READY');
 
 // Programmatic API (handy for tests / embedding): WB.load(jsonStringOrObject)
 window.WB={

@@ -12,7 +12,6 @@ import {
   IconMaterials,
   IconStar,
   IconChevronRight,
-  IconCalendar,
   IconVideo,
   IconMessage,
   IconGlobe,

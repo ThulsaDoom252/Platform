@@ -9,13 +9,23 @@
  * человек в уроке.
  */
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users, classMessages, lessons, lessonPackages } from "@/lib/db/schema";
+import {
+  users,
+  activityGames,
+  classMessages,
+  classVocabularyWords,
+  lessons,
+  lessonPackages,
+} from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { daysLeftInWeek } from "@/lib/class-order";
 import { IRREGULAR_VERBS_BASE, verbKey } from "@/lib/irregular-verbs-base";
-import { asPanel, type ClassPanel } from "@/lib/class-panels";
+import {
+  normalizeClassVideoState,
+  type ClassVideoState,
+} from "@/lib/class-video";
 
 /** Сколько отметка держится за «онлайн». */
 const ONLINE_WINDOW_MS = 75_000;
@@ -38,6 +48,21 @@ export type ClassPerson = {
   lessons: ClassLesson[];
   /** Остаток уроков: у общего пакета — общий, иначе личный. */
   balance: number;
+};
+
+export type ClassPartnerProfile = {
+  name: string;
+  avatarUrl: string | null;
+  email: string | null;
+  phone: string | null;
+  telegram: string | null;
+  viber: string | null;
+  contactNote: string | null;
+  hobby: string | null;
+  goal: string | null;
+  homeland: string | null;
+  country: string | null;
+  city: string | null;
 };
 
 export type ClassMessage = {
@@ -67,7 +92,12 @@ const isOnline = (seen: Date | null) =>
  */
 export async function heartbeatAction(): Promise<{
   role: "TEACHER" | "STUDENT";
-  partner: { id: string; name: string; presence: Presence } | null;
+  partner: {
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+    presence: Presence;
+  } | null;
   unread: number;
 }> {
   const session = await requireUser();
@@ -89,15 +119,30 @@ export async function heartbeatAction(): Promise<{
   const [partnerRow] = role === "TEACHER"
     ? me?.classWithId
       ? await db
-          .select({ id: users.id, name: users.name, lastSeenAt: users.lastSeenAt })
+          .select({
+            id: users.id,
+            name: users.name,
+            avatarUrl: users.avatarUrl,
+            lastSeenAt: users.lastSeenAt,
+          })
           .from(users)
-          .where(eq(users.id, me.classWithId))
+          .where(and(eq(users.id, me.classWithId), eq(users.role, "STUDENT")))
           .limit(1)
       : []
     : await db
-        .select({ id: users.id, name: users.name, lastSeenAt: users.lastSeenAt })
+        .select({
+          id: users.id,
+          name: users.name,
+          avatarUrl: users.avatarUrl,
+          lastSeenAt: users.lastSeenAt,
+        })
         .from(users)
-        .where(eq(users.classWithId, session.userId))
+        .where(
+          and(
+            eq(users.classWithId, session.userId),
+            eq(users.role, "TEACHER"),
+          ),
+        )
         .limit(1);
 
   const studentId = role === "TEACHER" ? (me?.classWithId ?? null) : session.userId;
@@ -124,11 +169,47 @@ export async function heartbeatAction(): Promise<{
       ? {
           id: partnerRow.id,
           name: partnerRow.name,
+          avatarUrl: partnerRow.avatarUrl,
           presence: isOnline(partnerRow.lastSeenAt) ? "online" : "offline",
         }
       : null,
     unread,
   };
+}
+
+/** Публичная карточка именно того учителя, который сейчас ведёт класс. */
+export async function classTeacherProfileAction(): Promise<{
+  profile?: ClassPartnerProfile;
+  error?: string;
+}> {
+  const session = await requireUser();
+  if (session.role !== "STUDENT") return { error: "Профиль доступен ученику" };
+
+  const [teacher] = await db
+    .select({
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      email: users.email,
+      phone: users.phone,
+      telegram: users.telegram,
+      viber: users.viber,
+      contactNote: users.contactNote,
+      hobby: users.hobby,
+      goal: users.goal,
+      homeland: users.homeland,
+      country: users.country,
+      city: users.city,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.role, "TEACHER"),
+        eq(users.classWithId, session.userId),
+      ),
+    )
+    .limit(1);
+
+  return teacher ? { profile: teacher } : { error: "Учитель ещё не открыл класс" };
 }
 
 /** Ученики для выбора класса — с присутствием и непрочитанным. */
@@ -459,26 +540,39 @@ export async function quickVerbsAction(): Promise<QuickVerb[]> {
 /* ------------------------------------------------------------------ */
 
 export type ClassSync = {
-  /** Куда учителя просят перейти — никуда: команды идут только ученику. */
-  focus: { panel: ClassPanel; at: string } | null;
-  /** Что открыто у собеседника. */
-  partnerWhere: ClassPanel | null;
+  /** Какой выданный урок сейчас открыт в классе. */
+  lessonAssignmentId: string | null;
+  /** Явная команда только для доски или возврата к уроку. */
+  view: {
+    target: "BOARD" | "LESSON" | "GAME" | "TWISTER";
+    at: string;
+    boardObjectId: number | null;
+    boardCommand: "SHOW" | "FOCUS" | "FLASH" | null;
+    gameId: string | null;
+  } | null;
+  /** Учителю: открыта ли доска у ученика прямо сейчас. */
+  partnerOnBoard: boolean;
+  /** Состояние общего плеера текущей пары в классе. */
+  video: ClassVideoState | null;
+  /** Последние добавления нужны для заметного уведомления обоим участникам. */
+  vocabularyEvents: {
+    id: string;
+    english: string;
+    translation: string;
+    createdAt: string;
+  }[];
 };
 
 /**
- * Сказать, где я, и узнать, где собеседник.
- *
- * Отдельно от heartbeatAction и заметно чаще: отметка о живости может
- * опоздать на полминуты, а «перейди на доску» посреди урока — нет.
- * Поэтому здесь только два поля и ни одного лишнего запроса.
+ * Узнать, какой урок сейчас открыт в классе. Панели у каждого свои:
+ * сервер больше не хранит и не пересылает переключения нижнего меню.
  */
-export async function classSyncAction(where: string | null): Promise<ClassSync> {
+export async function classSyncAction(onBoard = false): Promise<ClassSync> {
   const session = await requireUser();
-  const mine = asPanel(where);
 
   await db
     .update(users)
-    .set({ classWhere: mine, lastSeenAt: new Date() })
+    .set({ classWhere: onBoard ? "board" : null, lastSeenAt: new Date() })
     .where(eq(users.id, session.userId));
 
   const [me] = await db
@@ -491,59 +585,148 @@ export async function classSyncAction(where: string | null): Promise<ClassSync> 
     .where(eq(users.id, session.userId))
     .limit(1);
 
-  if (!me) return { focus: null, partnerWhere: null };
+  if (!me) {
+    return {
+      lessonAssignmentId: null,
+      view: null,
+      partnerOnBoard: false,
+      video: null,
+      vocabularyEvents: [],
+    };
+  }
 
   // У учителя собеседник записан в поле, у ученика — тот, кто выбрал его.
   const [partner] =
     me.role === "TEACHER"
       ? me.classWithId
         ? await db
-            .select({ classWhere: users.classWhere })
+            .select({ classWhere: users.classWhere, classFocus: users.classFocus })
             .from(users)
             .where(eq(users.id, me.classWithId))
             .limit(1)
         : []
       : await db
-          .select({ classWhere: users.classWhere })
+          .select({ classWhere: users.classWhere, classFocus: users.classFocus })
           .from(users)
-          .where(eq(users.classWithId, session.userId))
+          .where(and(eq(users.classWithId, session.userId), eq(users.role, "TEACHER")))
           .limit(1);
 
-  const focus = me.role === "TEACHER" ? null : me.classFocus;
-  const panel = asPanel(focus?.panel);
+  const studentId = me.role === "TEACHER" ? me.classWithId : session.userId;
+  const vocabularyEvents = studentId
+    ? await db
+        .select({
+          id: classVocabularyWords.id,
+          english: classVocabularyWords.english,
+          translation: classVocabularyWords.translation,
+          createdAt: classVocabularyWords.createdAt,
+        })
+        .from(classVocabularyWords)
+        .where(eq(classVocabularyWords.studentId, studentId))
+        .orderBy(desc(classVocabularyWords.createdAt))
+        .limit(8)
+    : [];
 
   return {
-    focus: panel && focus?.at ? { panel, at: focus.at } : null,
-    partnerWhere: asPanel(partner?.classWhere),
+    lessonAssignmentId:
+      me.role === "TEACHER"
+        ? (partner?.classFocus?.lessonAssignmentId ?? null)
+        : (me.classFocus?.lessonAssignmentId ?? null),
+    view:
+      me.role === "STUDENT" &&
+      !!partner &&
+      (me.classFocus?.view === "BOARD" ||
+        me.classFocus?.view === "LESSON" ||
+        me.classFocus?.view === "GAME" ||
+        me.classFocus?.view === "TWISTER") &&
+      me.classFocus.at
+        ? {
+            target: me.classFocus.view,
+            at: me.classFocus.at,
+            boardObjectId: me.classFocus.boardObjectId ?? null,
+            gameId:
+              me.classFocus.view === "GAME"
+                ? (me.classFocus.gameId ?? null)
+                : null,
+            boardCommand:
+              me.classFocus.view !== "BOARD"
+                ? null
+                : me.classFocus.boardCommand === "SHOW" ||
+                    me.classFocus.boardCommand === "FOCUS" ||
+                    me.classFocus.boardCommand === "FLASH"
+                  ? me.classFocus.boardCommand
+                  : me.classFocus.boardObjectId
+                    ? "FOCUS"
+                    : "SHOW",
+          }
+        : null,
+    partnerOnBoard: me.role === "TEACHER" && partner?.classWhere === "board",
+    video: normalizeClassVideoState(
+      me.role === "TEACHER"
+        ? partner?.classFocus?.videoState
+        : me.classFocus?.videoState,
+    ),
+    vocabularyEvents: vocabularyEvents.map((event) => ({
+      ...event,
+      createdAt: event.createdAt.toISOString(),
+    })),
   };
 }
 
 /**
- * Перевести ученика на нужную часть класса.
+ * Перевести ученика на игру.
  *
- * Сам по себе ученик за учителем не ходит: открытая учителем доска у
- * него не открывается. Это делается вручную и заметным действием,
- * иначе экран под ним прыгал бы всё занятие.
+ * Игра у ученика и так появляется сама, когда её запускают, но поверх
+ * неё может стоять доска — она во весь экран. Эта команда закрывает
+ * доску и возвращает ученика к игре: то же явное действие, что и
+ * «показать доску», только в обратную сторону.
  */
-export async function focusStudentAction(
-  panel: string,
-): Promise<{ error?: string }> {
+export async function showGameToStudentAction(gameId?: string): Promise<{ error?: string }> {
   const session = await requireUser();
-  const key = asPanel(panel);
-  if (!key) return { error: "Неизвестная часть класса" };
+  if (session.role !== "TEACHER") return { error: "Это может только учитель" };
 
   const [me] = await db
-    .select({ role: users.role, classWithId: users.classWithId })
+    .select({ classWithId: users.classWithId })
     .from(users)
     .where(eq(users.id, session.userId))
     .limit(1);
+  if (!me?.classWithId) return { error: "Класс не начат" };
 
-  if (me?.role !== "TEACHER") return { error: "Это может только учитель" };
-  if (!me.classWithId) return { error: "Класс не начат" };
+  const [student] = await db
+    .select({ classFocus: users.classFocus })
+    .from(users)
+    .where(and(eq(users.id, me.classWithId), eq(users.role, "STUDENT")))
+    .limit(1);
+  if (!student) return { error: "Ученик не найден" };
+
+  const requestedGameId = String(gameId ?? "");
+  if (requestedGameId) {
+    const [assigned] = await db
+      .select({ id: activityGames.id })
+      .from(activityGames)
+      .where(
+        and(
+          eq(activityGames.id, requestedGameId),
+          eq(activityGames.studentId, me.classWithId),
+          eq(activityGames.kind, "WORD_DECK"),
+        ),
+      )
+      .limit(1);
+    if (!assigned) return { error: "Эта игра не добавлена выбранному ученику" };
+  }
 
   await db
     .update(users)
-    .set({ classFocus: { panel: key, at: new Date().toISOString() } })
+    .set({
+      classFocus: {
+        at: new Date().toISOString(),
+        view: "GAME",
+        ...(requestedGameId ? { gameId: requestedGameId } : {}),
+        // Урок помним: закончится игра — ученику будет куда вернуться.
+        ...(student.classFocus?.lessonAssignmentId
+          ? { lessonAssignmentId: student.classFocus.lessonAssignmentId }
+          : {}),
+      },
+    })
     .where(eq(users.id, me.classWithId));
 
   return {};

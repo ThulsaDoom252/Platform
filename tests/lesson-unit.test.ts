@@ -1,8 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  alphaKey,
+  BRITISH_OPTION,
   canSee,
+  categoryKey,
+  findWords,
+  groupWords,
+  sortCategories,
+  sortWords,
+  type LessonWord,
   lineKey,
+  lexisBlockKey,
   lineWordKey,
   lineWords,
   openSections,
@@ -11,7 +20,13 @@ import {
   sectionKey,
   speakerTint,
   speakersOf,
-  toggleHighlight,
+  lessonFocus,
+  normalizeLessonHighlights,
+  toggleDialogueHighlight,
+  toggleWordFocus,
+  selectedLexisGroup,
+  selectLexisGroup,
+  yellowHighlights,
   wordKey,
   LESSON_SECTIONS,
 } from "../src/lib/lesson-unit";
@@ -41,6 +56,10 @@ test("секции идут в порядке урока, а не в поряд�
 
 test("чужое имя секции не проходит", () => {
   assert.deepEqual(openSections(["video", "хакер"]), ["vocab", "video"]);
+});
+
+test("настройка UK не превращается в секцию урока", () => {
+  assert.deepEqual(openSections(["video", BRITISH_OPTION]), ["vocab", "video"]);
 });
 
 // ---------- расшифровка ----------
@@ -114,26 +133,60 @@ test("испорченный ключ не разбирается", () => {
   assert.equal(parseKey("непонятно"), null);
 });
 
-test("тот же цвет на том же месте снимает подсветку", () => {
-  // Отдельная кнопка «убрать» заставляла бы целиться дважды.
-  const once = toggleHighlight({}, wordKey("a"), "red");
-  assert.deepEqual(once, { "word:a": "red" });
-  assert.deepEqual(toggleHighlight(once, wordKey("a"), "red"), {});
+test("фокус урока всегда оставляет только одно слово и цвет темы", () => {
+  const first = toggleWordFocus({}, wordKey("a"));
+  assert.equal(lessonFocus(first), wordKey("a"));
+  assert.equal(lessonFocus(toggleWordFocus(first, wordKey("b"))), wordKey("b"));
+  assert.deepEqual(toggleWordFocus({ "word:a": "red", "word:b": "green" }, wordKey("c")), {
+    __focus: "word:c",
+  });
 });
 
-test("другой цвет заменяет, а не добавляет", () => {
-  const red = toggleHighlight({}, lineKey(1), "red");
-  const green = toggleHighlight(red, lineKey(1), "green");
-  assert.deepEqual(green, { "line:1": "green" });
+test("повторный клик снимает фокус, а целая реплика не считается словом", () => {
+  const first = toggleWordFocus({}, lineWordKey(0, 2));
+  assert.deepEqual(toggleWordFocus(first, lineWordKey(0, 2)), {});
+  assert.deepEqual(toggleWordFocus(first, lineKey(0)), normalizeLessonHighlights(first));
 });
 
-test("подсветка одного места не трогает соседние", () => {
-  let marks: Record<string, string> = {};
-  marks = toggleHighlight(marks, wordKey("a"), "red");
-  marks = toggleHighlight(marks, lineKey(0), "amber");
-  marks = toggleHighlight(marks, wordKey("a"), "red");
+test("жёлтых выделений в диалоге может быть сколько угодно", () => {
+  let marks = toggleDialogueHighlight({}, lineWordKey(0, 2));
+  marks = toggleDialogueHighlight(marks, lineWordKey(1, 4));
+  marks = toggleDialogueHighlight(marks, lineKey(2));
 
-  assert.deepEqual(marks, { "line:0": "amber" });
+  assert.deepEqual(yellowHighlights(marks), {
+    "line:0:2": "yellow",
+    "line:1:4": "yellow",
+    "line:2": "yellow",
+  });
+});
+
+test("повторный клик снимает только выбранное жёлтое выделение", () => {
+  let marks = toggleDialogueHighlight({}, lineWordKey(0, 2));
+  marks = toggleDialogueHighlight(marks, lineWordKey(1, 4));
+  marks = toggleDialogueHighlight(marks, lineWordKey(0, 2));
+
+  assert.deepEqual(yellowHighlights(marks), { "line:1:4": "yellow" });
+});
+
+test("фокус и жёлтые выделения не стирают друг друга", () => {
+  let marks = toggleDialogueHighlight({}, lineWordKey(0, 2));
+  marks = toggleWordFocus(marks, lineWordKey(1, 4));
+
+  assert.equal(lessonFocus(marks), lineWordKey(1, 4));
+  assert.deepEqual(yellowHighlights(marks), { "line:0:2": "yellow" });
+});
+
+test("лексическая группа и её запись фокусируются независимо", () => {
+  let marks = selectLexisGroup({}, "group-1");
+  marks = toggleWordFocus(marks, lexisBlockKey("group-1", 3));
+
+  assert.equal(selectedLexisGroup(marks), "group-1");
+  assert.equal(lessonFocus(marks), lexisBlockKey("group-1", 3));
+  assert.deepEqual(parseKey(lexisBlockKey("group-1", 3)), {
+    kind: "lexisBlock",
+    groupId: "group-1",
+    block: 3,
+  });
 });
 
 // ---------- слова реплики ----------
@@ -150,7 +203,120 @@ test("пустая реплика не даёт слов", () => {
   assert.deepEqual(lineWords(""), []);
 });
 
-test("секций ровно пять и словник первый", () => {
-  assert.equal(LESSON_SECTIONS.length, 5);
+test("лексика идёт сразу после словника", () => {
+  assert.equal(LESSON_SECTIONS.length, 6);
   assert.equal(LESSON_SECTIONS[0], "vocab");
+  assert.equal(LESSON_SECTIONS[1], "lexis");
+});
+
+// ---------- словник урока ----------
+
+test("служебные to и артикли в алфавит не идут", () => {
+  /*
+   * Иначе половина словника собирается на «t» и «a», и глазами там
+   * ничего не найти.
+   */
+  assert.equal(alphaKey("to wonder"), "wonder");
+  assert.equal(alphaKey("a threat"), "threat");
+  assert.equal(alphaKey("an injury"), "injury");
+  assert.equal(alphaKey("the bill"), "bill");
+});
+
+test("знаки препинания в начале алфавит не сбивают", () => {
+  /*
+   * Важно, что «(have) got to» встаёт на букву h, а не в начало списка
+   * вместе со скобкой. Скобки внутри слова не трогаем — они часть
+   * записи.
+   */
+  assert.ok(alphaKey("(have) got to").startsWith("have"));
+  assert.equal(alphaKey("…menu"), "menu");
+});
+
+test("слово из одних служебных остаётся собой", () => {
+  assert.equal(alphaKey("to"), "to");
+  assert.equal(alphaKey(""), "");
+});
+
+test("слова встают по алфавиту, а не по порядку ввода", () => {
+  const list = [
+    { word: "to wonder" },
+    { word: "a threat" },
+    { word: "to concede" },
+    { word: "guts" },
+  ];
+  assert.deepEqual(sortWords(list).map((w) => w.word), [
+    "to concede",
+    "guts",
+    "a threat",
+    "to wonder",
+  ]);
+});
+
+test("сортировка не трогает исходный список", () => {
+  const list = [{ word: "b" }, { word: "a" }];
+  sortWords(list);
+  assert.deepEqual(list.map((w) => w.word), ["b", "a"]);
+});
+
+test("категории идут привычным порядком, а не алфавитным", () => {
+  const got = sortCategories(["💬 Phrases", "📦 Nouns", "🏃 Verbs"]);
+  assert.deepEqual(got, ["📦 Nouns", "🏃 Verbs", "💬 Phrases"]);
+});
+
+test("незнакомая категория встаёт в конец", () => {
+  const got = sortCategories(["Zebra words", "📦 Nouns"]);
+  assert.deepEqual(got, ["📦 Nouns", "Zebra words"]);
+});
+
+test("эмодзи и регистр категорию не раздваивают", () => {
+  assert.equal(categoryKey("🏃 Verbs"), categoryKey("verbs"));
+});
+
+test("словник раскладывается по категориям и алфавиту сразу", () => {
+  const groups = groupWords([
+    { word: "to wonder", category: "🏃 Verbs" },
+    { word: "a threat", category: "📦 Nouns" },
+    { word: "to concede", category: "🏃 Verbs" },
+    { word: "guts", category: "📦 Nouns" },
+  ]);
+
+  assert.deepEqual(groups.map((g) => g.category), ["📦 Nouns", "🏃 Verbs"]);
+  assert.deepEqual(groups[0].words.map((w) => w.word), ["guts", "a threat"]);
+  assert.deepEqual(groups[1].words.map((w) => w.word), ["to concede", "to wonder"]);
+});
+
+// ---------- поиск ----------
+
+const vocabWord = (word: string, extra: Partial<LessonWord> = {}): LessonWord => ({
+  id: word,
+  category: "📦 Nouns",
+  icon: null,
+  word,
+  ipaUs: null,
+  ipaUk: null,
+  translation: null,
+  description: null,
+  imageUrl: null,
+  ...extra,
+});
+
+test("ищем и по слову, и по переводу, и по описанию", () => {
+  const words = [
+    vocabWord("a wound", { translation: "рана", description: "a cut in the body" }),
+    vocabWord("guts", { translation: "сміливість", description: "courage" }),
+  ];
+
+  assert.deepEqual(findWords(words, "wound").map((w) => w.word), ["a wound"]);
+  assert.deepEqual(findWords(words, "сміл").map((w) => w.word), ["guts"]);
+  assert.deepEqual(findWords(words, "courage").map((w) => w.word), ["guts"]);
+});
+
+test("пустой запрос отдаёт весь словник", () => {
+  const words = [vocabWord("a"), vocabWord("b")];
+  assert.equal(findWords(words, "   ").length, 2);
+});
+
+test("регистр поиску не мешает", () => {
+  const words = [vocabWord("Headshot")];
+  assert.equal(findWords(words, "HEAD").length, 1);
 });

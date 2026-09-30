@@ -218,6 +218,15 @@ function collectIds(nodes: MaterialNode[], acc: string[] = []) {
   return acc;
 }
 
+function collectFolderIds(nodes: MaterialNode[], acc: string[] = []) {
+  for (const node of nodes) {
+    if (node.type !== "FOLDER") continue;
+    acc.push(node.id);
+    collectFolderIds(node.children, acc);
+  }
+  return acc;
+}
+
 function countFiles(node: MaterialNode): number {
   if (node.type === "FILE") return 1;
   return node.children.reduce((s, c) => s + countFiles(c), 0);
@@ -232,6 +241,7 @@ export function MaterialsExplorer({
   ownerName,
   emptyText,
   canExport = false,
+  initialNodeId,
 }: {
   tree: MaterialNode[];
   progress?: number;
@@ -247,6 +257,8 @@ export function MaterialsExplorer({
   ownerName?: string;
   /** Выгрузка страницы в текст и docx. Учитель может её отключить ученику. */
   canExport?: boolean;
+  /** Узел, к которому привёл глобальный поиск. */
+  initialNodeId?: string;
 }) {
   const { t } = useT();
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
@@ -391,16 +403,29 @@ export function MaterialsExplorer({
         if (n.children.length) walk(n.children, [...path, n]);
       }
     };
-    walk(tree, []);
+    walk(sortedTree, []);
     return { byId, pathById };
-  }, [tree]);
+  }, [sortedTree]);
 
   const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(tree.length ? [tree[0].id] : []),
+    () =>
+      new Set(
+        initialNodeId && pathById.has(initialNodeId)
+          ? pathById
+              .get(initialNodeId)!
+              .filter((node) => node.type === "FOLDER")
+              .map((node) => node.id)
+          : tree.length
+            ? [tree[0].id]
+            : [],
+      ),
   );
-  const [selectedId, setSelectedId] = useState<string | null>(tree[0]?.id ?? null);
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialNodeId && byId.has(initialNodeId) ? initialNodeId : (tree[0]?.id ?? null),
+  );
+  const [view, setView] = useState<"grid" | "list" | "interactive">("grid");
   const [pathOpen, setPathOpen] = useState(true);
+  const pathOpenBeforeInteractive = useRef(true);
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLElement>(null);
 
@@ -503,6 +528,24 @@ export function MaterialsExplorer({
         });
       });
     }
+  }
+
+  function changeView(next: "grid" | "list" | "interactive") {
+    if (next === "interactive") {
+      pathOpenBeforeInteractive.current = pathOpen;
+      setPathOpen(false);
+      setSelectedId(null);
+      setAnchorId(null);
+    } else if (view === "interactive") {
+      setPathOpen(pathOpenBeforeInteractive.current);
+      setSelectedId((current) => current ?? sortedTree[0]?.id ?? null);
+    }
+    setView(next);
+  }
+
+  function openInteractiveRoot() {
+    setSelectedId(null);
+    setAnchorId(null);
   }
 
   function openNode(node: MaterialNode) {
@@ -1255,6 +1298,8 @@ export function MaterialsExplorer({
       if (parent) {
         setAnchorId(parent.id);
         openNode(parent);
+      } else if (view === "interactive") {
+        openInteractiveRoot();
       }
       return;
     }
@@ -1291,7 +1336,12 @@ export function MaterialsExplorer({
   const isPhrasePage = selected?.type === "FILE" && !selected.fileKind;
   const contentNode =
     selected?.type === "FILE" ? breadcrumb[breadcrumb.length - 2] ?? null : selected;
-  const items = contentNode?.children ?? [];
+  const items = view === "interactive" && !selected
+    ? sortedTree
+    : contentNode?.children ?? [];
+  const folderIds = collectFolderIds(sortedTree);
+  const allFoldersExpanded = folderIds.length > 0
+    && folderIds.every((id) => expanded.has(id));
 
   /** Красный статус существует только в учительском интерфейсе. */
   const fixMarker = (n: MaterialNode) =>
@@ -1813,12 +1863,16 @@ export function MaterialsExplorer({
     <div
       ref={gridRef}
       style={{ "--tree-w": `${treeWidth}px` } as React.CSSProperties}
-      className="relative grid items-start gap-5 lg:grid-cols-[var(--tree-w)_minmax(0,1fr)]"
+      className={cn(
+        "relative grid items-start gap-5",
+        view !== "interactive" && pathOpen &&
+          "lg:grid-cols-[var(--tree-w)_minmax(0,1fr)]",
+      )}
     >
       {/* Полоса между панелью и содержимым: тянуть — менять ширину,
           двойной щелчок — вернуть обычную. На узком экране колонка одна,
           и делить нечего. */}
-      {pathOpen && (
+      {view !== "interactive" && pathOpen && (
         <div
           onPointerDown={startResize}
           onPointerMove={onResize}
@@ -1842,7 +1896,7 @@ export function MaterialsExplorer({
         className={cn(
           "materials-tree-panel scroll-mt-20 flex flex-col gap-4 rounded-2xl p-3.5 sm:p-4",
           pathOpen && "lg:max-h-[calc(100dvh-6rem)]",
-          !pathOpen && "is-collapsed",
+          (!pathOpen || view === "interactive") && "hidden",
         )}
       >
         <div className="flex items-center gap-1 px-1">
@@ -1873,6 +1927,20 @@ export function MaterialsExplorer({
                 })
               }
             />
+          )}
+
+          {pathOpen && folderIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpanded(
+                allFoldersExpanded ? new Set() : new Set(folderIds),
+              )}
+              title={allFoldersExpanded ? t.materials.collapseAll : t.materials.expandAll}
+              aria-label={allFoldersExpanded ? t.materials.collapseAll : t.materials.expandAll}
+              className="flex h-7 min-w-7 items-center justify-center rounded-lg px-1.5 text-xs font-black text-faint transition hover:bg-surface-2 hover:text-accent"
+            >
+              {allFoldersExpanded ? "⊟" : "⊞"}
+            </button>
           )}
 
           {pathOpen && (
@@ -1982,6 +2050,22 @@ export function MaterialsExplorer({
         )}
       </aside>
 
+      {/* Свёрнутое дерево не отнимает колонку у материала. Вернуть его
+          можно одной заметной кнопкой, которая остаётся под рукой даже
+          после длинной прокрутки страницы. В интерактивном режиме дерева
+          нет по определению, поэтому нет и этой кнопки. */}
+      {!pathOpen && view !== "interactive" && (
+        <button
+          type="button"
+          onClick={togglePathPanel}
+          title={t.materials.openPanel}
+          aria-label={t.materials.openPanel}
+          className="fixed bottom-20 left-4 z-30 flex h-13 w-13 items-center justify-center rounded-full bg-accent text-white shadow-xl ring-4 ring-page/80 transition hover:-translate-y-0.5 hover:shadow-2xl focus-visible:outline-none focus-visible:ring-accent-soft lg:bottom-5 lg:left-[5.25rem]"
+        >
+          <IconSprout className="h-6 w-6" />
+        </button>
+      )}
+
       {/* ---------- Содержимое ---------- */}
       <section
         ref={contentRef}
@@ -1993,9 +2077,25 @@ export function MaterialsExplorer({
         <div className="relative z-[8] lg:sticky lg:top-16 lg:-mx-6 lg:-mt-6 lg:mb-5 lg:border-b lg:border-line lg:bg-surface/95 lg:px-6 lg:pt-6 lg:pb-1 lg:backdrop-blur-md">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
+            {view === "interactive" && (
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={openInteractiveRoot}
+                  className={cn(
+                    "truncate transition",
+                    breadcrumb.length === 0
+                      ? "font-semibold text-content"
+                      : "text-muted hover:text-content",
+                  )}
+                >
+                  root
+                </button>
+              </span>
+            )}
             {breadcrumb.map((b, i) => (
               <span key={b.id} className="flex items-center gap-1">
-                {i > 0 && <IconChevronRight className="h-3.5 w-3.5 text-faint" />}
+                {(i > 0 || view === "interactive") && <IconChevronRight className="h-3.5 w-3.5 text-faint" />}
                 <button
                   type="button"
                   onClick={() => openNode(b)}
@@ -2022,7 +2122,7 @@ export function MaterialsExplorer({
           >
             <button
               type="button"
-              onClick={() => setView("grid")}
+              onClick={() => changeView("grid")}
               title={t.materials.viewGrid}
               className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-lg transition",
@@ -2033,7 +2133,7 @@ export function MaterialsExplorer({
             </button>
             <button
               type="button"
-              onClick={() => setView("list")}
+              onClick={() => changeView("list")}
               title={t.materials.viewList}
               className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-lg transition",
@@ -2041,6 +2141,17 @@ export function MaterialsExplorer({
               )}
             >
               <IconList className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => changeView("interactive")}
+              title={t.materials.viewInteractive}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg transition",
+                view === "interactive" ? "bg-accent text-white" : "text-muted hover:text-content",
+              )}
+            >
+              <IconMaterials className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -2487,15 +2598,15 @@ export function MaterialsExplorer({
             />
           ))}
 
-        {!isPhrasePage && !contentNode && (
+        {!isPhrasePage && !contentNode && view !== "interactive" && (
           <p className="py-16 text-center text-sm text-faint">{t.materials.selectFolder}</p>
         )}
 
-        {!isPhrasePage && contentNode && items.length === 0 && (
+        {!isPhrasePage && (contentNode || view === "interactive") && items.length === 0 && (
           <p className="py-16 text-center text-sm text-faint">{t.materials.emptyFolder}</p>
         )}
 
-        {!isPhrasePage && view === "grid" && items.length > 0 && (
+        {!isPhrasePage && (view === "grid" || view === "interactive") && items.length > 0 && (
           <div className="material-card-grid">
             {items.map((n) => (
               <div key={n.id} className="material-grid-item group relative">

@@ -14,6 +14,7 @@ import { RAIL_ONLY_OPEN, SidebarRail } from "@/components/sidebar-rail";
 import { StudentMobileNav } from "@/components/student/mobile-nav";
 import { NotificationBell } from "@/components/teacher/notification-bell";
 import { Avatar } from "@/components/avatar";
+import { GlobalSearch } from "@/components/global-search";
 import {
   IconCap,
   IconLogout,
@@ -91,6 +92,7 @@ export default async function StudentLayout({
               </Link>
 
               <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                <GlobalSearch role="STUDENT" />
                 {session.impersonatedBy && (
                   <form action={returnToTeacherAction}>
                     <button

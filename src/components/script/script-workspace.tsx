@@ -22,11 +22,6 @@ import { cn } from "@/lib/utils";
 const day = new Intl.DateTimeFormat("ru", { day: "numeric", month: "short" });
 const time = new Intl.DateTimeFormat("ru", { hour: "2-digit", minute: "2-digit" });
 
-const sameDay = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() &&
-  a.getMonth() === b.getMonth() &&
-  a.getDate() === b.getDate();
-
 export function ScriptWorkspace({ initial }: { initial?: ScriptLesson | null }) {
   const [open, setOpen] = useState<ScriptLesson | null>(initial ?? null);
   const [doc, setDoc] = useState<ScriptDoc | null>(null);

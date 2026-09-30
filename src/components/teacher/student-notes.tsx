@@ -5,13 +5,14 @@
  * о нём ведёт учитель. Одна панель, а не две: читают её сверху вниз, и
  * разрывать анкету на два блока с разными кнопками сохранения незачем.
  *
- * Анкета вверху только для чтения — её заполняет сам ученик у себя в
- * профиле. Уровень и цель правит учитель, но их ученик тоже видит,
+ * Анкета вверху общая: её заполняет ученик у себя в профиле, а учитель
+ * может поправить те же данные здесь. Уровень и цель ученик тоже видит,
  * поэтому они вынесены отдельно и подписаны.
  */
 import { useActionState } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
+  saveStudentProfileFieldsAction,
   saveStudentNotesAction,
   type StudentNotesState,
 } from "@/lib/actions/teacher";
@@ -23,7 +24,7 @@ const areaCls =
   "w-full resize-y rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
 export type StudentCard = {
-  /** Анкета — её ведёт сам ученик. */
+  /** Общая анкета — её видят и могут менять обе стороны. */
   email: string | null;
   phone: string | null;
   telegram: string | null;
@@ -55,6 +56,13 @@ export function StudentNotes({
   card: StudentCard;
 }) {
   const { t } = useT();
+  const [profileState, profileAction, profilePending] = useActionState<
+    StudentNotesState,
+    FormData
+  >(
+    saveStudentProfileFieldsAction,
+    {},
+  );
   const [state, formAction, pending] = useActionState<StudentNotesState, FormData>(
     saveStudentNotesAction,
     {},
@@ -120,21 +128,38 @@ export function StudentNotes({
       <p className="font-semibold text-content">{t.profile.studentFilled}</p>
       <p className="mt-0.5 text-[12px] text-faint">{t.profile.studentFilledHint}</p>
 
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl bg-surface-2 px-3.5 py-2">
-          {row(t.profile.email, card.email)}
-          {row(t.profile.phone, card.phone)}
-          {row(t.profile.telegram, card.telegram)}
-          {row(t.profile.viber, card.viber)}
-          {row(t.profile.contactNote, card.contactNote)}
+      <form action={profileAction} className="mt-3">
+        <input type="hidden" name="studentId" value={studentId} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-3.5">
+            {field(t.profile.email, "email", card.email)}
+            {field(t.profile.phone, "phone", card.phone)}
+            {field(t.profile.telegram, "telegram", card.telegram)}
+            {field(t.profile.viber, "viber", card.viber)}
+            {area(t.profile.contactNote, "contactNote", card.contactNote)}
+          </div>
+          <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-3.5">
+            {field(t.profile.hobby, "hobby", card.hobby)}
+            {field(t.profile.homeland, "homeland", card.homeland)}
+            {field(t.profile.country, "country", card.country)}
+            {field(t.profile.city, "city", card.city)}
+          </div>
         </div>
-        <div className="rounded-xl bg-surface-2 px-3.5 py-2">
-          {row(t.profile.hobby, card.hobby)}
-          {row(t.profile.homeland, card.homeland)}
-          {row(t.profile.country, card.country)}
-          {row(t.profile.city, card.city)}
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={profilePending}
+            className="h-10 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {t.profile.saveChanges}
+          </button>
+          {profileState.error && (
+            <p className="text-sm text-rose-500">{profileState.error}</p>
+          )}
+          {profileState.ok && <p className="text-sm text-accent">{t.common.saved}</p>}
         </div>
-      </div>
+      </form>
 
       {/* 2. Информация для учителя */}
       <div className="mt-6 border-t border-line pt-5">

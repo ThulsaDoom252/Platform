@@ -13,7 +13,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 /** Папки внутри public/uploads, которыми владеет платформа. */
-export const STORE_DIRS = ["words", "twisters"] as const;
+export const STORE_DIRS = ["words", "twisters", "activities"] as const;
 export type StoreDir = (typeof STORE_DIRS)[number];
 
 /** Папка картинок словника — она же по умолчанию. */

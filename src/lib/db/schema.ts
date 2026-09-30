@@ -1,4 +1,10 @@
 import type { RuleBlock, RuleBlockVariant } from "@/lib/rule-blocks";
+import type { TwisterStroke } from "@/lib/twister-drawing";
+import type { ClassVideoState } from "@/lib/class-video";
+import type {
+  WordDeckSettings,
+  WordDeckSourceCard,
+} from "@/lib/word-deck";
 import {
   pgTable,
   uuid,
@@ -8,6 +14,7 @@ import {
   boolean,
   jsonb,
   pgEnum,
+  index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -43,6 +50,11 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   login: text("login").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  /**
+   * Обратимая копия ученического пароля для учителя, зашифрованная
+   * AES-GCM. У учителя это поле всегда null.
+   */
+  passwordVault: text("password_vault"),
   role: roleEnum("role").notNull(),
   avatarUrl: text("avatar_url"),
   theme: themeEnum("theme").notNull().default("LIGHT"),
@@ -88,7 +100,27 @@ export const users = pgTable("users", {
    * панель сработала: без него второй вызов на доску ничем не
    * отличался бы от первого и был бы проглочен.
    */
-  classFocus: jsonb("class_focus").$type<{ panel: string; at: string }>(),
+  classFocus: jsonb("class_focus").$type<{
+    panel?: string;
+    at: string;
+    /** Явная команда показа: обычные панели остаются индивидуальными. */
+    view?: "BOARD" | "LESSON" | "GAME" | "TWISTER";
+    /** Объект, который надо показать в центре доски ученика. */
+    boardObjectId?: number | null;
+    /** Что сделать на доске: открыть, сфокусировать или мигнуть объектом. */
+    boardCommand?: "SHOW" | "FOCUS" | "FLASH";
+    /** Урок, который учитель сейчас открыл этому ученику в классе. */
+    lessonAssignmentId?: string;
+    /** Назначенная ученику колода, которую учитель открыл поверх урока. */
+    gameId?: string;
+    /** Временный полноэкранный просмотр скороговорки и совместный рисунок. */
+    twisterId?: string;
+    twisterSessionId?: string;
+    twisterStrokes?: TwisterStroke[];
+    twisterStudentDrawingAllowed?: boolean;
+    /** Синхронный плеер текущего выданного урока. */
+    videoState?: ClassVideoState;
+  }>(),
   /** Цифры за весь период показывать как приблизительные. */
   statsApproximate: boolean("stats_approximate").notNull().default(false),
   /** Что из баланса и статистики видит сам ученик. */
@@ -485,6 +517,8 @@ export const homework = pgTable("homework", {
   }),
   title: text("title").notNull(),
   description: text("description"),
+  /** Необязательная сохранённая карточная активность. */
+  activityId: uuid("activity_id"),
   status: homeworkStatusEnum("status").notNull().default("NOT_DONE"),
   teacherFeedback: text("teacher_feedback"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -687,10 +721,30 @@ export type GameCard = {
   imageUrl: string;
   /** Что на лицевой стороне именно этой карты. */
   face: "PICTURE" | "TRANSLATION";
+  /** Для WORD_DECK: кому досталась карта в альтернативном режиме. */
+  owner?: "TEACHER" | "STUDENT" | null;
+  instanceId?: string;
 };
 
 /** Как ответили на карту. null — до неё ещё не дошли. */
 export type GameVerdict = "right" | "wrong" | "timeout";
+
+/** Сохранённый шаблон карточной игры в разделе Activities. */
+export const wordDeckActivities = pgTable("word_deck_activities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  authorId: uuid("author_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  nodeId: uuid("node_id").references(() => materialNodes.id, {
+    onDelete: "set null",
+  }),
+  cards: jsonb("cards").$type<WordDeckSourceCard[]>().default([]).notNull(),
+  settings: jsonb("settings").$type<WordDeckSettings>().notNull(),
+  backgroundImageUrl: text("background_image_url"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 /**
  * Партия «Угадай по картинке».
@@ -706,6 +760,17 @@ export const activityGames = pgTable("activity_games", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   kind: text("kind").notNull().default("GUESS_PICTURE"),
+  /** Из какого сохранённого шаблона создана партия WORD_DECK. */
+  templateId: uuid("template_id").references(() => wordDeckActivities.id, {
+    onDelete: "set null",
+  }),
+  /** Настройки и фон снимаются вместе с колодой на момент запуска. */
+  wordDeck: jsonb("word_deck").$type<{
+    settings: WordDeckSettings;
+    backgroundImageUrl: string | null;
+    /** Снимок выбранных слов: назначение не зависит от дальнейших правок шаблона. */
+    cards: WordDeckSourceCard[];
+  }>(),
   /**
    * Чем спрашиваем.
    *
@@ -867,6 +932,16 @@ export const wordRevisionAttemptsRelations = relations(
 /* Уроки                                                               */
 /* ------------------------------------------------------------------ */
 
+export type LessonLexisGroupData = {
+  id: string;
+  source: string;
+  title: string;
+  intro: string | null;
+  blocks: RuleBlock[];
+  warnings: string[];
+  sourceNodeId: string | null;
+};
+
 /**
  * Урок как заготовка.
  *
@@ -876,8 +951,8 @@ export const wordRevisionAttemptsRelations = relations(
  * заготовки — только содержимое.
  *
  * Обычный урок — заголовок и домашка. Урок-активность собран из секций:
- * словник, видео, расшифровка, вопросы, домашка. Секции не в отдельной
- * таблице: их пять, они заранее известны и у каждой своя форма, так что
+ * словник, лексика, видео, расшифровка, вопросы, домашка. Секции не в отдельной
+ * таблице: их шесть, они заранее известны и у каждой своя форма, так что
  * строки с общим «content» были бы честнее только на вид.
  */
 export const lessonUnits = pgTable("lesson_units", {
@@ -899,6 +974,13 @@ export const lessonUnits = pgTable("lesson_units", {
   vocabNodeId: uuid("vocab_node_id").references(() => materialNodes.id, {
     onDelete: "set null",
   }),
+  /**
+   * Разобранные группы Lexis вместе с исходниками. Это снимки: дальнейшая
+   * правка материалов не меняет уже собранный урок без решения учителя.
+   */
+  // Старый одиночный объект остаётся в типе только для безопасного
+  // чтения уже сохранённых уроков; любое следующее изменение пишет массив.
+  lexis: jsonb("lexis").$type<LessonLexisGroupData | LessonLexisGroupData[]>(),
   videoUrl: text("video_url"),
   videoTitle: text("video_title"),
   /** Реплики расшифровки: [{ speaker, text }] в порядке разговора. */
@@ -907,6 +989,8 @@ export const lessonUnits = pgTable("lesson_units", {
   questions: jsonb("questions").$type<{ afterVideo: string[]; afterReading: string[] }>(),
   /** Задания домашки: [{ title, text }]. */
   homework: jsonb("homework").$type<{ title: string; text: string }[]>(),
+  /** Сохранённые игры, прикреплённые к этому уроку. */
+  activityIds: jsonb("activity_ids").$type<string[]>().default([]).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -935,11 +1019,11 @@ export const lessonAssignments = pgTable("lesson_assignments", {
    */
   openSections: jsonb("open_sections").$type<string[]>().default([]).notNull(),
   /**
-   * Подсветки учителя: ключ места — цвет.
+   * Состояние показа во время урока: один ключ текущего фокуса и любое
+   * количество независимых жёлтых выделений в диалоге.
    *
-   * Ключ говорит, что подсвечено: слово словника, реплика целиком или
-   * слово в реплике. Живёт здесь, а не в уроке: у каждого ученика
-   * подчёркнуто своё.
+   * Цвет фокуса берётся из темы смотрящего. Состояние живёт здесь, а не
+   * в заготовке урока: у каждого ученика оно своё.
    */
   highlights: jsonb("highlights").$type<Record<string, string>>().default({}).notNull(),
   /** Ответы ученика по домашке этого урока — его собственная копия. */
@@ -963,4 +1047,60 @@ export const studentBoards = pgTable("student_boards", {
   /** Сцена доски целиком, как её отдаёт сама доска. */
   scene: jsonb("scene"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Быстрый словник класса.
+ *
+ * Пул принадлежит ученику, а не уроку и не учителю: новый ученик всегда
+ * начинает с пустого списка, а смена урока его накопленные слова не стирает.
+ */
+export const classVocabularyWords = pgTable(
+  "class_vocabulary_words",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addedById: uuid("added_by_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    english: text("english").notNull(),
+    translation: text("translation").notNull(),
+    translationLang: vocabLangEnum("translation_lang").notNull().default("UK"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("class_vocabulary_student_created_idx").on(
+      table.studentId,
+      table.createdAt,
+    ),
+  ],
+);
+
+/**
+ * Слово в словнике урока.
+ *
+ * Урок держит свой список, а не ссылку на материалы: словник в уроке
+ * живёт своей жизнью — его чистят, дополняют и перекладывают по
+ * категориям под конкретное занятие, и материалы от этого меняться не
+ * должны. Наполнить из материалов можно, но это разовое копирование.
+ */
+export const lessonWords = pgTable("lesson_words", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  unitId: uuid("unit_id")
+    .notNull()
+    .references(() => lessonUnits.id, { onDelete: "cascade" }),
+  /** Nouns, Verbs, Adjectives, Phrases, Idioms — как назвал учитель. */
+  category: text("category").notNull().default(""),
+  icon: text("icon"),
+  word: text("word").notNull(),
+  ipaUs: text("ipa_us"),
+  ipaUk: text("ipa_uk"),
+  translation: text("translation"),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  /** Порядок внутри категории на случай ручной раскладки. */
+  sortOrder: integer("sort_order").notNull().default(0),
 });

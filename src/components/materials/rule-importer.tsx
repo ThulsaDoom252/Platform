@@ -50,7 +50,7 @@ export function RuleImporter({
     if (!saved) return null;
     return { ...parseRuleText(saved), source: "text", sourceText: saved };
   });
-  const [applyTitle, setApplyTitle] = useState(true);
+  const [applyTitle, setApplyTitle] = useState(false);
   const [state, formAction, pending] = useActionState<BlocksState, FormData>(
     saveRuleBlocksAction,
     {},

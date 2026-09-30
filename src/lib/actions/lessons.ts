@@ -8,32 +8,50 @@
  * (lesson_assignments). Поэтому один урок раздаётся скольким угодно
  * ученикам, у каждого своя история, а исходник остаётся исходником.
  *
- * Словник урока живёт ссылкой на материалы: слова с описаниями,
- * транскрипциями и картинками уже собраны там, и вторая копия разошлась
- * бы с первой на первой же правке.
+ * Словник урока наполняется разовой копией из материалов. Поэтому его
+ * можно перестроить под занятие, не меняя исходный словник ученика.
  */
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   lessonAssignments,
   lessonUnits,
+  lessonWords,
+  materialBlocks,
   materialNodes,
   materialPhrases,
   notifications,
   phraseImages,
   users,
+  wordDeckActivities,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { parseLexisDocuments } from "@/lib/keyed-parser";
+import { sanitizeBlocks, type RuleBlock } from "@/lib/rule-blocks";
 import {
-  isHighlight,
+  BRITISH_OPTION,
+  isDialogueHighlightKey,
+  isWordFocusKey,
   isSection,
+  normalizeLessonHighlights,
   openSections,
+  parseKey,
   parseTranscript,
-  toggleHighlight,
+  selectLexisGroup,
+  toggleWordFocus,
+  toggleDialogueHighlight,
   type LessonSection,
+  type LessonWord,
   type TranscriptLine,
 } from "@/lib/lesson-unit";
+import { normalizeWordDeckSettings, type WordDeckSettings, type WordDeckSourceCard } from "@/lib/word-deck";
+import {
+  expectedClassVideoTime,
+  normalizeClassVideoState,
+  type ClassVideoState,
+} from "@/lib/class-video";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -53,6 +71,43 @@ async function requireUser() {
 
 export type LessonKind = "REGULAR" | "ACTIVITY";
 
+export type LessonLexisGroup = {
+  id: string;
+  source: string;
+  title: string;
+  intro: string | null;
+  blocks: RuleBlock[];
+  warnings: string[];
+  sourceNodeId: string | null;
+};
+
+/** Старый одиночный объект читается как массив из одной группы. */
+function lessonLexisGroups(value: unknown): LessonLexisGroup[] {
+  const source = Array.isArray(value) ? value : value ? [value] : [];
+  return source.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    const blocks = sanitizeBlocks(Array.isArray(item.blocks) ? item.blocks : []);
+    if (!blocks.some((block) => block.type === "word")) return [];
+    return [{
+      id:
+        typeof item.id === "string" && item.id && !item.id.includes(":")
+          ? item.id
+          : `legacy-${index}`,
+      source: typeof item.source === "string" ? item.source : "",
+      title: typeof item.title === "string" && item.title.trim()
+        ? item.title.trim()
+        : "Lexis",
+      intro: typeof item.intro === "string" && item.intro.trim()
+        ? item.intro.trim()
+        : null,
+      blocks,
+      warnings: Array.isArray(item.warnings) ? item.warnings.map(String) : [],
+      sourceNodeId: typeof item.sourceNodeId === "string" ? item.sourceNodeId : null,
+    }];
+  });
+}
+
 export type LessonCard = {
   id: string;
   kind: LessonKind;
@@ -61,6 +116,7 @@ export type LessonCard = {
   /** Чем урок наполнен — по этому видно, что ещё не сделано. */
   vocabName: string | null;
   words: number;
+  hasLexis: boolean;
   hasVideo: boolean;
   lines: number;
   questions: number;
@@ -119,6 +175,7 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
       description: unit.description,
       vocabName,
       words: unit.vocabNodeId ? (wordsOf.get(unit.vocabNodeId) ?? 0) : 0,
+      hasLexis: lessonLexisGroups(unit.lexis).length > 0,
       hasVideo: !!unit.videoUrl,
       lines: (unit.transcript ?? []).length,
       questions:
@@ -174,6 +231,7 @@ export type LessonEdit = {
   afterVideo?: string[];
   afterReading?: string[];
   homework?: { title: string; text: string }[];
+  activityIds?: string[];
 };
 
 export async function saveLessonAction(
@@ -236,6 +294,23 @@ export async function saveLessonAction(
       }))
       .filter((task) => task.title || task.text);
   }
+  if (edit.activityIds !== undefined) {
+    const requested = [...new Set((edit.activityIds ?? []).map(String).filter(Boolean))];
+    if (requested.length === 0) {
+      patch.activityIds = [];
+    } else {
+      const owned = await db
+        .select({ id: wordDeckActivities.id })
+        .from(wordDeckActivities)
+        .where(
+          and(
+            eq(wordDeckActivities.authorId, session.userId),
+            inArray(wordDeckActivities.id, requested),
+          ),
+        );
+      patch.activityIds = requested.filter((id) => owned.some((row) => row.id === id));
+    }
+  }
 
   await db.update(lessonUnits).set(patch).where(eq(lessonUnits.id, unitId));
   revalidatePath("/teacher/lessons");
@@ -246,19 +321,6 @@ export async function saveLessonAction(
 /* Урок целиком                                                        */
 /* ------------------------------------------------------------------ */
 
-export type LessonWord = {
-  phraseId: string;
-  icon: string | null;
-  word: string;
-  transcriptionUs: string | null;
-  transcriptionUk: string | null;
-  translation: string | null;
-  description: string | null;
-  imageUrl: string | null;
-  /** Категория из словника: Nouns, Adjectives, Idioms… */
-  category: string | null;
-};
-
 export type LessonView = {
   id: string;
   kind: LessonKind;
@@ -267,46 +329,140 @@ export type LessonView = {
   vocabNodeId: string | null;
   vocabName: string | null;
   words: LessonWord[];
+  lexis: LessonLexisGroup[];
   videoUrl: string | null;
   videoTitle: string | null;
   transcript: TranscriptLine[];
   questions: { afterVideo: string[]; afterReading: string[] };
   homework: { title: string; text: string }[];
+  activities: {
+    id: string;
+    title: string;
+    cards: WordDeckSourceCard[];
+    settings: WordDeckSettings;
+    backgroundImageUrl: string | null;
+  }[];
 };
 
-/** Слова словника в том виде, в каком их показывает урок. */
-async function wordsOfNode(nodeId: string | null): Promise<LessonWord[]> {
-  if (!nodeId) return [];
+/** Словник урока — свой, не ссылка на материалы. */
+async function wordsOfUnit(unitId: string): Promise<LessonWord[]> {
+  const rows = await db
+    .select()
+    .from(lessonWords)
+    .where(eq(lessonWords.unitId, unitId))
+    .orderBy(asc(lessonWords.sortOrder));
+
+  return rows.map((r) => ({
+    id: r.id,
+    category: r.category ?? "",
+    icon: r.icon,
+    word: r.word,
+    ipaUs: r.ipaUs,
+    ipaUk: r.ipaUk,
+    translation: r.translation,
+    description: r.description,
+    imageUrl: r.imageUrl,
+  }));
+}
+
+/**
+ * Наполнить словник урока из материалов.
+ *
+ * Разовое копирование, а не ссылка: в уроке словник чистят и
+ * перекладывают под конкретное занятие, и материалы от этого меняться
+ * не должны. Прежний список заменяется целиком — «наполнить» значит
+ * наполнить, а не подмешать.
+ */
+export async function fillVocabAction(
+  unitId: string,
+  nodeId: string,
+): Promise<{ added?: number; error?: string }> {
+  const session = await requireTeacher();
+  const id = String(unitId ?? "");
+
+  const [mine] = await db
+    .select({ id: lessonUnits.id })
+    .from(lessonUnits)
+    .where(and(eq(lessonUnits.id, id), eq(lessonUnits.authorId, session.userId)))
+    .limit(1);
+  if (!mine) return { error: "Урок не найден" };
 
   const rows = await db
     .select({
       phraseId: materialPhrases.id,
       icon: materialPhrases.icon,
       word: materialPhrases.phrase,
-      transcriptionUs: materialPhrases.transcriptionUs,
-      transcriptionUk: materialPhrases.transcriptionUk,
+      ipaUs: materialPhrases.transcriptionUs,
+      ipaUk: materialPhrases.transcriptionUk,
       translation: materialPhrases.translation,
       description: materialPhrases.description,
       category: materialPhrases.section,
       kind: materialPhrases.kind,
     })
     .from(materialPhrases)
-    .where(eq(materialPhrases.nodeId, nodeId))
+    .where(eq(materialPhrases.nodeId, String(nodeId ?? "")))
     .orderBy(asc(materialPhrases.sortOrder));
 
-  const ids = rows.map((r) => r.phraseId);
-  const images = ids.length
-    ? await db
-        .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
-        .from(phraseImages)
-        .where(and(inArray(phraseImages.phraseId, ids), eq(phraseImages.picked, true)))
-    : [];
+  // Заметки 💡 — не слова: в словнике урока им места нет.
+  const words = rows.filter((r) => r.kind !== "NOTE");
+  if (words.length === 0) return { error: "В словнике нет слов" };
+
+  const ids = words.map((r) => r.phraseId);
+  const images = await db
+    .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
+    .from(phraseImages)
+    .where(and(inArray(phraseImages.phraseId, ids), eq(phraseImages.picked, true)));
   const imageOf = new Map(images.map((i) => [i.phraseId, i.url]));
 
-  // Заметки 💡 — не слова: в словнике урока им места нет.
-  return rows
-    .filter((r) => r.kind !== "NOTE")
-    .map(({ kind: _kind, ...r }) => ({ ...r, imageUrl: imageOf.get(r.phraseId) ?? null }));
+  await db.delete(lessonWords).where(eq(lessonWords.unitId, id));
+  await db.insert(lessonWords).values(
+    words.map((r, at) => ({
+      unitId: id,
+      category: r.category ?? "",
+      icon: r.icon,
+      word: r.word,
+      ipaUs: r.ipaUs,
+      ipaUk: r.ipaUk,
+      translation: r.translation,
+      description: r.description,
+      imageUrl: imageOf.get(r.phraseId) ?? null,
+      sortOrder: at + 1,
+    })),
+  );
+
+  await db
+    .update(lessonUnits)
+    .set({ vocabNodeId: String(nodeId ?? ""), updatedAt: new Date() })
+    .where(eq(lessonUnits.id, id));
+
+  revalidatePath("/teacher/lessons");
+  return { added: words.length };
+}
+
+/** Правка одного слова словника: перевод, описание, категория. */
+export async function saveWordAction(
+  wordId: string,
+  edit: Partial<Pick<LessonWord, "word" | "translation" | "description" | "category" | "icon">>,
+): Promise<{ error?: string }> {
+  await requireTeacher();
+  const patch: Record<string, unknown> = {};
+  for (const key of ["word", "translation", "description", "category", "icon"] as const) {
+    const value = edit[key];
+    if (value === undefined) continue;
+    patch[key] = key === "word" || key === "category"
+      ? String(value ?? "").trim()
+      : (String(value ?? "").trim() || null);
+  }
+  if (Object.keys(patch).length === 0) return {};
+
+  await db.update(lessonWords).set(patch).where(eq(lessonWords.id, String(wordId ?? "")));
+  return {};
+}
+
+export async function deleteWordAction(wordId: string): Promise<{ error?: string }> {
+  await requireTeacher();
+  await db.delete(lessonWords).where(eq(lessonWords.id, String(wordId ?? "")));
+  return {};
 }
 
 async function loadUnit(unitId: string): Promise<LessonView | null> {
@@ -320,6 +476,14 @@ async function loadUnit(unitId: string): Promise<LessonView | null> {
   if (!row) return null;
   const { unit } = row;
   const questions = unit.questions ?? { afterVideo: [], afterReading: [] };
+  const activityIds = unit.activityIds ?? [];
+  const activityRows = activityIds.length
+    ? await db
+        .select()
+        .from(wordDeckActivities)
+        .where(inArray(wordDeckActivities.id, activityIds))
+    : [];
+  const activityOf = new Map(activityRows.map((activity) => [activity.id, activity]));
 
   return {
     id: unit.id,
@@ -328,7 +492,8 @@ async function loadUnit(unitId: string): Promise<LessonView | null> {
     description: unit.description,
     vocabNodeId: unit.vocabNodeId,
     vocabName: row.vocabName,
-    words: await wordsOfNode(unit.vocabNodeId),
+    words: await wordsOfUnit(unit.id),
+    lexis: lessonLexisGroups(unit.lexis),
     videoUrl: unit.videoUrl,
     videoTitle: unit.videoTitle,
     transcript: unit.transcript ?? [],
@@ -337,6 +502,18 @@ async function loadUnit(unitId: string): Promise<LessonView | null> {
       afterReading: questions.afterReading ?? [],
     },
     homework: unit.homework ?? [],
+    activities: activityIds.flatMap((id) => {
+      const activity = activityOf.get(id);
+      return activity
+        ? [{
+            id: activity.id,
+            title: activity.title,
+            cards: activity.cards ?? [],
+            settings: normalizeWordDeckSettings(activity.settings),
+            backgroundImageUrl: activity.backgroundImageUrl,
+          }]
+        : [];
+    }),
   };
 }
 
@@ -390,6 +567,199 @@ export async function vocabNodesAction(): Promise<
   for (const r of rows) count.set(r.nodeId, (count.get(r.nodeId) ?? 0) + 1);
 
   return nodes.map((n) => ({ ...n, words: count.get(n.id) ?? 0 }));
+}
+
+/** Страницы LEXIS из общей базы и личных материалов учителя. */
+export async function lexisNodesAction(): Promise<
+  { id: string; name: string; scope: string; blocks: number }[]
+> {
+  const session = await requireTeacher();
+  const nodes = await db
+    .select({
+      id: materialNodes.id,
+      name: materialNodes.name,
+      scope: materialNodes.scope,
+    })
+    .from(materialNodes)
+    .where(
+      and(
+        eq(materialNodes.pageKind, "LEXIS"),
+        or(
+          eq(materialNodes.scope, "MATERIAL"),
+          and(
+            eq(materialNodes.scope, "PERSONAL"),
+            eq(materialNodes.ownerId, session.userId),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(materialNodes.name));
+
+  if (nodes.length === 0) return [];
+  const rows = await db
+    .select({ nodeId: materialBlocks.nodeId })
+    .from(materialBlocks)
+    .where(inArray(materialBlocks.nodeId, nodes.map((node) => node.id)));
+  const count = new Map<string, number>();
+  for (const row of rows) count.set(row.nodeId, (count.get(row.nodeId) ?? 0) + 1);
+
+  return nodes.map((node) => ({ ...node, blocks: count.get(node.id) ?? 0 }));
+}
+
+/** Разобрать одну или несколько TYPE: LEXIS-групп и добавить их в урок. */
+export async function saveLessonLexisAction(
+  unitId: string,
+  source: string,
+): Promise<{ lexis?: LessonLexisGroup[]; error?: string }> {
+  const session = await requireTeacher();
+  const id = String(unitId ?? "");
+  const [mine] = await db
+    .select({ id: lessonUnits.id, lexis: lessonUnits.lexis })
+    .from(lessonUnits)
+    .where(and(eq(lessonUnits.id, id), eq(lessonUnits.authorId, session.userId)))
+    .limit(1);
+  if (!mine) return { error: "Урок не найден" };
+
+  const raw = String(source ?? "").trim();
+  if (!raw) return { error: "Вставь хотя бы одну группу TYPE: LEXIS" };
+
+  const parsed = parseLexisDocuments(raw);
+  if (parsed.length === 0) {
+    return { error: "Не нашлось ни одной группы TYPE: LEXIS" };
+  }
+  if (parsed.some((group) => !group.blocks.some((block) => block.type === "word"))) {
+    return { error: "В каждой группе должна быть хотя бы одна запись ITEM" };
+  }
+
+  const lexis = lessonLexisGroups(mine.lexis);
+  for (const group of parsed) {
+    const title = group.title?.trim() || "Lexis";
+    const existing = lexis.findIndex(
+      (item) => item.title.toLocaleLowerCase() === title.toLocaleLowerCase(),
+    );
+    const next: LessonLexisGroup = {
+      id: existing >= 0 ? lexis[existing].id : randomUUID(),
+      source: group.source,
+      title,
+      intro: group.subtitle?.trim() || null,
+      blocks: sanitizeBlocks(group.blocks),
+      warnings: group.warnings,
+      sourceNodeId: null,
+    };
+    if (existing >= 0) lexis[existing] = next;
+    else lexis.push(next);
+  }
+  await db
+    .update(lessonUnits)
+    .set({ lexis, updatedAt: new Date() })
+    .where(eq(lessonUnits.id, id));
+
+  revalidatePath("/teacher/lessons");
+  revalidatePath("/student/class");
+  return { lexis };
+}
+
+/** Разово скопировать уже разобранную LEXIS-страницу из материалов. */
+export async function fillLessonLexisAction(
+  unitId: string,
+  nodeId: string,
+): Promise<{ lexis?: LessonLexisGroup[]; error?: string }> {
+  const session = await requireTeacher();
+  const id = String(unitId ?? "");
+  const sourceId = String(nodeId ?? "");
+
+  const [[mine], [node]] = await Promise.all([
+    db
+      .select({ id: lessonUnits.id, lexis: lessonUnits.lexis })
+      .from(lessonUnits)
+      .where(and(eq(lessonUnits.id, id), eq(lessonUnits.authorId, session.userId)))
+      .limit(1),
+    db
+      .select({
+        id: materialNodes.id,
+        name: materialNodes.name,
+        description: materialNodes.description,
+        sourceText: materialNodes.sourceText,
+      })
+      .from(materialNodes)
+      .where(
+        and(
+          eq(materialNodes.id, sourceId),
+          eq(materialNodes.pageKind, "LEXIS"),
+          or(
+            eq(materialNodes.scope, "MATERIAL"),
+            and(
+              eq(materialNodes.scope, "PERSONAL"),
+              eq(materialNodes.ownerId, session.userId),
+            ),
+          ),
+        ),
+      )
+      .limit(1),
+  ]);
+  if (!mine) return { error: "Урок не найден" };
+  if (!node) return { error: "Лексика не найдена" };
+
+  const rows = await db
+    .select({ data: materialBlocks.data })
+    .from(materialBlocks)
+    .where(eq(materialBlocks.nodeId, sourceId))
+    .orderBy(asc(materialBlocks.sortOrder));
+  const blocks = sanitizeBlocks(rows.map((row) => row.data));
+  if (!blocks.some((block) => block.type === "word")) {
+    return { error: "В материале нет разобранной лексики" };
+  }
+
+  const lexis = lessonLexisGroups(mine.lexis);
+  const found = lexis.findIndex((group) => group.sourceNodeId === node.id);
+  const group: LessonLexisGroup = {
+    id: found >= 0 ? lexis[found].id : randomUUID(),
+    source: node.sourceText?.trim() ?? "",
+    title: node.name,
+    intro: node.description?.trim() || null,
+    blocks,
+    warnings: [],
+    sourceNodeId: node.id,
+  };
+  if (found >= 0) lexis[found] = group;
+  else lexis.push(group);
+  await db
+    .update(lessonUnits)
+    .set({ lexis, updatedAt: new Date() })
+    .where(eq(lessonUnits.id, id));
+
+  revalidatePath("/teacher/lessons");
+  revalidatePath("/student/class");
+  return { lexis };
+}
+
+/** Удалить одну группу, не затрагивая остальные группы и материалы. */
+export async function deleteLessonLexisAction(
+  unitId: string,
+  groupId: string,
+): Promise<{ lexis?: LessonLexisGroup[]; error?: string }> {
+  const session = await requireTeacher();
+  const id = String(unitId ?? "");
+  const target = String(groupId ?? "");
+  const [mine] = await db
+    .select({ id: lessonUnits.id, lexis: lessonUnits.lexis })
+    .from(lessonUnits)
+    .where(and(eq(lessonUnits.id, id), eq(lessonUnits.authorId, session.userId)))
+    .limit(1);
+  if (!mine) return { error: "Урок не найден" };
+
+  const current = lessonLexisGroups(mine.lexis);
+  if (!current.some((group) => group.id === target)) {
+    return { error: "Группа лексики не найдена" };
+  }
+  const lexis = current.filter((group) => group.id !== target);
+  await db
+    .update(lessonUnits)
+    .set({ lexis, updatedAt: new Date() })
+    .where(eq(lessonUnits.id, id));
+  revalidatePath("/teacher/lessons");
+  revalidatePath("/student/class");
+  return { lexis };
 }
 
 /* ------------------------------------------------------------------ */
@@ -454,6 +824,63 @@ export async function pinLessonAction(
   return { id: created?.id };
 }
 
+/**
+ * Добавить заготовку в текущий класс и сразу сделать её активным уроком.
+ *
+ * Если урок уже выдавался этому ученику, второй экземпляр не создаётся:
+ * класс просто возвращается к прежнему закреплению с его подсветками и
+ * открытыми секциями.
+ */
+export async function addLessonToClassAction(
+  unitId: string,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const unit = String(unitId ?? "");
+  if (!unit) return { error: "Не выбран урок" };
+
+  const [[me], [lesson]] = await Promise.all([
+    db
+      .select({ studentId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1),
+    db
+      .select({ id: lessonUnits.id })
+      .from(lessonUnits)
+      .where(and(eq(lessonUnits.id, unit), eq(lessonUnits.authorId, session.userId)))
+      .limit(1),
+  ]);
+
+  if (!me?.studentId) return { error: "Сначала войди в класс к ученику" };
+  if (!lesson) return { error: "Урок не найден" };
+
+  const [student] = await db
+    .select({ classFocus: users.classFocus })
+    .from(users)
+    .where(and(eq(users.id, me.studentId), eq(users.role, "STUDENT")))
+    .limit(1);
+  if (!student) return { error: "Ученик не найден" };
+
+  const result = await pinLessonAction(unit, me.studentId);
+  if (result.error || !result.id) return result;
+
+  const previous = student.classFocus;
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        panel: previous?.panel ?? "lesson",
+        at: previous?.at ?? new Date().toISOString(),
+        lessonAssignmentId: result.id,
+      },
+    })
+    .where(eq(users.id, me.studentId));
+
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { id: result.id };
+}
+
 export async function unpinLessonAction(id: string): Promise<{ error?: string }> {
   await requireTeacher();
   await db.delete(lessonAssignments).where(eq(lessonAssignments.id, String(id ?? "")));
@@ -490,8 +917,8 @@ async function cardsFor(studentId: string): Promise<LessonAssignmentCard[]> {
     title,
     studentId: a.studentId,
     studentName: name,
-    openSections: a.openSections ?? [],
-    highlights: a.highlights ?? {},
+    openSections: openSections(a.openSections),
+    highlights: normalizeLessonHighlights(a.highlights),
     finishedAt: a.finishedAt?.toISOString() ?? null,
     createdAt: a.createdAt.toISOString(),
   }));
@@ -534,34 +961,340 @@ export async function openSectionAction(
   return {};
 }
 
+export type LessonVideoUpdate = Pick<
+  ClassVideoState,
+  "currentTime" | "playing" | "captions" | "muted" | "volume" | "playbackRate"
+>;
+
 /**
- * Подсветить место в уроке у конкретного ученика.
+ * Передать ученику состояние нативного видеоплеера.
  *
- * Правится закрепление, а не урок: у каждого ученика подчёркнуто своё,
- * и заготовка от этого не меняется.
+ * Клиент сообщает только положение элементов управления. Принадлежность
+ * урока и конкретного ученика заново проверяются по сессии учителя.
  */
-export async function highlightAction(
+export async function syncLessonVideoAction(
+  assignmentId: string,
+  update: LessonVideoUpdate,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+
+  const [[teacher], [target]] = await Promise.all([
+    db
+      .select({ studentId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1),
+    db
+      .select({
+        studentId: lessonAssignments.studentId,
+        videoUrl: lessonUnits.videoUrl,
+        classFocus: users.classFocus,
+      })
+      .from(lessonAssignments)
+      .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+      .innerJoin(users, eq(users.id, lessonAssignments.studentId))
+      .where(
+        and(
+          eq(lessonAssignments.id, id),
+          eq(lessonUnits.authorId, session.userId),
+          eq(users.role, "STUDENT"),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
+    return { error: "Этот ученик сейчас не в классе" };
+  }
+  if (!target.videoUrl) return { error: "В уроке нет видео" };
+
+  const previous = normalizeClassVideoState(target.classFocus?.videoState);
+  const now = new Date().toISOString();
+  const videoState = normalizeClassVideoState({
+    ...update,
+    assignmentId: id,
+    at: now,
+    ...(previous?.assignmentId === id && previous.focusAt
+      ? { focusAt: previous.focusAt }
+      : {}),
+  });
+  if (!videoState) return { error: "Некорректное состояние видео" };
+
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        ...target.classFocus,
+        at: target.classFocus?.at ?? now,
+        videoState,
+      },
+    })
+    .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
+
+  return {};
+}
+
+/** Открыть ученику секцию Video и убрать поверх неё доску или игру. */
+export async function focusLessonVideoAction(
+  assignmentId: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+
+  const [[teacher], [target]] = await Promise.all([
+    db
+      .select({ studentId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1),
+    db
+      .select({
+        studentId: lessonAssignments.studentId,
+        openSections: lessonAssignments.openSections,
+        videoUrl: lessonUnits.videoUrl,
+        classFocus: users.classFocus,
+      })
+      .from(lessonAssignments)
+      .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+      .innerJoin(users, eq(users.id, lessonAssignments.studentId))
+      .where(
+        and(
+          eq(lessonAssignments.id, id),
+          eq(lessonUnits.authorId, session.userId),
+          eq(users.role, "STUDENT"),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
+    return { error: "Этот ученик сейчас не в классе" };
+  }
+  if (!target.videoUrl) return { error: "В уроке нет видео" };
+
+  const now = new Date().toISOString();
+  const previous = normalizeClassVideoState(target.classFocus?.videoState);
+  const sameVideo = previous?.assignmentId === id ? previous : null;
+  const videoState = normalizeClassVideoState({
+    assignmentId: id,
+    currentTime: sameVideo ? expectedClassVideoTime(sameVideo) : 0,
+    playing: sameVideo?.playing ?? false,
+    captions: sameVideo?.captions ?? true,
+    muted: sameVideo?.muted ?? false,
+    volume: sameVideo?.volume ?? 1,
+    playbackRate: sameVideo?.playbackRate ?? 1,
+    at: now,
+    focusAt: now,
+  });
+  if (!videoState) return { error: "Не удалось открыть видео" };
+
+  const open = new Set(target.openSections ?? []);
+  open.add("video");
+  await Promise.all([
+    db
+      .update(lessonAssignments)
+      .set({ openSections: [...open], updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, id)),
+    db
+      .update(users)
+      .set({
+        classFocus: {
+          ...target.classFocus,
+          at: now,
+          view: "LESSON",
+          boardObjectId: null,
+          lessonAssignmentId: id,
+          videoState,
+        },
+      })
+      .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT"))),
+  ]);
+
+  revalidatePath("/student/class");
+  return {};
+}
+
+/**
+ * Сфокусировать конкретного ученика на слове или части лексики.
+ *
+ * Повторное нажатие снимает фокус, нажатие на другое слово переносит
+ * его. Цвет не хранится: каждый видит свой цвет темы.
+ */
+export async function focusLessonWordAction(
   assignmentId: string,
   key: string,
-  color: string,
 ): Promise<{ error?: string }> {
-  await requireTeacher();
-  if (!isHighlight(color)) return { error: "Неизвестный цвет" };
+  const session = await requireTeacher();
+  const focusKey = String(key ?? "");
+  if (!isWordFocusKey(focusKey)) {
+    return { error: "Можно сфокусировать только слово или часть лексики" };
+  }
+
+  const id = String(assignmentId ?? "");
+  const [row] = await db
+    .select({
+      studentId: lessonAssignments.studentId,
+      highlights: lessonAssignments.highlights,
+      openSections: lessonAssignments.openSections,
+      lexis: lessonUnits.lexis,
+    })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(
+      and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)),
+    )
+    .limit(1);
+  if (!row) return { error: "Урок не закреплён" };
+
+  const parsedFocus = parseKey(focusKey);
+  if (
+    parsedFocus?.kind === "lexisBlock" &&
+    !lessonLexisGroups(row.lexis).some((group) => group.id === parsedFocus.groupId)
+  ) {
+    return { error: "Группа лексики не найдена" };
+  }
+  const current = parsedFocus?.kind === "lexisBlock"
+    ? selectLexisGroup(row.highlights, parsedFocus.groupId)
+    : row.highlights;
+  const open = new Set(row.openSections ?? []);
+  if (parsedFocus?.kind === "lexisBlock") open.add("lexis");
+
+  const now = new Date();
+  await db
+    .update(lessonAssignments)
+    .set({
+      highlights: toggleWordFocus(current, focusKey),
+      openSections: [...open],
+      updatedAt: now,
+    })
+    .where(eq(lessonAssignments.id, id));
+
+  const [teacherState] = await db
+    .select({ studentId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (teacherState?.studentId === row.studentId) {
+    /*
+     * Фокус на уроке — явная команда показа. Если ученик сейчас смотрит
+     * доску, его доска закроется и сразу откроется этот элемент урока.
+     */
+    await db
+      .update(users)
+      .set({
+        classFocus: {
+          at: now.toISOString(),
+          view: "LESSON",
+          boardObjectId: null,
+          lessonAssignmentId: id,
+        },
+      })
+      .where(and(eq(users.id, row.studentId), eq(users.role, "STUDENT")));
+  }
+
+  revalidatePath("/student/class");
+  return {};
+}
+
+/** Переключить ученика на конкретную лексическую группу этого урока. */
+export async function selectLessonLexisGroupAction(
+  assignmentId: string,
+  groupId: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+  const target = String(groupId ?? "");
+  const [row] = await db
+    .select({
+      highlights: lessonAssignments.highlights,
+      openSections: lessonAssignments.openSections,
+      lexis: lessonUnits.lexis,
+    })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(
+      and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)),
+    )
+    .limit(1);
+  if (!row) return { error: "Урок не закреплён" };
+  if (!lessonLexisGroups(row.lexis).some((group) => group.id === target)) {
+    return { error: "Группа лексики не найдена" };
+  }
+  const open = new Set(row.openSections ?? []);
+  open.add("lexis");
+
+  await db
+    .update(lessonAssignments)
+    .set({
+      highlights: selectLexisGroup(row.highlights, target),
+      openSections: [...open],
+      updatedAt: new Date(),
+    })
+    .where(eq(lessonAssignments.id, id));
+  revalidatePath("/student/class");
+  return {};
+}
+
+/** Добавить или снять одно из независимых жёлтых выделений диалога. */
+export async function highlightLessonDialogueAction(
+  assignmentId: string,
+  key: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const highlightKey = String(key ?? "");
+  if (!isDialogueHighlightKey(highlightKey)) {
+    return { error: "Можно выделить только слово или реплику диалога" };
+  }
 
   const id = String(assignmentId ?? "");
   const [row] = await db
     .select({ highlights: lessonAssignments.highlights })
     .from(lessonAssignments)
-    .where(eq(lessonAssignments.id, id))
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(
+      and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)),
+    )
     .limit(1);
   if (!row) return { error: "Урок не закреплён" };
 
   await db
     .update(lessonAssignments)
     .set({
-      highlights: toggleHighlight(row.highlights ?? {}, String(key ?? ""), color),
+      highlights: toggleDialogueHighlight(row.highlights, highlightKey),
       updatedAt: new Date(),
     })
+    .where(eq(lessonAssignments.id, id));
+
+  revalidatePath("/student/class");
+  return {};
+}
+
+/** Показать или скрыть британский вариант в конкретной выдаче урока. */
+export async function showBritishAction(
+  assignmentId: string,
+  show: boolean,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  if (typeof show !== "boolean") return { error: "Неизвестная настройка" };
+  const id = String(assignmentId ?? "");
+  const [row] = await db
+    .select({ openSections: lessonAssignments.openSections })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(
+      and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)),
+    )
+    .limit(1);
+  if (!row) return { error: "Урок не закреплён" };
+
+  const current = new Set(row.openSections ?? []);
+  if (show) current.add(BRITISH_OPTION);
+  else current.delete(BRITISH_OPTION);
+
+  await db
+    .update(lessonAssignments)
+    .set({ openSections: [...current], updatedAt: new Date() })
     .where(eq(lessonAssignments.id, id));
 
   revalidatePath("/student/class");
@@ -604,6 +1337,7 @@ export async function assignedLessonAction(assignmentId: string): Promise<
       lesson: LessonView;
       answers: Record<string, string>;
       open: LessonSection[];
+      showBritish: boolean;
     }
   | null
 > {
@@ -633,13 +1367,14 @@ export async function assignedLessonAction(assignmentId: string): Promise<
       title: row.title,
       studentId: row.a.studentId,
       studentName: row.name,
-      openSections: stored,
-      highlights: row.a.highlights ?? {},
+      openSections: openSections(stored),
+      highlights: normalizeLessonHighlights(row.a.highlights),
       finishedAt: row.a.finishedAt?.toISOString() ?? null,
       createdAt: row.a.createdAt.toISOString(),
     },
     lesson,
     answers: row.a.answers ?? {},
     open: openSections(stored),
+    showBritish: stored.includes(BRITISH_OPTION),
   };
 }

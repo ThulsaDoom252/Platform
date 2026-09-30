@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 /** Стабильный цвет палитры по имени — чтобы аватар не «прыгал» между рендерами. */
 function chipFor(name: string) {
@@ -27,11 +28,13 @@ export function Avatar({
   textClassName?: string;
 }) {
   if (src) {
-    // eslint-disable-next-line @next/next/no-img-element
     return (
-      <img
+      <Image
         src={src}
         alt={name}
+        width={128}
+        height={128}
+        sizes="128px"
         className={cn("shrink-0 rounded-full object-cover", className)}
       />
     );

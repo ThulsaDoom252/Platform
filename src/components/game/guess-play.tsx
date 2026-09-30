@@ -10,7 +10,7 @@
  * вышло, а учитель не нажал, карта переворачивается сама — это решает
  * сервер, здесь только видно результат.
  */
-import { useCallback, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
@@ -22,12 +22,14 @@ import {
   stopGameAction,
 } from "@/lib/actions/guess-picture";
 import { useGameState } from "@/lib/use-game-state";
+import { showGameToStudentAction } from "@/lib/actions/class";
 import { GuessCard } from "./guess-card";
 import { GameStatsCard } from "./game-stats";
 import {
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
+  IconUser,
   IconX,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -50,6 +52,7 @@ export function GuessPlay({
   );
   const { state, loaded, leftMs, refresh } = useGameState(load);
   const [busy, startBusy] = useTransition();
+  const [focusError, setFocusError] = useState<string | null>(null);
 
   const act = (work: () => Promise<unknown>) =>
     startBusy(async () => {
@@ -98,12 +101,26 @@ export function GuessPlay({
 
         <button
           type="button"
+          disabled={busy}
+          onClick={() => startBusy(async () => {
+            const result = await showGameToStudentAction();
+            setFocusError(result.error ?? null);
+          })}
+          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 text-[12px] font-bold text-accent transition hover:opacity-90 disabled:opacity-50"
+        >
+          <IconUser className="h-3.5 w-3.5" /> {t.classRoom.sendStudentToGame}
+        </button>
+
+        <button
+          type="button"
           onClick={() => act(() => stopGameAction(studentId))}
           className="ml-auto h-8 rounded-lg px-2.5 text-[12px] font-semibold text-muted transition hover:bg-surface-2 hover:text-rose-500"
         >
           {t.game.stop}
         </button>
       </div>
+
+      {focusError && <p className="text-sm font-semibold text-rose-500">{focusError}</p>}
 
       <GuessCard state={state} leftMs={leftMs} />
 

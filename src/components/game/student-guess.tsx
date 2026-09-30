@@ -6,7 +6,7 @@
  * Только смотрит: оценку ставит учитель. Пока партии нет — видно, что
  * её ждут, чтобы пустой экран не выглядел поломкой.
  */
-import { useCallback } from "react";
+import { useCallback, type ReactNode } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { myGameStateAction } from "@/lib/actions/guess-picture";
@@ -14,7 +14,7 @@ import { useGameState } from "@/lib/use-game-state";
 import { GuessCard } from "./guess-card";
 import { GameStatsCard } from "./game-stats";
 
-export function StudentGuess() {
+export function StudentGuess({ fallback }: { fallback?: ReactNode }) {
   const { t } = useT();
   const load = useCallback(() => myGameStateAction(), []);
   const { state, loaded, leftMs } = useGameState(load);
@@ -33,6 +33,7 @@ export function StudentGuess() {
   }
 
   if (!state || !state.card) {
+    if (fallback) return fallback;
     return (
       <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
         <p className="text-sm font-semibold text-content">{t.game.waiting}</p>
@@ -43,6 +44,7 @@ export function StudentGuess() {
 
   // Партия готова, но ещё не пущена — карту показывать рано.
   if (state.paused && state.stats.answered === 0 && state.at === 0) {
+    if (fallback) return fallback;
     return (
       <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
         <p className="text-sm font-semibold text-content">{t.game.waiting}</p>

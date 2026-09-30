@@ -13,6 +13,7 @@ import { RAIL_ONLY_OPEN, SidebarRail } from "@/components/sidebar-rail";
 import { MobileNav } from "@/components/teacher/mobile-nav";
 import { NotificationBell } from "@/components/teacher/notification-bell";
 import { Avatar } from "@/components/avatar";
+import { GlobalSearch } from "@/components/global-search";
 import { IconCap, IconLogout, IconChevronDown } from "@/components/icons";
 
 export default async function TeacherLayout({
@@ -82,6 +83,7 @@ export default async function TeacherLayout({
               </Link>
 
               <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                <GlobalSearch role="TEACHER" />
                 <NotificationBell items={items} unreadCount={unreadCount} />
 
                 <Link

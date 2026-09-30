@@ -3,7 +3,7 @@
 /**
  * Сборка урока-активности.
  *
- * Пять секций, и каждая правится на месте: урок редко собирается за
+ * Шесть секций, и каждая правится на месте: урок редко собирается за
  * один присест, возвращаться к нему приходится по частям.
  *
  * Словник выбирается из материалов, а не набирается заново: слова там
@@ -16,17 +16,35 @@
  */
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
-import { saveLessonAction, type LessonView } from "@/lib/actions/lessons";
-import { parseTranscript, speakerTint, speakersOf } from "@/lib/lesson-unit";
 import {
+  deleteLessonLexisAction,
+  fillLessonLexisAction,
+  fillVocabAction,
+  saveLessonLexisAction,
+  saveLessonAction,
+  type LessonView,
+} from "@/lib/actions/lessons";
+import {
+  groupWords,
+  parseTranscript,
+  speakerTint,
+  speakersOf,
+} from "@/lib/lesson-unit";
+import { parseLexisDocuments } from "@/lib/keyed-parser";
+import { sanitizeBlocks } from "@/lib/rule-blocks";
+import { RuleReader } from "@/components/materials/rule-reader";
+import {
+  IconCheck,
   IconChevronLeft,
   IconPlus,
   IconTrash,
   IconVolume,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import type { WordDeckActivity } from "@/lib/actions/word-deck";
 
 const inputCls =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
@@ -36,16 +54,29 @@ const areaCls =
 export function LessonEditor({
   lesson,
   vocabs,
+  lexises,
+  activities,
 }: {
   lesson: LessonView;
   vocabs: { id: string; name: string; scope: string; words: number }[];
+  lexises: { id: string; name: string; scope: string; blocks: number }[];
+  activities: WordDeckActivity[];
 }) {
   const { t } = useT();
+  const router = useRouter();
 
   const [title, setTitle] = useState(lesson.title);
   const [vocabNodeId, setVocabNodeId] = useState(lesson.vocabNodeId ?? "");
+  const [lexisNodeId, setLexisNodeId] = useState("");
+  const [lexisSource, setLexisSource] = useState("");
+  const [lexis, setLexis] = useState(lesson.lexis);
+  const [activeLexisId, setActiveLexisId] = useState(lesson.lexis[0]?.id ?? "");
+  const [lexisError, setLexisError] = useState<string | null>(null);
+  const [lexisSaved, setLexisSaved] = useState(false);
   const [videoUrl, setVideoUrl] = useState(lesson.videoUrl ?? "");
   const [videoTitle, setVideoTitle] = useState(lesson.videoTitle ?? "");
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
   const [transcriptText, setTranscriptText] = useState(
     lesson.transcript.map((l) => `${l.speaker}: ${l.text}`).join("\n"),
   );
@@ -54,17 +85,82 @@ export function LessonEditor({
     lesson.questions.afterReading.join("\n"),
   );
   const [homework, setHomework] = useState(lesson.homework);
+  const [activityIds, setActivityIds] = useState(() => new Set(lesson.activities.map((activity) => activity.id)));
   const [saved, setSaved] = useState(false);
+  const [filled, setFilled] = useState<number | null>(null);
   const [busy, startBusy] = useTransition();
 
   /* Разбор идёт на лету: что получилось из вставленного, видно сразу. */
   const lines = useMemo(() => parseTranscript(transcriptText), [transcriptText]);
   const speakers = useMemo(() => speakersOf(lines), [lines]);
+  const parsedLexis = useMemo(
+    () => (lexisSource.trim() ? parseLexisDocuments(lexisSource) : []),
+    [lexisSource],
+  );
+  const lexisInvalid =
+    !!lexisSource.trim() &&
+    (parsedLexis.length === 0 ||
+      parsedLexis.some(
+        (group) => !sanitizeBlocks(group.blocks).some((block) => block.type === "word"),
+      ));
+  const activeLexis =
+    lexis.find((group) => group.id === activeLexisId) ?? lexis[0] ?? null;
+
+  const uploadVideo = async (file: File) => {
+    setVideoUploading(true);
+    setVideoUploadError(null);
+    try {
+      const response = await fetch(`/api/lesson-video/${lesson.id}`, {
+        method: "PUT",
+        headers: {
+          "content-type": file.type || "application/octet-stream",
+          "x-file-name": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      const result = (await response.json()) as {
+        url?: string;
+        title?: string;
+        error?: string;
+      };
+      if (!response.ok || !result.url) {
+        setVideoUploadError(result.error ?? t.lessonUnits.videoUploadFailed);
+        return;
+      }
+      setVideoUrl(result.url);
+      setVideoTitle(result.title ?? file.name.replace(/\.[^.]+$/, ""));
+      setSaved(true);
+    } catch {
+      setVideoUploadError(t.lessonUnits.videoUploadFailed);
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+
+  const saveLexis = async () => {
+    setLexisError(null);
+    setLexisSaved(false);
+    const result = await saveLessonLexisAction(lesson.id, lexisSource);
+    if (result.error) {
+      setLexisError(result.error);
+      return false;
+    }
+    const groups = result.lexis ?? [];
+    setLexis(groups);
+    const addedTitle = parsedLexis.at(-1)?.title?.trim().toLocaleLowerCase();
+    const added = [...groups]
+      .reverse()
+      .find((group) => group.title.toLocaleLowerCase() === addedTitle);
+    setActiveLexisId(added?.id ?? groups.at(-1)?.id ?? "");
+    setLexisSource("");
+    setLexisSaved(true);
+    return true;
+  };
 
   function save() {
     setSaved(false);
     startBusy(async () => {
-      await saveLessonAction(lesson.id, {
+      const result = await saveLessonAction(lesson.id, {
         title,
         vocabNodeId: vocabNodeId || null,
         videoUrl,
@@ -73,7 +169,9 @@ export function LessonEditor({
         afterVideo: afterVideo.split("\n"),
         afterReading: afterReading.split("\n"),
         homework,
+        activityIds: [...activityIds],
       });
+      if (result.error) return;
       setSaved(true);
     });
   }
@@ -94,33 +192,232 @@ export function LessonEditor({
         className="w-full rounded-xl bg-transparent text-2xl font-bold text-content outline-none"
       />
 
-      {/* Словник */}
+      {/* Словник: свой у урока, наполняется из материалов по желанию. */}
       <Section title={t.lessonUnits.secVocab}>
-        {vocabs.length === 0 ? (
-          <p className="text-sm text-faint">{t.lessonUnits.noVocab}</p>
-        ) : (
-          <select
-            value={vocabNodeId}
-            onChange={(e) => setVocabNodeId(e.target.value)}
-            className={inputCls}
-          >
-            <option value="">— {t.lessonUnits.pickVocab} —</option>
-            {vocabs.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name} · {fmt(t.lessonUnits.words, { n: v.words })}
-                {v.scope === "PERSONAL" ? " · " + t.materials.mine : ""}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-2">
+          {vocabs.length === 0 ? (
+            <p className="text-sm text-faint">{t.lessonUnits.noVocab}</p>
+          ) : (
+            <>
+              <select
+                value={vocabNodeId}
+                onChange={(e) => setVocabNodeId(e.target.value)}
+                className={`${inputCls} min-w-0 flex-1`}
+              >
+                <option value="">— {t.lessonUnits.pickVocab} —</option>
+                {vocabs.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} · {fmt(t.lessonUnits.words, { n: v.words })}
+                    {v.scope === "PERSONAL" ? " · " + t.materials.mine : ""}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                disabled={busy || !vocabNodeId}
+                onClick={() =>
+                  startBusy(async () => {
+                    const result = await fillVocabAction(lesson.id, vocabNodeId);
+                    setFilled(result.added ?? null);
+                    router.refresh();
+                  })
+                }
+                className="h-11 rounded-xl bg-accent px-4 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {t.lessonUnits.fillFromMaterials}
+              </button>
+            </>
+          )}
+        </div>
+
+        {filled !== null && (
+          <p className="mt-2 text-[12px] font-semibold text-emerald-500">
+            {fmt(t.lessonUnits.filled, { n: filled })}
+          </p>
         )}
 
-        {lesson.words.length > 0 && vocabNodeId === lesson.vocabNodeId && (
-          <VocabPreview words={lesson.words} />
-        )}
+        {lesson.words.length > 0 && <VocabPreview words={lesson.words} />}
       </Section>
+
+      {lesson.kind === "ACTIVITY" && (
+        <Section title={t.lessonUnits.secLexis} hint={t.lessonUnits.lexisHint}>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={lexisNodeId}
+              onChange={(event) => setLexisNodeId(event.target.value)}
+              className={`${inputCls} min-w-0 flex-1`}
+            >
+              <option value="">— {t.lessonUnits.pickLexis} —</option>
+              {lexises.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.blocks} {t.lessonUnits.blocks}
+                  {item.scope === "PERSONAL" ? " · " + t.materials.mine : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={busy || !lexisNodeId}
+              onClick={() =>
+                startBusy(async () => {
+                  setLexisError(null);
+                  setLexisSaved(false);
+                  const result = await fillLessonLexisAction(lesson.id, lexisNodeId);
+                  if (result.error || !result.lexis) {
+                    setLexisError(result.error ?? t.lessonUnits.lexisFailed);
+                    return;
+                  }
+                  setLexis(result.lexis);
+                  const added = [...result.lexis]
+                    .reverse()
+                    .find((group) => group.sourceNodeId === lexisNodeId);
+                  setActiveLexisId(added?.id ?? result.lexis.at(-1)?.id ?? "");
+                  setLexisSaved(true);
+                })
+              }
+              className="h-11 rounded-xl bg-accent px-4 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {t.lessonUnits.takeFromMaterials}
+            </button>
+          </div>
+
+          <textarea
+            value={lexisSource}
+            onChange={(event) => {
+              setLexisSource(event.target.value);
+              setLexisSaved(false);
+              setLexisError(null);
+            }}
+            placeholder={t.lessonUnits.lexisPlaceholder}
+            className={`${areaCls} mt-3 min-h-72 font-mono text-[12px]`}
+          />
+
+          {lexisInvalid && (
+            <p className="mt-2 text-[12px] font-semibold text-rose-500">
+              {t.lessonUnits.lexisTypeError}
+            </p>
+          )}
+          {!lexisInvalid && parsedLexis.length > 0 && (
+            <p className="mt-2 text-[12px] font-semibold text-emerald-500">
+              {fmt(t.lessonUnits.lexisParsed, { n: parsedLexis.length })}: {parsedLexis
+                .map((group) => group.title || "Lexis")
+                .join(", ")}
+            </p>
+          )}
+          {lexisError && (
+            <p className="mt-2 text-[12px] font-semibold text-rose-500">{lexisError}</p>
+          )}
+
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={busy || !lexisSource.trim() || lexisInvalid}
+              onClick={() => startBusy(async () => void (await saveLexis()))}
+              className="h-10 rounded-xl border border-accent px-3.5 text-[12px] font-bold text-accent transition hover:bg-accent-soft disabled:opacity-50"
+            >
+              {t.lessonUnits.parseAndSaveLexis}
+            </button>
+            {lexisSaved && (
+              <span className="text-[12px] font-semibold text-emerald-500">
+                {t.lessonUnits.saved}
+              </span>
+            )}
+          </div>
+
+          {lexis.length > 0 && (
+            <div className="mt-4 border-t border-line pt-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {lexis.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => setActiveLexisId(group.id)}
+                    className={cn(
+                      "h-9 rounded-xl px-3 text-[12px] font-bold transition",
+                      activeLexis?.id === group.id
+                        ? "bg-accent text-white"
+                        : "bg-surface-2 text-muted hover:text-content",
+                    )}
+                  >
+                    {group.title}
+                  </button>
+                ))}
+                {activeLexis && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (!window.confirm(t.lessonUnits.removeLexisConfirm)) return;
+                      startBusy(async () => {
+                        const result = await deleteLessonLexisAction(
+                          lesson.id,
+                          activeLexis.id,
+                        );
+                        if (result.error || !result.lexis) {
+                          setLexisError(result.error ?? t.lessonUnits.lexisFailed);
+                          return;
+                        }
+                        setLexis(result.lexis);
+                        setActiveLexisId(result.lexis[0]?.id ?? "");
+                      });
+                    }}
+                    className="ml-auto h-9 rounded-xl border border-rose-500/40 px-3 text-[12px] font-bold text-rose-500 transition hover:bg-rose-500/10 disabled:opacity-50"
+                  >
+                    {t.lessonUnits.removeLexis}
+                  </button>
+                )}
+              </div>
+              {activeLexis && activeLexis.warnings.length > 0 && (
+                <div className="mb-3 rounded-xl bg-yellow-300/20 px-3 py-2 text-[12px] text-content">
+                  {activeLexis.warnings.map((warning, index) => (
+                    <p key={index}>⚠ {warning}</p>
+                  ))}
+                </div>
+              )}
+              {activeLexis && (
+                <RuleReader
+                  title={activeLexis.title}
+                  icon="🔀"
+                  description={activeLexis.intro}
+                  blocks={activeLexis.blocks}
+                />
+              )}
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* Видео */}
       <Section title={t.lessonUnits.secVideo}>
+        <div className="mb-3 rounded-xl border border-dashed border-accent/45 bg-accent-soft p-3.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex h-10 cursor-pointer items-center rounded-xl bg-accent px-4 text-sm font-bold text-white transition hover:opacity-90">
+              {videoUploading
+                ? t.lessonUnits.videoUploading
+                : t.lessonUnits.videoUpload}
+              <input
+                type="file"
+                accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,.m4v"
+                disabled={videoUploading}
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) void uploadVideo(file);
+                }}
+              />
+            </label>
+            <p className="min-w-0 flex-1 text-[12px] leading-relaxed text-muted">
+              {t.lessonUnits.videoUploadHint}
+            </p>
+          </div>
+          {videoUploadError && (
+            <p className="mt-2 text-[12px] font-semibold text-rose-500">
+              {videoUploadError}
+            </p>
+          )}
+        </div>
         <input
           value={videoUrl}
           onChange={(e) => setVideoUrl(e.target.value)}
@@ -133,6 +430,14 @@ export function LessonEditor({
           placeholder={t.lessonUnits.videoName}
           className={`${inputCls} mt-2`}
         />
+        {videoUrl.startsWith("/uploads/lesson-videos/") && (
+          <video
+            src={videoUrl}
+            controls
+            preload="metadata"
+            className="mt-3 aspect-video max-h-[420px] w-full rounded-xl bg-black"
+          />
+        )}
       </Section>
 
       {/* Расшифровка */}
@@ -186,6 +491,43 @@ export function LessonEditor({
             />
           </label>
         </div>
+      </Section>
+
+      {/* Домашка */}
+      <Section title={t.wordDeck.attachedGames}>
+        {activities.length === 0 ? (
+          <p className="text-sm text-faint">{t.wordDeck.empty}</p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {activities.map((activity) => {
+              const picked = activityIds.has(activity.id);
+              return (
+                <button
+                  key={activity.id}
+                  type="button"
+                  onClick={() => setActivityIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(activity.id)) next.delete(activity.id);
+                    else next.add(activity.id);
+                    return next;
+                  })}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border p-3 text-left transition",
+                    picked ? "border-accent bg-accent-soft" : "border-line bg-surface-2",
+                  )}
+                >
+                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", picked ? "bg-accent text-white" : "bg-surface text-faint")}>
+                    {picked ? <IconCheck className="h-4 w-4" /> : "♠"}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-content">{activity.title}</span>
+                    <span className="block text-[11px] text-faint">{fmt(t.wordDeck.cardCount, { n: activity.cards.length * activity.settings.repeats })}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </Section>
 
       {/* Домашка */}
@@ -273,38 +615,28 @@ function Section({
   );
 }
 
-/** Как словник будет выглядеть у ученика — по категориям. */
+/** Как словник ляжет у ученика: по категориям и алфавиту. */
 function VocabPreview({ words }: { words: LessonView["words"] }) {
-  const groups = useMemo(() => {
-    const map = new Map<string, LessonView["words"]>();
-    for (const w of words) {
-      const key = w.category ?? "";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(w);
-    }
-    return [...map.entries()];
-  }, [words]);
+  const groups = useMemo(() => groupWords(words), [words]);
 
   return (
     <div className="mt-3 flex flex-col gap-3">
-      {groups.map(([category, list]) => (
-        <div key={category}>
-          {category && (
+      {groups.map((group) => (
+        <div key={group.category}>
+          {group.category && (
             <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-faint">
-              {category}
+              {group.category}
             </p>
           )}
           <div className="flex flex-wrap gap-1.5">
-            {list.map((w) => (
+            {group.words.map((w) => (
               <span
-                key={w.phraseId}
+                key={w.id}
                 className="flex items-center gap-1 rounded-lg bg-surface-2 px-2 py-1 text-[12px] text-content"
               >
                 {w.icon && <span>{w.icon}</span>}
                 {w.word}
-                {(w.transcriptionUs || w.transcriptionUk) && (
-                  <IconVolume className="h-3 w-3 text-faint" />
-                )}
+                {(w.ipaUs || w.ipaUk) && <IconVolume className="h-3 w-3 text-faint" />}
               </span>
             ))}
           </div>

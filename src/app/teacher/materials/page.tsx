@@ -27,10 +27,10 @@ type View = "mine" | "students" | "shared";
 export default async function TeacherMaterialsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; student?: string }>;
+  searchParams: Promise<{ view?: string; student?: string; node?: string }>;
 }) {
   const { t } = await getDict();
-  const { view, student: studentId } = await searchParams;
+  const { view, student: studentId, node: initialNodeId } = await searchParams;
   const session = await getSession();
 
   // По умолчанию открывается личная библиотека: учитель заходит сюда
@@ -166,8 +166,9 @@ export default async function TeacherMaterialsPage({
             </h2>
           )}
           <MaterialsExplorer
-            key={current === "students" ? (chosen?.id ?? "none") : current}
+            key={`${current === "students" ? (chosen?.id ?? "none") : current}:${initialNodeId ?? "root"}`}
             tree={tree}
+            initialNodeId={initialNodeId}
             editable
             scope={
               current === "mine"

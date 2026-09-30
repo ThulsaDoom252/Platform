@@ -164,6 +164,35 @@ export type KeyedResult =
   | ({ type: "RULE" | "LEXIS" | "TENSE" } & KeyedBlocksResult);
 
 /**
+ * Разобрать одну или несколько LEXIS-групп из одной вставки.
+ *
+ * Поддерживается и чистый набор TYPE: LEXIS, и ответ с Markdown-
+ * заголовками/блоками кода. Каждая новая строка TYPE: LEXIS начинает
+ * следующую независимую группу.
+ */
+export function parseLexisDocuments(
+  raw: string,
+): (KeyedBlocksResult & { source: string })[] {
+  const lines = String(raw ?? "").split(/\r?\n/);
+  const starts = lines
+    .map((line, index) => (/^\s*TYPE:\s*LEXIS\s*$/i.test(line) ? index : -1))
+    .filter((index) => index >= 0);
+
+  return starts.flatMap((start, at) => {
+    const end = starts[at + 1] ?? lines.length;
+    const chunk: string[] = [];
+    for (let index = start; index < end; index++) {
+      const line = lines[index];
+      if (index > start && /^\s*```/.test(line)) break;
+      chunk.push(line);
+    }
+    const source = chunk.join("\n").trim();
+    const parsed = parseKeyed(source);
+    return parsed?.type === "LEXIS" ? [{ ...parsed, source }] : [];
+  });
+}
+
+/**
  * Разобрать текст в ключевом формате.
  *
  * Возвращает null, если текст этим форматом не объявлен — вызывающий
@@ -373,11 +402,21 @@ function parseBlocks(
 
   const closeCompare = () => {
     if (compare.length === 0) return;
-    blocks.push({
-      type: "table",
-      headers: [compare[0][0], compare[0][1]],
-      rows: compare.map((row) => [row[2], row[3]]),
-    });
+    blocks.push(
+      kind === "LEXIS"
+        ? {
+            type: "table",
+            headers: ["A", "B", "A — контекст", "B — контекст"],
+            // У разных строк CONTRAST могут быть разные пары. Сохраняем
+            // все четыре ячейки, иначе названия второй пары исчезали.
+            rows: compare,
+          }
+        : {
+            type: "table",
+            headers: [compare[0][0], compare[0][1]],
+            rows: compare.map((row) => [row[2], row[3]]),
+          },
+    );
     compare = [];
   };
 

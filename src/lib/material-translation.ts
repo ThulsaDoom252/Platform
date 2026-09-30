@@ -29,6 +29,7 @@ export type VocabularyTranslationResult = {
 };
 
 type SourceLanguage = MaterialTranslationLang | "EN";
+type TargetLanguage = MaterialTranslationLang | "EN";
 type TranslationSegment = {
   id: string;
   text: string;
@@ -54,7 +55,7 @@ function deepLSettings() {
 
 async function requestDeepL(
   texts: string[],
-  target: MaterialTranslationLang,
+  target: TargetLanguage,
   source?: SourceLanguage,
   context?: string,
 ): Promise<string[]> {
@@ -103,6 +104,16 @@ async function requestDeepL(
     throw new Error("DeepL вернул неполный перевод");
   }
   return translations;
+}
+
+/** Короткий двусторонний перевод для словника прямо во время урока. */
+export async function translateShortText(
+  text: string,
+  target: TargetLanguage,
+  source: SourceLanguage,
+): Promise<string> {
+  const [translated] = await requestDeepL([text], target, source, "English lesson vocabulary");
+  return translated;
 }
 
 async function translateSegments(

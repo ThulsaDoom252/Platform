@@ -433,6 +433,7 @@ function Card({
 
   return (
     <div
+      id={`twister-${item.id}`}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={(e) => draggable && e.preventDefault()}

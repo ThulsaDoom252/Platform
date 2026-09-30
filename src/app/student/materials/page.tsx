@@ -6,9 +6,14 @@ import { getDict } from "@/lib/i18n/server";
 import { getStudentLibrary } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 
-export default async function StudentMaterialsPage() {
+export default async function StudentMaterialsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ node?: string }>;
+}) {
   const session = await getSession();
   const { t } = await getDict();
+  const { node: initialNodeId } = await searchParams;
   // Своё личное дерево плюс открытые разделы общей базы.
   const tree = await getStudentLibrary(session!.userId);
 
@@ -25,7 +30,9 @@ export default async function StudentMaterialsPage() {
         <p className="mt-1 text-sm text-muted">{t.materials.subtitle}</p>
       </div>
       <MaterialsExplorer
+        key={initialNodeId ?? "root"}
         tree={tree}
+        initialNodeId={initialNodeId}
         progress={me?.progress ?? 0}
         canExport={me?.allowExport ?? false}
       />

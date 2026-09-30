@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { homework } from "@/lib/db/schema";
+import { homework, wordDeckActivities } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
@@ -8,6 +8,8 @@ import { submitHomeworkAction } from "@/lib/actions/student";
 import { IconMaterials } from "@/components/icons";
 import { myRevisionsAction } from "@/lib/actions/revision";
 import { RevisionList } from "@/components/revision/revision-list";
+import { WordDeckBoard } from "@/components/game/word-deck-board";
+import { normalizeWordDeckSettings } from "@/lib/word-deck";
 
 const statusTint: Record<string, string> = {
   NOT_DONE: "tint-amber",
@@ -29,6 +31,11 @@ export default async function StudentHomeworkPage() {
     .from(homework)
     .where(eq(homework.studentId, session!.userId))
     .orderBy(desc(homework.createdAt));
+  const activityIds = [...new Set(items.map((item) => item.activityId).filter((id): id is string => !!id))];
+  const activities = activityIds.length
+    ? await db.select().from(wordDeckActivities).where(inArray(wordDeckActivities.id, activityIds))
+    : [];
+  const activityOf = new Map(activities.map((activity) => [activity.id, activity]));
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,7 +53,9 @@ export default async function StudentHomeworkPage() {
       )}
 
       <div className="flex flex-col gap-4">
-        {items.map((h) => (
+        {items.map((h) => {
+          const activity = h.activityId ? activityOf.get(h.activityId) : null;
+          return (
           <section
             key={h.id}
             className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6"
@@ -72,6 +81,20 @@ export default async function StudentHomeworkPage() {
                     {fmt(t.studentArea.teacherComment, { text: h.teacherFeedback })}
                   </p>
                 )}
+                {activity && (
+                  <div className="mt-5">
+                    <WordDeckBoard
+                      activity={{
+                        id: activity.id,
+                        title: activity.title,
+                        cards: activity.cards ?? [],
+                        settings: normalizeWordDeckSettings(activity.settings),
+                        backgroundImageUrl: activity.backgroundImageUrl,
+                      }}
+                      compact
+                    />
+                  </div>
+                )}
                 {(h.status === "NOT_DONE" || h.status === "NEEDS_REVISION") && (
                   <form action={submitHomeworkAction} className="mt-4">
                     <input type="hidden" name="homeworkId" value={h.id} />
@@ -86,7 +109,8 @@ export default async function StudentHomeworkPage() {
               </div>
             </div>
           </section>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

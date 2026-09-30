@@ -3,6 +3,10 @@ import { getDict } from "@/lib/i18n/server";
 import { listVocabNodesAction } from "@/lib/actions/phrase-images";
 import { fmt } from "@/lib/i18n";
 import { IconGrid, IconChevronRight } from "@/components/icons";
+import {
+  listWordDeckActivitiesAction,
+} from "@/lib/actions/word-deck";
+import { WordDeckStudio } from "@/components/game/word-deck-studio";
 
 /**
  * Активности: витрина игр.
@@ -11,9 +15,17 @@ import { IconGrid, IconChevronRight } from "@/components/icons";
  * в класс, а не вторая копия настройки. Здесь же видно, сколько слов
  * готово к игре: без картинок играть не во что.
  */
-export default async function ActivitiesPage() {
+export default async function ActivitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ activity?: string }>;
+}) {
   const { t } = await getDict();
-  const nodes = await listVocabNodesAction();
+  const { activity: initialActivityId } = await searchParams;
+  const [nodes, wordDeckActivities] = await Promise.all([
+    listVocabNodesAction(),
+    listWordDeckActivitiesAction(),
+  ]);
 
   const words = nodes.reduce((sum, n) => sum + n.words, 0);
   const ready = nodes.reduce((sum, n) => sum + n.ready, 0);
@@ -24,6 +36,11 @@ export default async function ActivitiesPage() {
         <h1 className="text-2xl font-bold text-content">{t.nav.activities}</h1>
         <p className="mt-1 text-sm text-muted">{t.game.subtitle}</p>
       </div>
+
+      <WordDeckStudio
+        initialActivities={wordDeckActivities}
+        initialActivityId={initialActivityId}
+      />
 
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center gap-4">

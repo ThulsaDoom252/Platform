@@ -122,6 +122,7 @@ function Row({ item }: { item: LessonCard }) {
   /* Чем урок наполнен — одной строкой; пустое просто не упоминается. */
   const filled = [
     item.words > 0 ? fmt(t.lessonUnits.words, { n: item.words }) : null,
+    item.hasLexis ? t.lessonUnits.secLexis : null,
     item.hasVideo ? t.lessonUnits.secVideo : null,
     item.lines > 0 ? fmt(t.lessonUnits.linesCount, { n: item.lines }) : null,
     item.questions > 0

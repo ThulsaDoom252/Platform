@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -10,8 +11,13 @@ import {
   homework,
   notifications,
   lessonPackages,
+  wordDeckActivities,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import {
+  decryptStudentPassword,
+  encryptStudentPassword,
+} from "@/lib/password-vault";
 import {
   adjustStudentLessons,
   configureSharedLessonPool,
@@ -25,6 +31,8 @@ async function requireTeacher() {
   }
   return session;
 }
+
+const userIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Завести ученика. Кроме имени и входа всё необязательно:
@@ -56,6 +64,9 @@ export async function createStudentAction(formData: FormData) {
       ? started
       : null;
 
+  const studentId = randomUUID();
+  const passwordVault = encryptStudentPassword(password, studentId);
+
   // Пакет заводим, только если есть о чём говорить: остаток или расход.
   let packageId: string | null = null;
   if (balance > 0 || used > 0) {
@@ -68,9 +79,11 @@ export async function createStudentAction(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await db.insert(users).values({
+    id: studentId,
     name,
     login,
     passwordHash,
+    passwordVault,
     role: "STUDENT",
     lessonBalance: balance,
     packageId,
@@ -82,19 +95,79 @@ export async function createStudentAction(formData: FormData) {
   revalidatePath("/teacher/students");
 }
 
-export async function resetStudentPasswordAction(formData: FormData) {
+export type StudentPasswordState = {
+  ok?: boolean;
+  password?: string;
+  unavailable?: boolean;
+  error?: string;
+};
+
+export async function revealStudentPasswordAction(
+  studentId: string,
+): Promise<StudentPasswordState> {
+  await requireTeacher();
+  if (!userIdPattern.test(studentId)) return { error: "Ученик не выбран" };
+
+  const [student] = await db
+    .select({
+      id: users.id,
+      role: users.role,
+      passwordHash: users.passwordHash,
+      passwordVault: users.passwordVault,
+    })
+    .from(users)
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
+    .limit(1);
+
+  if (!student) return { error: "Ученик не найден" };
+
+  if (student.passwordVault) {
+    const password = decryptStudentPassword(student.passwordVault, student.id);
+    if (password) return { password };
+  }
+
+  // Старые аккаунты не имели сейфа. Если стандартный пароль из .env
+  // всё ещё действительно подходит к хешу, это и есть текущий пароль:
+  // безопасно переносим его в новый формат при первом просмотре.
+  const legacyDefault = process.env.STUDENT_DEFAULT_PASSWORD;
+  if (legacyDefault && await bcrypt.compare(legacyDefault, student.passwordHash)) {
+    const passwordVault = encryptStudentPassword(legacyDefault, student.id);
+    await db
+      .update(users)
+      .set({ passwordVault, updatedAt: new Date() })
+      .where(and(eq(users.id, student.id), eq(users.role, "STUDENT")));
+    return { password: legacyDefault };
+  }
+
+  return { unavailable: true };
+}
+
+export async function updateStudentPasswordAction(
+  _previous: StudentPasswordState,
+  formData: FormData,
+): Promise<StudentPasswordState> {
   await requireTeacher();
   const studentId = String(formData.get("studentId") || "");
   const newPassword = String(formData.get("newPassword") || "");
-  if (!studentId || !newPassword) return;
+  if (!userIdPattern.test(studentId)) return { error: "Ученик не выбран" };
+  if (!newPassword || newPassword.length > 128) {
+    return { error: "Пароль должен содержать от 1 до 128 символов" };
+  }
 
-  const passwordHash = await bcrypt.hash(newPassword, 10);
-  await db
+  const [updated] = await db
     .update(users)
-    .set({ passwordHash, updatedAt: new Date() })
-    .where(eq(users.id, studentId));
+    .set({
+      passwordHash: await bcrypt.hash(newPassword, 10),
+      passwordVault: encryptStudentPassword(newPassword, studentId),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
+    .returning({ id: users.id });
+
+  if (!updated) return { error: "Ученик не найден" };
 
   revalidatePath(`/teacher/students/${studentId}`);
+  return { ok: true, password: newPassword };
 }
 
 export async function adjustBalanceAction(formData: FormData) {
@@ -250,16 +323,31 @@ export async function updateLessonStatusAction(formData: FormData) {
 }
 
 export async function createHomeworkAction(formData: FormData) {
-  await requireTeacher();
+  const session = await requireTeacher();
   const studentId = String(formData.get("studentId") || "");
   const title = String(formData.get("title") || "").trim();
   const description = String(formData.get("description") || "").trim();
+  const requestedActivityId = String(formData.get("activityId") || "");
   if (!studentId || !title) return;
+
+  const [ownedActivity] = requestedActivityId
+    ? await db
+        .select({ id: wordDeckActivities.id })
+        .from(wordDeckActivities)
+        .where(
+          and(
+            eq(wordDeckActivities.id, requestedActivityId),
+            eq(wordDeckActivities.authorId, session.userId),
+          ),
+        )
+        .limit(1)
+    : [];
 
   await db.insert(homework).values({
     studentId,
     title,
-    description: description || null,
+      description: description || null,
+      activityId: ownedActivity?.id ?? null,
     status: "NOT_DONE",
   });
 
@@ -512,6 +600,52 @@ export async function markNotificationsReadAction() {
 
 /* Текста подписи здесь нет: язык знает только страница. */
 export type StudentNotesState = { ok?: boolean; error?: string };
+
+/**
+ * Контакты и анкета ученика общие для обеих сторон: ученик правит их в
+ * своём профиле, а учитель — в карточке ученика.
+ */
+export async function saveStudentProfileFieldsAction(
+  _prev: StudentNotesState,
+  formData: FormData,
+): Promise<StudentNotesState> {
+  await requireTeacher();
+
+  const studentId = String(formData.get("studentId") || "");
+  if (!userIdPattern.test(studentId)) return { error: "Не выбран ученик" };
+
+  const field = (key: string, max: number) =>
+    String(formData.get(key) || "").trim().slice(0, max) || null;
+
+  // Эти четыре поля ученик сохраняет без дополнительного урезания —
+  // учительская форма должна вести себя так же, чтобы не потерять данные.
+  const sharedField = (key: string) =>
+    String(formData.get(key) || "").trim() || null;
+
+  const updated = await db
+    .update(users)
+    .set({
+      email: sharedField("email"),
+      phone: sharedField("phone"),
+      telegram: sharedField("telegram"),
+      viber: field("viber", 60),
+      contactNote: sharedField("contactNote"),
+      hobby: field("hobby", 300),
+      homeland: field("homeland", 120),
+      country: field("country", 120),
+      city: field("city", 120),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
+    .returning({ id: users.id });
+
+  if (updated.length === 0) return { error: "Ученик не найден" };
+
+  revalidatePath(`/teacher/students/${studentId}`);
+  revalidatePath("/student/profile");
+  revalidatePath("/student/class");
+  return { ok: true };
+}
 
 /**
  * Заметки учителя об ученике и доступ к прошедшим урокам.

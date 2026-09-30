@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useSpeech, SpeakPair } from "./speech";
 import type { RuleBlock } from "@/lib/rule-parser";
@@ -44,6 +44,10 @@ export function RuleReader({
   description,
   blocks,
   lang = "UK",
+  showBritish = true,
+  focusedBlock,
+  onBlockPick,
+  focusLabel = "Focus",
 }: {
   title: string;
   icon: string | null;
@@ -51,9 +55,22 @@ export function RuleReader({
   blocks: RuleBlock[];
   /** Язык страницы: по нему выбирается версия внешней ссылки. */
   lang?: "UK" | "RU";
+  /** В уроке UK-вариант открывается ученику отдельной настройкой. */
+  showBritish?: boolean;
+  /** Индекс любого блока, на котором сейчас сфокусирован ученик. */
+  focusedBlock?: number;
+  /** Только в уроке: сфокусировать ученика на любой части лексики. */
+  onBlockPick?: (block: number) => void;
+  focusLabel?: string;
 }) {
   const s = useSpeech();
+  const focusedRef = useRef<HTMLDivElement>(null);
   const isStudySheet = blocks.some((block) => isSheetVariant(block.variant));
+
+  useEffect(() => {
+    if (focusedBlock === undefined || !focusedRef.current) return;
+    focusedRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedBlock, title]);
 
   // Подсказки — это то, что стоит знать, но не обязательно читать сразу.
   // Учитель прячет их, когда объясняет основное, и возвращает для разбора.
@@ -150,7 +167,8 @@ export function RuleReader({
       )}
 
       {blocks.map((b, i) => {
-        switch (b.type) {
+        const content = (() => {
+          switch (b.type) {
           case "heading": {
             if (b.variant === "sheet-section") {
               const section = sectionParts(b.text);
@@ -224,7 +242,7 @@ export function RuleReader({
                     <span aria-hidden>❌</span>
                     <span>{parts.wrong}</span>
                     {speakable(parts.wrong) && (
-                      <SpeakPair text={parts.wrong} id={`tw-${i}`} speech={s} />
+                      <SpeakPair text={parts.wrong} id={`tw-${i}`} speech={s} showUk={showBritish} />
                     )}
                   </p>
                   {parts.right && (
@@ -232,7 +250,7 @@ export function RuleReader({
                       <span aria-hidden>✅</span>
                       <span>{parts.right}</span>
                       {speakable(parts.right) && (
-                        <SpeakPair text={parts.right} id={`tr-${i}`} speech={s} />
+                        <SpeakPair text={parts.right} id={`tr-${i}`} speech={s} showUk={showBritish} />
                       )}
                     </p>
                   )}
@@ -283,7 +301,7 @@ export function RuleReader({
               <div key={i} className="rounded-xl bg-surface-2 px-4 py-3">
                 <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-content">
                   {b.en}
-                  <SpeakPair text={b.en} id={key} speech={s} />
+                  <SpeakPair text={b.en} id={key} speech={s} showUk={showBritish} />
                 </p>
                 {b.tr && <p className="mt-0.5 text-[13px] italic text-muted">{b.tr}</p>}
                 {b.why && (
@@ -315,7 +333,7 @@ export function RuleReader({
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                     <span>{it}</span>
                     {speakable(it) && (
-                      <SpeakPair text={it} id={`l-${i}-${j}`} speech={s} />
+                      <SpeakPair text={it} id={`l-${i}-${j}`} speech={s} showUk={showBritish} />
                     )}
                   </li>
                 ))}
@@ -364,6 +382,7 @@ export function RuleReader({
                                     text={spoken}
                                     id={`t${i}-${ri}-${ci}`}
                                     speech={s}
+                                    showUk={showBritish}
                                   />
                                 )}
                               </td>
@@ -423,6 +442,7 @@ export function RuleReader({
                                     text={spoken}
                                     id={`t${i}-${ri}-${ci}`}
                                     speech={s}
+                                    showUk={showBritish}
                                   />
                                 )}
                               </span>
@@ -448,14 +468,19 @@ export function RuleReader({
                   <h4 className="text-base font-bold text-content">{b.word}</h4>
                   {b.tr && <span className="text-sm text-muted">{b.tr}</span>}
                   <span className="ml-auto flex items-center gap-1.5">
-                    <SpeakPair text={b.word} id={`w-${i}`} speech={s} />
+                    <SpeakPair
+                      text={b.word}
+                      id={`w-${i}`}
+                      speech={s}
+                      showUk={showBritish}
+                    />
                   </span>
                 </header>
 
-                {(b.us || b.uk) && (
+                {(b.us || (showBritish && b.uk)) && (
                   <p className="mt-1 flex flex-wrap gap-3 font-mono text-[12px] text-faint">
                     {b.us && <span>us {b.us}</span>}
-                    {b.uk && <span>uk {b.uk}</span>}
+                    {showBritish && b.uk && <span>uk {b.uk}</span>}
                   </p>
                 )}
 
@@ -474,7 +499,7 @@ export function RuleReader({
                     <div key={j} className="rounded-xl bg-surface-2 px-3 py-2">
                       <p className="flex flex-wrap items-center gap-2 text-sm text-content">
                         {ex.en}
-                        <SpeakPair text={ex.en} id={`w-${i}-${j}`} speech={s} />
+                        <SpeakPair text={ex.en} id={`w-${i}-${j}`} speech={s} showUk={showBritish} />
                       </p>
                       <p className="mt-0.5 text-[13px] italic text-muted">{ex.tr}</p>
                     </div>
@@ -509,7 +534,7 @@ export function RuleReader({
                   </p>
                   <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm font-medium text-content">
                     {b.en}
-                    <SpeakPair text={b.en} id={`f-${i}`} speech={s} />
+                    <SpeakPair text={b.en} id={`f-${i}`} speech={s} showUk={showBritish} />
                   </p>
                   <p className="text-[13px] italic text-muted">{b.tr}</p>
                 </div>
@@ -564,6 +589,7 @@ export function RuleReader({
                                   text={cell}
                                   id={`g${i}-${ri}-${ci}`}
                                   speech={s}
+                                  showUk={showBritish}
                                 />
                               )}
                             </span>
@@ -601,12 +627,12 @@ export function RuleReader({
                   <span className="rounded-lg bg-accent px-2 py-0.5 text-[13px] font-bold text-white">
                     {b.word}
                   </span>
-                  <SpeakPair text={b.word} id={`mw-${i}`} speech={s} />
+                  <SpeakPair text={b.word} id={`mw-${i}`} speech={s} showUk={showBritish} />
                   <span className="text-[13px] text-muted">{b.tr}</span>
                 </p>
                 <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-content">
                   {b.en}
-                  <SpeakPair text={b.en} id={`m-${i}`} speech={s} />
+                  <SpeakPair text={b.en} id={`m-${i}`} speech={s} showUk={showBritish} />
                 </p>
                 <p className="text-[13px] italic text-muted">{b.ru}</p>
                 {hints && b.hintText && (
@@ -629,7 +655,36 @@ export function RuleReader({
                 {"text" in b ? b.text : ""}
               </p>
             );
-        }
+          }
+        })();
+
+        if ((!onBlockPick && focusedBlock !== i) || content === null) return content;
+        const pick = () => onBlockPick?.(i);
+        return (
+          <div
+            key={`focus-${i}`}
+            ref={focusedBlock === i ? focusedRef : undefined}
+            role={onBlockPick ? "button" : undefined}
+            tabIndex={onBlockPick ? 0 : undefined}
+            aria-label={onBlockPick ? focusLabel : undefined}
+            aria-pressed={onBlockPick ? focusedBlock === i : undefined}
+            onClick={onBlockPick ? pick : undefined}
+            onKeyDown={(event) => {
+              if (!onBlockPick) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              pick();
+            }}
+            className={cn(
+              "rounded-2xl outline-none transition",
+              onBlockPick &&
+                "cursor-pointer hover:ring-2 hover:ring-accent/50 focus-visible:ring-2 focus-visible:ring-accent",
+              focusedBlock === i && "ring-2 ring-accent",
+            )}
+          >
+            {content}
+          </div>
+        );
       })}
     </div>
   );

@@ -17,15 +17,15 @@ import {
   homeworkStatusTone,
 } from "@/lib/format";
 import {
-  adjustBalanceAction,
   createLessonAction,
   updateLessonStatusAction,
   createHomeworkAction,
   updateHomeworkStatusAction,
-  resetStudentPasswordAction,
 } from "@/lib/actions/teacher";
 import { getStudentStats, getStudentPackage } from "@/lib/packages";
 import { BalancePanel } from "@/components/teacher/balance-panel";
+import { listWordDeckActivitiesAction } from "@/lib/actions/word-deck";
+import { StudentPasswordPanel } from "@/components/teacher/student-password-panel";
 
 export default async function StudentDetailPage({
   params,
@@ -53,6 +53,7 @@ export default async function StudentDetailPage({
     getStudentStats(id),
     getStudentPackage(id),
   ]);
+  const wordDecks = await listWordDeckActivitiesAction();
 
   const poolStudents = await db
     .select({ id: users.id, name: users.name, packageId: users.packageId })
@@ -127,21 +128,7 @@ export default async function StudentDetailPage({
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Сброс пароля</CardTitle>
-            <CardDescription>Восстановление — вручную через учителя, без email</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form action={resetStudentPasswordAction} className="flex gap-2">
-              <input type="hidden" name="studentId" value={student.id} />
-              <Input name="newPassword" placeholder="Новый пароль" required />
-              <Button type="submit" variant="outline">
-                Сохранить
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <StudentPasswordPanel studentId={student.id} />
       </div>
 
       <Card>
@@ -227,10 +214,16 @@ export default async function StudentDetailPage({
           <CardTitle>Домашние задания</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <form action={createHomeworkAction} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <form action={createHomeworkAction} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
             <input type="hidden" name="studentId" value={student.id} />
             <Input name="title" placeholder="Название задания" required />
             <Input name="description" placeholder="Описание (необязательно)" />
+            <select name="activityId" className="h-10 rounded-md border border-slate-200 bg-transparent px-3 text-sm text-slate-900 dark:border-slate-800 dark:text-slate-100">
+              <option value="">Без карточной игры</option>
+              {wordDecks.map((activity) => (
+                <option key={activity.id} value={activity.id}>{activity.title}</option>
+              ))}
+            </select>
             <Button type="submit" className="sm:w-fit">
               Назначить ДЗ
             </Button>
