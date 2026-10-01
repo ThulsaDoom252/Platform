@@ -137,6 +137,9 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-black text-content">{activity.title}</span>
                   <span className="mt-0.5 block text-xs text-faint">
+                    {activity.settings.gameType === "GUESS_DESCRIPTION"
+                      ? `${t.wordDeck.guessByDescription} · `
+                      : ""}
                     {fmt(t.wordDeck.cardCount, { n: activity.cards.length * activity.settings.repeats })}
                     {activity.settings.timerMode !== "NONE" ? ` · ${t.wordDeck.timerOn}` : ""}
                   </span>
@@ -388,8 +391,15 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
     && Number.isInteger(parsedRepeats)
     && parsedRepeats >= 1
     && parsedRepeats <= 20;
-  const total = selected.size * (repeatsValid ? parsedRepeats : 0);
-  const enough = selected.size >= MIN_WORD_DECK_WORDS;
+  const eligibleIds = new Set(
+    groups
+      .flatMap((group) => group.words)
+      .filter((word) => settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim())
+      .map((word) => word.phraseId),
+  );
+  const selectedEligible = [...selected].filter((id) => eligibleIds.has(id));
+  const total = selectedEligible.length * (repeatsValid ? parsedRepeats : 0);
+  const enough = selectedEligible.length >= MIN_WORD_DECK_WORDS;
 
   const toggleNode = (id: string) => {
     if (nodeIds.includes(id)) autoSelectNodes.delete(id);
@@ -406,8 +416,11 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
 
   const selectRandomPercentage = (percent: 25 | 50 | 75) => {
     if (!currentGroup) return;
+    const available = currentGroup.words.filter(
+      (word) => settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim(),
+    );
     const picked = new Set(
-      randomWordDeckPercentage(currentGroup.words, percent).map((word) => word.phraseId),
+      randomWordDeckPercentage(available, percent).map((word) => word.phraseId),
     );
     setSelected((current) => {
       const next = new Set(current);
@@ -464,6 +477,32 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-5">
+          <div>
+            <p className="text-xs font-bold text-muted">{t.wordDeck.gameType}</p>
+            <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+              {(["WORDS", "GUESS_DESCRIPTION"] as const).map((gameType) => (
+                <button
+                  key={gameType}
+                  type="button"
+                  onClick={() => setSettings((value) => ({ ...value, gameType }))}
+                  className={cn(
+                    "rounded-2xl border p-3 text-left transition",
+                    settings.gameType === gameType
+                      ? "border-accent bg-accent-soft text-accent"
+                      : "border-line bg-surface-2 text-muted hover:border-accent/50",
+                  )}
+                >
+                  <span className="block text-sm font-black">
+                    {gameType === "WORDS" ? t.wordDeck.wordsGame : t.wordDeck.guessByDescription}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed">
+                    {gameType === "WORDS" ? t.wordDeck.wordsGameHint : t.wordDeck.guessByDescriptionHint}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label>
             <span className="text-xs font-bold text-muted">{t.wordDeck.gameTitle}</span>
             <input value={title} onChange={(event) => {
@@ -513,10 +552,17 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
             {!loadingWords && currentGroup && (
               <>
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
-                  <span className="text-xs font-semibold text-faint">{fmt(t.wordDeck.selectedInVocab, { selected: currentGroup.words.filter((word) => selected.has(word.phraseId)).length, total: currentGroup.words.length })}</span>
+                  <span className="text-xs font-semibold text-faint">{fmt(t.wordDeck.selectedInVocab, {
+                    selected: currentGroup.words.filter((word) => selected.has(word.phraseId) && (settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim())).length,
+                    total: currentGroup.words.filter((word) => settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim()).length,
+                  })}</span>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setSelected((current) => {
-                      const next = new Set(current); currentGroup.words.forEach((word) => next.add(word.phraseId)); return next;
+                      const next = new Set(current);
+                      currentGroup.words.forEach((word) => {
+                        if (settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim()) next.add(word.phraseId);
+                      });
+                      return next;
                     })} className="text-xs font-bold text-accent">{t.wordDeck.selectAll}</button>
                     <button type="button" onClick={() => setSelected((current) => {
                       const next = new Set(current); currentGroup.words.forEach((word) => next.delete(word.phraseId)); return next;
@@ -538,14 +584,19 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
                   ))}
                 </div>
                 <div className="mt-2 grid max-h-64 gap-1 overflow-y-auto sm:grid-cols-2">
-                  {currentGroup.words.map((word) => (
-                    <button key={word.phraseId} type="button" onClick={() => toggleWord(word.phraseId)} className={cn("flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition", selected.has(word.phraseId) ? "bg-accent-soft text-accent" : "bg-surface text-muted")}>
-                      <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", selected.has(word.phraseId) ? "border-accent bg-accent text-white" : "border-line")}>
-                        {selected.has(word.phraseId) && <IconCheck className="h-3 w-3" />}
-                      </span>
-                      <span className="truncate">{word.word}</span>
-                    </button>
-                  ))}
+                  {currentGroup.words.map((word) => {
+                    const unavailable = settings.gameType === "GUESS_DESCRIPTION" && !word.description?.trim();
+                    const checked = selected.has(word.phraseId) && !unavailable;
+                    return (
+                      <button key={word.phraseId} type="button" disabled={unavailable} onClick={() => toggleWord(word.phraseId)} className={cn("flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition", checked ? "bg-accent-soft text-accent" : "bg-surface text-muted", unavailable && "cursor-not-allowed opacity-45")}>
+                        <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", checked ? "border-accent bg-accent text-white" : "border-line")}>
+                          {checked && <IconCheck className="h-3 w-3" />}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{word.word}</span>
+                        {unavailable && <span className="shrink-0 text-[9px] font-bold uppercase">{t.wordDeck.noDescription}</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -575,10 +626,23 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
           )}
 
           <div className="rounded-2xl border border-line p-4">
-            <label className="mb-4 flex cursor-pointer items-start gap-3 border-b border-line pb-4">
-              <input type="checkbox" checked={settings.showIcons} onChange={(event) => setSettings((value) => ({ ...value, showIcons: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
-              <span><span className="block text-sm font-black text-content">{t.wordDeck.showIcons}</span><span className="block text-xs text-faint">{t.wordDeck.showIconsHint}</span></span>
-            </label>
+            {settings.gameType === "GUESS_DESCRIPTION" ? (
+              <div className="mb-4 grid gap-4 border-b border-line pb-4 sm:grid-cols-2">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input type="checkbox" checked={settings.descriptionIcons} onChange={(event) => setSettings((value) => ({ ...value, descriptionIcons: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
+                  <span><span className="block text-sm font-black text-content">{t.wordDeck.descriptionIcons}</span><span className="block text-xs text-faint">{t.wordDeck.descriptionIconsHint}</span></span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input type="checkbox" checked={settings.answerIcons} onChange={(event) => setSettings((value) => ({ ...value, answerIcons: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
+                  <span><span className="block text-sm font-black text-content">{t.wordDeck.answerIcons}</span><span className="block text-xs text-faint">{t.wordDeck.answerIconsHint}</span></span>
+                </label>
+              </div>
+            ) : (
+              <label className="mb-4 flex cursor-pointer items-start gap-3 border-b border-line pb-4">
+                <input type="checkbox" checked={settings.showIcons} onChange={(event) => setSettings((value) => ({ ...value, showIcons: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
+                <span><span className="block text-sm font-black text-content">{t.wordDeck.showIcons}</span><span className="block text-xs text-faint">{t.wordDeck.showIconsHint}</span></span>
+              </label>
+            )}
             <label className="flex cursor-pointer items-start gap-3">
               <input type="checkbox" checked={settings.alternate} onChange={(event) => setSettings((value) => ({ ...value, alternate: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
               <span><span className="block text-sm font-black text-content">{t.wordDeck.alternate}</span><span className="block text-xs text-faint">{t.wordDeck.alternateHint}</span></span>
@@ -627,7 +691,7 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
             return;
           }
           setError(null);
-          onSave({ id: activity?.id, title, nodeIds, phraseIds: [...selected], settings: { ...settings, repeats: parsedRepeats } }, image);
+          onSave({ id: activity?.id, title, nodeIds, phraseIds: selectedEligible, settings: { ...settings, repeats: parsedRepeats } }, image);
         }} className="h-11 rounded-xl bg-accent px-5 text-sm font-black text-white transition hover:opacity-90 disabled:opacity-40">
           {busy ? t.wordDeck.saving : t.wordDeck.save}
         </button>

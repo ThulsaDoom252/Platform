@@ -6,6 +6,7 @@ import {
   hasEnoughWordDeckWords,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
+  playableWordDeckCards,
   randomWordDeckPercentage,
   shuffleWordDeckTail,
   suggestedWordDeckTitle,
@@ -33,6 +34,7 @@ test("процент ученика распределяется точно по
 
 test("таймеры по умолчанию выключены, значения готовы заранее", () => {
   assert.deepEqual(normalizeWordDeckSettings({}), {
+    gameType: "WORDS",
     timerMode: "NONE",
     gameSeconds: 120,
     cardSeconds: 10,
@@ -41,8 +43,30 @@ test("таймеры по умолчанию выключены, значени�
     studentPercent: 50,
     sound: true,
     showIcons: false,
+    descriptionIcons: false,
+    answerIcons: true,
     background: "MIDNIGHT",
   });
+});
+
+test("у Guess by description свои безопасные настройки иконок", () => {
+  const settings = normalizeWordDeckSettings({ gameType: "GUESS_DESCRIPTION" });
+  assert.equal(settings.gameType, "GUESS_DESCRIPTION");
+  assert.equal(settings.descriptionIcons, false);
+  assert.equal(settings.answerIcons, true);
+});
+
+test("Guess by description берёт только слова с непустым описанием", () => {
+  const source = [
+    { phraseId: "a", word: "alpha", description: "the first letter" },
+    { phraseId: "b", word: "bravo", description: "  " },
+    { phraseId: "c", word: "charlie" },
+  ];
+  assert.deepEqual(
+    playableWordDeckCards(source, { gameType: "GUESS_DESCRIPTION" }).map((card) => card.phraseId),
+    ["a"],
+  );
+  assert.equal(playableWordDeckCards(source, { gameType: "WORDS" }).length, 3);
 });
 
 test("истёкший таймер не блокирует следующую карту", () => {
@@ -112,6 +136,36 @@ test("живой стол сохраняет порядок, но не прин�
   assert.ok(state?.deck.every((card) => card.word !== "подмена"));
   assert.equal(state?.at, 1);
   assert.equal(state?.faceUp, true);
+  assert.equal(state?.readDescriptions, false);
+  assert.equal(state?.verdict, null);
+  assert.equal(state?.feedback, null);
+});
+
+test("живой стол синхронизирует озвучивание и оценку, но отбрасывает чужие значения", () => {
+  const deck = buildWordDeck(words, { repeats: 1 }, () => 0.5);
+  const state = normalizeWordDeckLiveState(words, { repeats: 1 }, {
+    deck,
+    at: 0,
+    faceUp: false,
+    sound: true,
+    time: 10,
+    expired: false,
+    readDescriptions: true,
+    verdict: "WRONG",
+    feedback: "WRONG",
+    updatedAt: "now",
+  });
+  assert.equal(state?.readDescriptions, true);
+  assert.equal(state?.verdict, "WRONG");
+  assert.equal(state?.feedback, "WRONG");
+
+  const cleaned = normalizeWordDeckLiveState(words, { repeats: 1 }, {
+    ...state!,
+    verdict: "RIGHT" as const,
+    feedback: "TIME_UP" as const,
+  });
+  assert.equal(cleaned?.verdict, "RIGHT");
+  assert.equal(cleaned?.feedback, "TIME_UP");
 });
 
 test("ученик не может прислать неполную или повторённую колоду", () => {

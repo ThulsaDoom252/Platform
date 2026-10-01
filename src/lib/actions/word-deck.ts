@@ -19,6 +19,7 @@ import {
   hasEnoughWordDeckWords,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
+  playableWordDeckCards,
   type WordDeckLiveState,
   type WordDeckSettings,
   type WordDeckSourceCard,
@@ -157,6 +158,7 @@ async function wordDeckGroups(
       phraseId: materialPhrases.id,
       word: materialPhrases.phrase,
       icon: materialPhrases.icon,
+      description: materialPhrases.description,
       kind: materialPhrases.kind,
     })
     .from(materialPhrases)
@@ -173,6 +175,7 @@ async function wordDeckGroups(
       phraseId: row.phraseId,
       word: row.word,
       icon: row.icon,
+      description: row.description,
       nodeId: node.id,
       vocabName: node.name,
       vocabIcon: node.icon,
@@ -519,11 +522,12 @@ export async function saveWordDeckActivityAction(
     ? new Set(input.phraseIds.map(String))
     : null;
   const cards = picked ? words.filter((word) => picked.has(word.phraseId)) : words;
-  if (!hasEnoughWordDeckWords(cards.length)) {
+  const settings = normalizeWordDeckSettings(input?.settings ?? DEFAULT_WORD_DECK_SETTINGS);
+  const playableCards = playableWordDeckCards(cards, settings);
+  if (!hasEnoughWordDeckWords(playableCards.length)) {
     return { error: `Для колоды нужно минимум ${MIN_WORD_DECK_WORDS} слова` };
   }
 
-  const settings = normalizeWordDeckSettings(input?.settings ?? DEFAULT_WORD_DECK_SETTINGS);
   const id = String(input?.id ?? "");
   if (id) {
     const [mine] = await db
@@ -539,7 +543,7 @@ export async function saveWordDeckActivityAction(
     if (!mine) return { error: "Игра не найдена" };
     await db
       .update(wordDeckActivities)
-      .set({ title, nodeId: nodeIds[0], cards, settings, updatedAt: new Date() })
+      .set({ title, nodeId: nodeIds[0], cards: playableCards, settings, updatedAt: new Date() })
       .where(eq(wordDeckActivities.id, id));
     revalidatePath("/teacher/activities");
     return { id };
@@ -547,7 +551,7 @@ export async function saveWordDeckActivityAction(
 
   const [created] = await db
     .insert(wordDeckActivities)
-    .values({ authorId: session.userId, title, nodeId: nodeIds[0], cards, settings })
+    .values({ authorId: session.userId, title, nodeId: nodeIds[0], cards: playableCards, settings })
     .returning({ id: wordDeckActivities.id });
   revalidatePath("/teacher/activities");
   return { id: created?.id };

@@ -1,7 +1,10 @@
 /** Чистая логика активности «Колода слов». */
 
 export type WordDeckTimerMode = "NONE" | "GAME" | "CARD";
+export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION";
 export type WordDeckOwner = "TEACHER" | "STUDENT" | null;
+export type WordDeckVerdict = "RIGHT" | "WRONG" | null;
+export type WordDeckFeedback = "RIGHT" | "WRONG" | "TIME_UP" | null;
 export type WordDeckBackground =
   | "MIDNIGHT"
   | "EMERALD"
@@ -13,6 +16,7 @@ export type WordDeckSourceCard = {
   phraseId: string;
   word: string;
   icon?: string | null;
+  description?: string | null;
   /** Источник нужен редактору, чтобы разложить общую колоду по словникам. */
   nodeId?: string;
   vocabName?: string;
@@ -47,10 +51,15 @@ export type WordDeckLiveState = {
   sound: boolean;
   time: number;
   expired: boolean;
+  /** Озвучивание синхронизируется, но переключатель видит только учитель. */
+  readDescriptions: boolean;
+  verdict: WordDeckVerdict;
+  feedback: WordDeckFeedback;
   updatedAt: string;
 };
 
 export type WordDeckSettings = {
+  gameType: WordDeckGameType;
   timerMode: WordDeckTimerMode;
   gameSeconds: number;
   cardSeconds: number;
@@ -59,10 +68,13 @@ export type WordDeckSettings = {
   studentPercent: number;
   sound: boolean;
   showIcons: boolean;
+  descriptionIcons: boolean;
+  answerIcons: boolean;
   background: WordDeckBackground;
 };
 
 export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
+  gameType: "WORDS",
   timerMode: "NONE",
   gameSeconds: 120,
   cardSeconds: 10,
@@ -71,6 +83,8 @@ export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
   studentPercent: 50,
   sound: true,
   showIcons: false,
+  descriptionIcons: false,
+  answerIcons: true,
   background: "MIDNIGHT",
 };
 
@@ -94,6 +108,7 @@ export function normalizeWordDeckSettings(
     "CUSTOM",
   ];
   return {
+    gameType: value?.gameType === "GUESS_DESCRIPTION" ? "GUESS_DESCRIPTION" : "WORDS",
     timerMode,
     gameSeconds: clamp(value?.gameSeconds, 10, 3600, 120),
     cardSeconds: clamp(value?.cardSeconds, 3, 300, 10),
@@ -102,10 +117,23 @@ export function normalizeWordDeckSettings(
     studentPercent: clamp(value?.studentPercent, 0, 100, 50),
     sound: value?.sound !== false,
     showIcons: value?.showIcons === true,
+    descriptionIcons: value?.descriptionIcons === true,
+    answerIcons: value?.answerIcons !== false,
     background: backgrounds.includes(value?.background as WordDeckBackground)
       ? (value!.background as WordDeckBackground)
       : "MIDNIGHT",
   };
+}
+
+/** В игре по описанию слова без описания не могут попасть на стол. */
+export function playableWordDeckCards(
+  source: WordDeckSourceCard[],
+  rawSettings: Partial<WordDeckSettings>,
+): WordDeckSourceCard[] {
+  const settings = normalizeWordDeckSettings(rawSettings);
+  return settings.gameType === "GUESS_DESCRIPTION"
+    ? source.filter((card) => Boolean(card.description?.trim()))
+    : [...source];
 }
 
 /** Fisher–Yates с внедряемым random: тесты проверяют без случайности. */
@@ -208,6 +236,13 @@ export function normalizeWordDeckLiveState(
   const at = Math.min(deck.length - 1, Math.max(-1, Math.trunc(Number(value.at) || 0)));
   const maxTime = settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds;
   const time = Math.min(maxTime, Math.max(0, Math.trunc(Number(value.time) || 0)));
+  const verdict: WordDeckVerdict = value.verdict === "RIGHT" || value.verdict === "WRONG"
+    ? value.verdict
+    : null;
+  const feedback: WordDeckFeedback = value.feedback === "RIGHT" ||
+    value.feedback === "WRONG" || value.feedback === "TIME_UP"
+    ? value.feedback
+    : null;
   return {
     deck,
     at,
@@ -215,6 +250,9 @@ export function normalizeWordDeckLiveState(
     sound: value.sound !== false,
     time,
     expired: value.expired === true,
+    readDescriptions: value.readDescriptions === true,
+    verdict,
+    feedback,
     updatedAt: String(value.updatedAt ?? "").slice(0, 64) || new Date().toISOString(),
   };
 }
