@@ -32,17 +32,22 @@ import { parseLexisDocuments } from "@/lib/keyed-parser";
 import { sanitizeBlocks, type RuleBlock } from "@/lib/rule-blocks";
 import {
   BRITISH_OPTION,
+  isLessonVocabularyRevealOption,
   isDialogueHighlightKey,
   isWordFocusKey,
   isSection,
   normalizeLessonHighlights,
+  normalizeLessonVocabularyReveal,
   openSections,
+  lessonVocabularyReveal,
+  lessonVocabularyRevealOptions,
   parseKey,
   parseTranscript,
   selectLexisGroup,
   toggleWordFocus,
   toggleDialogueHighlight,
   type LessonSection,
+  type LessonVocabularyReveal,
   type LessonWord,
   type TranscriptLine,
 } from "@/lib/lesson-unit";
@@ -1301,6 +1306,83 @@ export async function showBritishAction(
   return {};
 }
 
+/** Текущее раскрытие переводов и описаний — лёгкий опрос живого класса. */
+export async function lessonVocabularyRevealAction(
+  assignmentId: string,
+): Promise<LessonVocabularyReveal | null> {
+  const session = await requireUser();
+  const id = String(assignmentId ?? "");
+  const [row] = await db
+    .select({
+      studentId: lessonAssignments.studentId,
+      authorId: lessonUnits.authorId,
+      openSections: lessonAssignments.openSections,
+    })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(eq(lessonAssignments.id, id))
+    .limit(1);
+  if (!row) return null;
+  if (session.role === "STUDENT" && row.studentId !== session.userId) return null;
+  if (session.role === "TEACHER" && row.authorId !== session.userId) return null;
+  return lessonVocabularyReveal(row.openSections);
+}
+
+/** Учитель открывает перевод или описание сразу для ученика в классе. */
+export async function setLessonVocabularyRevealAction(
+  assignmentId: string,
+  raw: Partial<LessonVocabularyReveal>,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+  const [[teacher], [row]] = await Promise.all([
+    db
+      .select({ studentId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1),
+    db
+      .select({
+        studentId: lessonAssignments.studentId,
+        unitId: lessonAssignments.unitId,
+        openSections: lessonAssignments.openSections,
+      })
+      .from(lessonAssignments)
+      .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+      .where(
+        and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)),
+      )
+      .limit(1),
+  ]);
+  if (!row) return { error: "Урок не закреплён" };
+  if (!teacher?.studentId || teacher.studentId !== row.studentId) {
+    return { error: "Этот ученик сейчас не в классе" };
+  }
+
+  const wordRows = await db
+    .select({ id: lessonWords.id })
+    .from(lessonWords)
+    .where(eq(lessonWords.unitId, row.unitId));
+  const reveal = normalizeLessonVocabularyReveal(
+    raw,
+    new Set(wordRows.map((word) => word.id)),
+  );
+  const kept = (row.openSections ?? []).filter(
+    (option) => !isLessonVocabularyRevealOption(option),
+  );
+
+  await db
+    .update(lessonAssignments)
+    .set({
+      openSections: [...kept, ...lessonVocabularyRevealOptions(reveal)],
+      updatedAt: new Date(),
+    })
+    .where(eq(lessonAssignments.id, id));
+
+  revalidatePath("/student/class");
+  return {};
+}
+
 /** Ответ ученика по заданию урока — его собственная копия. */
 export async function answerAction(
   assignmentId: string,
@@ -1338,6 +1420,7 @@ export async function assignedLessonAction(assignmentId: string): Promise<
       answers: Record<string, string>;
       open: LessonSection[];
       showBritish: boolean;
+      vocabularyReveal: LessonVocabularyReveal;
     }
   | null
 > {
@@ -1376,5 +1459,6 @@ export async function assignedLessonAction(assignmentId: string): Promise<
     answers: row.a.answers ?? {},
     open: openSections(stored),
     showBritish: stored.includes(BRITISH_OPTION),
+    vocabularyReveal: lessonVocabularyReveal(stored),
   };
 }

@@ -6,12 +6,14 @@
  * Ученик читает. Учитель тыкает по слову — у ученика остаётся один
  * фокус в цвете его собственной темы. Правится закрепление, а не урок.
  */
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
   focusLessonWordAction,
   highlightLessonDialogueAction,
+  lessonVocabularyRevealAction,
   selectLessonLexisGroupAction,
+  setLessonVocabularyRevealAction,
   showBritishAction,
 } from "@/lib/actions/lessons";
 import type { LessonAssignmentCard, LessonView as Lesson } from "@/lib/actions/lessons";
@@ -23,6 +25,7 @@ import {
   toggleDialogueHighlight,
   toggleWordFocus,
   yellowHighlights,
+  type LessonVocabularyReveal,
   type LessonSection,
 } from "@/lib/lesson-unit";
 import { LessonView } from "@/components/lessons/lesson-view";
@@ -42,6 +45,7 @@ export function AssignedLesson({
     answers: Record<string, string>;
     open: LessonSection[];
     showBritish: boolean;
+    vocabularyReveal: LessonVocabularyReveal;
   };
   teacher: boolean;
   /** Есть только внутри живого класса; вне класса видео остаётся обычным. */
@@ -52,7 +56,9 @@ export function AssignedLesson({
   const [marks, setMarks] = useState(data.assignment.highlights);
   const [british, setBritish] = useState(data.showBritish);
   const [highlightMode, setHighlightMode] = useState(false);
+  const [vocabularyReveal, setVocabularyReveal] = useState(data.vocabularyReveal);
   const [busy, startBusy] = useTransition();
+  const revealQueue = useRef(Promise.resolve());
 
   // В классе состояние приходит коротким опросом. Обновляем подсветки,
   // не перемонтируя весь урок: выбранная вкладка и режим выделения при
@@ -62,9 +68,43 @@ export function AssignedLesson({
     const frame = requestAnimationFrame(() => {
       setMarks(data.assignment.highlights);
       setBritish(data.showBritish);
+      setVocabularyReveal(data.vocabularyReveal);
     });
     return () => cancelAnimationFrame(frame);
-  }, [data.assignment.highlights, data.showBritish, teacher]);
+  }, [data.assignment.highlights, data.showBritish, data.vocabularyReveal, teacher]);
+
+  useEffect(() => {
+    if (teacher || !liveClass) return;
+    let alive = true;
+    let pulling = false;
+    const pull = async () => {
+      if (pulling) return;
+      pulling = true;
+      try {
+        const next = await lessonVocabularyRevealAction(data.assignment.id);
+        if (alive && next) setVocabularyReveal(next);
+      } finally {
+        pulling = false;
+      }
+    };
+    const timer = window.setInterval(() => void pull(), 500);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [data.assignment.id, liveClass, teacher]);
+
+  const changeVocabularyReveal = (next: LessonVocabularyReveal) => {
+    setVocabularyReveal(next);
+    if (!teacher || !liveClass) return;
+    revealQueue.current = revealQueue.current.then(async () => {
+      const result = await setLessonVocabularyRevealAction(data.assignment.id, next);
+      if (result.error) {
+        const stored = await lessonVocabularyRevealAction(data.assignment.id);
+        if (stored) setVocabularyReveal(stored);
+      }
+    });
+  };
 
   /*
    * Подсветка ставится сразу, а на сервер уходит следом: ждать ответа
@@ -158,6 +198,10 @@ export function AssignedLesson({
         focus={focus}
         showBritish={british}
         canRevealVocabulary={teacher || !liveClass}
+        vocabularyReveal={liveClass ? vocabularyReveal : undefined}
+        onVocabularyRevealChange={
+          liveClass && teacher ? changeVocabularyReveal : undefined
+        }
         selectedLexisId={lexisGroup}
         onSelectLexis={teacher ? selectLexis : undefined}
         onPick={teacher ? pick : undefined}

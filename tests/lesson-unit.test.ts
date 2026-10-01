@@ -22,9 +22,12 @@ import {
   speakerTint,
   speakersOf,
   lessonFocus,
+  lessonVocabularyReveal,
+  lessonVocabularyRevealOptions,
   normalizeLessonHighlights,
   toggleDialogueHighlight,
   toggleWordFocus,
+  toggleLessonVocabularyReveal,
   selectedLexisGroup,
   selectLexisGroup,
   yellowHighlights,
@@ -61,6 +64,27 @@ test("чужое имя секции не проходит", () => {
 
 test("настройка UK не превращается в секцию урока", () => {
   assert.deepEqual(openSections(["video", BRITISH_OPTION]), ["vocab", "video"]);
+});
+
+test("раскрытые учителем переводы и описания сохраняются в выдаче урока", () => {
+  let reveal = lessonVocabularyReveal([]);
+  reveal = toggleLessonVocabularyReveal(reveal, "translation", "word-1");
+  reveal = toggleLessonVocabularyReveal(reveal, "description", "word-2");
+  assert.deepEqual(lessonVocabularyReveal(lessonVocabularyRevealOptions(reveal)), reveal);
+});
+
+test("показать всё сбрасывает поштучные исключения", () => {
+  let reveal = toggleLessonVocabularyReveal(
+    lessonVocabularyReveal([]),
+    "translation",
+    "word-1",
+  );
+  reveal = toggleLessonVocabularyReveal(reveal, "translation");
+  assert.equal(reveal.allTranslations, true);
+  assert.deepEqual(reveal.translations, []);
+
+  reveal = toggleLessonVocabularyReveal(reveal, "translation", "word-2");
+  assert.deepEqual(reveal.translations, ["word-2"]);
 });
 
 // ---------- расшифровка ----------

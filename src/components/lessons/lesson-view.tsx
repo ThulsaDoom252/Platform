@@ -22,6 +22,7 @@ import {
   speakerTint,
   speakersOf,
   type LessonSection,
+  type LessonVocabularyReveal,
 } from "@/lib/lesson-unit";
 import { LessonVocab } from "@/components/lessons/lesson-vocab";
 import { RuleReader } from "@/components/materials/rule-reader";
@@ -63,6 +64,8 @@ export type LessonViewProps = {
   showBritish?: boolean;
   /** Может ли этот зритель сам раскрывать перевод и описание слов. */
   canRevealVocabulary?: boolean;
+  vocabularyReveal?: LessonVocabularyReveal;
+  onVocabularyRevealChange?: (next: LessonVocabularyReveal) => void;
   /** Какая лексическая группа сейчас выбрана учителем для ученика. */
   selectedLexisId?: string | null;
   onSelectLexis?: (groupId: string) => void;
@@ -89,6 +92,8 @@ export function LessonView({
   onHighlight,
   showBritish = false,
   canRevealVocabulary = true,
+  vocabularyReveal,
+  onVocabularyRevealChange,
   selectedLexisId,
   onSelectLexis,
   videoSession,
@@ -265,6 +270,8 @@ export function LessonView({
                   onPick={onPick}
                   showBritish={showBritish}
                   canReveal={canRevealVocabulary}
+                  revealState={vocabularyReveal}
+                  onRevealStateChange={onVocabularyRevealChange}
                 />
               )}
               {section === "lexis" &&

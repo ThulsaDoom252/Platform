@@ -29,6 +29,97 @@ export const ALWAYS_OPEN: LessonSection = "vocab";
 /** Служебная настройка выдачи: показывать ученику британский вариант. */
 export const BRITISH_OPTION = "option:british";
 
+const VOCAB_REVEAL_PREFIX = "option:vocab-reveal:";
+const VOCAB_ALL_TRANSLATIONS = `${VOCAB_REVEAL_PREFIX}translations:all`;
+const VOCAB_ALL_DESCRIPTIONS = `${VOCAB_REVEAL_PREFIX}descriptions:all`;
+
+export type LessonVocabularyReveal = {
+  allTranslations: boolean;
+  allDescriptions: boolean;
+  /** При общем показе это исключения; без него — открытые записи. */
+  translations: string[];
+  descriptions: string[];
+};
+
+export const emptyLessonVocabularyReveal = (): LessonVocabularyReveal => ({
+  allTranslations: false,
+  allDescriptions: false,
+  translations: [],
+  descriptions: [],
+});
+
+export function isLessonVocabularyRevealOption(value: string): boolean {
+  return String(value ?? "").startsWith(VOCAB_REVEAL_PREFIX);
+}
+
+export function lessonVocabularyReveal(
+  stored: string[] | null | undefined,
+): LessonVocabularyReveal {
+  const state = emptyLessonVocabularyReveal();
+  for (const option of stored ?? []) {
+    if (option === VOCAB_ALL_TRANSLATIONS) state.allTranslations = true;
+    else if (option === VOCAB_ALL_DESCRIPTIONS) state.allDescriptions = true;
+    else if (option.startsWith(`${VOCAB_REVEAL_PREFIX}translation:`)) {
+      const id = option.slice(`${VOCAB_REVEAL_PREFIX}translation:`.length);
+      if (id && !state.translations.includes(id)) state.translations.push(id);
+    } else if (option.startsWith(`${VOCAB_REVEAL_PREFIX}description:`)) {
+      const id = option.slice(`${VOCAB_REVEAL_PREFIX}description:`.length);
+      if (id && !state.descriptions.includes(id)) state.descriptions.push(id);
+    }
+  }
+  return state;
+}
+
+export function normalizeLessonVocabularyReveal(
+  value: Partial<LessonVocabularyReveal> | null | undefined,
+  allowedIds?: ReadonlySet<string>,
+): LessonVocabularyReveal {
+  const ids = (list: unknown) => [
+    ...new Set(
+      (Array.isArray(list) ? list : [])
+        .map(String)
+        .filter((id) => id && id.length <= 64 && !id.includes(":"))
+        .filter((id) => !allowedIds || allowedIds.has(id)),
+    ),
+  ].slice(0, 2_000);
+  return {
+    allTranslations: value?.allTranslations === true,
+    allDescriptions: value?.allDescriptions === true,
+    translations: ids(value?.translations),
+    descriptions: ids(value?.descriptions),
+  };
+}
+
+export function lessonVocabularyRevealOptions(
+  raw: Partial<LessonVocabularyReveal> | null | undefined,
+): string[] {
+  const value = normalizeLessonVocabularyReveal(raw);
+  return [
+    ...(value.allTranslations ? [VOCAB_ALL_TRANSLATIONS] : []),
+    ...(value.allDescriptions ? [VOCAB_ALL_DESCRIPTIONS] : []),
+    ...value.translations.map((id) => `${VOCAB_REVEAL_PREFIX}translation:${id}`),
+    ...value.descriptions.map((id) => `${VOCAB_REVEAL_PREFIX}description:${id}`),
+  ];
+}
+
+export function toggleLessonVocabularyReveal(
+  raw: LessonVocabularyReveal,
+  kind: "translation" | "description",
+  wordId?: string,
+): LessonVocabularyReveal {
+  const next = normalizeLessonVocabularyReveal(raw);
+  const list = kind === "translation" ? "translations" : "descriptions";
+  const all = kind === "translation" ? "allTranslations" : "allDescriptions";
+  if (!wordId) return { ...next, [all]: !next[all], [list]: [] };
+  const values = next[list];
+  return {
+    ...next,
+    [list]: values.includes(wordId)
+      ? values.filter((id) => id !== wordId)
+      : [...values, wordId],
+  };
+}
+
 export function isSection(value: unknown): value is LessonSection {
   return LESSON_SECTIONS.includes(value as LessonSection);
 }

@@ -19,10 +19,13 @@ import { hasTranscription } from "@/lib/phrase-words";
 import { SpeakPair, useSpeech } from "@/components/materials/speech";
 import {
   categoryKey,
+  emptyLessonVocabularyReveal,
   findWords,
   groupWords,
   parseKey,
+  toggleLessonVocabularyReveal,
   wordKey,
+  type LessonVocabularyReveal,
   type LessonWord,
 } from "@/lib/lesson-unit";
 import { IconEye, IconEyeOff, IconSearch } from "@/components/icons";
@@ -35,6 +38,8 @@ export function LessonVocab({
   onPick,
   showBritish = false,
   canReveal = true,
+  revealState,
+  onRevealStateChange,
 }: {
   words: LessonWord[];
   highlights: Record<string, string>;
@@ -43,17 +48,17 @@ export function LessonVocab({
   showBritish?: boolean;
   /** В живом классе ученик видит раскрытие только по решению учителя. */
   canReveal?: boolean;
+  /** В классе состояние общее: учитель меняет, ученик только наблюдает. */
+  revealState?: LessonVocabularyReveal;
+  onRevealStateChange?: (next: LessonVocabularyReveal) => void;
 }) {
   const { t } = useT();
   const speech = useSpeech();
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  /** Что открыто поштучно — поверх общего «показать всё». */
-  const [shownTr, setShownTr] = useState<string[]>([]);
-  const [shownDesc, setShownDesc] = useState<string[]>([]);
-  const [allTr, setAllTr] = useState(false);
-  const [allDesc, setAllDesc] = useState(false);
+  const [localReveal, setLocalReveal] = useState(emptyLessonVocabularyReveal);
+  const reveal = revealState ?? localReveal;
   const focusedCard = useRef<HTMLDivElement>(null);
   const pickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -90,20 +95,17 @@ export function LessonVocab({
    * поштучные открытия: иначе после двух нажатий не понять, что сейчас
    * открыто, а что нет.
    */
-  const toggleAllTr = () => {
-    setAllTr((v) => !v);
-    setShownTr([]);
+  const updateReveal = (next: LessonVocabularyReveal) => {
+    if (revealState) onRevealStateChange?.(next);
+    else setLocalReveal(next);
   };
-  const toggleAllDesc = () => {
-    setAllDesc((v) => !v);
-    setShownDesc([]);
-  };
+  const toggleReveal = (kind: "translation" | "description", wordId?: string) =>
+    updateReveal(toggleLessonVocabularyReveal(reveal, kind, wordId));
 
-  const trShown = (id: string) => canReveal && allTr !== shownTr.includes(id);
-  const descShown = (id: string) => canReveal && allDesc !== shownDesc.includes(id);
-
-  const flip = (list: string[], id: string) =>
-    list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  const trShown = (id: string) =>
+    reveal.allTranslations !== reveal.translations.includes(id);
+  const descShown = (id: string) =>
+    reveal.allDescriptions !== reveal.descriptions.includes(id);
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -115,8 +117,8 @@ export function LessonVocab({
 
         {canReveal && (
           <span className="ml-auto flex items-center gap-1">
-            <Toggle on={allTr} onClick={toggleAllTr} label={t.lessonUnits.showTranslations} />
-            <Toggle on={allDesc} onClick={toggleAllDesc} label={t.lessonUnits.showDescriptions} />
+            <Toggle on={reveal.allTranslations} onClick={() => toggleReveal("translation")} label={t.lessonUnits.showTranslations} />
+            <Toggle on={reveal.allDescriptions} onClick={() => toggleReveal("description")} label={t.lessonUnits.showDescriptions} />
           </span>
         )}
       </div>
@@ -207,7 +209,7 @@ export function LessonVocab({
                               pickTimer.current = setTimeout(() => onPick(key), 240);
                               return;
                             }
-                            if (canReveal) setShownTr((p) => flip(p, w.id));
+                            if (canReveal) toggleReveal("translation", w.id);
                           }}
                           onDoubleClick={() => {
                             if (pickTimer.current) clearTimeout(pickTimer.current);
@@ -235,7 +237,7 @@ export function LessonVocab({
                         ) : canReveal ? (
                           <button
                             type="button"
-                            onClick={() => setShownTr((p) => flip(p, w.id))}
+                            onClick={() => toggleReveal("translation", w.id)}
                             title={t.lessonUnits.revealOne}
                             className="h-5 rounded bg-surface-2 px-3 text-[11px] text-faint transition hover:text-accent"
                           >
@@ -265,7 +267,7 @@ export function LessonVocab({
                         ) : canReveal ? (
                           <button
                             type="button"
-                            onClick={() => setShownDesc((p) => flip(p, w.id))}
+                            onClick={() => toggleReveal("description", w.id)}
                             className="mt-1 text-[11px] text-faint transition hover:text-accent"
                           >
                             {t.lessonUnits.revealDescription}
