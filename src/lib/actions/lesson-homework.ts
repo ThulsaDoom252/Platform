@@ -102,23 +102,25 @@ export async function submitHomeworkAutoAnswerAction(
   return publicItemState(state, found.item.id);
 }
 
-/** Удалить ответ и историю попыток у одного задания, не затрагивая заметку учителя. */
-export async function resetHomeworkAnswerAction(
+/** Сбросить все ответы упражнения, не затрагивая заметки учителя. */
+export async function resetHomeworkExerciseAnswersAction(
   assignmentId: string,
-  itemId: string,
+  exerciseId: string,
 ): Promise<{ error?: string }> {
   const session = await requireUser();
   const row = await assignmentWithPlan(String(assignmentId ?? ""));
   const isStudent = session.role === "STUDENT" && row?.assignment.studentId === session.userId;
   const isTeacher = session.role === "TEACHER" && row?.authorId === session.userId;
   if (!row || (!isStudent && !isTeacher)) return { error: "Домашняя работа не найдена" };
-  const found = findHomeworkItem(row.plan, String(itemId ?? ""));
-  if (!found) return { error: "Задание не найдено" };
+  const exercise = row.plan.exercises.find((item) => item.id === String(exerciseId ?? ""));
+  if (!exercise) return { error: "Упражнение не найдено" };
 
   const state = { ...(row.assignment.answers ?? {}) };
-  delete state[homeworkValueKey(found.item.id)];
-  delete state[homeworkStatusKey(found.item.id)];
-  delete state[homeworkAttemptsKey(found.item.id)];
+  for (const item of exercise.items) {
+    delete state[homeworkValueKey(item.id)];
+    delete state[homeworkStatusKey(item.id)];
+    delete state[homeworkAttemptsKey(item.id)];
+  }
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })

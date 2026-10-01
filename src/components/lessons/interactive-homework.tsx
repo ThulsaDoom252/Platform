@@ -11,7 +11,7 @@ import { useT } from "@/components/i18n-provider";
 import {
   addHomeworkQuestionAction,
   removeHomeworkQuestionAction,
-  resetHomeworkAnswerAction,
+  resetHomeworkExerciseAnswersAction,
   saveHomeworkResponseAction,
   saveHomeworkTeacherNoteAction,
   submitHomeworkAutoAnswerAction,
@@ -135,6 +135,8 @@ function HomeworkExerciseView({
   showAnswers: boolean;
 }) {
   const { t } = useT();
+  const [resetKey, setResetKey] = useState(0);
+  const [resetting, startReset] = useTransition();
   const instruction =
     exercise.kind === "fill"
       ? t.interactiveHomework.instructions.fill
@@ -166,6 +168,7 @@ function HomeworkExerciseView({
         </div>
       )}
       <ExerciseItems
+        key={resetKey}
         exercise={exercise}
         session={session}
         state={state}
@@ -178,13 +181,24 @@ function HomeworkExerciseView({
   if (exercise.optional) {
     return (
       <details className="group rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm">
-        <summary className="flex cursor-pointer list-none items-center gap-3">
-          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
-            {t.interactiveHomework.bonus}
-          </span>
-          <span className="min-w-0 flex-1 text-sm font-bold text-content">{exercise.title}</span>
-          <IconChevronDown className="h-4 w-4 text-faint transition group-open:rotate-180" />
-        </summary>
+        <div className="flex items-start gap-2">
+          <summary className="flex min-w-0 flex-1 cursor-pointer list-none items-center gap-3">
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
+              {t.interactiveHomework.bonus}
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-bold text-content">{exercise.title}</span>
+            <IconChevronDown className="h-4 w-4 text-faint transition group-open:rotate-180" />
+          </summary>
+          <ExerciseOptionsMenu
+            busy={resetting}
+            onReset={() => startReset(async () => {
+              const result = await resetHomeworkExerciseAnswersAction(session.assignmentId, exercise.id);
+              if (result.error) return;
+              setState((current) => clearExerciseAnswers(current, exercise));
+              setResetKey((key) => key + 1);
+            })}
+          />
+        </div>
         <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
         {body}
       </details>
@@ -197,13 +211,59 @@ function HomeworkExerciseView({
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-black text-white">
           {number}
         </span>
-        <div>
+        <div className="min-w-0 flex-1">
           <h3 className="text-base font-black text-content">{exercise.title}</h3>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">{instruction}</p>
         </div>
+        <ExerciseOptionsMenu
+          busy={resetting}
+          onReset={() => startReset(async () => {
+            const result = await resetHomeworkExerciseAnswersAction(session.assignmentId, exercise.id);
+            if (result.error) return;
+            setState((current) => clearExerciseAnswers(current, exercise));
+            setResetKey((key) => key + 1);
+          })}
+        />
       </div>
       {body}
     </section>
+  );
+}
+
+function clearExerciseAnswers(state: HomeworkStoredState, exercise: HomeworkExercise) {
+  const updated = { ...state };
+  for (const item of exercise.items) {
+    delete updated[homeworkValueKey(item.id)];
+    delete updated[homeworkStatusKey(item.id)];
+    delete updated[homeworkAttemptsKey(item.id)];
+  }
+  return updated;
+}
+
+function ExerciseOptionsMenu({ busy, onReset }: { busy: boolean; onReset: () => void }) {
+  const { t } = useT();
+  return (
+    <details className="relative shrink-0">
+      <summary
+        className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content [&::-webkit-details-marker]:hidden"
+        title={t.interactiveHomework.options}
+      >
+        <IconDots className="h-4 w-4" />
+      </summary>
+      <div className="absolute right-0 top-9 z-30 w-44 rounded-xl bg-surface p-1.5 shadow-xl ring-1 ring-line">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(event) => {
+            event.currentTarget.closest("details")?.removeAttribute("open");
+            onReset();
+          }}
+          className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-bold text-content transition hover:bg-surface-2 disabled:opacity-50"
+        >
+          {t.interactiveHomework.resetAnswer}
+        </button>
+      </div>
+    </details>
   );
 }
 
@@ -285,7 +345,6 @@ function AutoTextExercise({
             state={state}
             setState={setState}
             showAnswers={showAnswers}
-            onReset={() => setDrafts((current) => ({ ...current, [item.id]: "" }))}
           >
             <InlineHomeworkAnswer
               item={item}
@@ -402,7 +461,6 @@ function DragExercise({
               state={state}
               setState={setState}
               showAnswers={showAnswers}
-              onReset={() => setSelected(null)}
             >
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm font-semibold leading-relaxed text-content">
                 <span>{item.prompt}</span>
@@ -507,7 +565,6 @@ function ManualExercise({
             state={state}
             setState={setState}
             showAnswers={showAnswers}
-            onReset={() => setDrafts((current) => ({ ...current, [item.id]: "" }))}
           >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
@@ -717,7 +774,6 @@ function HomeworkItemShell({
   state,
   setState,
   showAnswers,
-  onReset,
   children,
 }: {
   item: HomeworkItem;
@@ -726,7 +782,6 @@ function HomeworkItemShell({
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   showAnswers: boolean;
-  onReset?: () => void;
   children: React.ReactNode;
 }) {
   const { t } = useT();
@@ -754,39 +809,6 @@ function HomeworkItemShell({
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">{children}</div>
-        <details className="relative shrink-0">
-          <summary
-            className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content [&::-webkit-details-marker]:hidden"
-            title={t.interactiveHomework.options}
-          >
-            <IconDots className="h-4 w-4" />
-          </summary>
-          <div className="absolute right-0 top-9 z-30 w-44 rounded-xl bg-surface p-1.5 shadow-xl ring-1 ring-line">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={(event) => {
-                const menu = event.currentTarget.closest("details");
-                startBusy(async () => {
-                  const result = await resetHomeworkAnswerAction(session.assignmentId, item.id);
-                  if (result.error) return;
-                  setState((current) => {
-                    const updated = { ...current };
-                    delete updated[homeworkValueKey(item.id)];
-                    delete updated[homeworkStatusKey(item.id)];
-                    delete updated[homeworkAttemptsKey(item.id)];
-                    return updated;
-                  });
-                  onReset?.();
-                  menu?.removeAttribute("open");
-                });
-              }}
-              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-bold text-content transition hover:bg-surface-2 disabled:opacity-50"
-            >
-              {t.interactiveHomework.resetAnswer}
-            </button>
-          </div>
-        </details>
       </div>
 
       {session.teacher && showAnswers && item.answer && (
