@@ -26,6 +26,7 @@ import {
   normalizeClassVideoState,
   type ClassVideoState,
 } from "@/lib/class-video";
+import { scheduleNow } from "@/lib/schedule-time";
 
 /** Сколько отметка держится за «онлайн». */
 const ONLINE_WINDOW_MS = 75_000;
@@ -245,10 +246,10 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
    * Одним запросом на всех: список обновляется на каждом такте опроса,
    * и ходить в базу за каждым учеником отдельно тут нельзя.
    */
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
+  const dayStart = scheduleNow();
+  dayStart.setUTCHours(0, 0, 0, 0);
   const weekEnd = new Date(dayStart);
-  weekEnd.setDate(weekEnd.getDate() + daysLeftInWeek(dayStart));
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + daysLeftInWeek(dayStart));
 
   const week = await db
     .select({

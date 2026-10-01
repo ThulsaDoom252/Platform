@@ -17,6 +17,11 @@ import {
   IconSprout,
   IconChart,
 } from "@/components/icons";
+import {
+  SCHEDULE_FORMAT_TIME_ZONE,
+  scheduleNow,
+  scheduleStartOfWeek,
+} from "@/lib/schedule-time";
 
 /** Ставка за проведённый урок (для расчёта дохода). */
 const LESSON_RATE = 40;
@@ -44,30 +49,32 @@ const fileKindStyle: Record<string, string> = {
 export default async function TeacherOverviewPage() {
   const session = await getSession();
   const { t, locale } = await getDict();
-  const now = new Date();
+  const now = scheduleNow();
 
   // Даты тоже идут по языку пользователя: «ср, 1 окт.» и «Wed, 1 Oct».
   const intlLocale = locale === "en" ? "en-GB" : locale;
   const timeFmt = new Intl.DateTimeFormat(intlLocale, {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
   const dateFmt = new Intl.DateTimeFormat(intlLocale, {
     weekday: "short",
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
 
-  const day = now.getDay();
-  const diffToMon = (day + 6) % 7;
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - diffToMon);
-  startOfWeek.setHours(0, 0, 0, 0);
+  const startOfWeek = scheduleStartOfWeek(now);
   const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 7);
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
+  const startOfMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+  );
+  const endOfMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+  );
 
   const students = await db
     .select({
@@ -170,7 +177,7 @@ export default async function TeacherOverviewPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-content sm:text-[28px]">
-            {greeting(now.getHours(), t)}, {session?.name}! <span className="align-middle">👋</span>
+            {greeting(now.getUTCHours(), t)}, {session?.name}! <span className="align-middle">👋</span>
           </h1>
           <p className="mt-1 text-sm text-muted">
             {t.greeting.teacherSubtitle}

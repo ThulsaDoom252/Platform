@@ -13,12 +13,14 @@ import { db } from "@/lib/db";
 import {
   lessons,
   lessonScripts,
+  archivedLessonScripts,
   scriptPresets,
   users,
   type ScriptStyle,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { cleanScriptHtml, scriptPreview } from "@/lib/script-html";
+import { scheduleNow } from "@/lib/schedule-time";
 
 export type ScriptLesson = {
   lessonId: string;
@@ -29,6 +31,8 @@ export type ScriptLesson = {
   startTime: string;
   duration: number;
   status: string;
+  cancelReason: string | null;
+  deletedAt: string | null;
   /** Есть ли что-то написанное и его начало — для списка. */
   hasScript: boolean;
   preview: string;
@@ -40,6 +44,7 @@ export type ScriptDoc = {
   html: string;
   style: ScriptStyle;
   updatedAt: string | null;
+  archived: boolean;
 };
 
 export type ScriptState = { ok?: boolean; error?: string; savedAt?: string };
@@ -71,6 +76,8 @@ export async function listScriptWeekAction(
       startTime: lessons.startTime,
       duration: lessons.durationMinutes,
       status: lessons.status,
+      cancelReason: lessons.cancelReason,
+      deletedAt: sql<Date | null>`null`,
       html: lessonScripts.html,
       updatedAt: lessonScripts.updatedAt,
     })
@@ -91,8 +98,10 @@ export async function listScriptWeekAction(
  */
 export async function listScriptHistoryAction(limit = 80): Promise<ScriptLesson[]> {
   await requireTeacher();
+  const safeLimit = Math.min(200, Math.max(1, limit));
 
-  const rows = await db
+  const [rows, archived] = await Promise.all([
+    db
     .select({
       lessonId: lessons.id,
       studentId: lessons.studentId,
@@ -102,6 +111,8 @@ export async function listScriptHistoryAction(limit = 80): Promise<ScriptLesson[
       startTime: lessons.startTime,
       duration: lessons.durationMinutes,
       status: lessons.status,
+      cancelReason: lessons.cancelReason,
+      deletedAt: sql<Date | null>`null`,
       html: lessonScripts.html,
       updatedAt: lessonScripts.updatedAt,
     })
@@ -110,9 +121,17 @@ export async function listScriptHistoryAction(limit = 80): Promise<ScriptLesson[
     .innerJoin(users, eq(users.id, lessons.studentId))
     .where(and(isNotNull(lessonScripts.html), ne(lessonScripts.html, "")))
     .orderBy(desc(lessonScripts.updatedAt))
-    .limit(Math.min(200, Math.max(1, limit)));
+    .limit(safeLimit),
+    archivedScriptRows(safeLimit),
+  ]);
 
-  return rows.map(toScriptLesson);
+  return [...rows.map(toScriptLesson), ...archived.map(toScriptLesson)]
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt ?? b.deletedAt ?? b.startTime).getTime() -
+        new Date(a.updatedAt ?? a.deletedAt ?? a.startTime).getTime(),
+    )
+    .slice(0, safeLimit);
 }
 
 type LessonRow = {
@@ -124,6 +143,8 @@ type LessonRow = {
   startTime: Date;
   duration: number;
   status: string;
+  cancelReason: string | null;
+  deletedAt: Date | null;
   html: string | null;
   updatedAt: Date | null;
 };
@@ -138,10 +159,40 @@ function toScriptLesson(r: LessonRow): ScriptLesson {
     startTime: r.startTime.toISOString(),
     duration: r.duration,
     status: r.status,
+    cancelReason: r.cancelReason,
+    deletedAt: r.deletedAt?.toISOString() ?? null,
     hasScript: !!r.html?.trim(),
     preview: scriptPreview(r.html ?? ""),
     updatedAt: r.updatedAt?.toISOString() ?? null,
   };
+}
+
+async function archivedScriptRows(limit: number): Promise<LessonRow[]> {
+  return db
+    .select({
+      lessonId: archivedLessonScripts.originalLessonId,
+      studentId: archivedLessonScripts.studentId,
+      studentName: archivedLessonScripts.studentName,
+      studentLevel: users.level,
+      avatarUrl: users.avatarUrl,
+      startTime: archivedLessonScripts.startTime,
+      duration: archivedLessonScripts.durationMinutes,
+      status: sql<string>`'DELETED'`,
+      cancelReason: archivedLessonScripts.cancelReason,
+      deletedAt: archivedLessonScripts.deletedAt,
+      html: archivedLessonScripts.html,
+      updatedAt: archivedLessonScripts.updatedAt,
+    })
+    .from(archivedLessonScripts)
+    .leftJoin(users, eq(users.id, archivedLessonScripts.studentId))
+    .where(
+      and(
+        isNotNull(archivedLessonScripts.html),
+        ne(archivedLessonScripts.html, ""),
+      ),
+    )
+    .orderBy(desc(archivedLessonScripts.updatedAt))
+    .limit(limit);
 }
 
 /**
@@ -152,8 +203,10 @@ function toScriptLesson(r: LessonRow): ScriptLesson {
  */
 export async function listScriptLessonsAction(limit = 60): Promise<ScriptLesson[]> {
   await requireTeacher();
+  const safeLimit = Math.min(200, Math.max(1, limit));
 
-  const rows = await db
+  const [rows, archived] = await Promise.all([
+    db
     .select({
       lessonId: lessons.id,
       studentId: lessons.studentId,
@@ -163,6 +216,8 @@ export async function listScriptLessonsAction(limit = 60): Promise<ScriptLesson[
       startTime: lessons.startTime,
       duration: lessons.durationMinutes,
       status: lessons.status,
+      cancelReason: lessons.cancelReason,
+      deletedAt: sql<Date | null>`null`,
       html: lessonScripts.html,
       updatedAt: lessonScripts.updatedAt,
     })
@@ -170,21 +225,16 @@ export async function listScriptLessonsAction(limit = 60): Promise<ScriptLesson[
     .innerJoin(users, eq(users.id, lessons.studentId))
     .leftJoin(lessonScripts, eq(lessonScripts.lessonId, lessons.id))
     .orderBy(desc(lessons.startTime))
-    .limit(Math.min(200, Math.max(1, limit)));
+    .limit(safeLimit),
+    archivedScriptRows(safeLimit),
+  ]);
 
-  return rows.map((r) => ({
-    lessonId: r.lessonId,
-    studentId: r.studentId,
-    studentName: r.studentName,
-    studentLevel: r.studentLevel,
-    avatarUrl: r.avatarUrl,
-    startTime: r.startTime.toISOString(),
-    duration: r.duration,
-    status: r.status,
-    hasScript: !!r.html?.trim(),
-    preview: scriptPreview(r.html ?? ""),
-    updatedAt: r.updatedAt?.toISOString() ?? null,
-  }));
+  return [...rows.map(toScriptLesson), ...archived.map(toScriptLesson)]
+    .sort(
+      (a, b) =>
+        new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
+    )
+    .slice(0, safeLimit);
 }
 
 /** Скрипт одного урока. Пустой — значит его ещё не писали. */
@@ -199,13 +249,30 @@ export async function getScriptAction(lessonId: string): Promise<ScriptDoc | nul
     .where(eq(lessonScripts.lessonId, id))
     .limit(1);
 
-  if (!row) return { lessonId: id, html: "", style: {}, updatedAt: null };
+  if (!row) {
+    const [archived] = await db
+      .select()
+      .from(archivedLessonScripts)
+      .where(eq(archivedLessonScripts.originalLessonId, id))
+      .limit(1);
+    if (archived) {
+      return {
+        lessonId: id,
+        html: archived.html,
+        style: archived.style ?? {},
+        updatedAt: archived.updatedAt.toISOString(),
+        archived: true,
+      };
+    }
+    return { lessonId: id, html: "", style: {}, updatedAt: null, archived: false };
+  }
 
   return {
     lessonId: id,
     html: row.html,
     style: row.style ?? {},
     updatedAt: row.updatedAt.toISOString(),
+    archived: false,
   };
 }
 
@@ -222,13 +289,14 @@ export async function getClassScriptAction(
   const id = String(studentId ?? "");
   if (!id) return null;
 
+  const tomorrow = new Date(scheduleNow().getTime() + 24 * 60 * 60 * 1000);
   const [lesson] = await db
     .select({ id: lessons.id, startTime: lessons.startTime })
     .from(lessons)
     .where(
       and(
         eq(lessons.studentId, id),
-        sql`${lessons.startTime} < now() + interval '1 day'`,
+        lt(lessons.startTime, tomorrow),
       ),
     )
     .orderBy(desc(lessons.startTime))
@@ -256,8 +324,6 @@ export async function saveScriptAction(
     .from(lessons)
     .where(eq(lessons.id, id))
     .limit(1);
-  if (!lesson) return { error: "Урок не найден" };
-
   const clean = cleanScriptHtml(html);
   const now = new Date();
   const safeStyle: ScriptStyle = {
@@ -267,6 +333,17 @@ export async function saveScriptAction(
     background: style?.background?.slice(0, 200),
     backgroundImage: style?.backgroundImage?.slice(0, 2000) ?? null,
   };
+
+  if (!lesson) {
+    const [archived] = await db
+      .update(archivedLessonScripts)
+      .set({ html: clean, style: safeStyle, updatedAt: now })
+      .where(eq(archivedLessonScripts.originalLessonId, id))
+      .returning({ id: archivedLessonScripts.id });
+    if (!archived) return { error: "Урок и его скрипт не найдены" };
+    revalidatePath("/teacher/script");
+    return { ok: true, savedAt: now.toISOString() };
+  }
 
   await db
     .insert(lessonScripts)
@@ -278,6 +355,22 @@ export async function saveScriptAction(
 
   revalidatePath("/teacher/script");
   return { ok: true, savedAt: now.toISOString() };
+}
+
+/** Скрипт удаляется отдельно; сам урок и его статус не меняются. */
+export async function deleteScriptAction(lessonId: string): Promise<ScriptState> {
+  await requireTeacher();
+  const id = String(lessonId ?? "");
+  if (!id) return { error: "Не выбран скрипт" };
+
+  await db.transaction(async (tx) => {
+    await tx.delete(lessonScripts).where(eq(lessonScripts.lessonId, id));
+    await tx
+      .delete(archivedLessonScripts)
+      .where(eq(archivedLessonScripts.originalLessonId, id));
+  });
+  revalidatePath("/teacher/script");
+  return { ok: true };
 }
 
 export type ScriptPreset = {

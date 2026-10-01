@@ -128,7 +128,10 @@ export default async function StudentDetailPage({
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <StudentPasswordPanel studentId={student.id} />
+        <StudentPasswordPanel
+          studentId={student.id}
+          initialAccessBlocked={student.accessBlocked}
+        />
       </div>
 
       <Card>

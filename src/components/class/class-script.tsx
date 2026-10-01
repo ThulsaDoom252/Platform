@@ -15,6 +15,7 @@ import { getClassScriptAction, type ScriptDoc } from "@/lib/actions/script";
 import { ScriptEditor } from "@/components/script/script-editor";
 import { IconX } from "@/components/icons";
 import { useT } from "@/components/i18n-provider";
+import { SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 
 export function ClassScript({
   studentId,
@@ -30,6 +31,7 @@ export function ClassScript({
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
   const [doc, setDoc] = useState<(ScriptDoc & { lessonAt: string }) | null>(null);
   const [loaded, setLoaded] = useState(false);

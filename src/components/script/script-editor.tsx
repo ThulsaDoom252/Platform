@@ -12,6 +12,7 @@
  */
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
+  deleteScriptAction,
   deleteScriptPresetAction,
   listScriptPresetsAction,
   saveScriptAction,
@@ -54,11 +55,13 @@ export function ScriptEditor({
   doc,
   compact = false,
   onSaved,
+  onDeleted,
 }: {
   doc: ScriptDoc;
   /** В классе места меньше: панель стилей прячется под кнопку. */
   compact?: boolean;
   onSaved?: (savedAt: string) => void;
+  onDeleted?: () => void;
 }) {
   const area = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<ScriptStyle>(doc.style ?? {});
@@ -228,6 +231,25 @@ export function ScriptEditor({
         >
           Стиль
         </button>
+
+        {!compact && !!doc.html.trim() && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm("Удалить этот скрипт отдельно? Это действие нельзя отменить.")) {
+                return;
+              }
+              startSave(async () => {
+                const result = await deleteScriptAction(doc.lessonId);
+                if (result.ok) onDeleted?.();
+              });
+            }}
+            className="h-8 rounded-lg px-2.5 text-[12px] font-semibold text-rose-600 transition hover:bg-rose-500/10 disabled:opacity-40"
+          >
+            Удалить скрипт
+          </button>
+        )}
       </div>
 
       {showPresets && (

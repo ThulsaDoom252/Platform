@@ -6,6 +6,11 @@ import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { cancelLessonAction } from "@/lib/actions/student";
 import { IconCalendar, IconLayers } from "@/components/icons";
+import {
+  SCHEDULE_FORMAT_TIME_ZONE,
+  scheduleNow,
+  scheduleStartOfWeek,
+} from "@/lib/schedule-time";
 
 const CANCELLED = ["CANCELLED_BY_STUDENT", "CANCELLED_BY_TEACHER", "BURNED"];
 
@@ -18,7 +23,7 @@ function lessonTone(status: string, startTime: Date, now: Date) {
 export default async function StudentSchedulePage() {
   const session = await getSession();
   const { t, locale } = await getDict();
-  const now = new Date();
+  const now = scheduleNow();
 
   const intl = locale === "en" ? "en-GB" : locale;
   const dtFmt = new Intl.DateTimeFormat(intl, {
@@ -27,6 +32,7 @@ export default async function StudentSchedulePage() {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
   const dateFmt = new Intl.DateTimeFormat(intl, {
     day: "2-digit",
@@ -61,16 +67,15 @@ export default async function StudentSchedulePage() {
    * Показываем то, что осталось на этой неделе; когда она отзанята —
    * следующую, чтобы страница не пустовала.
    */
-  const weekEnd = new Date(now);
-  weekEnd.setHours(0, 0, 0, 0);
-  weekEnd.setDate(weekEnd.getDate() + (7 - ((weekEnd.getDay() + 6) % 7)));
+  const weekEnd = scheduleStartOfWeek(now);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
 
   const scheduled = myLessons.filter(
     (l) => l.status === "SCHEDULED" && l.startTime.getTime() >= now.getTime(),
   );
   const thisWeek = scheduled.filter((l) => l.startTime < weekEnd);
   const nextWeekEnd = new Date(weekEnd);
-  nextWeekEnd.setDate(nextWeekEnd.getDate() + 7);
+  nextWeekEnd.setUTCDate(nextWeekEnd.getUTCDate() + 7);
   const upcoming =
     thisWeek.length > 0
       ? thisWeek

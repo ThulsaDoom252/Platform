@@ -27,7 +27,7 @@ export default async function TeacherScriptPage({
         </p>
       </div>
 
-      <ScriptWorkspace initial={initial} />
+      <ScriptWorkspace key={lesson ?? "list"} initial={initial} />
     </div>
   );
 }

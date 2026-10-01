@@ -18,9 +18,25 @@ import { ScriptWeeks } from "./script-weeks";
 import { ScriptEditor } from "./script-editor";
 import { IconChevronLeft } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 
-const day = new Intl.DateTimeFormat("ru", { day: "numeric", month: "short" });
-const time = new Intl.DateTimeFormat("ru", { hour: "2-digit", minute: "2-digit" });
+const day = new Intl.DateTimeFormat("ru", {
+  day: "numeric",
+  month: "short",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
+const time = new Intl.DateTimeFormat("ru", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
+const deletedTime = new Intl.DateTimeFormat("ru", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 export function ScriptWorkspace({ initial }: { initial?: ScriptLesson | null }) {
   const [open, setOpen] = useState<ScriptLesson | null>(initial ?? null);
@@ -51,7 +67,16 @@ export function ScriptWorkspace({ initial }: { initial?: ScriptLesson | null }) 
       <section className="flex min-h-[70vh] flex-col gap-3">
         {open ? (
           <>
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-surface px-3.5 py-2.5 ring-1 ring-line">
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-3 rounded-2xl px-3.5 py-2.5 ring-1",
+                open.status === "DELETED"
+                  ? "bg-orange-500/10 ring-orange-500/40"
+                  : open.status.startsWith("CANCELLED") || open.status === "BURNED"
+                    ? "bg-rose-500/10 ring-rose-500/40"
+                    : "bg-surface ring-line",
+              )}
+            >
               <button
                 type="button"
                 onClick={() => setOpen(null)}
@@ -79,8 +104,26 @@ export function ScriptWorkspace({ initial }: { initial?: ScriptLesson | null }) 
               <span className="ml-auto text-[11px] text-faint">Видишь только ты</span>
             </div>
 
+            {(open.status.startsWith("CANCELLED") || open.status === "BURNED") && (
+              <div className="rounded-xl bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-600 dark:text-rose-300">
+                Отменён{open.cancelReason ? ` · ${open.cancelReason}` : " · причина не указана"}
+              </div>
+            )}
+            {open.status === "DELETED" && (
+              <div className="rounded-xl bg-orange-500/10 px-4 py-3 text-sm font-semibold text-orange-700 dark:text-orange-300">
+                Урок удалён
+                {open.deletedAt ? ` · ${deletedTime.format(new Date(open.deletedAt))}` : ""}
+              </div>
+            )}
+
             {doc && !busy ? (
-              <ScriptEditor key={doc.lessonId} doc={doc} />
+              <ScriptEditor
+                key={doc.lessonId}
+                doc={doc}
+                onDeleted={() => {
+                  window.location.reload();
+                }}
+              />
             ) : (
               <p className="rounded-2xl bg-surface p-5 text-sm text-faint ring-1 ring-line">
                 Открываю…

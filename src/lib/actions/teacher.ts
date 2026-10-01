@@ -11,6 +11,8 @@ import {
   homework,
   notifications,
   lessonPackages,
+  lessonScripts,
+  archivedLessonScripts,
   wordDeckActivities,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
@@ -23,6 +25,11 @@ import {
   configureSharedLessonPool,
   setStudentLessons,
 } from "@/lib/packages";
+import {
+  SCHEDULE_FORMAT_TIME_ZONE,
+  parseScheduleInput,
+  scheduleStartOfWeek,
+} from "@/lib/schedule-time";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -148,26 +155,49 @@ export async function updateStudentPasswordAction(
 ): Promise<StudentPasswordState> {
   await requireTeacher();
   const studentId = String(formData.get("studentId") || "");
-  const newPassword = String(formData.get("newPassword") || "");
+  const newPassword = String(formData.get("newPassword") || "").trim();
   if (!userIdPattern.test(studentId)) return { error: "Ученик не выбран" };
   if (!newPassword || newPassword.length > 128) {
     return { error: "Пароль должен содержать от 1 до 128 символов" };
   }
 
+  const passwordHash = await bcrypt.hash(newPassword, 10);
   const [updated] = await db
     .update(users)
     .set({
-      passwordHash: await bcrypt.hash(newPassword, 10),
+      passwordHash,
       passwordVault: encryptStudentPassword(newPassword, studentId),
       updatedAt: new Date(),
     })
     .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
-    .returning({ id: users.id });
+    .returning({ id: users.id, passwordHash: users.passwordHash });
 
+  if (!updated) return { error: "Ученик не найден" };
+  if (!(await bcrypt.compare(newPassword, updated.passwordHash))) {
+    return { error: "Пароль не удалось проверить после сохранения" };
+  }
+
+  revalidatePath(`/teacher/students/${studentId}`);
+  revalidatePath("/login");
+  return { ok: true, password: newPassword };
+}
+
+export async function setStudentAccessBlockedAction(
+  studentId: string,
+  blocked: boolean,
+): Promise<{ ok?: boolean; blocked?: boolean; error?: string }> {
+  await requireTeacher();
+  if (!userIdPattern.test(studentId)) return { error: "Ученик не выбран" };
+
+  const [updated] = await db
+    .update(users)
+    .set({ accessBlocked: !!blocked, updatedAt: new Date() })
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
+    .returning({ id: users.id });
   if (!updated) return { error: "Ученик не найден" };
 
   revalidatePath(`/teacher/students/${studentId}`);
-  return { ok: true, password: newPassword };
+  return { ok: true, blocked: !!blocked };
 }
 
 export async function adjustBalanceAction(formData: FormData) {
@@ -285,9 +315,12 @@ export async function createLessonAction(formData: FormData) {
   const commentVisible = formData.get("commentVisible") === "on";
   if (!studentId || !startTime) return;
 
+  const parsedStart = parseScheduleInput(startTime);
+  if (!parsedStart) return;
+
   await db.insert(lessons).values({
     studentId,
-    startTime: new Date(startTime),
+    startTime: parsedStart,
     teacherComment: comment || null,
     teacherCommentVisible: commentVisible,
     status: "SCHEDULED",
@@ -300,7 +333,6 @@ export async function createLessonAction(formData: FormData) {
 export async function updateLessonStatusAction(formData: FormData) {
   await requireTeacher();
   const lessonId = String(formData.get("lessonId") || "");
-  const studentId = String(formData.get("studentId") || "");
   const status = String(formData.get("status") || "") as
     | "COMPLETED"
     | "BURNED"
@@ -308,9 +340,17 @@ export async function updateLessonStatusAction(formData: FormData) {
     | "SCHEDULED";
   if (!lessonId || !status) return;
 
-  if (status === "COMPLETED") {
-    // Списываем только за фактически проведённый урок — из общего пакета, если он есть.
-    await adjustStudentLessons(studentId, -1);
+  const [lesson] = await db
+    .select({ studentId: lessons.studentId, status: lessons.status })
+    .from(lessons)
+    .where(eq(lessons.id, lessonId))
+    .limit(1);
+  if (!lesson || lesson.status === status) return;
+
+  if (status === "COMPLETED" && lesson.status !== "COMPLETED") {
+    await adjustStudentLessons(lesson.studentId, -1);
+  } else if (lesson.status === "COMPLETED" && status !== "COMPLETED") {
+    await adjustStudentLessons(lesson.studentId, 1);
   }
 
   await db
@@ -318,8 +358,7 @@ export async function updateLessonStatusAction(formData: FormData) {
     .set({ status, updatedAt: new Date() })
     .where(eq(lessons.id, lessonId));
 
-  revalidatePath(`/teacher/students/${studentId}`);
-  revalidatePath("/teacher");
+  revalidateSchedule(lesson.studentId);
 }
 
 export async function createHomeworkAction(formData: FormData) {
@@ -383,15 +422,17 @@ const dtFmt = new Intl.DateTimeFormat("ru-RU", {
   month: "long",
   hour: "2-digit",
   minute: "2-digit",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
 });
-const dFmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" });
+const dFmt = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "long",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
 
 /** Понедельник недели, в которую попадает дата. */
 function weekStartOf(d: Date) {
-  const r = new Date(d);
-  r.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  r.setHours(0, 0, 0, 0);
-  return r;
+  return scheduleStartOfWeek(d);
 }
 
 function revalidateSchedule(studentId?: string) {
@@ -406,7 +447,7 @@ export async function cancelLessonByTeacherAction(formData: FormData) {
   const session = await requireTeacher();
   const lessonId = String(formData.get("lessonId") || "");
   const comment = String(formData.get("comment") || "").trim();
-  if (!lessonId) return;
+  if (!lessonId || !comment) return;
 
   const [lesson] = await db
     .select()
@@ -420,9 +461,9 @@ export async function cancelLessonByTeacherAction(formData: FormData) {
     .update(lessons)
     .set({
       status: "CANCELLED_BY_TEACHER",
-      cancelReason: comment || null,
+      cancelReason: comment,
       cancelledAt: now,
-      teacherComment: comment || null,
+      teacherComment: comment,
       teacherCommentVisible: true,
       updatedAt: now,
     })
@@ -432,7 +473,7 @@ export async function cancelLessonByTeacherAction(formData: FormData) {
     recipientId: lesson.studentId,
     type: "LESSON_CANCELLED",
     relatedStudentId: lesson.studentId,
-    message: `${session.name} отменил урок ${dtFmt.format(lesson.startTime)}${comment ? `. Комментарий: ${comment}` : ""}`,
+    message: `${session.name} отменил урок ${dtFmt.format(lesson.startTime)}. Причина: ${comment}`,
   });
 
   revalidateSchedule(lesson.studentId);
@@ -443,30 +484,73 @@ export async function deleteLessonAction(formData: FormData) {
   const session = await requireTeacher();
   const lessonId = String(formData.get("lessonId") || "");
   const comment = String(formData.get("comment") || "").trim();
+  const deleteScript = formData.get("deleteScript") === "on";
   if (!lessonId) return;
 
   const [lesson] = await db
-    .select()
+    .select({
+      lesson: lessons,
+      studentName: users.name,
+    })
     .from(lessons)
+    .innerJoin(users, eq(users.id, lessons.studentId))
     .where(eq(lessons.id, lessonId))
     .limit(1);
   if (!lesson) return;
 
   // Проведённый урок списывал баланс — при удалении возвращаем в пакет.
-  if (lesson.status === "COMPLETED") {
-    await adjustStudentLessons(lesson.studentId, 1);
+  if (lesson.lesson.status === "COMPLETED") {
+    await adjustStudentLessons(lesson.lesson.studentId, 1);
   }
 
   await db.insert(notifications).values({
-    recipientId: lesson.studentId,
+    recipientId: lesson.lesson.studentId,
     type: "LESSON_CANCELLED",
-    relatedStudentId: lesson.studentId,
-    message: `${session.name} удалил урок ${dtFmt.format(lesson.startTime)}${comment ? `. Комментарий: ${comment}` : ""}`,
+    relatedStudentId: lesson.lesson.studentId,
+    message: `${session.name} удалил урок ${dtFmt.format(lesson.lesson.startTime)}${comment ? `. Комментарий: ${comment}` : ""}`,
   });
 
-  await db.delete(lessons).where(eq(lessons.id, lessonId));
+  await db.transaction(async (tx) => {
+    const deletedAt = new Date();
+    const [script] = await tx
+      .select()
+      .from(lessonScripts)
+      .where(eq(lessonScripts.lessonId, lessonId))
+      .limit(1);
 
-  revalidateSchedule(lesson.studentId);
+    if (script && !deleteScript) {
+      await tx
+        .insert(archivedLessonScripts)
+        .values({
+          originalLessonId: lessonId,
+          studentId: lesson.lesson.studentId,
+          studentName: lesson.studentName,
+          startTime: lesson.lesson.startTime,
+          durationMinutes: lesson.lesson.durationMinutes,
+          html: script.html,
+          style: script.style,
+          cancelReason: lesson.lesson.cancelReason,
+          deletedAt,
+          createdAt: script.createdAt,
+          updatedAt: deletedAt,
+        })
+        .onConflictDoUpdate({
+          target: archivedLessonScripts.originalLessonId,
+          set: {
+            html: script.html,
+            style: script.style,
+            cancelReason: lesson.lesson.cancelReason,
+            deletedAt,
+            updatedAt: deletedAt,
+          },
+        });
+    }
+
+    await tx.delete(lessons).where(eq(lessons.id, lessonId));
+  });
+
+  revalidatePath("/teacher/script");
+  revalidateSchedule(lesson.lesson.studentId);
 }
 
 /** Перенос урока на новую дату и время. */
@@ -477,8 +561,8 @@ export async function rescheduleLessonAction(formData: FormData) {
   const comment = String(formData.get("comment") || "").trim();
   if (!lessonId || !newStart) return;
 
-  const start = new Date(newStart);
-  if (Number.isNaN(start.getTime())) return;
+  const start = parseScheduleInput(newStart);
+  if (!start) return;
 
   const [lesson] = await db
     .select()
@@ -528,8 +612,8 @@ export async function assignLessonAction(
   if (!studentId) return { error: "Выбери ученика" };
   if (!startRaw) return { error: "Не указано время урока" };
 
-  const start = new Date(startRaw);
-  if (Number.isNaN(start.getTime())) return { error: "Некорректная дата" };
+  const start = parseScheduleInput(startRaw);
+  if (!start) return { error: "Некорректная дата" };
 
   const [student] = await db
     .select()
@@ -576,7 +660,7 @@ export async function assignLessonAction(
 
   const values = Array.from({ length: weeks }, (_, i) => {
     const d = new Date(start);
-    d.setDate(start.getDate() + i * 7);
+    d.setUTCDate(start.getUTCDate() + i * 7);
     return { ...base, startTime: d };
   });
   await db.insert(lessons).values(values);

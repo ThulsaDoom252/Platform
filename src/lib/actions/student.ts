@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, lessons, homework, wishlistNotes, contactChangeRequests, notifications } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { scheduleNow } from "@/lib/schedule-time";
 
 async function requireStudent() {
   const session = await getSession();
@@ -33,8 +34,8 @@ export async function cancelLessonAction(formData: FormData) {
   const [lesson] = await db.select().from(lessons).where(eq(lessons.id, lessonId)).limit(1);
   if (!lesson || lesson.studentId !== session.userId || lesson.status !== "SCHEDULED") return;
 
-  const now = new Date();
-  const nowHour = now.getHours();
+  const now = scheduleNow();
+  const nowHour = now.getUTCHours();
   if (nowHour < CANCEL_WINDOW_START_HOUR || nowHour >= CANCEL_WINDOW_END_HOUR) {
     // Вне окна отмены - действие недоступно (на бэкенде тоже блокируем, не только в UI).
     return;

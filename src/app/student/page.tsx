@@ -16,6 +16,7 @@ import {
   IconGlobe,
   IconCamera,
 } from "@/components/icons";
+import { SCHEDULE_FORMAT_TIME_ZONE, scheduleNow } from "@/lib/schedule-time";
 
 const fileKindStyle: Record<string, string> = {
   PDF: "tint-rose",
@@ -27,11 +28,20 @@ const fileKindStyle: Record<string, string> = {
 export default async function StudentHomePage() {
   const session = await getSession();
   const { t, locale } = await getDict();
-  const now = new Date();
+  const now = scheduleNow();
 
   const intl = locale === "en" ? "en-GB" : locale;
-  const dayFmt = new Intl.DateTimeFormat(intl, { weekday: "short", day: "numeric", month: "short" });
-  const timeFmt = new Intl.DateTimeFormat(intl, { hour: "2-digit", minute: "2-digit" });
+  const dayFmt = new Intl.DateTimeFormat(intl, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+  });
+  const timeFmt = new Intl.DateTimeFormat(intl, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+  });
   const dateFmt = new Intl.DateTimeFormat(intl, { day: "2-digit", month: "long", year: "numeric" });
 
   const [me] = await db
@@ -116,11 +126,15 @@ export default async function StudentHomePage() {
   // «через N дней» для ближайшего урока
   let whenLabel = "";
   if (nextLesson) {
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfToday = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
     const startOfLesson = new Date(
-      nextLesson.startTime.getFullYear(),
-      nextLesson.startTime.getMonth(),
-      nextLesson.startTime.getDate(),
+      Date.UTC(
+        nextLesson.startTime.getUTCFullYear(),
+        nextLesson.startTime.getUTCMonth(),
+        nextLesson.startTime.getUTCDate(),
+      ),
     );
     const days = Math.round(
       (startOfLesson.getTime() - startOfToday.getTime()) / 86400000,
@@ -235,7 +249,7 @@ export default async function StudentHomePage() {
                     {dayFmt.format(nextLesson.startTime).split(" ")[0]}
                   </span>
                   <span className="text-lg font-bold leading-none">
-                    {nextLesson.startTime.getDate()}
+                    {nextLesson.startTime.getUTCDate()}
                   </span>
                 </span>
                 <div className="min-w-0">

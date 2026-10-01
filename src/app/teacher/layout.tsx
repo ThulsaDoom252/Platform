@@ -15,6 +15,7 @@ import { NotificationBell } from "@/components/teacher/notification-bell";
 import { Avatar } from "@/components/avatar";
 import { GlobalSearch } from "@/components/global-search";
 import { IconCap, IconLogout, IconChevronDown } from "@/components/icons";
+import { completeFinishedLessons } from "@/lib/lesson-completion";
 
 export default async function TeacherLayout({
   children,
@@ -23,6 +24,7 @@ export default async function TeacherLayout({
 }) {
   const session = await getSession();
   if (!session || session.role !== "TEACHER") redirect("/login");
+  await completeFinishedLessons();
 
   const [me] = await db
     .select({ name: users.name, avatarUrl: users.avatarUrl })

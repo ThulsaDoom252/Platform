@@ -13,6 +13,7 @@
  * проверяется тестами: день и часовой пояс — то место, где ошибка
  * заметна лишь на живом расписании.
  */
+import { scheduleNow } from "@/lib/schedule-time";
 
 export type ClassSortKey = "lessons" | "name" | "balance";
 export const CLASS_SORTS: ClassSortKey[] = ["lessons", "name", "balance"];
@@ -95,14 +96,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function startOfDay(date: Date): Date {
   const out = new Date(date);
-  out.setHours(0, 0, 0, 0);
+  out.setUTCHours(0, 0, 0, 0);
   return out;
 }
 
 /** Сколько дней осталось до конца недели, считая сегодняшний. */
 export function daysLeftInWeek(now: Date): number {
   // Неделя кончается воскресеньем: понедельник даёт семь дней, воскресенье — один.
-  const weekday = (now.getDay() + 6) % 7;
+  const weekday = (now.getUTCDay() + 6) % 7;
   return 7 - weekday;
 }
 
@@ -120,7 +121,7 @@ export function nextLessonOf(person: Orderable): string | null {
  */
 export function groupByDay<T extends Orderable>(
   people: T[],
-  now: Date = new Date(),
+  now: Date = scheduleNow(),
 ): ClassGroup<T>[] {
   const today = startOfDay(now);
   const days = daysLeftInWeek(now);

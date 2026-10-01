@@ -8,6 +8,13 @@ import { useLocalFlag } from "@/lib/use-local-flag";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
+  SCHEDULE_FORMAT_TIME_ZONE,
+  sameScheduleDay,
+  scheduleDateValue,
+  scheduleInputValue,
+  scheduleNow,
+} from "@/lib/schedule-time";
+import {
   cancelLessonByTeacherAction,
   deleteLessonAction,
   rescheduleLessonAction,
@@ -46,37 +53,31 @@ export type StudentItem = {
   balance: number;
 };
 
-const hm = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const wdShort = new Intl.DateTimeFormat("en-GB", { weekday: "short" });
+const hm = new Intl.DateTimeFormat("ru-RU", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
+const wdShort = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
 const dFull = new Intl.DateTimeFormat("ru-RU", {
   weekday: "long",
   day: "numeric",
   month: "long",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
 });
 const dShort = new Intl.DateTimeFormat("ru-RU", {
   weekday: "short",
   day: "numeric",
   month: "short",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
 });
 
-function toISODate(d: Date) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-/** Значение для <input type="datetime-local"> без сдвига по UTC. */
-function toLocalInput(d: Date) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-function sameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
+const toISODate = scheduleDateValue;
+const toLocalInput = scheduleInputValue;
+const sameDay = sameScheduleDay;
 
 const CANCELLED_STATUSES = [
   "CANCELLED_BY_STUDENT",
@@ -400,7 +401,7 @@ export function ScheduleClient({
                     {/* Пустые слоты — клик добавляет урок */}
                     {hours.map((h, i) => {
                       const slot = new Date(day);
-                      slot.setHours(h, 0, 0, 0);
+                      slot.setUTCHours(h, 0, 0, 0);
                       return (
                         <button
                           key={h}
@@ -420,7 +421,7 @@ export function ScheduleClient({
                     {/* Уроки */}
                     {dayLessons.map((l) => {
                       const top =
-                        (l.startTime.getHours() + l.startTime.getMinutes() / 60 - hFrom) * rowH;
+                        (l.startTime.getUTCHours() + l.startTime.getUTCMinutes() / 60 - hFrom) * rowH;
                       const height = Math.max(28, (l.duration / 60) * rowH - 4);
                       const end = new Date(l.startTime.getTime() + l.duration * 60000);
                       const c = slotTone(l);
@@ -495,7 +496,12 @@ export function ScheduleClient({
               type="button"
               onClick={() => {
                 const s = new Date(selected);
-                s.setHours(Math.max(hFrom, Math.min(20, now.getHours() + 1)), 0, 0, 0);
+                s.setUTCHours(
+                  Math.max(hFrom, Math.min(20, now.getUTCHours() + 1)),
+                  0,
+                  0,
+                  0,
+                );
                 setAssignSlot(s);
               }}
               className="flex items-center gap-1 rounded-lg bg-accent-soft px-2.5 py-1.5 text-xs font-semibold text-accent"
@@ -543,7 +549,12 @@ export function ScheduleClient({
         type="button"
         onClick={() => {
           const s = new Date(selected);
-          s.setHours(Math.max(hFrom, Math.min(20, now.getHours() + 1)), 0, 0, 0);
+          s.setUTCHours(
+            Math.max(hFrom, Math.min(20, now.getUTCHours() + 1)),
+            0,
+            0,
+            0,
+          );
           setAssignSlot(s);
         }}
         aria-label={t.schedule.assignTitle}
@@ -628,7 +639,8 @@ function EditLessonBody({
   // Время берём из общего источника: до гидратации оно равно нулю, и урок
   // считается предстоящим — это безопаснее, чем показать «уже прошёл».
   const now = useNow();
-  const isPast = now > 0 && lesson.startTime.getTime() < now;
+  const isPast =
+    now > 0 && lesson.startTime.getTime() < scheduleNow(new Date(now)).getTime();
 
   return (
     <div className="p-5 sm:p-6">
@@ -728,6 +740,7 @@ function EditLessonBody({
               <input type="hidden" name="comment" value={comment} />
               <button
                 type="submit"
+                disabled={!comment.trim()}
                 className="tint-rose flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition hover:brightness-95"
               >
                 <IconX className="h-4 w-4" /> {t.schedule.cancelLesson}
@@ -745,6 +758,11 @@ function EditLessonBody({
               </button>
             </form>
           </div>
+          {!comment.trim() && (
+            <p className="mt-2 text-center text-[11px] text-rose-500">
+              Для отмены обязательно укажи причину в комментарии.
+            </p>
+          )}
           {isPast && (
             <p className="mt-2 text-center text-[11px] text-faint">{t.schedule.pastHint}</p>
           )}
@@ -754,6 +772,15 @@ function EditLessonBody({
           <form action={deleteLessonAction}>
             <input type="hidden" name="lessonId" value={lesson.id} />
             <input type="hidden" name="comment" value={comment} />
+            <label className="mb-3 flex items-start gap-2 rounded-xl bg-orange-500/10 px-3.5 py-3 text-xs text-content">
+              <input type="checkbox" name="deleteScript" className="mt-0.5" />
+              <span>
+                <span className="block font-semibold">Удалить и скрипт</span>
+                <span className="mt-0.5 block text-muted">
+                  Если не отмечать, урок исчезнет, а скрипт останется в истории оранжевым.
+                </span>
+              </span>
+            </label>
             <button
               type="submit"
               className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 text-sm font-semibold text-white transition hover:bg-rose-500"

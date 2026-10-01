@@ -3,6 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import {
   revealStudentPasswordAction,
+  setStudentAccessBlockedAction,
   updateStudentPasswordAction,
   type StudentPasswordState,
 } from "@/lib/actions/teacher";
@@ -13,7 +14,13 @@ import { IconEye, IconEyeOff } from "@/components/icons";
 
 const initialState: StudentPasswordState = {};
 
-export function StudentPasswordPanel({ studentId }: { studentId: string }) {
+export function StudentPasswordPanel({
+  studentId,
+  initialAccessBlocked,
+}: {
+  studentId: string;
+  initialAccessBlocked: boolean;
+}) {
   const [state, formAction, pending] = useActionState(
     updateStudentPasswordAction,
     initialState,
@@ -24,6 +31,9 @@ export function StudentPasswordPanel({ studentId }: { studentId: string }) {
   const [visible, setVisible] = useState(false);
   const [newVisible, setNewVisible] = useState(false);
   const [revealing, startReveal] = useTransition();
+  const [accessPending, startAccess] = useTransition();
+  const [accessBlocked, setAccessBlocked] = useState(initialAccessBlocked);
+  const [accessError, setAccessError] = useState<string | null>(null);
   const currentPassword = state.password ?? revealed;
 
   function reveal() {
@@ -129,6 +139,40 @@ export function StudentPasswordPanel({ studentId }: { studentId: string }) {
           </p>
         )}
         {state.error && <p className="text-xs text-rose-500">{state.error}</p>}
+
+        <div className="border-t border-line pt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-content">
+                {accessBlocked ? "Доступ закрыт" : "Доступ открыт"}
+              </p>
+              <p className="mt-0.5 text-xs text-muted">
+                При закрытом доступе вход всегда отвечает «Неверный логин или пароль».
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant={accessBlocked ? "outline" : "destructive"}
+              disabled={accessPending}
+              onClick={() => {
+                const next = !accessBlocked;
+                setAccessError(null);
+                startAccess(async () => {
+                  const result = await setStudentAccessBlockedAction(studentId, next);
+                  if (result.ok) setAccessBlocked(next);
+                  else setAccessError(result.error ?? "Не удалось изменить доступ");
+                });
+              }}
+            >
+              {accessPending
+                ? "Сохраняю…"
+                : accessBlocked
+                  ? "Открыть доступ"
+                  : "Закрыть доступ"}
+            </Button>
+          </div>
+          {accessError && <p className="mt-2 text-xs text-rose-500">{accessError}</p>}
+        </div>
       </CardContent>
     </Card>
   );

@@ -1,6 +1,9 @@
 import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
 
 const COOKIE_NAME = "ewv_session";
 
@@ -51,7 +54,16 @@ export async function getSession(): Promise<SessionPayload | null> {
     const { payload } = await jwtVerify(token, encodedKey, {
       algorithms: ["HS256"],
     });
-    return payload as unknown as SessionPayload;
+    const session = payload as unknown as SessionPayload;
+    if (session.role === "STUDENT" && !session.impersonatedBy) {
+      const [student] = await db
+        .select({ accessBlocked: users.accessBlocked })
+        .from(users)
+        .where(eq(users.id, session.userId))
+        .limit(1);
+      if (!student || student.accessBlocked) return null;
+    }
+    return session;
   } catch {
     return null;
   }

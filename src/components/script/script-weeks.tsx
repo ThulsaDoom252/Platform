@@ -18,29 +18,39 @@ import {
 } from "@/lib/actions/script";
 import { IconChevronLeft, IconChevronRight } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import {
+  SCHEDULE_FORMAT_TIME_ZONE,
+  addScheduleDays,
+  sameScheduleDay,
+  scheduleNow,
+  scheduleStartOfWeek,
+} from "@/lib/schedule-time";
 
-const dayName = new Intl.DateTimeFormat("en-GB", { weekday: "long" });
-const dayShort = new Intl.DateTimeFormat("ru", { day: "2-digit", month: "2-digit" });
-const timeOf = new Intl.DateTimeFormat("ru", { hour: "2-digit", minute: "2-digit" });
+const dayName = new Intl.DateTimeFormat("en-GB", {
+  weekday: "long",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
+const dayShort = new Intl.DateTimeFormat("ru", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
+const timeOf = new Intl.DateTimeFormat("ru", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
 
 /** Понедельник недели, в которую попадает дата. */
 function weekStart(date: Date): Date {
-  const out = new Date(date);
-  out.setHours(0, 0, 0, 0);
-  out.setDate(out.getDate() - ((out.getDay() + 6) % 7));
-  return out;
+  return scheduleStartOfWeek(date);
 }
 
 const addDays = (date: Date, days: number) => {
-  const out = new Date(date);
-  out.setDate(out.getDate() + days);
-  return out;
+  return addScheduleDays(date, days);
 };
 
-const sameDay = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() &&
-  a.getMonth() === b.getMonth() &&
-  a.getDate() === b.getDate();
+const sameDay = sameScheduleDay;
 
 /** Неделя строится от понедельника; воскресенье показываем только с уроками. */
 const WEEKDAYS = 6;
@@ -54,7 +64,7 @@ export function ScriptWeeks({
   openId: string | null;
   onOpen: (lesson: ScriptLesson) => void;
 }) {
-  const [anchor, setAnchor] = useState(() => weekStart(new Date()));
+  const [anchor, setAnchor] = useState(() => weekStart(scheduleNow()));
   const [extra, setExtra] = useState(0);
   const [weeks, setWeeks] = useState<Week[]>([]);
   const [history, setHistory] = useState<ScriptLesson[] | null>(null);
@@ -95,7 +105,7 @@ export function ScriptWeeks({
     };
   }, [showHistory, history]);
 
-  const today = new Date();
+  const today = scheduleNow();
   const thisWeek = weekStart(today);
 
   const range = (start: Date) =>
@@ -112,7 +122,11 @@ export function ScriptWeeks({
           "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition",
           openId === lesson.lessonId
             ? "bg-accent-soft ring-1 ring-accent"
-            : "hover:bg-surface-2",
+            : lesson.status === "DELETED"
+              ? "bg-orange-500/10 hover:bg-orange-500/15"
+              : lesson.status.startsWith("CANCELLED") || lesson.status === "BURNED"
+                ? "bg-rose-500/10 hover:bg-rose-500/15"
+                : "hover:bg-surface-2",
         )}
       >
         <Avatar name={lesson.studentName} src={lesson.avatarUrl} className="h-7 w-7 text-[10px]" />

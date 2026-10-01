@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { notifications, lessons, users } from "@/lib/db/schema";
 import { fmt, getDictFor, type Dict } from "@/lib/i18n";
+import { SCHEDULE_FORMAT_TIME_ZONE, scheduleNow } from "@/lib/schedule-time";
 
 export type FeedKind =
   | "reminder"
@@ -20,7 +21,11 @@ export type FeedItem = {
   unread: boolean;
 };
 
-const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
+const timeFmt = new Intl.DateTimeFormat("ru-RU", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
 const dayFmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" });
 
 function relTime(date: Date, now: Date, t: Dict) {
@@ -46,7 +51,8 @@ export async function getStudentFeed(
   locale?: string,
 ): Promise<{ items: FeedItem[]; unreadCount: number }> {
   const t = getDictFor(locale);
-  const now = new Date();
+  const realNow = new Date();
+  const now = scheduleNow(realNow);
   const in60 = new Date(now.getTime() + 60 * 60 * 1000);
 
   const soon = await db
@@ -88,7 +94,7 @@ export async function getStudentFeed(
     id: n.id,
     kind: storedKind[n.type] ?? "wishlist",
     title: n.message,
-    meta: relTime(n.createdAt, now, t),
+    meta: relTime(n.createdAt, realNow, t),
     unread: !n.isRead,
   }));
 
@@ -106,7 +112,8 @@ export async function getTeacherFeed(
   unreadCount: number;
 }> {
   const t = getDictFor(locale);
-  const now = new Date();
+  const realNow = new Date();
+  const now = scheduleNow(realNow);
   const in60 = new Date(now.getTime() + 60 * 60 * 1000);
 
   // Уроки, начинающиеся в ближайший час.
@@ -170,7 +177,7 @@ export async function getTeacherFeed(
     id: n.id,
     kind: storedKind[n.type] ?? "wishlist",
     title: n.message,
-    meta: relTime(n.createdAt, now, t),
+    meta: relTime(n.createdAt, realNow, t),
     unread: !n.isRead,
   }));
 

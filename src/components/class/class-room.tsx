@@ -16,6 +16,10 @@ import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
 import { fmt, type Dict } from "@/lib/i18n";
 import {
+  SCHEDULE_FORMAT_TIME_ZONE,
+  scheduleNow,
+} from "@/lib/schedule-time";
+import {
   CLASS_SORTS,
   orderClassPeople,
   type ClassSortKey,
@@ -462,19 +466,24 @@ export function ClassRoom({
   const hhmm = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
   const dayShort = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
     day: "2-digit",
     month: "2-digit",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
   const weekday = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : locale, {
     weekday: "long",
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
 
   const dayLabel = (day: Date) => {
-    const today = new Date();
+    const today = scheduleNow();
     const diff = Math.round(
-      (day.setHours(0, 0, 0, 0) - new Date(today).setHours(0, 0, 0, 0)) / 86400000,
+      (day.setUTCHours(0, 0, 0, 0) -
+        new Date(today).setUTCHours(0, 0, 0, 0)) /
+        86400000,
     );
     if (diff === 0) return t.classRoom.today;
     if (diff === 1) return t.classRoom.tomorrow;

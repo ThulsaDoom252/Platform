@@ -31,9 +31,9 @@ const names = <T extends Orderable>(group: { entries: { person: T }[] }) =>
   group.entries.map((e) => e.person.name);
 
 test("до конца недели считаются оставшиеся дни, включая сегодня", () => {
-  assert.equal(daysLeftInWeek(new Date(2026, 8, 28)), 7); // понедельник
-  assert.equal(daysLeftInWeek(new Date(2026, 9, 2)), 3); // пятница
-  assert.equal(daysLeftInWeek(new Date(2026, 9, 4)), 1); // воскресенье
+  assert.equal(daysLeftInWeek(new Date(Date.UTC(2026, 8, 28))), 7); // понедельник
+  assert.equal(daysLeftInWeek(new Date(Date.UTC(2026, 9, 2))), 3); // пятница
+  assert.equal(daysLeftInWeek(new Date(Date.UTC(2026, 9, 4))), 1); // воскресенье
 });
 
 test("ученик стоит в каждом своём дне, а не только в ближайшем", () => {

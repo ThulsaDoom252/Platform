@@ -16,7 +16,7 @@ export async function loginAction(
   formData: FormData,
 ): Promise<LoginState> {
   const login = String(formData.get("login") || "").trim();
-  const password = String(formData.get("password") || "");
+  const password = String(formData.get("password") || "").trim();
 
   if (!login || !password) {
     return { error: "Введи логин и пароль" };
@@ -28,7 +28,7 @@ export async function loginAction(
     .where(eq(users.login, login))
     .limit(1);
 
-  if (!user) {
+  if (!user || (user.role === "STUDENT" && user.accessBlocked)) {
     return { error: "Неверный логин или пароль" };
   }
 

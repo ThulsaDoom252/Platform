@@ -21,6 +21,7 @@ import {
   IconChevronLeft,
   IconChevronDown,
 } from "@/components/icons";
+import { completeFinishedLessons } from "@/lib/lesson-completion";
 
 export default async function StudentLayout({
   children,
@@ -29,6 +30,7 @@ export default async function StudentLayout({
 }) {
   const session = await getSession();
   if (!session || session.role !== "STUDENT") redirect("/login");
+  await completeFinishedLessons();
 
   const [me] = await db
     .select({ name: users.name, avatarUrl: users.avatarUrl, level: users.level })

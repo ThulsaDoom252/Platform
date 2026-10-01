@@ -5,44 +5,35 @@ import { users, lessons } from "@/lib/db/schema";
 import { ScheduleClient } from "@/components/teacher/schedule-client";
 import { getDict } from "@/lib/i18n/server";
 import { IconChevronLeft, IconChevronRight } from "@/components/icons";
+import {
+  SCHEDULE_FORMAT_TIME_ZONE,
+  addScheduleDays,
+  sameScheduleDay,
+  scheduleDateFromISO,
+  scheduleDateValue,
+  scheduleNow,
+  scheduleStartOfWeek,
+} from "@/lib/schedule-time";
 
 /** Высота часа в недельной сетке. */
 const ROW_H = 64;
 
-const dMon = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" });
+const dMon = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "short",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+});
 const dMonY = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
   month: "short",
   year: "numeric",
+  timeZone: SCHEDULE_FORMAT_TIME_ZONE,
 });
 
-function toISODate(d: Date) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-function parseISODate(s?: string) {
-  if (!s) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function startOfWeek(d: Date) {
-  const r = new Date(d);
-  r.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  r.setHours(0, 0, 0, 0);
-  return r;
-}
-
-function sameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
+const toISODate = scheduleDateValue;
+const parseISODate = scheduleDateFromISO;
+const startOfWeek = scheduleStartOfWeek;
+const sameDay = sameScheduleDay;
 
 export default async function SchedulePage({
   searchParams,
@@ -51,16 +42,18 @@ export default async function SchedulePage({
 }) {
   const sp = await searchParams;
   const { t } = await getDict();
-  const now = new Date();
+  const now = scheduleNow();
   const anchor = parseISODate(sp.date) ?? now;
   const isDay = sp.view === "day";
   const view = isDay ? "day" : "week";
 
   // Навигация ограничена: от прошлой недели до последней недели текущего года.
   const minWeek = startOfWeek(
-    new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7),
+    addScheduleDays(now, -7),
   );
-  const maxWeek = startOfWeek(new Date(now.getFullYear(), 11, 31));
+  const maxWeek = startOfWeek(
+    new Date(Date.UTC(now.getUTCFullYear(), 11, 31)),
+  );
 
   let weekStart = startOfWeek(anchor);
   if (weekStart < minWeek) weekStart = minWeek;
@@ -70,10 +63,10 @@ export default async function SchedulePage({
   const canNext = weekStart.getTime() < maxWeek.getTime();
 
   const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
+  weekEnd.setUTCDate(weekStart.getUTCDate() + 7);
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
-    d.setDate(weekStart.getDate() + i);
+    d.setUTCDate(weekStart.getUTCDate() + i);
     return d;
   });
 
@@ -113,9 +106,11 @@ export default async function SchedulePage({
   let hFrom = 8;
   let hTo = 21;
   for (const r of rows) {
-    const s = r.startTime.getHours();
+    const s = r.startTime.getUTCHours();
     const e = Math.ceil(
-      r.startTime.getHours() + r.startTime.getMinutes() / 60 + r.duration / 60,
+      r.startTime.getUTCHours() +
+        r.startTime.getUTCMinutes() / 60 +
+        r.duration / 60,
     );
     if (s < hFrom) hFrom = s;
     if (e > hTo) hTo = e;
@@ -128,11 +123,11 @@ export default async function SchedulePage({
     days[0];
 
   const prevWeek = new Date(weekStart);
-  prevWeek.setDate(weekStart.getDate() - 7);
+  prevWeek.setUTCDate(weekStart.getUTCDate() - 7);
   const nextWeek = new Date(weekStart);
-  nextWeek.setDate(weekStart.getDate() + 7);
+  nextWeek.setUTCDate(weekStart.getUTCDate() + 7);
   const lastDay = new Date(weekEnd);
-  lastDay.setDate(weekEnd.getDate() - 1);
+  lastDay.setUTCDate(weekEnd.getUTCDate() - 1);
 
   const href = (d: Date, v: string) => `/teacher/schedule?date=${toISODate(d)}&view=${v}`;
 

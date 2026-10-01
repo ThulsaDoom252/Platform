@@ -56,6 +56,8 @@ export const users = pgTable("users", {
    * AES-GCM. У учителя это поле всегда null.
    */
   passwordVault: text("password_vault"),
+  /** Учитель может закрыть вход, не меняя и не раскрывая пароль. */
+  accessBlocked: boolean("access_blocked").notNull().default(false),
   role: roleEnum("role").notNull(),
   avatarUrl: text("avatar_url"),
   theme: themeEnum("theme").notNull().default("LIGHT"),
@@ -254,6 +256,27 @@ export const lessonScriptsRelations = relations(lessonScripts, ({ one }) => ({
     references: [lessons.id],
   }),
 }));
+
+/**
+ * Сохранённый скрипт удалённого занятия.
+ *
+ * Сам урок можно убрать из расписания и расчётов полностью, но подготовка
+ * учителя остаётся доступной в истории, пока учитель не удалит её отдельно.
+ */
+export const archivedLessonScripts = pgTable("archived_lesson_scripts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  originalLessonId: uuid("original_lesson_id").notNull().unique(),
+  studentId: uuid("student_id").notNull(),
+  studentName: text("student_name").notNull(),
+  startTime: timestamp("start_time").notNull(),
+  durationMinutes: integer("duration_minutes").notNull().default(60),
+  html: text("html").notNull().default(""),
+  style: jsonb("style").$type<ScriptStyle>().default({}).notNull(),
+  cancelReason: text("cancel_reason"),
+  deletedAt: timestamp("deleted_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 /**
  * Заготовка скрипта: план, который повторяется от урока к уроку.
