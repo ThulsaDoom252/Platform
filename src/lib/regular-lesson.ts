@@ -91,3 +91,59 @@ export function regularLessonSection(
   const id = key.slice(REGULAR_SECTION_PREFIX.length);
   return normalizeRegularLessonSections(value).find((section) => section.id === id) ?? null;
 }
+
+export function isRegularLessonFocusId(
+  id: unknown,
+  section: RegularLessonSection,
+): id is string {
+  if (id === "heading") return true;
+  if (typeof id !== "string" || !/^[a-z0-9:-]{1,80}$/i.test(id)) return false;
+  const needle = `data-focus-id="${id}"`;
+  return section.studentHtml.includes(needle) || section.teacherHtml.includes(needle);
+}
+
+/**
+ * Помечает смысловые элементы импортированного урока стабильными ID.
+ * Учительские блоки ответов пропускаются, поэтому номера совпадают в
+ * student/teacher HTML даже там, где у учителя добавлен большой ключ.
+ */
+export function addRegularLessonFocusIds(raw: string): string {
+  const stack: { tag: string; startsBlocked: boolean }[] = [];
+  let blockedDepth = 0;
+  let index = 0;
+
+  return String(raw ?? "").replace(
+    /<\/?([a-zA-Z][a-zA-Z0-9]*)([^>]*)>/g,
+    (whole, rawTag: string, attrs: string) => {
+      const tag = rawTag.toLowerCase();
+      if (whole.startsWith("</")) {
+        for (let at = stack.length - 1; at >= 0; at -= 1) {
+          const entry = stack[at];
+          stack.splice(at, 1);
+          if (entry.startsBlocked) blockedDepth = Math.max(0, blockedDepth - 1);
+          if (entry.tag === tag) break;
+        }
+        return whole;
+      }
+
+      const className = attrs.match(/class\s*=\s*["']([^"']*)["']/i)?.[1] ?? "";
+      const startsBlocked = /(?:^|\s)(?:key|key-wrap|teacher-note)(?:\s|$)/i.test(className);
+      const blocked = blockedDepth > 0 || startsBlocked;
+      const focusable =
+        !blocked &&
+        (["h3", "p", "li", "tr"].includes(tag) ||
+          (tag === "div" && /(?:^|\s)(?:vcard|support|tip|warn)(?:\s|$)/i.test(className)));
+      let next = whole;
+      if (focusable && !/\bdata-focus-id\s*=/i.test(attrs)) {
+        index += 1;
+        next = whole.replace(/>$/, ` data-focus-id="item-${index}">`);
+      }
+
+      if (!/\/$/.test(attrs.trim()) && !["br", "hr", "img", "input", "meta", "link"].includes(tag)) {
+        stack.push({ tag, startsBlocked });
+        if (startsBlocked) blockedDepth += 1;
+      }
+      return next;
+    },
+  );
+}

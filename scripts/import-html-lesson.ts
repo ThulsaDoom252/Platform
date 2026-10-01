@@ -6,6 +6,7 @@ import { db } from "../src/lib/db";
 import { lessonUnits, users } from "../src/lib/db/schema";
 import { cleanScriptHtml } from "../src/lib/script-html";
 import {
+  addRegularLessonFocusIds,
   normalizeRegularLessonSections,
   type RegularLessonSection,
   type RegularLessonTone,
@@ -53,7 +54,7 @@ function parseSections(source: string): ParsedSection[] {
     const heading = body.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
     const title = text(heading?.[1] ?? "Teacher notes");
     const html = heading ? body.replace(heading[0], "") : body;
-    out.push({ className: match[1], title, html: cleanScriptHtml(html) });
+    out.push({ className: match[1], title, html });
   }
   return out;
 }
@@ -83,8 +84,8 @@ async function main() {
       id: slug(section.title, index),
       title: section.title,
       tone: tone(section.className),
-      studentHtml: section.html,
-      teacherHtml: answer.html,
+      studentHtml: cleanScriptHtml(addRegularLessonFocusIds(section.html)),
+      teacherHtml: cleanScriptHtml(addRegularLessonFocusIds(answer.html)),
       defaultOpen: index !== 0,
     };
   });
@@ -95,7 +96,7 @@ async function main() {
       title: note.title,
       tone: "teacher",
       studentHtml: "",
-      teacherHtml: note.html,
+      teacherHtml: cleanScriptHtml(addRegularLessonFocusIds(note.html)),
       defaultOpen: false,
       teacherOnly: true,
     });

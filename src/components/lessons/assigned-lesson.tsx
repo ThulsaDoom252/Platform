@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
   focusLessonWordAction,
+  focusRegularLessonElementAction,
   highlightLessonDialogueAction,
   lessonVocabularyRevealAction,
   selectLessonLexisGroupAction,
@@ -52,7 +53,7 @@ export function AssignedLesson({
   /** Есть только внутри живого класса; вне класса видео остаётся обычным. */
   classVideo?: ClassVideoState | null;
   /** Разовая команда учителя: показать секцию, не открывая её навсегда. */
-  sectionFocus?: { section: string; at: string } | null;
+  sectionFocus?: { section: string; elementId?: string | null; at: string } | null;
   liveClass?: boolean;
 }) {
   const { t } = useT();
@@ -153,6 +154,17 @@ export function AssignedLesson({
         open={data.open}
         lockClosed={liveClass && !teacher}
         sectionFocus={liveClass && !teacher ? sectionFocus : null}
+        onFocusElement={teacher && liveClass
+          ? (section, elementId) => {
+              startBusy(() =>
+                focusRegularLessonElementAction(
+                  data.assignment.id,
+                  section,
+                  elementId,
+                ).then(() => undefined),
+              );
+            }
+          : undefined}
       />
     );
   }

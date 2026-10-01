@@ -38,6 +38,7 @@ export function ClassLesson({
   sectionFocus?: {
     assignmentId: string;
     section: string;
+    elementId: string | null;
     at: string;
   } | null;
   onAssigned?: (id: string) => void;
@@ -318,7 +319,11 @@ export function ClassLesson({
               }
               sectionFocus={
                 !teacher && sectionFocus?.assignmentId === data.assignment.id
-                  ? { section: sectionFocus.section, at: sectionFocus.at }
+                  ? {
+                      section: sectionFocus.section,
+                      elementId: sectionFocus.elementId,
+                      at: sectionFocus.at,
+                    }
                   : null
               }
             />

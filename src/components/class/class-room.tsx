@@ -216,6 +216,7 @@ export function ClassRoom({
   const [lessonSectionFocus, setLessonSectionFocus] = useState<{
     assignmentId: string;
     section: string;
+    elementId: string | null;
     at: string;
   } | null>(null);
   const [textSelection, setTextSelection] = useState<ClassTextSelection | null>(null);
@@ -479,6 +480,7 @@ export function ClassRoom({
                 ? {
                     assignmentId: sync.lessonAssignmentId,
                     section: sync.view.lessonSection,
+                    elementId: sync.view.lessonElementId,
                     at: sync.view.at,
                   }
                 : null,

@@ -568,6 +568,7 @@ export type ClassSync = {
     boardCommand: "SHOW" | "FOCUS" | "FLASH" | null;
     gameId: string | null;
     lessonSection: string | null;
+    lessonElementId: string | null;
   } | null;
   /** Учителю: открыта ли доска у ученика прямо сейчас. */
   partnerOnBoard: boolean;
@@ -671,6 +672,12 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
               typeof me.classFocus.lessonSection === "string" &&
               me.classFocus.lessonSection.length <= 100
                 ? me.classFocus.lessonSection
+                : null,
+            lessonElementId:
+              me.classFocus.view === "LESSON" &&
+              typeof me.classFocus.lessonElementId === "string" &&
+              me.classFocus.lessonElementId.length <= 80
+                ? me.classFocus.lessonElementId
                 : null,
             boardCommand:
               me.classFocus.view !== "BOARD"

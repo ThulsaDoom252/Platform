@@ -22,7 +22,7 @@ const ALLOWED = new Set([
 ]);
 
 /** Атрибуты, которые ничего не выполняют. */
-const SAFE_ATTR = /^(style|class|href|colspan|rowspan|align)$/i;
+const SAFE_ATTR = /^(style|class|href|colspan|rowspan|align|data-focus-id)$/i;
 
 /** Значения style, в которых нельзя спрятать вызов. */
 const SAFE_STYLE = /^[^;{}()]*(:[^;{}()]*)?$/;
@@ -57,6 +57,12 @@ function cleanAttrs(raw: string): string {
     if (name.toLowerCase() === "style") {
       const style = cleanStyle(value);
       if (style) out.push(`style="${style}"`);
+      continue;
+    }
+
+    if (name.toLowerCase() === "data-focus-id") {
+      const id = value.trim();
+      if (/^[a-z0-9:-]{1,80}$/i.test(id)) out.push(`data-focus-id="${id}"`);
       continue;
     }
 

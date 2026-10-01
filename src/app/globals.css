@@ -953,6 +953,15 @@ body {
 .regular-lesson-body .lines p:nth-child(odd) { background: var(--surface-2); }
 .regular-lesson-body .ln, .regular-lesson-body .pn { display: inline-flex; min-width: 1.6rem; color: var(--faint); font-size: 0.75rem; font-weight: 800; }
 .regular-lesson-body .sp { color: var(--accent); }
+.regular-lesson-can-focus [data-focus-id] { cursor: pointer; transition: background-color 160ms ease, box-shadow 160ms ease, outline-color 160ms ease; }
+.regular-lesson-can-focus [data-focus-id]:hover { background-color: var(--accent-soft); }
+.regular-lesson-focused {
+  outline: 3px solid var(--accent) !important;
+  outline-offset: 4px;
+  border-radius: 0.7rem;
+  background-color: var(--accent-soft) !important;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent) !important;
+}
 
 @media (max-width: 640px) {
   .regular-lesson-heading { align-items: flex-start; flex-direction: column; }

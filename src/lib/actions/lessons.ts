@@ -59,6 +59,7 @@ import {
 } from "@/lib/class-video";
 import {
   defaultRegularOpenSections,
+  isRegularLessonFocusId,
   normalizeRegularLessonSections,
   publicRegularLessonSections,
   regularLessonSection,
@@ -1061,6 +1062,74 @@ export async function focusLessonSectionAction(
         boardObjectId: null,
         lessonAssignmentId: id,
         lessonSection: section,
+        lessonElementId: null,
+      },
+    })
+    .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
+
+  return {};
+}
+
+/** Поставить конкретный элемент обычного урока в центр экрана ученика. */
+export async function focusRegularLessonElementAction(
+  assignmentId: string,
+  section: string,
+  elementId: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+  const focusId = String(elementId ?? "").trim();
+
+  const [[teacher], [target]] = await Promise.all([
+    db
+      .select({ studentId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1),
+    db
+      .select({
+        studentId: lessonAssignments.studentId,
+        classFocus: users.classFocus,
+        kind: lessonUnits.kind,
+        sections: lessonUnits.sections,
+      })
+      .from(lessonAssignments)
+      .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+      .innerJoin(users, eq(users.id, lessonAssignments.studentId))
+      .where(
+        and(
+          eq(lessonAssignments.id, id),
+          eq(lessonUnits.authorId, session.userId),
+          eq(users.role, "STUDENT"),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
+    return { error: "Этот ученик сейчас не в классе" };
+  }
+  const regularSection =
+    target.kind === "REGULAR" ? regularLessonSection(section, target.sections) : null;
+  if (
+    !regularSection ||
+    regularSection.teacherOnly ||
+    !isRegularLessonFocusId(focusId, regularSection)
+  ) {
+    return { error: "Элемент урока не найден" };
+  }
+
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        ...target.classFocus,
+        at: new Date().toISOString(),
+        view: "LESSON",
+        boardObjectId: null,
+        lessonAssignmentId: id,
+        lessonSection: section,
+        lessonElementId: focusId,
       },
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));

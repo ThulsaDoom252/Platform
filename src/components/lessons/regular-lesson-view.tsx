@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useT } from "@/components/i18n-provider";
 import { IconEyeOff } from "@/components/icons";
 import { regularSectionKey, type RegularLessonSection } from "@/lib/regular-lesson";
@@ -12,12 +12,14 @@ export function RegularLessonView({
   open,
   lockClosed = false,
   sectionFocus,
+  onFocusElement,
 }: {
   sections: RegularLessonSection[];
   teacher: boolean;
   open: string[];
   lockClosed?: boolean;
-  sectionFocus?: { section: string; at: string } | null;
+  sectionFocus?: { section: string; elementId?: string | null; at: string } | null;
+  onFocusElement?: (section: string, elementId: string) => void;
 }) {
   const { t } = useT();
   const available = useMemo(
@@ -29,6 +31,8 @@ export function RegularLessonView({
     available[0];
   const [activeId, setActiveId] = useState(first?.id ?? "");
   const [answersFor, setAnswersFor] = useState<string | null>(null);
+  const [focused, setFocused] = useState<{ section: string; elementId: string } | null>(null);
+  const contentRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!sectionFocus?.section) return;
@@ -36,13 +40,52 @@ export function RegularLessonView({
       (section) => regularSectionKey(section.id) === sectionFocus.section,
     );
     if (!focused) return;
-    const frame = requestAnimationFrame(() => setActiveId(focused.id));
+    const frame = requestAnimationFrame(() => {
+      setActiveId(focused.id);
+      setFocused(
+        sectionFocus.elementId
+          ? { section: sectionFocus.section, elementId: sectionFocus.elementId }
+          : null,
+      );
+    });
     return () => cancelAnimationFrame(frame);
-  }, [available, sectionFocus?.at, sectionFocus?.section]);
+  }, [available, sectionFocus?.at, sectionFocus?.elementId, sectionFocus?.section]);
 
   const active = available.find((section) => section.id === activeId) ?? first;
+  const activeKey = active ? regularSectionKey(active.id) : "";
+
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    root.querySelectorAll(".regular-lesson-focused").forEach((node) => {
+      node.classList.remove("regular-lesson-focused");
+    });
+    if (!focused || focused.section !== activeKey) return;
+    const node = root.querySelector<HTMLElement>(
+      `[data-focus-id="${focused.elementId}"]`,
+    );
+    if (!node) return;
+    node.classList.add("regular-lesson-focused");
+    if (!teacher) node.scrollIntoView({ behavior: "smooth", block: "center" });
+    return () => node.classList.remove("regular-lesson-focused");
+  }, [activeKey, focused, teacher]);
+
   if (!active) return null;
   const showingAnswers = teacher && answersFor === active.id;
+
+  const chooseElement = (elementId: string) => {
+    if (!onFocusElement) return;
+    setFocused({ section: activeKey, elementId });
+    onFocusElement(activeKey, elementId);
+  };
+
+  const chooseFromBody = (event: MouseEvent<HTMLDivElement>) => {
+    if (!onFocusElement || !(event.target instanceof Element)) return;
+    const node = event.target.closest<HTMLElement>("[data-focus-id]");
+    if (!node || !event.currentTarget.contains(node)) return;
+    const elementId = node.dataset.focusId;
+    if (elementId) chooseElement(elementId);
+  };
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -73,9 +116,22 @@ export function RegularLessonView({
         })}
       </nav>
 
-      <article className={cn("regular-lesson-content", `regular-tone-${active.tone}`)}>
+      <article
+        ref={contentRef}
+        className={cn(
+          "regular-lesson-content",
+          `regular-tone-${active.tone}`,
+          onFocusElement && "regular-lesson-can-focus",
+        )}
+      >
         <div className="regular-lesson-heading">
-          <h2>{active.title}</h2>
+          <h2
+            data-focus-id="heading"
+            onClick={() => chooseElement("heading")}
+            title={onFocusElement ? t.lessonUnits.focusElement : undefined}
+          >
+            {active.title}
+          </h2>
           {teacher && active.teacherHtml !== active.studentHtml && !active.teacherOnly && (
             <button
               type="button"
@@ -93,6 +149,7 @@ export function RegularLessonView({
         </div>
         <div
           className="regular-lesson-body"
+          onClick={chooseFromBody}
           dangerouslySetInnerHTML={{
             __html: showingAnswers || active.teacherOnly
               ? active.teacherHtml
