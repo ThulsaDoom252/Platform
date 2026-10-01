@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { listScriptLessonsAction } from "@/lib/actions/script";
+import { getScriptLessonAction } from "@/lib/actions/script";
 import { ScriptWorkspace } from "@/components/script/script-workspace";
 
 export default async function TeacherScriptPage({
@@ -13,9 +13,7 @@ export default async function TeacherScriptPage({
 
   // Из расписания приходят с конкретным уроком — открываем сразу его.
   const { lesson } = await searchParams;
-  const initial = lesson
-    ? ((await listScriptLessonsAction(200)).find((l) => l.lessonId === lesson) ?? null)
-    : null;
+  const initial = lesson ? await getScriptLessonAction(lesson) : null;
 
   return (
     <div className="flex flex-col gap-4">

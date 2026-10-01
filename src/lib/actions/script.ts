@@ -237,6 +237,59 @@ export async function listScriptLessonsAction(limit = 60): Promise<ScriptLesson[
     .slice(0, safeLimit);
 }
 
+/** Метаданные конкретного скрипта без зависимости от лимита общего списка. */
+export async function getScriptLessonAction(
+  lessonId: string,
+): Promise<ScriptLesson | null> {
+  await requireTeacher();
+  const id = String(lessonId ?? "");
+  if (!id) return null;
+
+  const [active] = await db
+    .select({
+      lessonId: lessons.id,
+      studentId: lessons.studentId,
+      studentName: users.name,
+      studentLevel: users.level,
+      avatarUrl: users.avatarUrl,
+      startTime: lessons.startTime,
+      duration: lessons.durationMinutes,
+      status: lessons.status,
+      cancelReason: lessons.cancelReason,
+      deletedAt: sql<Date | null>`null`,
+      html: lessonScripts.html,
+      updatedAt: lessonScripts.updatedAt,
+    })
+    .from(lessons)
+    .innerJoin(users, eq(users.id, lessons.studentId))
+    .leftJoin(lessonScripts, eq(lessonScripts.lessonId, lessons.id))
+    .where(eq(lessons.id, id))
+    .limit(1);
+  if (active) return toScriptLesson(active);
+
+  const [archived] = await db
+    .select({
+      lessonId: archivedLessonScripts.originalLessonId,
+      studentId: archivedLessonScripts.studentId,
+      studentName: archivedLessonScripts.studentName,
+      studentLevel: users.level,
+      avatarUrl: users.avatarUrl,
+      startTime: archivedLessonScripts.startTime,
+      duration: archivedLessonScripts.durationMinutes,
+      status: sql<string>`'DELETED'`,
+      cancelReason: archivedLessonScripts.cancelReason,
+      deletedAt: archivedLessonScripts.deletedAt,
+      html: archivedLessonScripts.html,
+      updatedAt: archivedLessonScripts.updatedAt,
+    })
+    .from(archivedLessonScripts)
+    .leftJoin(users, eq(users.id, archivedLessonScripts.studentId))
+    .where(eq(archivedLessonScripts.originalLessonId, id))
+    .limit(1);
+
+  return archived ? toScriptLesson(archived) : null;
+}
+
 /** Скрипт одного урока. Пустой — значит его ещё не писали. */
 export async function getScriptAction(lessonId: string): Promise<ScriptDoc | null> {
   await requireTeacher();
