@@ -11,6 +11,7 @@ export const en = {
   nav: {
     home: "Home",
     students: "Students",
+    addStudent: "Add a student",
     schedule: "Schedule",
     finances: "Accounts",
     lessons: "Lessons",
@@ -848,6 +849,9 @@ export const en = {
     packageRemaining: "{n} of {total} lessons left",
     packageExpires: "Valid until {date}",
     packageShared: "One pool for: {members}. All members use the same balance.",
+    showPackages: "Show shared pool",
+    hidePackages: "Hide shared pool",
+    backToStudents: "Back to students",
   },
 
   schedule: {

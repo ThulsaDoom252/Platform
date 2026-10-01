@@ -10,6 +10,7 @@ export const uk: Dict = {
   nav: {
     home: "Головна",
     students: "Учні",
+    addStudent: "Додати учня",
     schedule: "Розклад",
     finances: "Фінанси",
     lessons: "Уроки",
@@ -932,6 +933,9 @@ export const uk: Dict = {
     packageRemaining: "Залишилось {n} з {total} уроків",
     packageExpires: "Діє до {date}",
     packageShared: "Спільний пул для: {members}. Усі учасники мають спільний залишок.",
+    showPackages: "Показати спільний пул",
+    hidePackages: "Сховати спільний пул",
+    backToStudents: "Назад до учнів",
   },
 
   schedule: {

@@ -16,7 +16,7 @@ import {
 } from "@/lib/schedule-time";
 
 /** Высота часа в недельной сетке. */
-const ROW_H = 64;
+const ROW_H = 48;
 
 const dMon = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
@@ -132,14 +132,14 @@ export default async function SchedulePage({
   const href = (d: Date, v: string) => `/teacher/schedule?date=${toISODate(d)}&view=${v}`;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {/* Header */}
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-content">{t.schedule.title}</h1>
-          <p className="mt-1 text-sm text-muted">{t.schedule.subtitle}</p>
+          <h1 className="text-xl font-bold text-content">{t.schedule.title}</h1>
+          <p className="mt-0.5 text-xs text-muted">{t.schedule.subtitle}</p>
           {/* Легенда цветов */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted">
             <span className="flex items-center gap-1.5">
               <span
                 className="h-2.5 w-2.5 rounded-full"

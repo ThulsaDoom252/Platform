@@ -290,7 +290,7 @@ export function ScheduleClient({
   return (
     <>
       {/* ---------- Маскировка имён ---------- */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => {
@@ -301,7 +301,7 @@ export function ScheduleClient({
           }}
           aria-pressed={masked}
           title={t.schedule.maskHint}
-          className={`flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition ${
+          className={`flex h-8 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition ${
             masked
               ? "bg-accent text-white"
               : "bg-surface text-muted ring-1 ring-line hover:text-content"
@@ -335,12 +335,12 @@ export function ScheduleClient({
         className={`${isDay ? "hidden" : "hidden md:block"} overflow-hidden rounded-2xl bg-surface shadow-sm ring-1 ring-[color:var(--grid-edge)]`}
       >
         <div className="overflow-x-auto">
-          <div className="min-w-[720px]">
+          <div className="min-w-[680px]">
             <div
               className="grid border-b-2 border-[color:var(--grid-edge)] bg-surface-2"
-              style={{ gridTemplateColumns: `56px repeat(7, minmax(0,1fr))` }}
+              style={{ gridTemplateColumns: `48px repeat(7, minmax(0,1fr))` }}
             >
-              <div className="px-2 py-2.5 text-[10px] font-bold uppercase tracking-wide text-faint">
+              <div className="px-1.5 py-2 text-[9px] font-bold uppercase tracking-wide text-faint">
                 Время
               </div>
               {days.map((d) => {
@@ -349,19 +349,19 @@ export function ScheduleClient({
                   <Link
                     key={d.toISOString()}
                     href={href(d)}
-                    className={`border-l border-[color:var(--grid-line)] px-2 py-2.5 text-center transition hover:bg-surface ${
+                    className={`border-l border-[color:var(--grid-line)] px-1.5 py-2 text-center transition hover:bg-surface ${
                       today ? "bg-accent-soft" : ""
                     }`}
                   >
                     <p
-                      className={`text-[11px] font-bold uppercase tracking-wide ${
+                      className={`text-[10px] font-bold uppercase tracking-wide ${
                         today ? "text-accent" : "text-muted"
                       }`}
                     >
                       {wdShort.format(d)}
                     </p>
                     <p
-                      className={`mt-0.5 text-base font-extrabold leading-none ${
+                      className={`mt-0.5 text-sm font-extrabold leading-none ${
                         today ? "text-accent" : "text-content"
                       }`}
                     >
@@ -374,7 +374,7 @@ export function ScheduleClient({
 
             <div
               className="grid"
-              style={{ gridTemplateColumns: `56px repeat(7, minmax(0,1fr))` }}
+              style={{ gridTemplateColumns: `48px repeat(7, minmax(0,1fr))` }}
             >
               <div
                 className="relative border-r-2 border-[color:var(--grid-edge)] bg-surface-2"
@@ -383,7 +383,7 @@ export function ScheduleClient({
                 {hours.map((h, i) => (
                   <div
                     key={h}
-                    className="absolute left-0 right-0 flex items-center justify-end border-b border-[color:var(--grid-line)] pr-2 font-mono text-[12px] font-bold tabular-nums text-muted"
+                    className="absolute left-0 right-0 flex items-center justify-end border-b border-[color:var(--grid-line)] pr-1.5 font-mono text-[10px] font-bold tabular-nums text-muted"
                     style={{ top: i * rowH, height: rowH }}
                   >
                     {String(h).padStart(2, "0")}:00
@@ -423,28 +423,28 @@ export function ScheduleClient({
                     {dayLessons.map((l) => {
                       const top =
                         (l.startTime.getUTCHours() + l.startTime.getUTCMinutes() / 60 - hFrom) * rowH;
-                      const height = Math.max(28, (l.duration / 60) * rowH - 4);
+                      const height = Math.max(22, (l.duration / 60) * rowH - 5);
                       const end = new Date(l.startTime.getTime() + l.duration * 60000);
                       const c = slotTone(l);
                       // Короткий урок двух строк не вмещает: имя важнее времени.
-                      const roomy = height >= 40;
+                      const roomy = height >= 36;
                       return (
                         <button
                           key={l.id}
                           type="button"
                           onClick={() => onLessonClick(l)}
-                          className="absolute left-1 right-1 flex flex-col justify-center overflow-hidden rounded-lg px-2.5 text-left shadow-md ring-1 ring-black/10 transition hover:brightness-110"
+                          className="absolute left-1 right-1 flex flex-col justify-center overflow-hidden rounded-md px-2 text-left shadow-sm ring-1 ring-black/10 transition hover:brightness-110"
                           style={{ top, height, background: c }}
                           title={`${hide(l.studentName, l.studentId)} · ${hm.format(l.startTime)}–${hm.format(end)} · ${t.lessonStatus[l.status as keyof typeof t.lessonStatus]}`}
                         >
                           {/* Время внутри урока: по сетке его приходилось
                               вычислять глазами, а начало важно сразу. */}
                           {roomy && (
-                            <span className="font-mono text-[10px] font-bold leading-tight text-white/85 tabular-nums">
+                            <span className="font-mono text-[9px] font-bold leading-tight text-white/85 tabular-nums">
                               {hm.format(l.startTime)}–{hm.format(end)}
                             </span>
                           )}
-                          <span className="truncate text-xs font-bold leading-tight text-white">
+                          <span className="truncate text-[11px] font-bold leading-tight text-white">
                             {hide(l.studentName, l.studentId)}
                           </span>
                         </button>

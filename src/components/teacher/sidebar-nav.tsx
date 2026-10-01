@@ -17,6 +17,7 @@ import {
   IconVolume,
   IconFire,
   IconLayers,
+  IconPlus,
 } from "@/components/icons";
 
 export function SidebarNav() {
@@ -27,6 +28,7 @@ export function SidebarNav() {
     { href: "/teacher/class", label: t.nav.myClass, Icon: IconCap },
     { href: "/teacher", label: t.nav.home, Icon: IconHome, exact: true },
     { href: "/teacher/students", label: t.nav.students, Icon: IconUsers },
+    { href: "/teacher/students/new", label: t.nav.addStudent, Icon: IconPlus, exact: true },
     { href: "/teacher/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/teacher/lessons", label: t.nav.lessons, Icon: IconLayers },
     { href: "/teacher/script", label: t.nav.script, Icon: IconFile },
@@ -40,7 +42,11 @@ export function SidebarNav() {
   return (
     <nav className="flex flex-col gap-1">
       {items.map(({ href, label, Icon, exact }) => {
-        const active = exact ? pathname === href : pathname.startsWith(href);
+        const active = exact
+          ? pathname === href
+          : href === "/teacher/students"
+            ? pathname.startsWith(href) && pathname !== "/teacher/students/new"
+            : pathname.startsWith(href);
         return (
           <Link
             key={href}

@@ -2,19 +2,20 @@ import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, lessonPackages } from "@/lib/db/schema";
-import { createStudentAction } from "@/lib/actions/teacher";
 import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { Avatar } from "@/components/avatar";
 import { ToClassButton } from "@/components/class/to-class-button";
 import {
+  SharedPackagesContent,
+  SharedPackagesToggle,
+} from "@/components/teacher/shared-packages-visibility";
+import {
   IconChevronRight,
   IconLayers,
   IconMaterials,
+  IconPlus,
 } from "@/components/icons";
-
-const inputCls =
-  "h-10 rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
 /** По чему сортируем список. */
 type SortKey = "name" | "lessons";
@@ -104,60 +105,21 @@ export default async function TeacherStudentsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-content">{t.studentsPage.title}</h1>
-        <p className="mt-1 text-sm text-muted">
-          {fmt(t.studentsPage.subtitle, { count: students.length })}
-        </p>
-      </div>
-
-      {/* Пакеты уроков */}
-      {sharedPackages.map((p) => (
-        <section
-          key={p.id}
-          className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6"
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-content">{t.studentsPage.title}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {fmt(t.studentsPage.subtitle, { count: students.length })}
+          </p>
+        </div>
+        <Link
+          href="/teacher/students/new"
+          className="flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-bold text-white shadow-sm transition hover:brightness-95"
         >
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="grad-accent flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm">
-              <IconLayers className="h-6 w-6" />
-            </span>
-            {/* Без нижней границы текст сжимался до одного слова в строке:
-                плашка с остатком отбирала всю ширину. Теперь она переносится. */}
-            <div className="min-w-[10rem] flex-1">
-              <p className="font-semibold text-content">{t.studentsPage.packageTitle}</p>
-              <p className="mt-0.5 text-sm text-muted">
-                {fmt(t.studentsPage.packageShared, {
-                  members: (membersOf.get(p.id) ?? []).join(", "),
-                })}
-              </p>
-            </div>
-            <div className="flex flex-col items-start gap-1.5 sm:items-end">
-              <span className="tint-green rounded-full px-3 py-1 text-xs font-semibold">
-                {fmt(t.studentsPage.packageRemaining, {
-                  n: p.remainingLessons,
-                  total: p.totalLessons,
-                })}
-              </span>
-              {p.expiresAt && (
-                <span className="text-[11px] text-faint">
-                  {fmt(t.studentsPage.packageExpires, {
-                    date: dateFmt.format(p.expiresAt),
-                  })}
-                </span>
-              )}
-            </div>
-          </div>
-          {/* Полоса расхода пакета */}
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-2">
-            <div
-              className="grad-accent h-full rounded-full"
-              style={{
-                width: `${p.totalLessons > 0 ? Math.round((p.remainingLessons / p.totalLessons) * 100) : 0}%`,
-              }}
-            />
-          </div>
-        </section>
-      ))}
+          <IconPlus className="h-4 w-4" />
+          {t.studentsPage.addTitle}
+        </Link>
+      </div>
 
       <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
         <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-line pb-3">
@@ -166,6 +128,12 @@ export default async function TeacherStudentsPage({
           </span>
           {sortBtn("name", t.studentsPage.sortName)}
           {sortBtn("lessons", t.studentsPage.sortLessons)}
+          {sharedPackages.length > 0 && (
+            <SharedPackagesToggle
+              showLabel={t.studentsPage.showPackages}
+              hideLabel={t.studentsPage.hidePackages}
+            />
+          )}
         </div>
 
         <div className="flex flex-col divide-y divide-line">
@@ -226,89 +194,54 @@ export default async function TeacherStudentsPage({
         </div>
       </section>
 
-      <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
-        <h2 className="font-semibold text-content">{t.studentsPage.addTitle}</h2>
-        <p className="mt-1 text-sm text-muted">{t.studentsPage.addSubtitle}</p>
-        <form action={createStudentAction} className="mt-4 grid gap-3 sm:grid-cols-3">
-          <input name="name" placeholder={t.studentsPage.name} required className={inputCls} />
-          <input name="login" placeholder={t.studentsPage.login} required className={inputCls} />
-          <input
-            name="password"
-            placeholder={t.studentsPage.password}
-            type="text"
-            required
-            className={inputCls}
-          />
-
-          {/* Остальное — по желанию, поэтому свёрнуто: быстрый ввод остаётся в три поля. */}
-          <details className="group sm:col-span-3">
-            <summary className="cursor-pointer list-none text-sm font-semibold text-muted transition hover:text-accent">
-              <span className="inline-block transition group-open:rotate-90">›</span>{" "}
-              {t.studentsPage.extraToggle}
-            </summary>
-
-            <p className="mt-2 text-xs text-faint">{t.studentsPage.extraHint}</p>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted">
-                  {t.studentsPage.fBalance}
+      {/* Общие пакеты стоят после списка: учеников больше не отодвигает вниз. */}
+      {sharedPackages.length > 0 && (
+        <SharedPackagesContent>
+          {sharedPackages.map((p) => (
+            <section
+              key={p.id}
+              className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6"
+            >
+              <div className="flex flex-wrap items-center gap-4">
+                <span className="grad-accent flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm">
+                  <IconLayers className="h-6 w-6" />
                 </span>
-                <input
-                  name="balance"
-                  type="number"
-                  min={0}
-                  step={1}
-                  defaultValue={0}
-                  className={inputCls}
+                <div className="min-w-[10rem] flex-1">
+                  <p className="font-semibold text-content">{t.studentsPage.packageTitle}</p>
+                  <p className="mt-0.5 text-sm text-muted">
+                    {fmt(t.studentsPage.packageShared, {
+                      members: (membersOf.get(p.id) ?? []).join(", "),
+                    })}
+                  </p>
+                </div>
+                <div className="flex flex-col items-start gap-1.5 sm:items-end">
+                  <span className="tint-green rounded-full px-3 py-1 text-xs font-semibold">
+                    {fmt(t.studentsPage.packageRemaining, {
+                      n: p.remainingLessons,
+                      total: p.totalLessons,
+                    })}
+                  </span>
+                  {p.expiresAt && (
+                    <span className="text-[11px] text-faint">
+                      {fmt(t.studentsPage.packageExpires, {
+                        date: dateFmt.format(p.expiresAt),
+                      })}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="grad-accent h-full rounded-full"
+                  style={{
+                    width: `${p.totalLessons > 0 ? Math.round((p.remainingLessons / p.totalLessons) * 100) : 0}%`,
+                  }}
                 />
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted">{t.studentsPage.fUsed}</span>
-                <input
-                  name="used"
-                  type="number"
-                  min={0}
-                  step={1}
-                  defaultValue={0}
-                  className={inputCls}
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted">
-                  {t.studentsPage.fStartedAt}
-                </span>
-                <input name="startedAt" type="date" className={inputCls} />
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted">
-                  {t.studentsPage.fLessonsBefore}
-                </span>
-                <input
-                  name="lessonsBefore"
-                  type="number"
-                  min={0}
-                  step={1}
-                  placeholder="—"
-                  className={inputCls}
-                />
-              </label>
-            </div>
-
-            <p className="mt-2 text-xs text-faint">{t.studentsPage.fHint}</p>
-          </details>
-
-          <button
-            type="submit"
-            className="h-10 rounded-xl bg-accent px-5 text-sm font-semibold text-white transition hover:opacity-90 sm:col-span-3 sm:w-fit"
-          >
-            {t.studentsPage.create}
-          </button>
-        </form>
-      </section>
+              </div>
+            </section>
+          ))}
+        </SharedPackagesContent>
+      )}
     </div>
   );
 }

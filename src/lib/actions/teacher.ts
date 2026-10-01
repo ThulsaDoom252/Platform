@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { and, eq, gt, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
@@ -101,6 +102,7 @@ export async function createStudentAction(formData: FormData) {
 
   revalidatePath("/teacher");
   revalidatePath("/teacher/students");
+  redirect("/teacher/students");
 }
 
 export type StudentPasswordState = {
