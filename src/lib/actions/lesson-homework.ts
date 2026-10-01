@@ -79,6 +79,9 @@ export async function submitHomeworkAutoAnswerAction(
 
   const answer = String(supplied ?? "").trim().slice(0, 300);
   if (!answer) return { error: "Введи ответ" };
+  if ((state[homeworkValueKey(found.item.id)] ?? "").trim() === answer) {
+    return publicItemState(state, found.item.id);
+  }
 
   const attempts = homeworkAttempts(state, found.item.id);
   if (homeworkAnswerMatches(found.item, answer)) {
@@ -86,6 +89,7 @@ export async function submitHomeworkAutoAnswerAction(
     state[homeworkStatusKey(found.item.id)] = "correct";
   } else {
     const nextAttempts = [...attempts, answer].slice(0, 3);
+    state[homeworkValueKey(found.item.id)] = answer;
     state[homeworkAttemptsKey(found.item.id)] = JSON.stringify(nextAttempts);
     if (nextAttempts.length >= 3) {
       state[homeworkValueKey(found.item.id)] = found.item.answer;

@@ -303,7 +303,8 @@ function AutoTextExercise({
 
   const submit = (item: HomeworkItem) => {
     const value = drafts[item.id] ?? "";
-    if (!value.trim() || busy) return;
+    const savedValue = state[homeworkValueKey(item.id)] ?? "";
+    if (!value.trim() || busy || value.trim() === savedValue.trim()) return;
     startBusy(async () => {
       const result = await submitHomeworkAutoAnswerAction(session.assignmentId, item.id, value);
       if ("error" in result && result.error) return;
@@ -320,7 +321,7 @@ function AutoTextExercise({
       });
       setDrafts((current) => ({
         ...current,
-        [item.id]: next.status ? next.value : "",
+        [item.id]: next.value,
       }));
       const tone = next.status === "correct" ? "right" : "wrong";
       setFeedback((current) => ({ ...current, [item.id]: undefined }));
