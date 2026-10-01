@@ -60,9 +60,10 @@ export async function submitHomeworkAutoAnswerAction(
   supplied: string,
 ) {
   const session = await requireUser();
-  if (session.role !== "STUDENT") return { error: "Ответ вводит ученик" };
   const row = await assignmentWithPlan(String(assignmentId ?? ""));
-  if (!row || row.assignment.studentId !== session.userId) {
+  const isStudent = session.role === "STUDENT" && row?.assignment.studentId === session.userId;
+  const isTeacher = session.role === "TEACHER" && row?.authorId === session.userId;
+  if (!row || (!isStudent && !isTeacher)) {
     return { error: "Домашняя работа не найдена" };
   }
 
@@ -72,13 +73,22 @@ export async function submitHomeworkAutoAnswerAction(
   }
 
   const state = { ...(row.assignment.answers ?? {}) };
-  if (homeworkStatus(state, found.item.id)) return publicItemState(state, found.item.id);
+  if (isStudent && homeworkStatus(state, found.item.id)) {
+    return publicItemState(state, found.item.id);
+  }
 
   const answer = String(supplied ?? "").trim().slice(0, 300);
   if (!answer) return { error: "Введи ответ" };
 
   const attempts = homeworkAttempts(state, found.item.id);
-  if (homeworkAnswerMatches(found.item, answer)) {
+  if (isTeacher) {
+    state[homeworkValueKey(found.item.id)] = answer;
+    if (homeworkAnswerMatches(found.item, answer)) {
+      state[homeworkStatusKey(found.item.id)] = "correct";
+    } else {
+      delete state[homeworkStatusKey(found.item.id)];
+    }
+  } else if (homeworkAnswerMatches(found.item, answer)) {
     state[homeworkValueKey(found.item.id)] = answer;
     state[homeworkStatusKey(found.item.id)] = "correct";
   } else {
@@ -93,11 +103,9 @@ export async function submitHomeworkAutoAnswerAction(
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
-    .where(and(
-      eq(lessonAssignments.id, row.assignment.id),
-      eq(lessonAssignments.studentId, session.userId),
-    ));
+    .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return publicItemState(state, found.item.id);
 }
 
@@ -108,9 +116,10 @@ export async function saveHomeworkResponseAction(
   supplied: string,
 ): Promise<{ error?: string }> {
   const session = await requireUser();
-  if (session.role !== "STUDENT") return { error: "Ответ вводит ученик" };
   const row = await assignmentWithPlan(String(assignmentId ?? ""));
-  if (!row || row.assignment.studentId !== session.userId) {
+  const isStudent = session.role === "STUDENT" && row?.assignment.studentId === session.userId;
+  const isTeacher = session.role === "TEACHER" && row?.authorId === session.userId;
+  if (!row || (!isStudent && !isTeacher)) {
     return { error: "Домашняя работа не найдена" };
   }
   const found = findHomeworkItem(row.plan, String(itemId ?? ""));
@@ -136,11 +145,9 @@ export async function saveHomeworkResponseAction(
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
-    .where(and(
-      eq(lessonAssignments.id, row.assignment.id),
-      eq(lessonAssignments.studentId, session.userId),
-    ));
+    .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return {};
 }
 

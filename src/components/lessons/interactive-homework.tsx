@@ -32,6 +32,8 @@ import {
 import {
   IconCheck,
   IconChevronDown,
+  IconEye,
+  IconEyeOff,
   IconPencil,
   IconPlus,
   IconTrash,
@@ -55,6 +57,7 @@ export function InteractiveHomework({
 }) {
   const { t } = useT();
   const [state, setState] = useState(session.state);
+  const [showAnswers, setShowAnswers] = useState(false);
   const progress = homeworkProgress(plan, state);
 
   return (
@@ -66,17 +69,29 @@ export function InteractiveHomework({
               {t.interactiveHomework.eyebrow}
             </p>
             <h2 className="mt-1 text-xl font-black text-content">{plan.title}</h2>
-            {plan.intro && (
-              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">{plan.intro}</p>
-            )}
           </div>
-          <div className="rounded-xl bg-surface px-3 py-2 text-right ring-1 ring-line">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-faint">
-              {t.interactiveHomework.requiredProgress}
-            </p>
-            <p className="text-lg font-black text-accent">
-              {progress.done}/{progress.total}
-            </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {session.teacher && (
+              <button
+                type="button"
+                aria-pressed={showAnswers}
+                onClick={() => setShowAnswers((shown) => !shown)}
+                className="flex h-10 items-center gap-2 rounded-xl bg-surface px-3 text-xs font-black text-accent ring-1 ring-line transition hover:ring-accent"
+              >
+                {showAnswers ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
+                {showAnswers
+                  ? t.interactiveHomework.hideAnswers
+                  : t.interactiveHomework.showAnswers}
+              </button>
+            )}
+            <div className="rounded-xl bg-surface px-3 py-2 text-right ring-1 ring-line">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-faint">
+                {t.interactiveHomework.requiredProgress}
+              </p>
+              <p className="text-lg font-black text-accent">
+                {progress.done}/{progress.total}
+              </p>
+            </div>
           </div>
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-line/60">
@@ -95,6 +110,7 @@ export function InteractiveHomework({
           session={session}
           state={state}
           setState={setState}
+          showAnswers={showAnswers}
         />
       ))}
     </div>
@@ -107,14 +123,30 @@ function HomeworkExerciseView({
   session,
   state,
   setState,
+  showAnswers,
 }: {
   exercise: HomeworkExercise;
   number: number;
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
+  showAnswers: boolean;
 }) {
   const { t } = useT();
+  const instruction =
+    exercise.kind === "fill"
+      ? t.interactiveHomework.instructions.fill
+      : exercise.kind === "definition"
+        ? t.interactiveHomework.instructions.definition
+        : exercise.kind === "describe"
+          ? t.interactiveHomework.instructions.describe
+          : exercise.kind === "drag"
+            ? t.interactiveHomework.instructions.drag
+            : exercise.kind === "translate"
+              ? t.interactiveHomework.instructions.translate
+              : exercise.kind === "question-audio"
+                ? t.interactiveHomework.instructions.questionAudio
+                : t.interactiveHomework.instructions.questionText;
   const body = (
     <div className="mt-4">
       {exercise.wordBank && exercise.wordBank.length > 0 && exercise.kind !== "drag" && (
@@ -122,9 +154,13 @@ function HomeworkExerciseView({
           <p className="text-[10px] font-black uppercase tracking-wide text-accent">
             {t.interactiveHomework.useWords}
           </p>
-          <p className="mt-1 text-[13px] font-semibold leading-relaxed text-content">
-            {exercise.wordBank.join(" · ")}
-          </p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {exercise.wordBank.map((word) => (
+              <li key={word} className="text-[13px] font-semibold leading-relaxed text-content">
+                {word}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       <ExerciseItems
@@ -132,6 +168,7 @@ function HomeworkExerciseView({
         session={session}
         state={state}
         setState={setState}
+        showAnswers={showAnswers}
       />
     </div>
   );
@@ -146,7 +183,7 @@ function HomeworkExerciseView({
           <span className="min-w-0 flex-1 text-sm font-bold text-content">{exercise.title}</span>
           <IconChevronDown className="h-4 w-4 text-faint transition group-open:rotate-180" />
         </summary>
-        <p className="mt-3 text-[13px] leading-relaxed text-muted">{exercise.instruction}</p>
+        <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
         {body}
       </details>
     );
@@ -160,7 +197,7 @@ function HomeworkExerciseView({
         </span>
         <div>
           <h3 className="text-base font-black text-content">{exercise.title}</h3>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">{exercise.instruction}</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{instruction}</p>
         </div>
       </div>
       {body}
@@ -173,6 +210,7 @@ function ExerciseItems(props: {
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
+  showAnswers: boolean;
 }) {
   if (props.exercise.kind === "drag") return <DragExercise {...props} />;
   if (props.exercise.kind === "fill" || props.exercise.kind === "definition") {
@@ -186,11 +224,13 @@ function AutoTextExercise({
   session,
   state,
   setState,
+  showAnswers,
 }: {
   exercise: HomeworkExercise;
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
+  showAnswers: boolean;
 }) {
   const { t } = useT();
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
@@ -205,15 +245,19 @@ function AutoTextExercise({
       const result = await submitHomeworkAutoAnswerAction(session.assignmentId, item.id, value);
       if ("error" in result && result.error) return;
       const next = result as { value: string; status: "correct" | "locked" | null; attempts: string[] };
-      setState((current) => ({
-        ...current,
-        [homeworkValueKey(item.id)]: next.value,
-        [homeworkAttemptsKey(item.id)]: JSON.stringify(next.attempts),
-        ...(next.status ? { [homeworkStatusKey(item.id)]: next.status } : {}),
-      }));
+      setState((current) => {
+        const updated = {
+          ...current,
+          [homeworkValueKey(item.id)]: next.value,
+          [homeworkAttemptsKey(item.id)]: JSON.stringify(next.attempts),
+        };
+        if (next.status) updated[homeworkStatusKey(item.id)] = next.status;
+        else delete updated[homeworkStatusKey(item.id)];
+        return updated;
+      });
       setDrafts((current) => ({
         ...current,
-        [item.id]: next.status ? next.value : "",
+        [item.id]: session.teacher || next.status ? next.value : "",
       }));
       const tone = next.status === "correct" ? "right" : "wrong";
       setFeedback((current) => ({ ...current, [item.id]: undefined }));
@@ -229,7 +273,6 @@ function AutoTextExercise({
     <div className="flex flex-col gap-3">
       {exercise.items.map((item, index) => {
         const status = homeworkStatus(state, item.id);
-        const value = state[homeworkValueKey(item.id)] ?? "";
         return (
           <HomeworkItemShell
             key={item.id}
@@ -239,12 +282,13 @@ function AutoTextExercise({
             state={state}
             setState={setState}
             feedback={feedback[item.id]}
+            showAnswers={showAnswers}
           >
             <p className="text-sm font-semibold leading-relaxed text-content">{item.prompt}</p>
             <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
-                value={session.teacher ? value : drafts[item.id] ?? ""}
-                disabled={session.teacher || Boolean(status) || busy}
+                value={drafts[item.id] ?? ""}
+                disabled={(!session.teacher && Boolean(status)) || busy}
                 onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") submit(item);
@@ -259,14 +303,14 @@ function AutoTextExercise({
                       : "border-line focus:border-accent",
                 )}
               />
-              {!session.teacher && !status && (
+              {(session.teacher || !status) && (
                 <button
                   type="button"
                   disabled={busy || !(drafts[item.id] ?? "").trim()}
                   onClick={() => submit(item)}
                   className="h-10 rounded-xl bg-accent px-4 text-xs font-black text-white transition hover:brightness-95 disabled:opacity-40"
                 >
-                  {t.interactiveHomework.check}
+                  {session.teacher ? t.lessonUnits.save : t.interactiveHomework.check}
                 </button>
               )}
             </div>
@@ -282,37 +326,45 @@ function DragExercise({
   session,
   state,
   setState,
+  showAnswers,
 }: {
   exercise: HomeworkExercise;
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
+  showAnswers: boolean;
 }) {
   const { t } = useT();
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, "wrong" | "right" | undefined>>({});
   const [busy, startBusy] = useTransition();
   const used = useMemo(
-    () => new Set(
-      exercise.items
-        .filter((item) => homeworkStatus(state, item.id))
-        .map((item) => item.answer ?? ""),
-    ),
-    [exercise.items, state],
+    () => session.teacher
+      ? new Set<string>()
+      : new Set(
+          exercise.items
+            .filter((item) => homeworkStatus(state, item.id))
+            .map((item) => item.answer ?? ""),
+        ),
+    [exercise.items, session.teacher, state],
   );
 
   const drop = (item: HomeworkItem, answer: string | null) => {
-    if (!answer || session.teacher || homeworkStatus(state, item.id)) return;
+    if (!answer || (!session.teacher && homeworkStatus(state, item.id))) return;
     startBusy(async () => {
       const result = await submitHomeworkAutoAnswerAction(session.assignmentId, item.id, answer);
       if ("error" in result && result.error) return;
       const next = result as { value: string; status: "correct" | "locked" | null; attempts: string[] };
-      setState((current) => ({
-        ...current,
-        [homeworkValueKey(item.id)]: next.value,
-        [homeworkAttemptsKey(item.id)]: JSON.stringify(next.attempts),
-        ...(next.status ? { [homeworkStatusKey(item.id)]: next.status } : {}),
-      }));
+      setState((current) => {
+        const updated = {
+          ...current,
+          [homeworkValueKey(item.id)]: next.value,
+          [homeworkAttemptsKey(item.id)]: JSON.stringify(next.attempts),
+        };
+        if (next.status) updated[homeworkStatusKey(item.id)] = next.status;
+        else delete updated[homeworkStatusKey(item.id)];
+        return updated;
+      });
       setSelected(null);
       const tone = next.status === "correct" ? "right" : "wrong";
       setFeedback((current) => ({ ...current, [item.id]: undefined }));
@@ -336,8 +388,8 @@ function DragExercise({
           <button
             key={word}
             type="button"
-            draggable={!session.teacher && !used.has(word)}
-            disabled={session.teacher || used.has(word) || busy}
+            draggable={!used.has(word)}
+            disabled={used.has(word) || busy}
             onDragStart={(event) => event.dataTransfer.setData("text/plain", word)}
             onClick={() => setSelected((current) => current === word ? null : word)}
             className={cn(
@@ -367,11 +419,12 @@ function DragExercise({
               state={state}
               setState={setState}
               feedback={feedback[item.id]}
+              showAnswers={showAnswers}
             >
               <p className="text-sm font-semibold leading-relaxed text-content">{item.prompt}</p>
               <button
                 type="button"
-                disabled={session.teacher || Boolean(status) || busy}
+                disabled={(!session.teacher && Boolean(status)) || busy}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => onDrop(event, item)}
                 onClick={() => drop(item, selected)}
@@ -401,11 +454,13 @@ function ManualExercise({
   session,
   state,
   setState,
+  showAnswers,
 }: {
   exercise: HomeworkExercise;
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
+  showAnswers: boolean;
 }) {
   const { t } = useT();
   const router = useRouter();
@@ -455,7 +510,6 @@ function ManualExercise({
         </p>
       )}
       {exercise.items.map((item, index) => {
-        const value = state[homeworkValueKey(item.id)] ?? "";
         return (
           <HomeworkItemShell
             key={item.id}
@@ -464,6 +518,7 @@ function ManualExercise({
             session={session}
             state={state}
             setState={setState}
+            showAnswers={showAnswers}
           >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
@@ -494,7 +549,7 @@ function ManualExercise({
               )}
             </div>
 
-            {exercise.kind === "question-audio" && !session.teacher && (
+            {exercise.kind === "question-audio" && (
               <a
                 href="https://vocaroo.com"
                 target="_blank"
@@ -505,11 +560,7 @@ function ManualExercise({
               </a>
             )}
 
-            {session.teacher ? (
-              <div className="mt-2 min-h-11 rounded-xl bg-surface-2 p-3 text-sm leading-relaxed text-content ring-1 ring-line">
-                {value || <span className="text-faint">{t.interactiveHomework.noAnswer}</span>}
-              </div>
-            ) : exercise.kind === "question-audio" ? (
+            {exercise.kind === "question-audio" ? (
               <div className="mt-2 flex gap-2">
                 <input
                   value={drafts[item.id] ?? ""}
@@ -584,6 +635,7 @@ function HomeworkItemShell({
   state,
   setState,
   feedback,
+  showAnswers,
   children,
 }: {
   item: HomeworkItem;
@@ -592,6 +644,7 @@ function HomeworkItemShell({
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   feedback?: "wrong" | "right";
+  showAnswers: boolean;
   children: React.ReactNode;
 }) {
   const { t } = useT();
@@ -647,6 +700,13 @@ function HomeworkItemShell({
           <ol className="mt-1 list-decimal space-y-1 pl-4">
             {attempts.map((attempt, at) => <li key={at}>{attempt}</li>)}
           </ol>
+        </div>
+      )}
+
+      {session.teacher && showAnswers && item.answer && (
+        <div className="ml-10 mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-emerald-200">
+          <span className="font-black">{t.interactiveHomework.correctAnswer}:</span>{" "}
+          <span className="font-semibold">{item.answer}</span>
         </div>
       )}
 
