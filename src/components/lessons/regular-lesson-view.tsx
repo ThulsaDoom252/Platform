@@ -33,15 +33,14 @@ export function RegularLessonView({
   const [answersFor, setAnswersFor] = useState<string | null>(null);
   const [focused, setFocused] = useState<{ section: string; elementId: string } | null>(null);
   const contentRef = useRef<HTMLElement | null>(null);
+  const focusedSectionId = sectionFocus?.section
+    ? available.find((section) => regularSectionKey(section.id) === sectionFocus.section)?.id
+    : null;
 
   useEffect(() => {
-    if (!sectionFocus?.section) return;
-    const focused = available.find(
-      (section) => regularSectionKey(section.id) === sectionFocus.section,
-    );
-    if (!focused) return;
+    if (!sectionFocus?.section || !focusedSectionId) return;
     const frame = requestAnimationFrame(() => {
-      setActiveId(focused.id);
+      setActiveId(focusedSectionId);
       setFocused(
         sectionFocus.elementId
           ? { section: sectionFocus.section, elementId: sectionFocus.elementId }
@@ -49,7 +48,7 @@ export function RegularLessonView({
       );
     });
     return () => cancelAnimationFrame(frame);
-  }, [available, sectionFocus?.at, sectionFocus?.elementId, sectionFocus?.section]);
+  }, [focusedSectionId, sectionFocus?.at, sectionFocus?.elementId, sectionFocus?.section]);
 
   const active = available.find((section) => section.id === activeId) ?? first;
   const activeKey = active ? regularSectionKey(active.id) : "";
