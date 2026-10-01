@@ -67,6 +67,11 @@ import {
   regularLessonSection,
   type RegularLessonSection,
 } from "@/lib/regular-lesson";
+import {
+  interactiveHomeworkFromEntries,
+  legacyHomeworkFromEntries,
+  type InteractiveHomeworkPlan,
+} from "@/lib/lesson-homework";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -196,7 +201,9 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
       lines: (unit.transcript ?? []).length,
       questions:
         (questions.afterVideo ?? []).length + (questions.afterReading ?? []).length,
-      tasks: (unit.homework ?? []).length,
+      tasks:
+        legacyHomeworkFromEntries(unit.homework).length +
+        (interactiveHomeworkFromEntries(unit.homework)?.exercises.length ?? 0),
       sections: normalizeRegularLessonSections(unit.sections).filter((section) => !section.teacherOnly).length,
       assigned: givenOf.get(unit.id) ?? 0,
       createdAt: unit.createdAt.toISOString(),
@@ -259,7 +266,7 @@ export async function saveLessonAction(
   const unitId = String(id ?? "");
 
   const [mine] = await db
-    .select({ id: lessonUnits.id })
+    .select({ id: lessonUnits.id, homework: lessonUnits.homework })
     .from(lessonUnits)
     .where(and(eq(lessonUnits.id, unitId), eq(lessonUnits.authorId, session.userId)))
     .limit(1);
@@ -304,12 +311,14 @@ export async function saveLessonAction(
     };
   }
   if (edit.homework !== undefined) {
-    patch.homework = (edit.homework ?? [])
+    const legacy = (edit.homework ?? [])
       .map((task) => ({
         title: String(task?.title ?? "").trim(),
         text: String(task?.text ?? "").trim(),
       }))
       .filter((task) => task.title || task.text);
+    const interactive = interactiveHomeworkFromEntries(mine.homework);
+    patch.homework = [...legacy, ...(interactive ? [interactive] : [])];
   }
   if (edit.activityIds !== undefined) {
     const requested = [...new Set((edit.activityIds ?? []).map(String).filter(Boolean))];
@@ -352,6 +361,7 @@ export type LessonView = {
   transcript: TranscriptLine[];
   questions: { afterVideo: string[]; afterReading: string[] };
   homework: { title: string; text: string }[];
+  interactiveHomework: InteractiveHomeworkPlan | null;
   activities: {
     id: string;
     title: string;
@@ -519,7 +529,8 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
       afterVideo: questions.afterVideo ?? [],
       afterReading: questions.afterReading ?? [],
     },
-    homework: unit.homework ?? [],
+    homework: legacyHomeworkFromEntries(unit.homework),
+    interactiveHomework: interactiveHomeworkFromEntries(unit.homework),
     activities: activityIds.flatMap((id) => {
       const activity = activityOf.get(id);
       return activity

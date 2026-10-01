@@ -43,6 +43,10 @@ import {
   expectedClassVideoTime,
   type ClassVideoState,
 } from "@/lib/class-video";
+import {
+  InteractiveHomework,
+  type InteractiveHomeworkSession,
+} from "@/components/lessons/interactive-homework";
 
 export type LessonViewProps = {
   lesson: Lesson;
@@ -84,6 +88,7 @@ export type LessonViewProps = {
     teacher: boolean;
     state: ClassVideoState | null;
   };
+  homeworkSession?: InteractiveHomeworkSession;
 };
 
 /** Сколько секций держать на экране разом. */
@@ -109,6 +114,7 @@ export function LessonView({
   selectedLexisId,
   onSelectLexis,
   videoSession,
+  homeworkSession,
 }: LessonViewProps) {
   const { t } = useT();
   /*
@@ -366,7 +372,9 @@ export function LessonView({
                 />
               )}
               {section === "questions" && <Questions lesson={lesson} />}
-              {section === "homework" && <Homework lesson={lesson} />}
+              {section === "homework" && (
+                <Homework lesson={lesson} session={homeworkSession} />
+              )}
             </div>
           </div>
         ))}
@@ -881,10 +889,20 @@ function Questions({ lesson }: { lesson: Lesson }) {
   );
 }
 
-function Homework({ lesson }: { lesson: Lesson }) {
+function Homework({
+  lesson,
+  session,
+}: {
+  lesson: Lesson;
+  session?: InteractiveHomeworkSession;
+}) {
   const { t } = useT();
 
-  if (lesson.homework.length === 0 && lesson.activities.length === 0) {
+  if (
+    lesson.homework.length === 0 &&
+    lesson.activities.length === 0 &&
+    !lesson.interactiveHomework
+  ) {
     return <p className="text-sm text-faint">{t.lessonUnits.empty}</p>;
   }
 
@@ -893,6 +911,13 @@ function Homework({ lesson }: { lesson: Lesson }) {
       {lesson.activities.map((activity) => (
         <WordDeckBoard key={activity.id} activity={activity} compact />
       ))}
+      {lesson.interactiveHomework && session && (
+        <InteractiveHomework
+          key={`${session.assignmentId}:${JSON.stringify(session.state)}`}
+          plan={lesson.interactiveHomework}
+          session={session}
+        />
+      )}
       {lesson.homework.map((task, i) => (
         <section key={i} className="rounded-2xl bg-surface p-4 ring-1 ring-line">
           {task.title && (

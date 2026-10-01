@@ -252,7 +252,7 @@ export function AssignedLesson({
         open={
           teacher || liveClass
             ? [...LESSON_SECTIONS]
-            : data.open.filter((section) => section !== "homework" && LESSON_SECTIONS.includes(section as (typeof LESSON_SECTIONS)[number])) as (typeof LESSON_SECTIONS)[number][]
+            : data.open.filter((section) => LESSON_SECTIONS.includes(section as (typeof LESSON_SECTIONS)[number])) as (typeof LESSON_SECTIONS)[number][]
         }
         closed={
           teacher || liveClass
@@ -275,6 +275,16 @@ export function AssignedLesson({
         highlightMode={teacher && highlightMode}
         highlightColor={highlightColor}
         onHighlight={teacher ? highlight : undefined}
+        homeworkSession={
+          data.lesson.interactiveHomework
+            ? {
+                assignmentId: data.assignment.id,
+                unitId: data.assignment.unitId,
+                teacher,
+                state: data.answers,
+              }
+            : undefined
+        }
         videoSession={
           liveClass
             ? {

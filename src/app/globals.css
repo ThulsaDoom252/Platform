@@ -991,6 +991,28 @@ body {
   }
 }
 
+@keyframes homework-error-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(244 63 94 / 0); transform: translateX(0); }
+  18% { box-shadow: 0 0 0 4px rgb(244 63 94 / 0.2); transform: translateX(-3px); }
+  36% { transform: translateX(3px); }
+  54% { box-shadow: 0 0 0 2px rgb(244 63 94 / 0.14); transform: translateX(-2px); }
+  72% { transform: translateX(2px); }
+}
+
+@keyframes homework-correct-pop {
+  0% { box-shadow: 0 0 0 0 rgb(16 185 129 / 0); transform: scale(1); }
+  35% { box-shadow: 0 0 0 5px rgb(16 185 129 / 0.18); transform: scale(1.008); }
+  100% { box-shadow: 0 0 0 0 rgb(16 185 129 / 0); transform: scale(1); }
+}
+
+.homework-error-flash {
+  animation: homework-error-flash 0.72s ease-in-out;
+}
+
+.homework-correct-pop {
+  animation: homework-correct-pop 0.72s ease-out;
+}
+
 .shake {
   animation: revision-shake 0.42s ease-in-out;
 }

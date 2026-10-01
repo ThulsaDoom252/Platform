@@ -9,6 +9,7 @@ import {
   IconMaterials,
   IconCalendar,
   IconGrid,
+  IconCheckCircle,
 } from "@/components/icons";
 
 export function StudentMobileNav() {
@@ -18,6 +19,7 @@ export function StudentMobileNav() {
   const items = [
     { href: "/student", label: t.nav.home, Icon: IconHome, exact: true },
     { href: "/student/materials", label: t.nav.shortFiles, Icon: IconMaterials },
+    { href: "/student/homework", label: t.nav.homework, Icon: IconCheckCircle },
     { href: "/student/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/student/settings", label: t.nav.shortMore, Icon: IconGrid },
   ];

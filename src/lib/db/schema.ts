@@ -2,6 +2,7 @@ import type { RuleBlock, RuleBlockVariant } from "@/lib/rule-blocks";
 import type { TwisterStroke } from "@/lib/twister-drawing";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { RegularLessonSection } from "@/lib/regular-lesson";
+import type { LessonHomeworkEntry } from "@/lib/lesson-homework";
 import type {
   WordDeckLiveState,
   WordDeckSettings,
@@ -1027,8 +1028,8 @@ export const lessonUnits = pgTable("lesson_units", {
   transcript: jsonb("transcript").$type<{ speaker: string; text: string }[]>(),
   /** Вопросы: после просмотра и после чтения — это разные разговоры. */
   questions: jsonb("questions").$type<{ afterVideo: string[]; afterReading: string[] }>(),
-  /** Задания домашки: [{ title, text }]. */
-  homework: jsonb("homework").$type<{ title: string; text: string }[]>(),
+  /** Обычные текстовые задания и, при наличии, интерактивный план. */
+  homework: jsonb("homework").$type<LessonHomeworkEntry[]>(),
   /** Сохранённые игры, прикреплённые к этому уроку. */
   activityIds: jsonb("activity_ids").$type<string[]>().default([]).notNull(),
   /** Произвольные блоки обычного урока: ученический и учительский слои отдельно. */
