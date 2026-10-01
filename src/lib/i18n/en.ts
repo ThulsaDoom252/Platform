@@ -815,6 +815,7 @@ export const en = {
     commentPlaceholder: "The student will see this comment…",
     rescheduleTo: "Reschedule to",
     cancelLesson: "Cancel lesson",
+    chargeCancelledLesson: "Charge the cancelled lesson from the balance",
     reschedule: "Reschedule",
     deleteLesson: "Delete lesson",
     deleteHint: "The lesson was completed — deleting it returns one lesson to the balance.",
@@ -847,6 +848,10 @@ export const en = {
     justNow: "just now",
     minsAgo: "{n} min ago",
     hoursAgo: "{n} h ago",
+    chargeLesson: "Charge lesson",
+    keepBalance: "Do not charge",
+    lessonCharged: "Lesson charged from balance",
+    balanceKept: "Balance kept",
   },
 
   settings: {

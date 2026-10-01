@@ -3,6 +3,57 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, lessonPackages, lessons } from "@/lib/db/schema";
 
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Меняет баланс внутри уже открытой транзакции и сообщает, применилось ли списание. */
+export async function adjustStudentLessonsInTransaction(
+  tx: DbTransaction,
+  studentId: string,
+  delta: number,
+): Promise<boolean> {
+  const [student] = await tx
+    .select({ id: users.id, packageId: users.packageId, balance: users.lessonBalance })
+    .from(users)
+    .where(eq(users.id, studentId))
+    .limit(1);
+  if (!student) return false;
+
+  if (student.packageId) {
+    const [pkg] = await tx
+      .select({ id: lessonPackages.id, remaining: lessonPackages.remainingLessons })
+      .from(lessonPackages)
+      .where(eq(lessonPackages.id, student.packageId))
+      .limit(1);
+    if (!pkg || (delta < 0 && pkg.remaining <= 0)) return false;
+
+    const [updated] = await tx
+      .update(lessonPackages)
+      .set({
+        remainingLessons: sql`greatest(0, ${lessonPackages.remainingLessons} + ${delta})`,
+      })
+      .where(eq(lessonPackages.id, pkg.id))
+      .returning({ remaining: lessonPackages.remainingLessons });
+    if (!updated) return false;
+
+    await tx
+      .update(users)
+      .set({ lessonBalance: updated.remaining, updatedAt: new Date() })
+      .where(eq(users.packageId, pkg.id));
+    return true;
+  }
+
+  if (delta < 0 && student.balance <= 0) return false;
+  const [updated] = await tx
+    .update(users)
+    .set({
+      lessonBalance: sql`greatest(0, ${users.lessonBalance} + ${delta})`,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, studentId))
+    .returning({ id: users.id });
+  return !!updated;
+}
+
 /**
  * Списать (-1) или вернуть (+1) урок ученику.
  *
@@ -11,39 +62,9 @@ import { users, lessonPackages, lessons } from "@/lib/db/schema";
  * поэтому весь остальной интерфейс продолжает читать lessonBalance.
  */
 export async function adjustStudentLessons(studentId: string, delta: number) {
-  const [student] = await db
-    .select({ id: users.id, packageId: users.packageId, balance: users.lessonBalance })
-    .from(users)
-    .where(eq(users.id, studentId))
-    .limit(1);
-  if (!student) return;
-
-  if (student.packageId) {
-    const [pkg] = await db
-      .select()
-      .from(lessonPackages)
-      .where(eq(lessonPackages.id, student.packageId))
-      .limit(1);
-    if (!pkg) return;
-
-    const next = Math.max(0, pkg.remainingLessons + delta);
-    await db
-      .update(lessonPackages)
-      .set({ remainingLessons: next })
-      .where(eq(lessonPackages.id, pkg.id));
-
-    // Зеркалим остаток всем участникам пакета.
-    await db
-      .update(users)
-      .set({ lessonBalance: next, updatedAt: new Date() })
-      .where(eq(users.packageId, pkg.id));
-    return;
-  }
-
-  await db
-    .update(users)
-    .set({ lessonBalance: Math.max(0, student.balance + delta), updatedAt: new Date() })
-    .where(eq(users.id, studentId));
+  return db.transaction((tx) =>
+    adjustStudentLessonsInTransaction(tx, studentId, delta),
+  );
 }
 
 /**

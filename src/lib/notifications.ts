@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { notifications, lessons, users } from "@/lib/db/schema";
 import { fmt, getDictFor, type Dict } from "@/lib/i18n";
@@ -19,6 +19,7 @@ export type FeedItem = {
   title: string;
   meta: string;
   unread: boolean;
+  cancellationDecision?: "pending" | "charged" | "not_charged";
 };
 
 const timeFmt = new Intl.DateTimeFormat("ru-RU", {
@@ -148,11 +149,22 @@ export async function getTeacherFeed(
 
   // Сохранённые события.
   const stored = await db
-    .select()
+    .select({
+      notification: notifications,
+      lessonStatus: lessons.status,
+      balanceCharged: lessons.balanceCharged,
+      chargeResolved: lessons.chargeResolved,
+    })
     .from(notifications)
+    .leftJoin(lessons, eq(lessons.id, notifications.relatedLessonId))
     .where(eq(notifications.recipientId, teacherId))
-    .orderBy(desc(notifications.createdAt))
-    .limit(15);
+    .orderBy(
+      sql`case when ${notifications.type} = 'LESSON_CANCELLED'
+        and ${lessons.status} in ('CANCELLED_BY_STUDENT', 'BURNED')
+        and ${lessons.chargeResolved} = false then 0 else 1 end`,
+      desc(notifications.createdAt),
+    )
+    .limit(30);
 
   const reminders: FeedItem[] = soon.map((l) => {
     const mins = Math.max(1, Math.round((l.startTime.getTime() - now.getTime()) / 60000));
@@ -173,13 +185,27 @@ export async function getTeacherFeed(
     unread: true,
   }));
 
-  const events: FeedItem[] = stored.map((n) => ({
-    id: n.id,
-    kind: storedKind[n.type] ?? "wishlist",
-    title: n.message,
-    meta: relTime(n.createdAt, realNow, t),
-    unread: !n.isRead,
-  }));
+  const events: FeedItem[] = stored.map((row) => {
+    const n = row.notification;
+    const isCancellation =
+      n.type === "LESSON_CANCELLED" &&
+      (row.lessonStatus === "CANCELLED_BY_STUDENT" || row.lessonStatus === "BURNED");
+    const cancellationDecision = !isCancellation
+      ? undefined
+      : !row.chargeResolved
+        ? "pending" as const
+        : row.balanceCharged
+          ? "charged" as const
+          : "not_charged" as const;
+    return {
+      id: n.id,
+      kind: storedKind[n.type] ?? "wishlist",
+      title: n.message,
+      meta: relTime(n.createdAt, realNow, t),
+      unread: cancellationDecision === "pending" || !n.isRead,
+      cancellationDecision,
+    };
+  });
 
   const items = [...reminders, ...balance, ...events];
   const unreadCount =

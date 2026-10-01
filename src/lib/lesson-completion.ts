@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { lessonPackages, lessons, users } from "@/lib/db/schema";
+import { lessons } from "@/lib/db/schema";
 import { scheduleNow } from "@/lib/schedule-time";
+import { adjustStudentLessonsInTransaction } from "@/lib/packages";
 
 /** Старую историю могли уже учитывать вручную — повторно её не списываем. */
 const AUTOMATIC_COMPLETION_STARTED_AT = new Date("2026-10-01T00:00:00.000Z");
@@ -18,7 +19,7 @@ export async function completeFinishedLessons(): Promise<number> {
   return db.transaction(async (tx) => {
     const completed = await tx
       .update(lessons)
-      .set({ status: "COMPLETED", updatedAt: new Date() })
+      .set({ status: "COMPLETED", chargeResolved: true, updatedAt: new Date() })
       .where(
         and(
           eq(lessons.status, "SCHEDULED"),
@@ -29,53 +30,16 @@ export async function completeFinishedLessons(): Promise<number> {
           ),
         ),
       )
-      .returning({ studentId: lessons.studentId });
+      .returning({ id: lessons.id, studentId: lessons.studentId });
 
     if (completed.length === 0) return 0;
 
-    const counts = new Map<string, number>();
     for (const row of completed) {
-      counts.set(row.studentId, (counts.get(row.studentId) ?? 0) + 1);
-    }
-
-    const students = await tx
-      .select({ id: users.id, packageId: users.packageId })
-      .from(users)
-      .where(inArray(users.id, [...counts.keys()]));
-
-    const packageCounts = new Map<string, number>();
-    for (const student of students) {
-      const count = counts.get(student.id) ?? 0;
-      if (student.packageId) {
-        packageCounts.set(
-          student.packageId,
-          (packageCounts.get(student.packageId) ?? 0) + count,
-        );
-      } else if (count > 0) {
-        await tx
-          .update(users)
-          .set({
-            lessonBalance: sql`greatest(0, ${users.lessonBalance} - ${count})`,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, student.id));
-      }
-    }
-
-    for (const [packageId, count] of packageCounts) {
-      const [updated] = await tx
-        .update(lessonPackages)
-        .set({
-          remainingLessons: sql`greatest(0, ${lessonPackages.remainingLessons} - ${count})`,
-        })
-        .where(eq(lessonPackages.id, packageId))
-        .returning({ remaining: lessonPackages.remainingLessons });
-      if (updated) {
-        await tx
-          .update(users)
-          .set({ lessonBalance: updated.remaining, updatedAt: new Date() })
-          .where(eq(users.packageId, packageId));
-      }
+      const charged = await adjustStudentLessonsInTransaction(tx, row.studentId, -1);
+      await tx
+        .update(lessons)
+        .set({ balanceCharged: charged })
+        .where(eq(lessons.id, row.id));
     }
 
     return completed.length;

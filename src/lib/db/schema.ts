@@ -199,6 +199,10 @@ export const lessons = pgTable("lessons", {
   durationMinutes: integer("duration_minutes").notNull().default(60),
   topic: text("topic"),
   status: lessonStatusEnum("status").notNull().default("SCHEDULED"),
+  /** Был ли именно этот урок уже списан с баланса. */
+  balanceCharged: boolean("balance_charged").notNull().default(false),
+  /** Для отмены: учитель уже решил, списывать урок или нет. */
+  chargeResolved: boolean("charge_resolved").notNull().default(false),
   teacherComment: text("teacher_comment"),
   teacherCommentVisible: boolean("teacher_comment_visible")
     .notNull()
@@ -643,6 +647,9 @@ export const notifications = pgTable("notifications", {
   type: notificationTypeEnum("type").notNull(),
   message: text("message").notNull(),
   relatedStudentId: uuid("related_student_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  relatedLessonId: uuid("related_lesson_id").references(() => lessons.id, {
     onDelete: "set null",
   }),
   isRead: boolean("is_read").notNull().default(false),

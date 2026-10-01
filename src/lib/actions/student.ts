@@ -50,6 +50,8 @@ export async function cancelLessonAction(formData: FormData) {
       status: nextStatus,
       cancelReason: reason,
       cancelledAt: now,
+      chargeResolved: false,
+      balanceCharged: false,
       updatedAt: now,
     })
     .where(eq(lessons.id, lessonId));
@@ -60,6 +62,7 @@ export async function cancelLessonAction(formData: FormData) {
       recipientId: teacherId,
       type: "LESSON_CANCELLED",
       relatedStudentId: session.userId,
+      relatedLessonId: lessonId,
       message:
         nextStatus === "BURNED"
           ? `${session.name} отменил(а) урок менее чем за 4 часа — урок сгорел. Причина: ${reason}`

@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/lib/password-vault";
 import {
   adjustStudentLessons,
+  adjustStudentLessonsInTransaction,
   configureSharedLessonPool,
   setStudentLessons,
 } from "@/lib/packages";
@@ -340,25 +341,44 @@ export async function updateLessonStatusAction(formData: FormData) {
     | "SCHEDULED";
   if (!lessonId || !status) return;
 
-  const [lesson] = await db
-    .select({ studentId: lessons.studentId, status: lessons.status })
-    .from(lessons)
-    .where(eq(lessons.id, lessonId))
-    .limit(1);
-  if (!lesson || lesson.status === status) return;
+  const studentId = await db.transaction(async (tx) => {
+    const shouldCharge = status === "COMPLETED" || status === "BURNED";
+    const [claimed] = await tx
+      .update(lessons)
+      .set({
+        status,
+        chargeResolved: shouldCharge,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(lessons.id, lessonId), ne(lessons.status, status)))
+      .returning({
+        studentId: lessons.studentId,
+        balanceCharged: lessons.balanceCharged,
+      });
+    if (!claimed) return null;
 
-  if (status === "COMPLETED" && lesson.status !== "COMPLETED") {
-    await adjustStudentLessons(lesson.studentId, -1);
-  } else if (lesson.status === "COMPLETED" && status !== "COMPLETED") {
-    await adjustStudentLessons(lesson.studentId, 1);
-  }
+    let balanceCharged = claimed.balanceCharged;
+    if (shouldCharge && !balanceCharged) {
+      balanceCharged = await adjustStudentLessonsInTransaction(
+        tx,
+        claimed.studentId,
+        -1,
+      );
+    } else if (!shouldCharge && balanceCharged) {
+      await adjustStudentLessonsInTransaction(tx, claimed.studentId, 1);
+      balanceCharged = false;
+    }
 
-  await db
-    .update(lessons)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(lessons.id, lessonId));
+    await tx
+      .update(lessons)
+      .set({
+        balanceCharged,
+      })
+      .where(eq(lessons.id, lessonId));
+    return claimed.studentId;
+  });
 
-  revalidateSchedule(lesson.studentId);
+  if (studentId) revalidateSchedule(studentId);
 }
 
 export async function createHomeworkAction(formData: FormData) {
@@ -450,6 +470,7 @@ export async function cancelLessonByTeacherAction(formData: FormData) {
   const session = await requireTeacher();
   const lessonId = String(formData.get("lessonId") || "");
   const comment = String(formData.get("comment") || "").trim();
+  const chargeLesson = formData.get("chargeLesson") === "on";
   if (!lessonId || !comment) return;
 
   const [lesson] = await db
@@ -459,27 +480,107 @@ export async function cancelLessonByTeacherAction(formData: FormData) {
     .limit(1);
   if (!lesson) return;
 
-  const now = new Date();
-  await db
-    .update(lessons)
-    .set({
-      status: "CANCELLED_BY_TEACHER",
-      cancelReason: comment,
-      cancelledAt: now,
-      teacherComment: comment,
-      teacherCommentVisible: true,
-      updatedAt: now,
-    })
-    .where(eq(lessons.id, lessonId));
+  if (lesson.status !== "SCHEDULED") return;
 
-  await db.insert(notifications).values({
-    recipientId: lesson.studentId,
-    type: "LESSON_CANCELLED",
-    relatedStudentId: lesson.studentId,
-    message: `${session.name} отменил урок ${dtFmt.format(lesson.startTime)}. Причина: ${comment}`,
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    const [claimed] = await tx
+      .update(lessons)
+      .set({
+        status: "CANCELLED_BY_TEACHER",
+        cancelReason: comment,
+        cancelledAt: now,
+        balanceCharged: false,
+        chargeResolved: true,
+        teacherComment: comment,
+        teacherCommentVisible: true,
+        updatedAt: now,
+      })
+      .where(and(eq(lessons.id, lessonId), eq(lessons.status, "SCHEDULED")))
+      .returning({ id: lessons.id });
+    if (!claimed) return;
+
+    const applied = chargeLesson
+      ? await adjustStudentLessonsInTransaction(tx, lesson.studentId, -1)
+      : false;
+    if (applied) {
+      await tx
+        .update(lessons)
+        .set({ balanceCharged: true })
+        .where(eq(lessons.id, lessonId));
+    }
+
+    await tx.insert(notifications).values({
+      recipientId: lesson.studentId,
+      type: "LESSON_CANCELLED",
+      relatedStudentId: lesson.studentId,
+      relatedLessonId: lessonId,
+      message: `${session.name} отменил урок ${dtFmt.format(lesson.startTime)}. Причина: ${comment}. ${applied ? "Урок списан с баланса." : "Урок не списан с баланса."}`,
+    });
   });
 
   revalidateSchedule(lesson.studentId);
+}
+
+/** Решение учителя по отмене ученика прямо из уведомления. */
+export async function setCancellationChargeAction(formData: FormData) {
+  const session = await requireTeacher();
+  const notificationId = String(formData.get("notificationId") || "");
+  const shouldCharge = formData.get("charge") === "yes";
+  if (!notificationId) return;
+
+  const studentId = await db.transaction(async (tx) => {
+    const [entry] = await tx
+      .select({
+        lessonId: lessons.id,
+        studentId: lessons.studentId,
+        status: lessons.status,
+        resolved: lessons.chargeResolved,
+      })
+      .from(notifications)
+      .innerJoin(lessons, eq(lessons.id, notifications.relatedLessonId))
+      .where(
+        and(
+          eq(notifications.id, notificationId),
+          eq(notifications.recipientId, session.userId),
+          eq(notifications.type, "LESSON_CANCELLED"),
+        ),
+      )
+      .limit(1);
+    if (
+      !entry ||
+      entry.resolved ||
+      (entry.status !== "CANCELLED_BY_STUDENT" && entry.status !== "BURNED")
+    ) {
+      return null;
+    }
+
+    const [claimed] = await tx
+      .update(lessons)
+      .set({
+        chargeResolved: true,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(lessons.id, entry.lessonId), eq(lessons.chargeResolved, false)))
+      .returning({ id: lessons.id });
+    if (!claimed) return null;
+
+    const charged = shouldCharge
+      ? await adjustStudentLessonsInTransaction(tx, entry.studentId, -1)
+      : false;
+    await tx
+      .update(lessons)
+      .set({ balanceCharged: charged })
+      .where(eq(lessons.id, entry.lessonId));
+    await tx
+      .update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.id, notificationId));
+    return entry.studentId;
+  });
+
+  revalidatePath("/teacher", "layout");
+  if (studentId) revalidateSchedule(studentId);
 }
 
 /** Удаление урока (обычно уже проведённого). Списанный урок возвращается на баланс. */
@@ -501,20 +602,33 @@ export async function deleteLessonAction(formData: FormData) {
     .limit(1);
   if (!lesson) return;
 
-  // Проведённый урок списывал баланс — при удалении возвращаем в пакет.
-  if (lesson.lesson.status === "COMPLETED") {
-    await adjustStudentLessons(lesson.lesson.studentId, 1);
-  }
-
-  await db.insert(notifications).values({
-    recipientId: lesson.lesson.studentId,
-    type: "LESSON_CANCELLED",
-    relatedStudentId: lesson.lesson.studentId,
-    message: `${session.name} удалил урок ${dtFmt.format(lesson.lesson.startTime)}${comment ? `. Комментарий: ${comment}` : ""}`,
-  });
-
   await db.transaction(async (tx) => {
     const deletedAt = new Date();
+    // Удалённый урок никогда не считается списанным: если списание было,
+    // возвращаем его до удаления той записи, которая это подтверждает.
+    if (lesson.lesson.balanceCharged) {
+      const [claimed] = await tx
+        .update(lessons)
+        .set({ balanceCharged: false })
+        .where(and(eq(lessons.id, lessonId), eq(lessons.balanceCharged, true)))
+        .returning({ id: lessons.id });
+      if (claimed) {
+        await adjustStudentLessonsInTransaction(
+          tx,
+          lesson.lesson.studentId,
+          1,
+        );
+      }
+    }
+
+    await tx.insert(notifications).values({
+      recipientId: lesson.lesson.studentId,
+      type: "LESSON_CANCELLED",
+      relatedStudentId: lesson.lesson.studentId,
+      relatedLessonId: lessonId,
+      message: `${session.name} удалил урок ${dtFmt.format(lesson.lesson.startTime)}${comment ? `. Комментарий: ${comment}` : ""}. Урок не списан с баланса.`,
+    });
+
     const [script] = await tx
       .select()
       .from(lessonScripts)
@@ -583,12 +697,55 @@ export async function rescheduleLessonAction(
     .limit(1);
   if (!lesson) return { error: "Урок не найден" };
 
+  const end = new Date(start.getTime() + lesson.durationMinutes * 60_000);
+  const conflicts = await db
+    .select({
+      studentName: users.name,
+      startTime: lessons.startTime,
+    })
+    .from(lessons)
+    .innerJoin(users, eq(users.id, lessons.studentId))
+    .where(
+      and(
+        ne(lessons.id, lessonId),
+        inArray(lessons.status, ["SCHEDULED", "COMPLETED"]),
+        lt(lessons.startTime, end),
+        gt(
+          sql`${lessons.startTime} + (${lessons.durationMinutes} * interval '1 minute')`,
+          start,
+        ),
+      ),
+    )
+    .orderBy(lessons.startTime);
+  if (conflicts.length > 0) {
+    const occupied = conflicts
+      .map((item) => `${item.studentName} (${dtFmt.format(item.startTime)})`)
+      .join(", ");
+    return {
+      error: `Это время уже занято: ${occupied}. Выбери другой слот.`,
+    };
+  }
+
   const [updated] = await db.transaction(async (tx) => {
+    if (lesson.balanceCharged) {
+      const [claimed] = await tx
+        .update(lessons)
+        .set({ balanceCharged: false })
+        .where(and(eq(lessons.id, lessonId), eq(lessons.balanceCharged, true)))
+        .returning({ id: lessons.id });
+      if (claimed) {
+        await adjustStudentLessonsInTransaction(tx, lesson.studentId, 1);
+      }
+    }
     const rows = await tx
       .update(lessons)
       .set({
         startTime: start,
         status: "SCHEDULED",
+        balanceCharged: false,
+        chargeResolved: false,
+        cancelReason: null,
+        cancelledAt: null,
         teacherComment: comment || null,
         teacherCommentVisible: true,
         updatedAt: new Date(),
@@ -601,6 +758,7 @@ export async function rescheduleLessonAction(
         recipientId: lesson.studentId,
         type: "LESSON_RESCHEDULED",
         relatedStudentId: lesson.studentId,
+        relatedLessonId: lessonId,
         message: `${session.name} перенёс урок с ${dtFmt.format(lesson.startTime)} на ${dtFmt.format(rows[0].startTime)}${comment ? `. Комментарий: ${comment}` : ""}`,
       });
     }

@@ -641,6 +641,7 @@ function EditLessonBody({
   >(rescheduleLessonAction, {});
   const end = new Date(lesson.startTime.getTime() + lesson.duration * 60000);
   const isScheduled = lesson.status === "SCHEDULED";
+  const isCancelled = CANCELLED_STATUSES.includes(lesson.status);
   // Время берём из общего источника: до гидратации оно равно нулю, и урок
   // считается предстоящим — это безопаснее, чем показать «уже прошёл».
   const now = useNow();
@@ -728,7 +729,7 @@ function EditLessonBody({
         <p className="mt-1 text-right text-[11px] text-faint">{comment.length}/500</p>
       </div>
 
-      {isScheduled ? (
+      {isScheduled || isCancelled ? (
         <>
           {/* Перенос */}
           <div className="mt-2">
@@ -744,9 +745,14 @@ function EditLessonBody({
           </div>
 
           <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
-            <form action={cancelLessonByTeacherAction} className="sm:flex-1">
+            {isScheduled && (
+              <form action={cancelLessonByTeacherAction} className="space-y-2 sm:flex-1">
               <input type="hidden" name="lessonId" value={lesson.id} />
               <input type="hidden" name="comment" value={comment} />
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 text-xs font-medium text-content">
+                <input type="checkbox" name="chargeLesson" />
+                <span>{t.schedule.chargeCancelledLesson}</span>
+              </label>
               <button
                 type="submit"
                 disabled={!comment.trim()}
@@ -754,7 +760,8 @@ function EditLessonBody({
               >
                 <IconX className="h-4 w-4" /> {t.schedule.cancelLesson}
               </button>
-            </form>
+              </form>
+            )}
             <form action={rescheduleAction} className="sm:flex-1">
               <input type="hidden" name="lessonId" value={lesson.id} />
               <input type="hidden" name="comment" value={comment} />
@@ -774,13 +781,34 @@ function EditLessonBody({
               {rescheduleState.error}
             </p>
           )}
-          {!comment.trim() && (
+          {isScheduled && !comment.trim() && (
             <p className="mt-2 text-center text-[11px] text-rose-500">
               Для отмены обязательно укажи причину в комментарии.
             </p>
           )}
           {isPast && (
             <p className="mt-2 text-center text-[11px] text-faint">{t.schedule.pastHint}</p>
+          )}
+          {isCancelled && (
+            <form action={deleteLessonAction} className="mt-3">
+              <input type="hidden" name="lessonId" value={lesson.id} />
+              <input type="hidden" name="comment" value={comment} />
+              <label className="mb-3 flex items-start gap-2 rounded-xl bg-orange-500/10 px-3.5 py-3 text-xs text-content">
+                <input type="checkbox" name="deleteScript" className="mt-0.5" />
+                <span>
+                  <span className="block font-semibold">Удалить и скрипт</span>
+                  <span className="mt-0.5 block text-muted">
+                    Если не отмечать, скрипт останется в истории.
+                  </span>
+                </span>
+              </label>
+              <button
+                type="submit"
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 text-sm font-semibold text-white transition hover:bg-rose-500"
+              >
+                <IconTrash className="h-4 w-4" /> {t.schedule.deleteLesson}
+              </button>
+            </form>
           )}
         </>
       ) : (

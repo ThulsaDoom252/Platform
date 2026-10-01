@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { markMyNotificationsReadAction } from "@/lib/actions/profile";
+import { setCancellationChargeAction } from "@/lib/actions/teacher";
 import { useT } from "@/components/i18n-provider";
 import type { FeedItem, FeedKind } from "@/lib/notifications";
 import {
@@ -98,6 +99,40 @@ export function NotificationBell({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm leading-snug text-content">{it.title}</p>
                     <p className="mt-0.5 text-[11px] text-faint">{it.meta}</p>
+                    {it.cancellationDecision === "pending" && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <form action={setCancellationChargeAction}>
+                          <input type="hidden" name="notificationId" value={it.id} />
+                          <input type="hidden" name="charge" value="yes" />
+                          <button
+                            type="submit"
+                            className="w-full rounded-lg bg-rose-500 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rose-600"
+                          >
+                            {t.notifications.chargeLesson}
+                          </button>
+                        </form>
+                        <form action={setCancellationChargeAction}>
+                          <input type="hidden" name="notificationId" value={it.id} />
+                          <input type="hidden" name="charge" value="no" />
+                          <button
+                            type="submit"
+                            className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold text-content transition hover:bg-surface-2"
+                          >
+                            {t.notifications.keepBalance}
+                          </button>
+                        </form>
+                      </div>
+                    )}
+                    {it.cancellationDecision === "charged" && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-rose-500">
+                        {t.notifications.lessonCharged}
+                      </p>
+                    )}
+                    {it.cancellationDecision === "not_charged" && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-emerald-600">
+                        {t.notifications.balanceKept}
+                      </p>
+                    )}
                   </div>
                   {it.unread && (
                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" />

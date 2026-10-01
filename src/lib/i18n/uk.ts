@@ -904,6 +904,7 @@ export const uk: Dict = {
     commentPlaceholder: "Учень побачить цей коментар…",
     rescheduleTo: "Перенести на",
     cancelLesson: "Скасувати урок",
+    chargeCancelledLesson: "Списати скасований урок з балансу",
     reschedule: "Перенести",
     deleteLesson: "Видалити урок",
     deleteHint: "Урок було проведено — при видаленні списаний урок повернеться на баланс.",
@@ -938,6 +939,10 @@ export const uk: Dict = {
     justNow: "щойно",
     minsAgo: "{n} хв тому",
     hoursAgo: "{n} год тому",
+    chargeLesson: "Списати урок",
+    keepBalance: "Не списувати",
+    lessonCharged: "Урок списано з балансу",
+    balanceKept: "Баланс збережено",
   },
 
   settings: {
