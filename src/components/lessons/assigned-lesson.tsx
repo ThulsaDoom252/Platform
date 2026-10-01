@@ -37,6 +37,7 @@ export function AssignedLesson({
   data,
   teacher,
   classVideo,
+  sectionFocus,
   liveClass = false,
 }: {
   data: {
@@ -50,6 +51,8 @@ export function AssignedLesson({
   teacher: boolean;
   /** Есть только внутри живого класса; вне класса видео остаётся обычным. */
   classVideo?: ClassVideoState | null;
+  /** Разовая команда учителя: показать секцию, не открывая её навсегда. */
+  sectionFocus?: { section: LessonSection; at: string } | null;
   liveClass?: boolean;
 }) {
   const { t } = useT();
@@ -183,17 +186,21 @@ export function AssignedLesson({
         </div>
       )}
 
-      {/* Учителю видны все секции, ученику — только открытые ему. */}
+      {/* В классе ученик видит все вкладки, но сам открывает только разрешённые. */}
       <LessonView
         lesson={data.lesson}
         open={
-          teacher
+          teacher || liveClass
             ? [...LESSON_SECTIONS]
             : data.open.filter((section) => section !== "homework")
         }
         closed={
-          teacher ? LESSON_SECTIONS.filter((s) => !data.open.includes(s)) : undefined
+          teacher || liveClass
+            ? LESSON_SECTIONS.filter((s) => !data.open.includes(s))
+            : undefined
         }
+        lockClosed={liveClass && !teacher}
+        sectionFocus={liveClass && !teacher ? sectionFocus : null}
         highlights={yellow}
         focus={focus}
         showBritish={british}

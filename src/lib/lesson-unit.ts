@@ -138,6 +138,26 @@ export function canSee(
   return section === ALWAYS_OPEN || (stored ?? []).includes(section);
 }
 
+/**
+ * Навигация по вкладкам живого урока.
+ *
+ * Принудительный фокус возвращается отдельно: он разрешает один показ,
+ * но намеренно не попадает в selectable и не выдаёт постоянный доступ.
+ */
+export function lessonSectionNavigation(
+  displayed: readonly LessonSection[],
+  closed: readonly LessonSection[] | undefined,
+  lockClosed: boolean,
+  forced: LessonSection | null | undefined,
+): { selectable: LessonSection[]; forced: LessonSection | null } {
+  const visible = LESSON_SECTIONS.filter((section) => displayed.includes(section));
+  const blocked = new Set(lockClosed ? closed ?? [] : []);
+  return {
+    selectable: visible.filter((section) => !blocked.has(section)),
+    forced: forced && visible.includes(forced) ? forced : null,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Расшифровка                                                         */
 /* ------------------------------------------------------------------ */

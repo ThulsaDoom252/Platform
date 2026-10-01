@@ -966,6 +966,63 @@ export async function openSectionAction(
   return {};
 }
 
+/**
+ * Показать ученику конкретную секцию один раз, не меняя его постоянный доступ.
+ * Закрытая вкладка останется закрытой для самостоятельного выбора.
+ */
+export async function focusLessonSectionAction(
+  assignmentId: string,
+  section: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  if (!isSection(section)) return { error: "Неизвестная секция" };
+  const id = String(assignmentId ?? "");
+
+  const [[teacher], [target]] = await Promise.all([
+    db
+      .select({ studentId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1),
+    db
+      .select({
+        studentId: lessonAssignments.studentId,
+        classFocus: users.classFocus,
+      })
+      .from(lessonAssignments)
+      .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+      .innerJoin(users, eq(users.id, lessonAssignments.studentId))
+      .where(
+        and(
+          eq(lessonAssignments.id, id),
+          eq(lessonUnits.authorId, session.userId),
+          eq(users.role, "STUDENT"),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
+    return { error: "Этот ученик сейчас не в классе" };
+  }
+
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        ...target.classFocus,
+        at: new Date().toISOString(),
+        view: "LESSON",
+        boardObjectId: null,
+        lessonAssignmentId: id,
+        lessonSection: section,
+      },
+    })
+    .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
+
+  return {};
+}
+
 export type LessonVideoUpdate = Pick<
   ClassVideoState,
   "currentTime" | "playing" | "captions" | "muted" | "volume" | "playbackRate"
@@ -1040,7 +1097,7 @@ export async function syncLessonVideoAction(
   return {};
 }
 
-/** Открыть ученику секцию Video и убрать поверх неё доску или игру. */
+/** Сфокусировать Video, не открывая ученику постоянный доступ к вкладке. */
 export async function focusLessonVideoAction(
   assignmentId: string,
 ): Promise<{ error?: string }> {
@@ -1056,7 +1113,6 @@ export async function focusLessonVideoAction(
     db
       .select({
         studentId: lessonAssignments.studentId,
-        openSections: lessonAssignments.openSections,
         videoUrl: lessonUnits.videoUrl,
         classFocus: users.classFocus,
       })
@@ -1094,27 +1150,20 @@ export async function focusLessonVideoAction(
   });
   if (!videoState) return { error: "Не удалось открыть видео" };
 
-  const open = new Set(target.openSections ?? []);
-  open.add("video");
-  await Promise.all([
-    db
-      .update(lessonAssignments)
-      .set({ openSections: [...open], updatedAt: new Date() })
-      .where(eq(lessonAssignments.id, id)),
-    db
-      .update(users)
-      .set({
-        classFocus: {
-          ...target.classFocus,
-          at: now,
-          view: "LESSON",
-          boardObjectId: null,
-          lessonAssignmentId: id,
-          videoState,
-        },
-      })
-      .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT"))),
-  ]);
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        ...target.classFocus,
+        at: now,
+        view: "LESSON",
+        boardObjectId: null,
+        lessonAssignmentId: id,
+        lessonSection: "video",
+        videoState,
+      },
+    })
+    .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
   revalidatePath("/student/class");
   return {};
@@ -1141,7 +1190,6 @@ export async function focusLessonWordAction(
     .select({
       studentId: lessonAssignments.studentId,
       highlights: lessonAssignments.highlights,
-      openSections: lessonAssignments.openSections,
       lexis: lessonUnits.lexis,
     })
     .from(lessonAssignments)
@@ -1162,15 +1210,18 @@ export async function focusLessonWordAction(
   const current = parsedFocus?.kind === "lexisBlock"
     ? selectLexisGroup(row.highlights, parsedFocus.groupId)
     : row.highlights;
-  const open = new Set(row.openSections ?? []);
-  if (parsedFocus?.kind === "lexisBlock") open.add("lexis");
+  const lessonSection: LessonSection =
+    parsedFocus?.kind === "lexisBlock"
+      ? "lexis"
+      : parsedFocus?.kind === "line" || parsedFocus?.kind === "lineWord"
+        ? "transcript"
+        : "vocab";
 
   const now = new Date();
   await db
     .update(lessonAssignments)
     .set({
       highlights: toggleWordFocus(current, focusKey),
-      openSections: [...open],
       updatedAt: now,
     })
     .where(eq(lessonAssignments.id, id));
@@ -1193,6 +1244,7 @@ export async function focusLessonWordAction(
           view: "LESSON",
           boardObjectId: null,
           lessonAssignmentId: id,
+          lessonSection,
         },
       })
       .where(and(eq(users.id, row.studentId), eq(users.role, "STUDENT")));
@@ -1212,8 +1264,8 @@ export async function selectLessonLexisGroupAction(
   const target = String(groupId ?? "");
   const [row] = await db
     .select({
+      studentId: lessonAssignments.studentId,
       highlights: lessonAssignments.highlights,
-      openSections: lessonAssignments.openSections,
       lexis: lessonUnits.lexis,
     })
     .from(lessonAssignments)
@@ -1226,17 +1278,33 @@ export async function selectLessonLexisGroupAction(
   if (!lessonLexisGroups(row.lexis).some((group) => group.id === target)) {
     return { error: "Группа лексики не найдена" };
   }
-  const open = new Set(row.openSections ?? []);
-  open.add("lexis");
-
   await db
     .update(lessonAssignments)
     .set({
       highlights: selectLexisGroup(row.highlights, target),
-      openSections: [...open],
       updatedAt: new Date(),
     })
     .where(eq(lessonAssignments.id, id));
+
+  const [teacherState] = await db
+    .select({ studentId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (teacherState?.studentId === row.studentId) {
+    await db
+      .update(users)
+      .set({
+        classFocus: {
+          at: new Date().toISOString(),
+          view: "LESSON",
+          boardObjectId: null,
+          lessonAssignmentId: id,
+          lessonSection: "lexis",
+        },
+      })
+      .where(and(eq(users.id, row.studentId), eq(users.role, "STUDENT")));
+  }
   revalidatePath("/student/class");
   return {};
 }

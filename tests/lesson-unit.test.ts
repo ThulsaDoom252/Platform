@@ -4,6 +4,7 @@ import {
   alphaKey,
   BRITISH_OPTION,
   canSee,
+  lessonSectionNavigation,
   categoryKey,
   findWords,
   groupWords,
@@ -51,6 +52,38 @@ test("остальные секции закрыты, пока их не отк�
   assert.equal(canSee([], "video"), false);
   assert.equal(canSee(["video"], "video"), true);
   assert.equal(canSee(["video"], "transcript"), false);
+});
+
+test("закрытая вкладка видна, но ученик не может выбрать её сам", () => {
+  const navigation = lessonSectionNavigation(
+    ["vocab", "lexis", "video", "transcript"],
+    ["lexis", "video", "transcript"],
+    true,
+    null,
+  );
+  assert.deepEqual(navigation.selectable, ["vocab"]);
+  assert.equal(navigation.forced, null);
+});
+
+test("фокус показывает закрытую секцию, не открывая к ней доступ", () => {
+  const navigation = lessonSectionNavigation(
+    ["vocab", "lexis", "video"],
+    ["lexis", "video"],
+    true,
+    "video",
+  );
+  assert.deepEqual(navigation.selectable, ["vocab"]);
+  assert.equal(navigation.forced, "video");
+});
+
+test("после снятия ограничения вкладка становится доступной", () => {
+  const navigation = lessonSectionNavigation(
+    ["vocab", "lexis", "video"],
+    ["lexis"],
+    true,
+    null,
+  );
+  assert.deepEqual(navigation.selectable, ["vocab", "video"]);
 });
 
 test("секции идут в порядке урока, а не в порядке открытия", () => {

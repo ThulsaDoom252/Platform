@@ -83,6 +83,7 @@ import {
 } from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
+import type { LessonSection } from "@/lib/lesson-unit";
 
 const BEAT_MS = 30_000;
 const CHAT_UNREAD_MS = 4_000;
@@ -213,6 +214,11 @@ export function ClassRoom({
   const [twisterSession, setTwisterSession] = useState<ClassTwisterSession | null>(null);
   const [focusedWordDeck, setFocusedWordDeck] = useState<ClassWordDeckActivity | null>(null);
   const [videoSync, setVideoSync] = useState<ClassVideoState | null>(null);
+  const [lessonSectionFocus, setLessonSectionFocus] = useState<{
+    assignmentId: string;
+    section: LessonSection;
+    at: string;
+  } | null>(null);
   const [textSelection, setTextSelection] = useState<ClassTextSelection | null>(null);
   const [vocabularyNotice, setVocabularyNotice] = useState<{
     id: string;
@@ -440,6 +446,7 @@ export function ClassRoom({
           if (teacher || !sync.view || appliedView.current === sync.view.at) return;
           appliedView.current = sync.view.at;
           if (sync.view.target === "TWISTER") {
+            setLessonSectionFocus(null);
             setFocusedWordDeck(null);
             setOpen((prev) => ({ ...prev, board: false }));
             void twisterSessionAction().then(setTwisterSession);
@@ -447,6 +454,7 @@ export function ClassRoom({
           }
           setTwisterSession(null);
           if (sync.view.target === "BOARD") {
+            setLessonSectionFocus(null);
             setFocusedWordDeck(null);
             setBoardFocus({
               objectId: sync.view.boardObjectId,
@@ -455,6 +463,7 @@ export function ClassRoom({
             });
             setOpen((prev) => ({ ...prev, board: true }));
           } else if (sync.view.target === "GAME" && sync.view.gameId) {
+            setLessonSectionFocus(null);
             setOpen((prev) => ({ ...prev, board: false }));
             const commandAt = sync.view.at;
             void focusedClassWordDeckAction().then((activity) => {
@@ -464,6 +473,17 @@ export function ClassRoom({
             });
           } else {
             setFocusedWordDeck(null);
+            setLessonSectionFocus(
+              sync.view.target === "LESSON" &&
+                sync.view.lessonSection &&
+                sync.lessonAssignmentId
+                ? {
+                    assignmentId: sync.lessonAssignmentId,
+                    section: sync.view.lessonSection,
+                    at: sync.view.at,
+                  }
+                : null,
+            );
             /*
              * Урок и игра лежат в той же колонке, поверх которой стоит
              * доска во весь экран. Поэтому «покажи игру» — это прежде
@@ -951,6 +971,7 @@ export function ClassRoom({
                     teacher={false}
                     assignmentId={activeLessonId}
                     videoSync={videoSync}
+                    sectionFocus={lessonSectionFocus}
                     onTextSelect={translateSelectedText}
                   />
                 )}

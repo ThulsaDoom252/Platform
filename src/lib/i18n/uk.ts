@@ -717,6 +717,7 @@ export const uk: Dict = {
     pinTo: "Закріпити за учнем",
     pinned: "Закріплено",
     openForStudent: "Відкрити учню",
+    focusSection: "Сфокусувати учня",
     focusWordHint: "Натисни слово — учень одразу побачить фокус",
     highlightMode: "Режим виділення",
     highlightModeHint: "Натискай слова або позначай репліки — виділення зберігаються",

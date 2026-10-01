@@ -114,6 +114,8 @@ export const users = pgTable("users", {
     boardCommand?: "SHOW" | "FOCUS" | "FLASH";
     /** Урок, который учитель сейчас открыл этому ученику в классе. */
     lessonAssignmentId?: string;
+    /** Секция урока, которую учитель приказал показать, даже если она закрыта. */
+    lessonSection?: "vocab" | "lexis" | "video" | "transcript" | "questions" | "homework";
     /** Назначенная ученику колода, которую учитель открыл поверх урока. */
     gameId?: string;
     /** Временный полноэкранный просмотр скороговорки и совместный рисунок. */

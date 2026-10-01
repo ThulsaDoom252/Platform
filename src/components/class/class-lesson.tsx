@@ -8,12 +8,13 @@ import { AssignedLesson } from "@/components/lessons/assigned-lesson";
 import {
   addLessonToClassAction,
   assignedLessonAction,
+  focusLessonSectionAction,
   listLessonsAction,
   openSectionAction,
   type LessonCard,
 } from "@/lib/actions/lessons";
 import { LESSON_SECTIONS, type LessonSection } from "@/lib/lesson-unit";
-import { IconCheck, IconPencil, IconPlus, IconX } from "@/components/icons";
+import { IconCheck, IconEye, IconEyeOff, IconPencil, IconPlus, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTextSelection } from "./selection-translation-popover";
@@ -26,12 +27,18 @@ export function ClassLesson({
   teacher,
   assignmentId,
   videoSync,
+  sectionFocus,
   onAssigned,
   onTextSelect,
 }: {
   teacher: boolean;
   assignmentId: string | null;
   videoSync: ClassVideoState | null;
+  sectionFocus?: {
+    assignmentId: string;
+    section: LessonSection;
+    at: string;
+  } | null;
   onAssigned?: (id: string) => void;
   onTextSelect?: (selection: ClassTextSelection) => void;
 }) {
@@ -228,27 +235,57 @@ export function ClassLesson({
                 const always = section === "vocab";
                 const opened = always || data.open.includes(section);
                 return (
-                  <button
+                  <div
                     key={section}
-                    type="button"
-                    disabled={busy || always}
-                    onClick={() =>
-                      startBusy(async () => {
-                        await openSectionAction(data.assignment.id, section, !opened);
-                        await reload();
-                      })
-                    }
-                    className={cn(
-                      "flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition",
-                      opened
-                        ? "bg-accent text-white"
-                        : "bg-surface-2 text-muted hover:text-content",
-                      always && "opacity-70",
-                    )}
+                    className="flex overflow-hidden rounded-lg bg-surface-2 ring-1 ring-line"
                   >
-                    {opened && <IconCheck className="h-3 w-3" />}
-                    {LABEL[section]}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={busy || always}
+                      onClick={() =>
+                        startBusy(async () => {
+                          const result = await openSectionAction(
+                            data.assignment.id,
+                            section,
+                            !opened,
+                          );
+                          if (result.error) setError(result.error);
+                          await reload();
+                        })
+                      }
+                      title={opened ? undefined : t.lessonUnits.hiddenFromStudent}
+                      className={cn(
+                        "flex h-8 items-center gap-1 px-2.5 text-[11px] font-semibold transition",
+                        opened
+                          ? "bg-accent text-white"
+                          : "text-muted hover:text-content",
+                        always && "opacity-70",
+                      )}
+                    >
+                      {opened
+                        ? <IconCheck className="h-3 w-3" />
+                        : <IconEyeOff className="h-3 w-3" />}
+                      {LABEL[section]}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        startBusy(async () => {
+                          const result = await focusLessonSectionAction(
+                            data.assignment.id,
+                            section,
+                          );
+                          if (result.error) setError(result.error);
+                        })
+                      }
+                      title={`${t.lessonUnits.focusSection}: ${LABEL[section]}`}
+                      aria-label={`${t.lessonUnits.focusSection}: ${LABEL[section]}`}
+                      className="flex h-8 w-8 items-center justify-center border-l border-line text-accent transition hover:bg-accent-soft disabled:opacity-40"
+                    >
+                      <IconEye className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 );
               })}
               <button
@@ -271,6 +308,11 @@ export function ClassLesson({
               classVideo={
                 videoSync?.assignmentId === data.assignment.id
                   ? videoSync
+                  : null
+              }
+              sectionFocus={
+                !teacher && sectionFocus?.assignmentId === data.assignment.id
+                  ? { section: sectionFocus.section, at: sectionFocus.at }
                   : null
               }
             />

@@ -644,6 +644,7 @@ export const en = {
     pinTo: "Pin to a student",
     pinned: "Pinned",
     openForStudent: "Open for the student",
+    focusSection: "Focus student",
     focusWordHint: "Click a word to focus the student on it",
     highlightMode: "Highlight mode",
     highlightModeHint: "Click words or mark whole lines — highlights are saved",

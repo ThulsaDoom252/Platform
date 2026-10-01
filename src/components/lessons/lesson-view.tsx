@@ -3,9 +3,10 @@
 /**
  * Урок глазами ученика.
  *
- * Открыт всегда только словник — с него урок и начинается. Остальные
- * секции появляются, когда учитель их откроет: список вкладок растёт по
- * ходу занятия, а не встречает ученика пятью закрытыми дверями.
+ * Открыт всегда только словник — с него урок и начинается. В живом
+ * классе остальные вкладки тоже видны, но закрытые отмечены глазом и
+ * недоступны для самостоятельного выбора. Учитель всё равно может
+ * разово привести ученика в любую из них.
  *
  * Подсветки приходят из закрепления, а не из урока: у каждого ученика
  * подчёркнуто своё, и заготовка от этого не меняется.
@@ -17,6 +18,7 @@ import {
   lineKey,
   lexisBlockKey,
   lineWordKey,
+  lessonSectionNavigation,
   richLineWords,
   parseKey,
   speakerTint,
@@ -52,6 +54,10 @@ export type LessonViewProps = {
    * какие нет — должно быть написано.
    */
   closed?: LessonSection[];
+  /** Запретить зрителю самому выбирать закрытые вкладки. */
+  lockClosed?: boolean;
+  /** Разовая команда учителя показать секцию, даже если она закрыта. */
+  sectionFocus?: { section: LessonSection; at: string } | null;
   highlights: Record<string, string>;
   /** Куда смотреть прямо сейчас — ключ места из lesson-unit. */
   focus?: string | null;
@@ -85,6 +91,8 @@ export function LessonView({
   lesson,
   open,
   closed,
+  lockClosed = false,
+  sectionFocus,
   highlights,
   focus,
   onPick,
@@ -105,7 +113,26 @@ export function LessonView({
    * второе окно там ничего не добавляет, только режет первое пополам.
    */
   const [panels, setPanels] = useLocalNumber(PANELS_KEY, 1);
-  const shown = Math.min(Math.max(1, panels), MAX_PANELS, open.length);
+  const [dismissedSectionFocusAt, setDismissedSectionFocusAt] = useState<string | null>(null);
+  const navigation = lessonSectionNavigation(
+    open,
+    closed,
+    lockClosed,
+    sectionFocus?.section,
+  );
+  const selectable = navigation.selectable;
+  const sectionFocusAt = sectionFocus?.at;
+  const forcedSection = sectionFocusAt === dismissedSectionFocusAt
+    ? null
+    : navigation.forced;
+  const visibleSlotCount = selectable.length + (
+    forcedSection && !selectable.includes(forcedSection) ? 1 : 0
+  );
+  const shown = Math.min(
+    Math.max(1, panels),
+    MAX_PANELS,
+    Math.max(1, visibleSlotCount),
+  );
 
   /** Что стоит в каждом окне. Первое окно ведёт себя как вкладки. */
   const [picked, setPicked] = useState<LessonSection[]>([]);
@@ -126,8 +153,11 @@ export function LessonView({
   const slots: LessonSection[] = [];
   for (let i = 0; i < shown; i++) {
     const wanted = picked[i];
-    const fallback = open.filter((s) => !slots.includes(s))[0] ?? open[0];
-    slots.push(wanted && open.includes(wanted) && !slots.includes(wanted) ? wanted : fallback);
+    const fallback = selectable.filter((s) => !slots.includes(s))[0] ?? selectable[0] ?? open[0];
+    const allowed = !!wanted && (
+      selectable.includes(wanted) || wanted === forcedSection
+    );
+    slots.push(allowed && !slots.includes(wanted) ? wanted : fallback);
   }
 
   const parsedFocus = focus ? parseKey(focus) : null;
@@ -139,9 +169,27 @@ export function LessonView({
       : parsedFocus?.kind === "line" || parsedFocus?.kind === "lineWord"
         ? "transcript"
         : null;
-  const focusSectionOpen = !!focusSection && open.includes(focusSection);
-  const lexisSectionOpen = open.includes("lexis");
+  const focusSectionOpen = !!focusSection && (
+    selectable.includes(focusSection) || focusSection === forcedSection
+  );
+  const lexisSectionOpen = selectable.includes("lexis") || forcedSection === "lexis";
+  const videoSectionOpen = selectable.includes("video") || forcedSection === "video";
   const videoFocusAt = videoSession?.state?.focusAt;
+
+  // Явная команда секции сильнее её видимости, но не меняет разрешение.
+  useEffect(() => {
+    if (!sectionFocusAt || !forcedSection) return;
+    const frame = requestAnimationFrame(() => {
+      setPicked((current) => {
+        const next = [...current];
+        const occupied = next.indexOf(forcedSection);
+        if (occupied > 0) next[occupied] = next[0];
+        next[0] = forcedSection;
+        return next;
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [forcedSection, sectionFocusAt]);
 
   /*
    * Новый фокус один раз приводит ученика в нужную секцию. Дальше его
@@ -177,7 +225,10 @@ export function LessonView({
 
   // Явная команда Focus открывает ученику Video даже поверх другой секции.
   useEffect(() => {
-    if (!videoFocusAt || !open.includes("video")) return;
+    if (
+      !videoFocusAt ||
+      !videoSectionOpen
+    ) return;
     const frame = requestAnimationFrame(() => {
       setPicked((current) => {
         if (current.includes("video")) return current;
@@ -187,9 +238,10 @@ export function LessonView({
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, videoFocusAt]);
+  }, [videoFocusAt, videoSectionOpen]);
 
-  const setSlot = (at: number, section: LessonSection) =>
+  const setSlot = (at: number, section: LessonSection) => {
+    if (lockClosed && sectionFocusAt) setDismissedSectionFocusAt(sectionFocusAt);
     setPicked(() => {
       const next = [...slots];
       const occupied = next.indexOf(section);
@@ -197,16 +249,20 @@ export function LessonView({
       next[at] = section;
       return next;
     });
+  };
 
   return (
     <div className="flex flex-col gap-3">
       {/* Сколько окон. Показываем, только когда есть что раскладывать. */}
-      {open.length > 1 && (
+      {visibleSlotCount > 1 && (
         <div className="hidden items-center gap-1.5 lg:flex">
           <span className="text-[11px] font-semibold text-faint">
             {t.lessonUnits.panels}
           </span>
-          {Array.from({ length: Math.min(MAX_PANELS, open.length) }, (_, i) => i + 1).map(
+          {Array.from(
+            { length: Math.min(MAX_PANELS, visibleSlotCount) },
+            (_, i) => i + 1,
+          ).map(
             (n) => (
               <button
                 key={n}
@@ -240,18 +296,22 @@ export function LessonView({
             <div className="flex flex-wrap gap-1 rounded-2xl bg-surface p-1 ring-1 ring-line">
               {open.map((key) => {
                 const hidden = closed?.includes(key);
+                const unavailable = !!hidden && lockClosed;
                 return (
                   <button
                     key={key}
                     type="button"
+                    disabled={unavailable}
                     onClick={() => setSlot(at, key)}
                     title={hidden ? t.lessonUnits.hiddenFromStudent : undefined}
+                    aria-disabled={unavailable}
                     className={cn(
                       "flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold transition",
                       section === key
                         ? "bg-accent text-white"
                         : "text-muted hover:bg-surface-2 hover:text-content",
                       hidden && section !== key && "opacity-50",
+                      unavailable && "cursor-not-allowed hover:bg-transparent hover:text-muted",
                     )}
                   >
                     {LABEL[key]}
