@@ -20,6 +20,7 @@ import {
   rescheduleLessonAction,
   assignLessonAction,
   type AssignState,
+  type RescheduleState,
 } from "@/lib/actions/teacher";
 import {
   IconPencil,
@@ -634,6 +635,10 @@ function EditLessonBody({
   onClose: () => void;
 }) {
   const { t } = useT();
+  const [rescheduleState, rescheduleAction, reschedulePending] = useActionState<
+    RescheduleState,
+    FormData
+  >(rescheduleLessonAction, {});
   const end = new Date(lesson.startTime.getTime() + lesson.duration * 60000);
   const isScheduled = lesson.status === "SCHEDULED";
   // Время берём из общего источника: до гидратации оно равно нулю, и урок
@@ -641,6 +646,10 @@ function EditLessonBody({
   const now = useNow();
   const isPast =
     now > 0 && lesson.startTime.getTime() < scheduleNow(new Date(now)).getTime();
+
+  useEffect(() => {
+    if (rescheduleState.ok) onClose();
+  }, [rescheduleState.ok, onClose]);
 
   return (
     <div className="p-5 sm:p-6">
@@ -746,18 +755,25 @@ function EditLessonBody({
                 <IconX className="h-4 w-4" /> {t.schedule.cancelLesson}
               </button>
             </form>
-            <form action={rescheduleLessonAction} className="sm:flex-1">
+            <form action={rescheduleAction} className="sm:flex-1">
               <input type="hidden" name="lessonId" value={lesson.id} />
               <input type="hidden" name="comment" value={comment} />
               <input type="hidden" name="newStartTime" value={newStart} />
               <button
                 type="submit"
+                disabled={!newStart || reschedulePending}
                 className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white transition hover:opacity-90"
               >
-                <IconCalendar className="h-4 w-4" /> {t.schedule.reschedule}
+                <IconCalendar className="h-4 w-4" />
+                {reschedulePending ? "Переношу…" : t.schedule.reschedule}
               </button>
             </form>
           </div>
+          {rescheduleState.error && (
+            <p className="mt-2 text-center text-[11px] text-rose-500">
+              {rescheduleState.error}
+            </p>
+          )}
           {!comment.trim() && (
             <p className="mt-2 text-center text-[11px] text-rose-500">
               Для отмены обязательно укажи причину в комментарии.

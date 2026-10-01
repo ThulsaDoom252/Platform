@@ -15,6 +15,17 @@ test("время формы сохраняется без сдвига часо�
   assert.equal(scheduleInputValue(date), "2026-10-01T17:00");
 });
 
+test("перенос сохраняет выбранные день, часы и минуты", () => {
+  const moved = parseScheduleInput("2026-10-07T15:45");
+  assert.ok(moved);
+  assert.equal(moved.getUTCFullYear(), 2026);
+  assert.equal(moved.getUTCMonth(), 9);
+  assert.equal(moved.getUTCDate(), 7);
+  assert.equal(moved.getUTCHours(), 15);
+  assert.equal(moved.getUTCMinutes(), 45);
+  assert.equal(scheduleInputValue(moved), "2026-10-07T15:45");
+});
+
 test("текущее время переводится в часы школы", () => {
   const date = scheduleNow(new Date("2026-10-01T14:25:30.000Z"));
   assert.equal(date.toISOString(), "2026-10-01T17:25:30.000Z");

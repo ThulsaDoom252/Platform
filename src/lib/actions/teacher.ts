@@ -438,7 +438,10 @@ function weekStartOf(d: Date) {
 function revalidateSchedule(studentId?: string) {
   revalidatePath("/teacher/schedule");
   revalidatePath("/teacher");
+  revalidatePath("/teacher/script");
   revalidatePath("/student");
+  revalidatePath("/student/schedule");
+  revalidatePath("/student/class");
   if (studentId) revalidatePath(`/teacher/students/${studentId}`);
 }
 
@@ -554,42 +557,59 @@ export async function deleteLessonAction(formData: FormData) {
 }
 
 /** Перенос урока на новую дату и время. */
-export async function rescheduleLessonAction(formData: FormData) {
+export type RescheduleState = {
+  ok?: boolean;
+  error?: string;
+  startTime?: string;
+};
+
+export async function rescheduleLessonAction(
+  _previous: RescheduleState,
+  formData: FormData,
+): Promise<RescheduleState> {
   const session = await requireTeacher();
   const lessonId = String(formData.get("lessonId") || "");
   const newStart = String(formData.get("newStartTime") || "");
   const comment = String(formData.get("comment") || "").trim();
-  if (!lessonId || !newStart) return;
+  if (!lessonId || !newStart) return { error: "Выбери новую дату и время" };
 
   const start = parseScheduleInput(newStart);
-  if (!start) return;
+  if (!start) return { error: "Некорректные дата или время" };
 
   const [lesson] = await db
     .select()
     .from(lessons)
     .where(eq(lessons.id, lessonId))
     .limit(1);
-  if (!lesson) return;
+  if (!lesson) return { error: "Урок не найден" };
 
-  await db
-    .update(lessons)
-    .set({
-      startTime: start,
-      status: "SCHEDULED",
-      teacherComment: comment || null,
-      teacherCommentVisible: true,
-      updatedAt: new Date(),
-    })
-    .where(eq(lessons.id, lessonId));
+  const [updated] = await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(lessons)
+      .set({
+        startTime: start,
+        status: "SCHEDULED",
+        teacherComment: comment || null,
+        teacherCommentVisible: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(lessons.id, lessonId))
+      .returning({ startTime: lessons.startTime });
 
-  await db.insert(notifications).values({
-    recipientId: lesson.studentId,
-    type: "LESSON_RESCHEDULED",
-    relatedStudentId: lesson.studentId,
-    message: `${session.name} перенёс урок с ${dtFmt.format(lesson.startTime)} на ${dtFmt.format(start)}${comment ? `. Комментарий: ${comment}` : ""}`,
+    if (rows[0]) {
+      await tx.insert(notifications).values({
+        recipientId: lesson.studentId,
+        type: "LESSON_RESCHEDULED",
+        relatedStudentId: lesson.studentId,
+        message: `${session.name} перенёс урок с ${dtFmt.format(lesson.startTime)} на ${dtFmt.format(rows[0].startTime)}${comment ? `. Комментарий: ${comment}` : ""}`,
+      });
+    }
+    return rows;
   });
+  if (!updated) return { error: "Не удалось перенести урок" };
 
   revalidateSchedule(lesson.studentId);
+  return { ok: true, startTime: updated.startTime.toISOString() };
 }
 
 export type AssignState = { ok?: boolean; message?: string; error?: string };
