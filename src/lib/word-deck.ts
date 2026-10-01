@@ -24,6 +24,16 @@ export const MIN_WORD_DECK_WORDS = 4;
 export const hasEnoughWordDeckWords = (count: number) =>
   Number.isFinite(count) && count >= MIN_WORD_DECK_WORDS;
 
+/** Истёкший таймер завершает текущую карту, но не запирает оставшуюся колоду. */
+export function canDealNextWordDeckCard(state: {
+  cardCount: number;
+  at: number;
+  expired: boolean;
+  observer: boolean;
+}): boolean {
+  return !state.observer && state.cardCount > 0 && state.at < state.cardCount - 1;
+}
+
 export type WordDeckRuntimeCard = WordDeckSourceCard & {
   instanceId: string;
   owner: WordDeckOwner;

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildWordDeck,
+  canDealNextWordDeckCard,
   hasEnoughWordDeckWords,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
@@ -42,6 +43,27 @@ test("таймеры по умолчанию выключены, значени�
     showIcons: false,
     background: "MIDNIGHT",
   });
+});
+
+test("истёкший таймер не блокирует следующую карту", () => {
+  assert.equal(canDealNextWordDeckCard({
+    cardCount: 4,
+    at: 1,
+    expired: true,
+    observer: false,
+  }), true);
+  assert.equal(canDealNextWordDeckCard({
+    cardCount: 4,
+    at: 3,
+    expired: true,
+    observer: false,
+  }), false);
+  assert.equal(canDealNextWordDeckCard({
+    cardCount: 4,
+    at: 1,
+    expired: true,
+    observer: true,
+  }), false);
 });
 
 test("иконки на карточках включаются только явно", () => {

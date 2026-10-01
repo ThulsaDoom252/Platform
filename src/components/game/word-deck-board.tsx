@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
   buildWordDeck,
+  canDealNextWordDeckCard,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
   shuffleWordDeckTail,
@@ -89,13 +90,19 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
   const [expired, setExpired] = useState(saved?.expired ?? false);
   const started = at >= 0;
   const finished = at >= deck.length - 1 && started;
+  const canDeal = canDealNextWordDeckCard({
+    cardCount: deck.length,
+    at,
+    expired,
+    observer,
+  });
   const current = deck[at] ?? null;
   const flipTimer = useRef<number | null>(null);
   const lastRemoteAt = useRef(saved?.updatedAt ?? "");
   const publishQueue = useRef(Promise.resolve());
 
   const deal = useCallback(() => {
-    if (observer || deck.length === 0 || finished) return;
+    if (!canDeal) return;
     if (sound) beep("deal");
     setFaceUp(false);
     setExpired(false);
@@ -103,7 +110,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
     if (settings.timerMode === "CARD") setTime(settings.cardSeconds);
     if (flipTimer.current) window.clearTimeout(flipTimer.current);
     flipTimer.current = window.setTimeout(() => setFaceUp(true), 260);
-  }, [deck.length, finished, observer, settings.cardSeconds, settings.timerMode, sound]);
+  }, [canDeal, settings.cardSeconds, settings.timerMode, sound]);
 
   useEffect(() => () => {
     if (flipTimer.current) window.clearTimeout(flipTimer.current);
@@ -249,7 +256,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
           <button
             type="button"
             onClick={deal}
-            disabled={observer || finished || expired}
+            disabled={!canDeal}
             className="word-deck-card h-60 w-full max-w-[23rem] [perspective:1200px] disabled:cursor-default sm:h-72"
           >
             <span className={cn(
@@ -288,8 +295,8 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
             <div className="text-center">
               <p className="text-3xl font-black">{t.wordDeck.timeUp}</p>
               {!observer && (
-                <button type="button" onClick={reset} className="mt-4 rounded-xl bg-white px-5 py-2.5 text-sm font-black text-slate-950">
-                  {t.wordDeck.again}
+                <button type="button" onClick={finished ? reset : deal} className="mt-4 rounded-xl bg-white px-5 py-2.5 text-sm font-black text-slate-950">
+                  {finished ? t.wordDeck.again : t.wordDeck.deal}
                 </button>
               )}
             </div>
@@ -304,7 +311,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
         <button type="button" onClick={shuffle} disabled={deck.length < 2} className="rounded-xl border border-white/15 bg-black/20 px-2 py-3 text-xs font-black backdrop-blur transition hover:bg-white/15 disabled:opacity-35">
           ⇄ {t.wordDeck.shuffle}
         </button>
-        <button type="button" onClick={finished ? reset : deal} disabled={expired} className="rounded-xl bg-white px-2 py-3 text-xs font-black text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-40">
+        <button type="button" onClick={finished ? reset : deal} disabled={!finished && !canDeal} className="rounded-xl bg-white px-2 py-3 text-xs font-black text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-40">
           {finished ? `↻ ${t.wordDeck.again}` : `➜ ${t.wordDeck.deal}`}
         </button>
       </div>}
