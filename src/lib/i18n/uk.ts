@@ -554,6 +554,9 @@ export const uk: Dict = {
     save: "Зберегти",
     saveFailed: "Не вдалося зберегти зміни.",
     cancel: "Скасувати",
+    delete: "Видалити",
+    deleteConfirm: "Видалити цей запис?",
+    deleteFailed: "Не вдалося видалити запис.",
     addedNotice: "Додано до словника учня",
   },
 

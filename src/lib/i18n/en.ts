@@ -481,6 +481,9 @@ export const en = {
     save: "Save",
     saveFailed: "Could not save the changes.",
     cancel: "Cancel",
+    delete: "Delete",
+    deleteConfirm: "Delete this entry?",
+    deleteFailed: "Could not delete the entry.",
     addedNotice: "Added to the student's vocabulary",
   },
 

@@ -554,6 +554,9 @@ export const ru: Dict = {
     save: "Сохранить",
     saveFailed: "Не удалось сохранить изменения.",
     cancel: "Отмена",
+    delete: "Удалить",
+    deleteConfirm: "Удалить эту запись?",
+    deleteFailed: "Не удалось удалить запись.",
     addedNotice: "Добавлено в словник ученика",
   },
 

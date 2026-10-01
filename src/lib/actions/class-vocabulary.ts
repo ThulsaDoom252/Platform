@@ -153,3 +153,25 @@ export async function updateClassVocabularyAction(
   revalidatePath("/student/class");
   return { word: wordOf(updated) };
 }
+
+export async function deleteClassVocabularyAction(
+  id: string,
+): Promise<{ deleted?: string; error?: string }> {
+  const current = await currentStudent();
+  if (!current) return { error: "Сначала выбери ученика" };
+
+  const [deleted] = await db
+    .delete(classVocabularyWords)
+    .where(
+      and(
+        eq(classVocabularyWords.id, String(id ?? "")),
+        eq(classVocabularyWords.studentId, current.studentId),
+      ),
+    )
+    .returning({ id: classVocabularyWords.id });
+  if (!deleted) return { error: "Запись не найдена" };
+
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { deleted: deleted.id };
+}

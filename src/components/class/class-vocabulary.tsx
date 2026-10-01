@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
-import { IconCheck, IconPencil, IconPlus, IconSearch, IconX } from "@/components/icons";
+import { IconCheck, IconPencil, IconPlus, IconSearch, IconTrash, IconX } from "@/components/icons";
 import { SpeakPair, useSpeech } from "@/components/materials/speech";
 import {
   addClassVocabularyAction,
+  deleteClassVocabularyAction,
   listClassVocabularyAction,
   translateClassVocabularyAction,
   updateClassVocabularyAction,
@@ -41,6 +42,7 @@ export function ClassVocabulary({
     english: string;
     translation: string;
   } | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
   const translateRun = useRef(0);
@@ -258,15 +260,68 @@ export function ClassVocabulary({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start gap-2">
-                    <SpeakPair text={word.english} id={`class-vocabulary-${word.id}`} speech={speech} showUk={false} />
-                    <div className="min-w-0 flex-1">
-                      <p className="break-words text-sm font-black text-content">{word.english}</p>
-                      <p className="mt-0.5 break-words text-sm font-semibold text-accent">{word.translation}</p>
-                      <p className="mt-1 text-[10px] font-semibold text-faint">{word.translationLang === "UK" ? "UA" : "RU"} · {date.format(new Date(word.createdAt))}</p>
+                  <>
+                    <div className="flex items-start gap-2">
+                      <SpeakPair text={word.english} id={`class-vocabulary-${word.id}`} speech={speech} showUk={false} />
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-black text-content">{word.english}</p>
+                        <p className="mt-0.5 break-words text-sm font-semibold text-accent">{word.translation}</p>
+                        <p className="mt-1 text-[10px] font-semibold text-faint">{word.translationLang === "UK" ? "UA" : "RU"} · {date.format(new Date(word.createdAt))}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmDeleteId(null);
+                            setEditing({ id: word.id, english: word.english, translation: word.translation });
+                          }}
+                          title={t.classVocabulary.edit}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface hover:text-accent"
+                        >
+                          <IconPencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(word.id)}
+                          title={t.classVocabulary.delete}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-rose-500/10 hover:text-rose-500"
+                        >
+                          <IconTrash className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <button type="button" onClick={() => setEditing({ id: word.id, english: word.english, translation: word.translation })} title={t.classVocabulary.edit} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface hover:text-accent"><IconPencil className="h-3.5 w-3.5" /></button>
-                  </div>
+                    {confirmDeleteId === word.id && (
+                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg bg-rose-500/10 px-2.5 py-2 ring-1 ring-rose-500/20">
+                        <span className="mr-auto text-xs font-bold text-rose-600 dark:text-rose-400">
+                          {t.classVocabulary.deleteConfirm}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-bold text-muted transition hover:bg-surface"
+                        >
+                          <IconX className="h-3.5 w-3.5" /> {t.classVocabulary.cancel}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => startBusy(async () => {
+                            setError(null);
+                            const result = await deleteClassVocabularyAction(word.id);
+                            if (!result.deleted) {
+                              setError(result.error ?? t.classVocabulary.deleteFailed);
+                              return;
+                            }
+                            setRows((current) => current.filter((item) => item.id !== result.deleted));
+                            setConfirmDeleteId(null);
+                          })}
+                          className="flex h-8 items-center gap-1 rounded-lg bg-rose-500 px-2.5 text-xs font-bold text-white transition hover:bg-rose-600 disabled:opacity-40"
+                        >
+                          <IconTrash className="h-3.5 w-3.5" /> {t.classVocabulary.delete}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </article>
             );
