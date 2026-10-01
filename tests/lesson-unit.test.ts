@@ -32,6 +32,7 @@ import {
   selectedLexisGroup,
   selectLexisGroup,
   yellowHighlights,
+  dialogueHighlights,
   wordKey,
   LESSON_SECTIONS,
 } from "../src/lib/lesson-unit";
@@ -224,6 +225,20 @@ test("повторный клик снимает только выбранное
   marks = toggleDialogueHighlight(marks, lineWordKey(0, 2));
 
   assert.deepEqual(yellowHighlights(marks), { "line:1:4": "yellow" });
+});
+
+test("жёлтые и зелёные выделения сохраняются вместе, а повторный цвет снимается", () => {
+  let marks = toggleDialogueHighlight({}, lineWordKey(0, 2), "yellow");
+  marks = toggleDialogueHighlight(marks, lineKey(1), "green");
+  assert.deepEqual(dialogueHighlights(marks), {
+    "line:0:2": "yellow",
+    "line:1": "green",
+  });
+
+  marks = toggleDialogueHighlight(marks, lineWordKey(0, 2), "green");
+  assert.equal(dialogueHighlights(marks)["line:0:2"], "green");
+  marks = toggleDialogueHighlight(marks, lineWordKey(0, 2), "green");
+  assert.deepEqual(dialogueHighlights(marks), { "line:1": "green" });
 });
 
 test("фокус и жёлтые выделения не стирают друг друга", () => {

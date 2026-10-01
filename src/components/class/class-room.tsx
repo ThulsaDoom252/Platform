@@ -32,6 +32,7 @@ import {
   unreadMessagesAction,
   listClassPeopleAction,
   enterClassAction,
+  summonStudentToClassAction,
   leaveClassAction,
   type ClassPerson,
   type ClassPartnerProfile,
@@ -56,6 +57,7 @@ import {
   IconList,
   IconX,
   IconUser,
+  IconCap,
 } from "@/components/icons";
 import { ClassScript } from "./class-script";
 import { ClassBoard } from "./class-board";
@@ -230,6 +232,7 @@ export function ClassRoom({
   const [avatarPreview, setAvatarPreview] = useState(false);
   const [teacherProfile, setTeacherProfile] = useState<ClassPartnerProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [summonNotice, setSummonNotice] = useState<string | null>(null);
   const chime = useRef<(() => void) | null>(null);
   const unreadRef = useRef(0);
   const boardOpen = useRef(false);
@@ -889,6 +892,30 @@ export function ClassRoom({
 
         {profileError && (
           <span className="text-xs font-semibold text-rose-500">{profileError}</span>
+        )}
+
+        {teacher && partner && (
+          <button
+            type="button"
+            disabled={busy || partner.presence !== "online"}
+            onClick={() => startBusy(async () => {
+              const result = await summonStudentToClassAction();
+              setSummonNotice(result.error ?? t.classRoom.bringToClassSent);
+            })}
+            title={
+              partner.presence === "online"
+                ? t.classRoom.bringToClass
+                : t.classRoom.bringToClassOffline
+            }
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12px] font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <IconCap className="h-4 w-4" />
+            {t.classRoom.bringToClass}
+          </button>
+        )}
+
+        {summonNotice && (
+          <span className="text-xs font-semibold text-accent">{summonNotice}</span>
         )}
 
         {teacher && partner && (

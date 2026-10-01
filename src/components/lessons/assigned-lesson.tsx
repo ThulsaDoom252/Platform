@@ -25,7 +25,8 @@ import {
   selectedLexisGroup,
   toggleDialogueHighlight,
   toggleWordFocus,
-  yellowHighlights,
+  dialogueHighlights,
+  type HighlightColor,
   type LessonVocabularyReveal,
 } from "@/lib/lesson-unit";
 import { LessonView } from "@/components/lessons/lesson-view";
@@ -60,6 +61,7 @@ export function AssignedLesson({
   const [marks, setMarks] = useState(data.assignment.highlights);
   const [british, setBritish] = useState(data.showBritish);
   const [highlightMode, setHighlightMode] = useState(false);
+  const [highlightColor, setHighlightColor] = useState<HighlightColor>("yellow");
   const [vocabularyReveal, setVocabularyReveal] = useState(data.vocabularyReveal);
   const [busy, startBusy] = useTransition();
   const revealQueue = useRef(Promise.resolve());
@@ -120,9 +122,9 @@ export function AssignedLesson({
   };
 
   const highlight = (key: string) => {
-    setMarks((prev) => toggleDialogueHighlight(prev, key));
+    setMarks((prev) => toggleDialogueHighlight(prev, key, highlightColor));
     startBusy(() =>
-      highlightLessonDialogueAction(data.assignment.id, key).then(() => undefined),
+      highlightLessonDialogueAction(data.assignment.id, key, highlightColor).then(() => undefined),
     );
   };
 
@@ -143,7 +145,7 @@ export function AssignedLesson({
   };
 
   const focus = lessonFocus(marks);
-  const yellow = yellowHighlights(marks);
+  const dialogueMarks = dialogueHighlights(marks);
   const lexisGroup = selectedLexisGroup(marks);
 
   if (data.lesson.kind === "REGULAR") {
@@ -176,7 +178,7 @@ export function AssignedLesson({
   return (
     <div className="flex flex-col gap-4">
       {teacher && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
+        <div className="sticky top-20 z-30 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/95 px-3 py-2 shadow-lg backdrop-blur-md">
           <span className="mr-auto text-[12px] font-semibold text-muted">
             {highlightMode
               ? t.lessonUnits.highlightModeHint
@@ -196,6 +198,36 @@ export function AssignedLesson({
             <span aria-hidden>🖍️</span>
             {t.lessonUnits.highlightMode}
           </button>
+          <div className="flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line">
+            {(["yellow", "green"] as const).map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => {
+                  setHighlightColor(color);
+                  setHighlightMode(true);
+                }}
+                aria-pressed={highlightColor === color}
+                aria-label={
+                  color === "yellow"
+                    ? t.lessonUnits.highlightYellow
+                    : t.lessonUnits.highlightGreen
+                }
+                title={
+                  color === "yellow"
+                    ? t.lessonUnits.highlightYellow
+                    : t.lessonUnits.highlightGreen
+                }
+                className={cn(
+                  "h-5 w-5 rounded-full transition hover:scale-110",
+                  color === "yellow" ? "bg-yellow-300" : "bg-emerald-400",
+                  highlightColor === color
+                    ? "ring-2 ring-accent ring-offset-2 ring-offset-surface"
+                    : "ring-1 ring-black/10",
+                )}
+              />
+            ))}
+          </div>
           <button
             type="button"
             disabled={busy}
@@ -229,7 +261,7 @@ export function AssignedLesson({
         }
         lockClosed={liveClass && !teacher}
         sectionFocus={liveClass && !teacher ? activitySectionFocus : null}
-        highlights={yellow}
+        highlights={dialogueMarks}
         focus={focus}
         showBritish={british}
         canRevealVocabulary={teacher || !liveClass}
@@ -241,6 +273,7 @@ export function AssignedLesson({
         onSelectLexis={teacher ? selectLexis : undefined}
         onPick={teacher ? pick : undefined}
         highlightMode={teacher && highlightMode}
+        highlightColor={highlightColor}
         onHighlight={teacher ? highlight : undefined}
         videoSession={
           liveClass

@@ -296,6 +296,12 @@ export function parseKey(
 export const FOCUS_SLOT = "__focus";
 export const LEXIS_GROUP_SLOT = "__lexisGroup";
 export const YELLOW_HIGHLIGHT = "yellow";
+export const GREEN_HIGHLIGHT = "green";
+export type HighlightColor = typeof YELLOW_HIGHLIGHT | typeof GREEN_HIGHLIGHT;
+
+export function isHighlightColor(value: unknown): value is HighlightColor {
+  return value === YELLOW_HIGHLIGHT || value === GREEN_HIGHLIGHT;
+}
 
 /** Фокусировать можно слово, часть лексики или отдельное слово расшифровки. */
 export function isWordFocusKey(key: string): boolean {
@@ -332,8 +338,8 @@ export function normalizeLessonHighlights(
   }
 
   for (const [key, value] of Object.entries(source)) {
-    if (value === YELLOW_HIGHLIGHT && isDialogueHighlightKey(key)) {
-      next[key] = YELLOW_HIGHLIGHT;
+    if (isHighlightColor(value) && isDialogueHighlightKey(key)) {
+      next[key] = value;
     }
   }
 
@@ -344,7 +350,7 @@ export function normalizeLessonHighlights(
   }
 
   const legacy = Object.entries(source).find(
-    ([key, value]) => key !== FOCUS_SLOT && value !== YELLOW_HIGHLIGHT && isWordFocusKey(key),
+    ([key, value]) => key !== FOCUS_SLOT && !isHighlightColor(value) && isWordFocusKey(key),
   );
   if (legacy) next[FOCUS_SLOT] = legacy[0];
   return next;
@@ -383,6 +389,17 @@ export function yellowHighlights(
   );
 }
 
+/** Все сохранённые цветные пометки диалога. */
+export function dialogueHighlights(
+  current: Record<string, string> | null | undefined,
+): Record<string, HighlightColor> {
+  return Object.fromEntries(
+    Object.entries(normalizeLessonHighlights(current)).filter(
+      ([key, value]) => key !== FOCUS_SLOT && isHighlightColor(value),
+    ),
+  ) as Record<string, HighlightColor>;
+}
+
 /** Нажатие на другое слово переносит фокус, повторное — снимает. */
 export function toggleWordFocus(
   current: Record<string, string> | null | undefined,
@@ -399,11 +416,12 @@ export function toggleWordFocus(
 export function toggleDialogueHighlight(
   current: Record<string, string> | null | undefined,
   key: string,
+  color: HighlightColor = YELLOW_HIGHLIGHT,
 ): Record<string, string> {
   const next = normalizeLessonHighlights(current);
-  if (!isDialogueHighlightKey(key)) return next;
-  if (next[key] === YELLOW_HIGHLIGHT) delete next[key];
-  else next[key] = YELLOW_HIGHLIGHT;
+  if (!isDialogueHighlightKey(key) || !isHighlightColor(color)) return next;
+  if (next[key] === color) delete next[key];
+  else next[key] = color;
   return next;
 }
 

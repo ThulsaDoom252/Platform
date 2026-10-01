@@ -46,6 +46,8 @@ import {
   selectLexisGroup,
   toggleWordFocus,
   toggleDialogueHighlight,
+  isHighlightColor,
+  type HighlightColor,
   type LessonSection,
   type LessonVocabularyReveal,
   type LessonWord,
@@ -1427,12 +1429,14 @@ export async function selectLessonLexisGroupAction(
 export async function highlightLessonDialogueAction(
   assignmentId: string,
   key: string,
+  color: HighlightColor = "yellow",
 ): Promise<{ error?: string }> {
   const session = await requireTeacher();
   const highlightKey = String(key ?? "");
   if (!isDialogueHighlightKey(highlightKey)) {
     return { error: "Можно выделить только слово или реплику диалога" };
   }
+  if (!isHighlightColor(color)) return { error: "Неизвестный цвет выделения" };
 
   const id = String(assignmentId ?? "");
   const [row] = await db
@@ -1448,7 +1452,7 @@ export async function highlightLessonDialogueAction(
   await db
     .update(lessonAssignments)
     .set({
-      highlights: toggleDialogueHighlight(row.highlights, highlightKey),
+      highlights: toggleDialogueHighlight(row.highlights, highlightKey, color),
       updatedAt: new Date(),
     })
     .where(eq(lessonAssignments.id, id));

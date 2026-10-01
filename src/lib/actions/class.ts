@@ -347,6 +347,97 @@ export async function enterClassAction(studentId: string): Promise<{ error?: str
   return {};
 }
 
+/** Одноразово открыть класс на уже активной вкладке выбранного ученика. */
+export async function summonStudentToClassAction(): Promise<{ error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Класс ведёт учитель" };
+
+  const [teacher] = await db
+    .select({ studentId: users.classWithId })
+    .from(users)
+    .where(and(eq(users.id, session.userId), eq(users.role, "TEACHER")))
+    .limit(1);
+  if (!teacher?.studentId) return { error: "Сначала выбери ученика" };
+
+  const [student] = await db
+    .select({ lastSeenAt: users.lastSeenAt, classFocus: users.classFocus })
+    .from(users)
+    .where(and(eq(users.id, teacher.studentId), eq(users.role, "STUDENT")))
+    .limit(1);
+  if (!student) return { error: "Ученик не найден" };
+  if (!isOnline(student.lastSeenAt)) return { error: "Ученик сейчас не на платформе" };
+
+  const now = new Date().toISOString();
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        ...student.classFocus,
+        at: student.classFocus?.at ?? now,
+        enterClassAt: now,
+      },
+    })
+    .where(and(eq(users.id, teacher.studentId), eq(users.role, "STUDENT")));
+
+  return {};
+}
+
+/**
+ * Короткий глобальный такт ученика: отмечает присутствие и забирает
+ * одноразовую команду перехода. Фокус урока при этом не очищается.
+ */
+export async function studentPlatformCommandAction(): Promise<{ enterClass: boolean }> {
+  const session = await requireUser();
+  if (session.role !== "STUDENT") return { enterClass: false };
+
+  const [me] = await db
+    .select({ lastSeenAt: users.lastSeenAt, classFocus: users.classFocus })
+    .from(users)
+    .where(and(eq(users.id, session.userId), eq(users.role, "STUDENT")))
+    .limit(1);
+  if (!me) return { enterClass: false };
+
+  const requestedAt = me.classFocus?.enterClassAt;
+  const now = new Date();
+  const shouldRefreshPresence =
+    !me.lastSeenAt || now.getTime() - me.lastSeenAt.getTime() >= 20_000;
+
+  if (requestedAt) {
+    // Удаляем только служебное поле прямо в jsonb: параллельная команда
+    // фокуса не потеряет секцию, игру или объект доски.
+    await db
+      .update(users)
+      .set({
+        lastSeenAt: now,
+        classFocus: sql`coalesce(${users.classFocus}, '{}'::jsonb) - 'enterClassAt'`,
+      })
+      .where(and(eq(users.id, session.userId), eq(users.role, "STUDENT")));
+  } else if (shouldRefreshPresence) {
+    await db
+      .update(users)
+      .set({ lastSeenAt: now })
+      .where(and(eq(users.id, session.userId), eq(users.role, "STUDENT")));
+  }
+
+  if (!requestedAt) return { enterClass: false };
+  const requested = new Date(requestedAt).getTime();
+  if (!Number.isFinite(requested) || now.getTime() - requested > 30_000) {
+    return { enterClass: false };
+  }
+
+  const [teacher] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.role, "TEACHER"),
+        eq(users.classWithId, session.userId),
+      ),
+    )
+    .limit(1);
+  return { enterClass: Boolean(teacher) };
+}
+
 /** Выйти из класса — учитель возвращается к выбору ученика. */
 export async function leaveClassAction(): Promise<{ error?: string }> {
   const session = await requireUser();

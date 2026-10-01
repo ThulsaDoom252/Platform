@@ -23,6 +23,8 @@ import {
   parseKey,
   speakerTint,
   speakersOf,
+  GREEN_HIGHLIGHT,
+  type HighlightColor,
   type LessonSection,
   type LessonVocabularyReveal,
 } from "@/lib/lesson-unit";
@@ -65,6 +67,7 @@ export type LessonViewProps = {
   onPick?: (key: string) => void;
   /** В диалоге клики ставят независимые жёлтые выделения. */
   highlightMode?: boolean;
+  highlightColor?: HighlightColor;
   onHighlight?: (key: string) => void;
   /** Показать ученику UK-звук и UK-транскрипцию одиночных слов. */
   showBritish?: boolean;
@@ -97,6 +100,7 @@ export function LessonView({
   focus,
   onPick,
   highlightMode = false,
+  highlightColor = "yellow",
   onHighlight,
   showBritish = false,
   canRevealVocabulary = true,
@@ -357,6 +361,7 @@ export function LessonView({
                   focus={focus}
                   onPick={onPick}
                   highlightMode={highlightMode}
+                  highlightColor={highlightColor}
                   onHighlight={onHighlight}
                 />
               )}
@@ -728,6 +733,7 @@ function Transcript({
   focus,
   onPick,
   highlightMode,
+  highlightColor,
   onHighlight,
 }: {
   lines: Lesson["transcript"];
@@ -735,6 +741,7 @@ function Transcript({
   focus?: string | null;
   onPick?: (key: string) => void;
   highlightMode: boolean;
+  highlightColor: HighlightColor;
   onHighlight?: (key: string) => void;
 }) {
   const { t } = useT();
@@ -761,7 +768,9 @@ function Transcript({
             className={cn(
               "relative rounded-2xl bg-surface p-3 ring-1 ring-line transition",
               highlightMode && "pr-24",
-              phraseMarked && "bg-yellow-300 ring-yellow-500/70",
+              phraseMarked === GREEN_HIGHLIGHT
+                ? "bg-emerald-300 ring-emerald-500/70"
+                : phraseMarked && "bg-yellow-300 ring-yellow-500/70",
             )}
           >
             <span
@@ -799,9 +808,13 @@ function Transcript({
                       "rounded px-0.5",
                       (onPick || onHighlight) && "cursor-pointer",
                       highlightMode
-                        ? "hover:bg-yellow-200"
+                        ? highlightColor === GREEN_HIGHLIGHT
+                          ? "hover:bg-emerald-200"
+                          : "hover:bg-yellow-200"
                         : onPick && "hover:bg-accent-soft",
-                      wMark && "bg-yellow-300 text-slate-950 ring-1 ring-yellow-500/70",
+                      wMark === GREEN_HIGHLIGHT
+                        ? "bg-emerald-300 text-slate-950 ring-1 ring-emerald-500/70"
+                        : wMark && "bg-yellow-300 text-slate-950 ring-1 ring-yellow-500/70",
                       focus === wKey && "ring-2 ring-accent",
                       part.bold && "font-extrabold",
                     )}
@@ -819,9 +832,13 @@ function Transcript({
                 title={t.lessonUnits.highlightPhrase}
                 className={cn(
                   "absolute right-2 top-2 flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-bold ring-1 transition",
-                  phraseMarked
-                    ? "bg-yellow-400 text-slate-950 ring-yellow-600"
-                    : "bg-surface-2 text-muted ring-line hover:bg-yellow-200 hover:text-slate-950",
+                  phraseMarked === GREEN_HIGHLIGHT
+                    ? "bg-emerald-400 text-slate-950 ring-emerald-600"
+                    : phraseMarked
+                      ? "bg-yellow-400 text-slate-950 ring-yellow-600"
+                      : highlightColor === GREEN_HIGHLIGHT
+                        ? "bg-surface-2 text-muted ring-line hover:bg-emerald-200 hover:text-slate-950"
+                        : "bg-surface-2 text-muted ring-line hover:bg-yellow-200 hover:text-slate-950",
                 )}
               >
                 <span aria-hidden>🖍️</span>
