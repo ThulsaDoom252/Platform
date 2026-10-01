@@ -26,9 +26,9 @@ import {
   toggleWordFocus,
   yellowHighlights,
   type LessonVocabularyReveal,
-  type LessonSection,
 } from "@/lib/lesson-unit";
 import { LessonView } from "@/components/lessons/lesson-view";
+import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
@@ -44,7 +44,7 @@ export function AssignedLesson({
     assignment: LessonAssignmentCard;
     lesson: Lesson;
     answers: Record<string, string>;
-    open: LessonSection[];
+    open: string[];
     showBritish: boolean;
     vocabularyReveal: LessonVocabularyReveal;
   };
@@ -52,7 +52,7 @@ export function AssignedLesson({
   /** Есть только внутри живого класса; вне класса видео остаётся обычным. */
   classVideo?: ClassVideoState | null;
   /** Разовая команда учителя: показать секцию, не открывая её навсегда. */
-  sectionFocus?: { section: LessonSection; at: string } | null;
+  sectionFocus?: { section: string; at: string } | null;
   liveClass?: boolean;
 }) {
   const { t } = useT();
@@ -145,6 +145,22 @@ export function AssignedLesson({
   const yellow = yellowHighlights(marks);
   const lexisGroup = selectedLexisGroup(marks);
 
+  if (data.lesson.kind === "REGULAR") {
+    return (
+      <RegularLessonView
+        sections={data.lesson.regularSections}
+        teacher={teacher}
+        open={data.open}
+        lockClosed={liveClass && !teacher}
+        sectionFocus={liveClass && !teacher ? sectionFocus : null}
+      />
+    );
+  }
+  const activitySectionFocus =
+    sectionFocus && LESSON_SECTIONS.includes(sectionFocus.section as (typeof LESSON_SECTIONS)[number])
+      ? { ...sectionFocus, section: sectionFocus.section as (typeof LESSON_SECTIONS)[number] }
+      : null;
+
   return (
     <div className="flex flex-col gap-4">
       {teacher && (
@@ -192,7 +208,7 @@ export function AssignedLesson({
         open={
           teacher || liveClass
             ? [...LESSON_SECTIONS]
-            : data.open.filter((section) => section !== "homework")
+            : data.open.filter((section) => section !== "homework" && LESSON_SECTIONS.includes(section as (typeof LESSON_SECTIONS)[number])) as (typeof LESSON_SECTIONS)[number][]
         }
         closed={
           teacher || liveClass
@@ -200,7 +216,7 @@ export function AssignedLesson({
             : undefined
         }
         lockClosed={liveClass && !teacher}
-        sectionFocus={liveClass && !teacher ? sectionFocus : null}
+        sectionFocus={liveClass && !teacher ? activitySectionFocus : null}
         highlights={yellow}
         focus={focus}
         showBritish={british}

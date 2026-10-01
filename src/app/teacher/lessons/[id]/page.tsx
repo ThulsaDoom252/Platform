@@ -39,7 +39,12 @@ export default async function TeacherLessonPage({
         lexises={lexises}
         activities={activities}
       />
-      <LessonPin unitId={lesson.id} students={students} />
+      <LessonPin
+        unitId={lesson.id}
+        students={students}
+        kind={lesson.kind}
+        regularSections={lesson.regularSections}
+      />
     </div>
   );
 }

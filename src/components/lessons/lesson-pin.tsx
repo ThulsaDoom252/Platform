@@ -16,8 +16,10 @@ import {
   studentLessonsAction,
   unpinLessonAction,
   type LessonAssignmentCard,
+  type LessonKind,
 } from "@/lib/actions/lessons";
 import { LESSON_SECTIONS, type LessonSection } from "@/lib/lesson-unit";
+import { regularSectionKey, type RegularLessonSection } from "@/lib/regular-lesson";
 import { Avatar } from "@/components/avatar";
 import { IconCheck, IconChevronRight, IconTrash } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -25,9 +27,13 @@ import { cn } from "@/lib/utils";
 export function LessonPin({
   unitId,
   students,
+  kind,
+  regularSections,
 }: {
   unitId: string;
   students: { id: string; name: string; avatarUrl: string | null }[];
+  kind: LessonKind;
+  regularSections: RegularLessonSection[];
 }) {
   const { t } = useT();
   const [given, setGiven] = useState<LessonAssignmentCard[]>([]);
@@ -63,11 +69,18 @@ export function LessonPin({
     questions: t.lessonUnits.secQuestions,
     homework: t.lessonUnits.secHomework,
   };
+  const controlledSections = kind === "REGULAR"
+    ? regularSections
+        .filter((section) => !section.teacherOnly)
+        .map((section) => ({ key: regularSectionKey(section.id), label: section.title }))
+    : LESSON_SECTIONS.map((section) => ({ key: section, label: LABEL[section] }));
 
   return (
     <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5">
       <p className="text-sm font-bold text-content">{t.lessonUnits.pinTo}</p>
-      <p className="mt-0.5 text-[12px] text-faint">{t.lessonUnits.onlyVocabAtFirst}</p>
+      {kind === "ACTIVITY" && (
+        <p className="mt-0.5 text-[12px] text-faint">{t.lessonUnits.onlyVocabAtFirst}</p>
+      )}
 
       <div className="mt-3 flex flex-col gap-2">
         {students.map((s) => {
@@ -88,8 +101,8 @@ export function LessonPin({
                 <>
                   {/* Что открыто ученику. Словник закрыть нельзя. */}
                   <span className="ml-2 flex flex-wrap items-center gap-1">
-                    {LESSON_SECTIONS.map((section) => {
-                      const always = section === "vocab";
+                    {controlledSections.map(({ key: section, label }) => {
+                      const always = kind === "ACTIVITY" && section === "vocab";
                       const on = always || card.openSections.includes(section);
 
                       return (
@@ -103,7 +116,7 @@ export function LessonPin({
                               await reload();
                             })
                           }
-                          title={always ? t.lessonUnits.onlyVocabAtFirst : LABEL[section]}
+                          title={always ? t.lessonUnits.onlyVocabAtFirst : label}
                           className={cn(
                             "flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold transition",
                             on
@@ -113,7 +126,7 @@ export function LessonPin({
                           )}
                         >
                           {on && <IconCheck className="h-3 w-3" />}
-                          {LABEL[section]}
+                          {label}
                         </button>
                       );
                     })}

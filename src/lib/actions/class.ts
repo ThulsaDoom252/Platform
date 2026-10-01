@@ -27,7 +27,6 @@ import {
   type ClassVideoState,
 } from "@/lib/class-video";
 import { scheduleNow } from "@/lib/schedule-time";
-import { isSection, type LessonSection } from "@/lib/lesson-unit";
 
 /** Сколько отметка держится за «онлайн». */
 const ONLINE_WINDOW_MS = 75_000;
@@ -568,7 +567,7 @@ export type ClassSync = {
     boardObjectId: number | null;
     boardCommand: "SHOW" | "FOCUS" | "FLASH" | null;
     gameId: string | null;
-    lessonSection: LessonSection | null;
+    lessonSection: string | null;
   } | null;
   /** Учителю: открыта ли доска у ученика прямо сейчас. */
   partnerOnBoard: boolean;
@@ -668,7 +667,9 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
                 ? (me.classFocus.gameId ?? null)
                 : null,
             lessonSection:
-              me.classFocus.view === "LESSON" && isSection(me.classFocus.lessonSection)
+              me.classFocus.view === "LESSON" &&
+              typeof me.classFocus.lessonSection === "string" &&
+              me.classFocus.lessonSection.length <= 100
                 ? me.classFocus.lessonSection
                 : null,
             boardCommand:

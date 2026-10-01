@@ -1,6 +1,7 @@
 import type { RuleBlock, RuleBlockVariant } from "@/lib/rule-blocks";
 import type { TwisterStroke } from "@/lib/twister-drawing";
 import type { ClassVideoState } from "@/lib/class-video";
+import type { RegularLessonSection } from "@/lib/regular-lesson";
 import type {
   WordDeckLiveState,
   WordDeckSettings,
@@ -115,7 +116,7 @@ export const users = pgTable("users", {
     /** Урок, который учитель сейчас открыл этому ученику в классе. */
     lessonAssignmentId?: string;
     /** Секция урока, которую учитель приказал показать, даже если она закрыта. */
-    lessonSection?: "vocab" | "lexis" | "video" | "transcript" | "questions" | "homework";
+    lessonSection?: string;
     /** Назначенная ученику колода, которую учитель открыл поверх урока. */
     gameId?: string;
     /** Временный полноэкранный просмотр скороговорки и совместный рисунок. */
@@ -1026,6 +1027,8 @@ export const lessonUnits = pgTable("lesson_units", {
   homework: jsonb("homework").$type<{ title: string; text: string }[]>(),
   /** Сохранённые игры, прикреплённые к этому уроку. */
   activityIds: jsonb("activity_ids").$type<string[]>().default([]).notNull(),
+  /** Произвольные блоки обычного урока: ученический и учительский слои отдельно. */
+  sections: jsonb("sections").$type<RegularLessonSection[]>().default([]).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

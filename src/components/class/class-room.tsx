@@ -83,7 +83,6 @@ import {
 } from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
-import type { LessonSection } from "@/lib/lesson-unit";
 
 const BEAT_MS = 30_000;
 const CHAT_UNREAD_MS = 4_000;
@@ -216,7 +215,7 @@ export function ClassRoom({
   const [videoSync, setVideoSync] = useState<ClassVideoState | null>(null);
   const [lessonSectionFocus, setLessonSectionFocus] = useState<{
     assignmentId: string;
-    section: LessonSection;
+    section: string;
     at: string;
   } | null>(null);
   const [textSelection, setTextSelection] = useState<ClassTextSelection | null>(null);

@@ -40,6 +40,8 @@ export function LessonsList({ items }: { items: LessonCard[] }) {
   const [kind, setKind] = useState<"ACTIVITY" | "REGULAR">("ACTIVITY");
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
+  const regular = items.filter((item) => item.kind === "REGULAR");
+  const activities = items.filter((item) => item.kind === "ACTIVITY");
 
   function create() {
     setError(null);
@@ -105,16 +107,20 @@ export function LessonsList({ items }: { items: LessonCard[] }) {
         {error && <p className="mt-2 text-sm text-rose-500">{error}</p>}
       </section>
 
-      {items.length === 0 ? (
-        <p className="text-sm text-faint">{t.lessonUnits.empty}</p>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {items.map((item) => (
-            <Row key={item.id} item={item} />
-          ))}
-        </div>
-      )}
+      <LessonGroup title={t.lessonUnits.regularLessons} empty={t.lessonUnits.noRegularLessons} items={regular} />
+      <LessonGroup title={t.lessonUnits.activityLessons} empty={t.lessonUnits.noActivityLessons} items={activities} />
     </div>
+  );
+}
+
+function LessonGroup({ title, empty, items }: { title: string; empty: string; items: LessonCard[] }) {
+  return (
+    <section className="flex flex-col gap-2.5">
+      <h2 className="text-base font-black text-content">{title}</h2>
+      {items.length > 0
+        ? items.map((item) => <Row key={item.id} item={item} />)
+        : <p className="rounded-2xl bg-surface p-5 text-sm text-faint ring-1 ring-line">{empty}</p>}
+    </section>
   );
 }
 
@@ -150,6 +156,7 @@ function Row({ item }: { item: LessonCard }) {
 
   /* Чем урок наполнен — одной строкой; пустое просто не упоминается. */
   const filled = [
+    item.sections > 0 ? fmt(t.lessonUnits.sectionsCount, { n: item.sections }) : null,
     item.words > 0 ? fmt(t.lessonUnits.words, { n: item.words }) : null,
     item.hasLexis ? t.lessonUnits.secLexis : null,
     item.hasVideo ? t.lessonUnits.secVideo : null,

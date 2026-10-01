@@ -14,6 +14,7 @@ import {
   type LessonCard,
 } from "@/lib/actions/lessons";
 import { LESSON_SECTIONS, type LessonSection } from "@/lib/lesson-unit";
+import { regularSectionKey } from "@/lib/regular-lesson";
 import { IconCheck, IconEye, IconEyeOff, IconPencil, IconPlus, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
@@ -36,7 +37,7 @@ export function ClassLesson({
   videoSync: ClassVideoState | null;
   sectionFocus?: {
     assignmentId: string;
-    section: LessonSection;
+    section: string;
     at: string;
   } | null;
   onAssigned?: (id: string) => void;
@@ -128,6 +129,11 @@ export function ClassLesson({
     questions: t.lessonUnits.secQuestions,
     homework: t.lessonUnits.secHomework,
   };
+  const controlledSections = data?.lesson.kind === "REGULAR"
+    ? data.lesson.regularSections
+        .filter((section) => !section.teacherOnly)
+        .map((section) => ({ key: regularSectionKey(section.id), label: section.title }))
+    : LESSON_SECTIONS.map((section) => ({ key: section, label: LABEL[section] }));
 
   const captureSelection = (
     event: MouseEvent<HTMLDivElement>,
@@ -231,8 +237,8 @@ export function ClassLesson({
               <span className="mr-1 text-[12px] font-semibold text-muted">
                 {t.lessonUnits.openForStudent}
               </span>
-              {LESSON_SECTIONS.map((section) => {
-                const always = section === "vocab";
+              {controlledSections.map(({ key: section, label }) => {
+                const always = data.lesson.kind !== "REGULAR" && section === "vocab";
                 const opened = always || data.open.includes(section);
                 return (
                   <div
@@ -265,7 +271,7 @@ export function ClassLesson({
                       {opened
                         ? <IconCheck className="h-3 w-3" />
                         : <IconEyeOff className="h-3 w-3" />}
-                      {LABEL[section]}
+                      {label}
                     </button>
                     <button
                       type="button"
@@ -279,8 +285,8 @@ export function ClassLesson({
                           if (result.error) setError(result.error);
                         })
                       }
-                      title={`${t.lessonUnits.focusSection}: ${LABEL[section]}`}
-                      aria-label={`${t.lessonUnits.focusSection}: ${LABEL[section]}`}
+                      title={`${t.lessonUnits.focusSection}: ${label}`}
+                      aria-label={`${t.lessonUnits.focusSection}: ${label}`}
                       className="flex h-8 w-8 items-center justify-center border-l border-line text-accent transition hover:bg-accent-soft disabled:opacity-40"
                     >
                       <IconEye className="h-3.5 w-3.5" />

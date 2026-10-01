@@ -57,6 +57,13 @@ import {
   normalizeClassVideoState,
   type ClassVideoState,
 } from "@/lib/class-video";
+import {
+  defaultRegularOpenSections,
+  normalizeRegularLessonSections,
+  publicRegularLessonSections,
+  regularLessonSection,
+  type RegularLessonSection,
+} from "@/lib/regular-lesson";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -126,6 +133,7 @@ export type LessonCard = {
   lines: number;
   questions: number;
   tasks: number;
+  sections: number;
   /** Скольким ученикам выдан. */
   assigned: number;
   createdAt: string;
@@ -186,6 +194,7 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
       questions:
         (questions.afterVideo ?? []).length + (questions.afterReading ?? []).length,
       tasks: (unit.homework ?? []).length,
+      sections: normalizeRegularLessonSections(unit.sections).filter((section) => !section.teacherOnly).length,
       assigned: givenOf.get(unit.id) ?? 0,
       createdAt: unit.createdAt.toISOString(),
     };
@@ -347,6 +356,7 @@ export type LessonView = {
     settings: WordDeckSettings;
     backgroundImageUrl: string | null;
   }[];
+  regularSections: RegularLessonSection[];
 };
 
 /** Словник урока — свой, не ссылка на материалы. */
@@ -470,7 +480,7 @@ export async function deleteWordAction(wordId: string): Promise<{ error?: string
   return {};
 }
 
-async function loadUnit(unitId: string): Promise<LessonView | null> {
+async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonView | null> {
   const [row] = await db
     .select({ unit: lessonUnits, vocabName: materialNodes.name })
     .from(lessonUnits)
@@ -519,13 +529,16 @@ async function loadUnit(unitId: string): Promise<LessonView | null> {
           }]
         : [];
     }),
+    regularSections: includeTeacher
+      ? normalizeRegularLessonSections(unit.sections)
+      : publicRegularLessonSections(unit.sections),
   };
 }
 
 /** Урок как есть — учителю, для правки и для показа. */
 export async function lessonAction(id: string): Promise<LessonView | null> {
   await requireTeacher();
-  return loadUnit(String(id ?? ""));
+  return loadUnit(String(id ?? ""), true);
 }
 
 /** Словники из материалов — на выбор для секции Vocabulary. */
@@ -806,9 +819,21 @@ export async function pinLessonAction(
 
   if (already) return { id: already.id };
 
+  const [lesson] = await db
+    .select({ kind: lessonUnits.kind, sections: lessonUnits.sections })
+    .from(lessonUnits)
+    .where(eq(lessonUnits.id, unit))
+    .limit(1);
+  if (!lesson) return { error: "Урок не найден" };
+
   const [created] = await db
     .insert(lessonAssignments)
-    .values({ unitId: unit, studentId: student })
+    .values({
+      unitId: unit,
+      studentId: student,
+      openSections:
+        lesson.kind === "REGULAR" ? defaultRegularOpenSections(lesson.sections) : [],
+    })
     .returning({ id: lessonAssignments.id });
 
   const [name] = await db
@@ -922,7 +947,7 @@ async function cardsFor(studentId: string): Promise<LessonAssignmentCard[]> {
     title,
     studentId: a.studentId,
     studentName: name,
-    openSections: openSections(a.openSections),
+    openSections: a.openSections ?? [],
     highlights: normalizeLessonHighlights(a.highlights),
     finishedAt: a.finishedAt?.toISOString() ?? null,
     createdAt: a.createdAt.toISOString(),
@@ -941,17 +966,28 @@ export async function openSectionAction(
   section: string,
   open: boolean,
 ): Promise<{ error?: string }> {
-  await requireTeacher();
-  if (!isSection(section)) return { error: "Неизвестная секция" };
-  if (section === "vocab") return { error: "Словник открыт всегда" };
+  const session = await requireTeacher();
 
   const id = String(assignmentId ?? "");
   const [row] = await db
-    .select({ openSections: lessonAssignments.openSections })
+    .select({
+      openSections: lessonAssignments.openSections,
+      kind: lessonUnits.kind,
+      sections: lessonUnits.sections,
+    })
     .from(lessonAssignments)
-    .where(eq(lessonAssignments.id, id))
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)))
     .limit(1);
   if (!row) return { error: "Урок не закреплён" };
+
+  if (row.kind === "REGULAR") {
+    const target = regularLessonSection(section, row.sections);
+    if (!target || target.teacherOnly) return { error: "Неизвестная секция" };
+  } else {
+    if (!isSection(section)) return { error: "Неизвестная секция" };
+    if (section === "vocab") return { error: "Словник открыт всегда" };
+  }
 
   const current = new Set(row.openSections ?? []);
   if (open) current.add(section);
@@ -975,7 +1011,6 @@ export async function focusLessonSectionAction(
   section: string,
 ): Promise<{ error?: string }> {
   const session = await requireTeacher();
-  if (!isSection(section)) return { error: "Неизвестная секция" };
   const id = String(assignmentId ?? "");
 
   const [[teacher], [target]] = await Promise.all([
@@ -988,6 +1023,8 @@ export async function focusLessonSectionAction(
       .select({
         studentId: lessonAssignments.studentId,
         classFocus: users.classFocus,
+        kind: lessonUnits.kind,
+        sections: lessonUnits.sections,
       })
       .from(lessonAssignments)
       .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -1004,6 +1041,14 @@ export async function focusLessonSectionAction(
 
   if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
     return { error: "Этот ученик сейчас не в классе" };
+  }
+  if (
+    target.kind === "REGULAR"
+      ? !regularLessonSection(section, target.sections) ||
+        regularLessonSection(section, target.sections)?.teacherOnly
+      : !isSection(section)
+  ) {
+    return { error: "Неизвестная секция" };
   }
 
   await db
@@ -1486,7 +1531,7 @@ export async function assignedLessonAction(assignmentId: string): Promise<
       assignment: LessonAssignmentCard;
       lesson: LessonView;
       answers: Record<string, string>;
-      open: LessonSection[];
+      open: string[];
       showBritish: boolean;
       vocabularyReveal: LessonVocabularyReveal;
     }
@@ -1507,7 +1552,7 @@ export async function assignedLessonAction(assignmentId: string): Promise<
   // Своё закрепление видит ученик, любое — учитель.
   if (session.role !== "TEACHER" && row.a.studentId !== session.userId) return null;
 
-  const lesson = await loadUnit(row.a.unitId);
+  const lesson = await loadUnit(row.a.unitId, session.role === "TEACHER");
   if (!lesson) return null;
 
   const stored = row.a.openSections ?? [];
@@ -1518,14 +1563,17 @@ export async function assignedLessonAction(assignmentId: string): Promise<
       title: row.title,
       studentId: row.a.studentId,
       studentName: row.name,
-      openSections: openSections(stored),
+      openSections: stored,
       highlights: normalizeLessonHighlights(row.a.highlights),
       finishedAt: row.a.finishedAt?.toISOString() ?? null,
       createdAt: row.a.createdAt.toISOString(),
     },
     lesson,
     answers: row.a.answers ?? {},
-    open: openSections(stored),
+    open:
+      lesson.kind === "REGULAR"
+        ? stored.filter((key) => !!regularLessonSection(key, lesson.regularSections))
+        : openSections(stored),
     showBritish: stored.includes(BRITISH_OPTION),
     vocabularyReveal: lessonVocabularyReveal(stored),
   };

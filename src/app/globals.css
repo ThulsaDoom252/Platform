@@ -886,6 +886,80 @@ body {
   }
 }
 
+/* Imported two-layer lessons. The HTML is sanitized; these classes supply its design. */
+.regular-lesson-content {
+  --lesson-tint: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--surface);
+  box-shadow: 0 12px 35px rgb(15 23 42 / 0.08);
+}
+
+.regular-lesson-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  background: linear-gradient(135deg, var(--lesson-tint), var(--surface));
+  border-bottom: 1px solid var(--line);
+}
+
+.regular-lesson-heading h2 { color: var(--content); font-size: 1.1rem; font-weight: 900; }
+.regular-tone-warm { --lesson-tint: color-mix(in srgb, #f59e0b 16%, var(--surface)); }
+.regular-tone-vocab { --lesson-tint: color-mix(in srgb, #10b981 15%, var(--surface)); }
+.regular-tone-grammar { --lesson-tint: color-mix(in srgb, #8b5cf6 14%, var(--surface)); }
+.regular-tone-reading { --lesson-tint: color-mix(in srgb, #0ea5e9 14%, var(--surface)); }
+.regular-tone-dialogue { --lesson-tint: color-mix(in srgb, #ec4899 13%, var(--surface)); }
+.regular-tone-teacher { --lesson-tint: color-mix(in srgb, #f97316 16%, var(--surface)); }
+
+.regular-lesson-body { padding: clamp(1rem, 2.5vw, 1.75rem); color: var(--content); font-size: 0.96rem; line-height: 1.7; }
+.regular-lesson-body h3 { margin: 1.35rem 0 0.6rem; color: var(--content); font-size: 1rem; font-weight: 850; }
+.regular-lesson-body p { margin: 0.65rem 0; }
+.regular-lesson-body ol, .regular-lesson-body ul { margin: 0.7rem 0; padding-left: 1.55rem; }
+.regular-lesson-body li { margin: 0.42rem 0; }
+.regular-lesson-body a { color: var(--accent); text-decoration: none; }
+.regular-lesson-body a:hover { text-decoration: underline; }
+.regular-lesson-body .instr, .regular-lesson-body .support,
+.regular-lesson-body .tip, .regular-lesson-body .warn,
+.regular-lesson-body .key {
+  margin: 0.9rem 0;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--lesson-tint);
+}
+.regular-lesson-body .key { border-left: 4px solid #10b981; }
+.regular-lesson-body .warn { border-left: 4px solid #f59e0b; }
+.regular-lesson-body .vcard {
+  margin: 0.75rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+}
+.regular-lesson-body .vhead { font-size: 1.02rem; }
+.regular-lesson-body .em { display: inline-flex; min-width: 2rem; font-size: 1.35rem; }
+.regular-lesson-body .tr, .regular-lesson-body .hint { color: var(--muted); font-size: 0.88em; }
+.regular-lesson-body .ua, .regular-lesson-body .ans { color: #059669; font-weight: 800; }
+.regular-lesson-body .note { margin-top: 0.35rem; color: var(--muted); font-size: 0.88rem; }
+.regular-lesson-body .blank { display: inline-block; min-width: 5rem; height: 1.25em; border-bottom: 2px solid var(--accent); vertical-align: baseline; }
+.regular-lesson-body .tfbox { margin-left: 0.4rem; white-space: nowrap; color: var(--accent); font-weight: 800; }
+.regular-lesson-body table { width: 100%; margin: 0.9rem 0; border-collapse: collapse; overflow: hidden; border-radius: 0.8rem; }
+.regular-lesson-body th, .regular-lesson-body td { border: 1px solid var(--line); padding: 0.65rem; text-align: left; vertical-align: top; }
+.regular-lesson-body th { background: var(--lesson-tint); font-weight: 800; }
+.regular-lesson-body .lines p { padding: 0.55rem 0.7rem; border-radius: 0.7rem; }
+.regular-lesson-body .lines p:nth-child(odd) { background: var(--surface-2); }
+.regular-lesson-body .ln, .regular-lesson-body .pn { display: inline-flex; min-width: 1.6rem; color: var(--faint); font-size: 0.75rem; font-weight: 800; }
+.regular-lesson-body .sp { color: var(--accent); }
+
+@media (max-width: 640px) {
+  .regular-lesson-heading { align-items: flex-start; flex-direction: column; }
+  .regular-lesson-body { font-size: 0.9rem; }
+  .regular-lesson-body table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
 /* ---------- Повторение слов ----------
    Промах в парах и в «собери слово» надо почувствовать, а не вычитать:
    короткая встряска читается быстрее любой надписи. */

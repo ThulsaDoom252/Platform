@@ -48,23 +48,34 @@ import {
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { WordDeckActivity } from "@/lib/actions/word-deck";
+import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
+import { regularSectionKey } from "@/lib/regular-lesson";
 
 const inputCls =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 const areaCls =
   "min-h-32 w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm leading-relaxed text-content outline-none transition placeholder:text-faint focus:border-accent";
 
-export function LessonEditor({
-  lesson,
-  vocabs,
-  lexises,
-  activities,
-}: {
+type LessonEditorProps = {
   lesson: LessonView;
   vocabs: { id: string; name: string; scope: string; words: number }[];
   lexises: { id: string; name: string; scope: string; blocks: number }[];
   activities: WordDeckActivity[];
-}) {
+};
+
+export function LessonEditor(props: LessonEditorProps) {
+  if (props.lesson.kind === "REGULAR") {
+    return <RegularLessonEditor lesson={props.lesson} />;
+  }
+  return <ActivityLessonEditor {...props} />;
+}
+
+function ActivityLessonEditor({
+  lesson,
+  vocabs,
+  lexises,
+  activities,
+}: LessonEditorProps) {
   const { t } = useT();
   const router = useRouter();
 
@@ -677,6 +688,58 @@ export function LessonEditor({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+function RegularLessonEditor({ lesson }: { lesson: LessonView }) {
+  const { t } = useT();
+  const router = useRouter();
+  const [title, setTitle] = useState(lesson.title);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startBusy] = useTransition();
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-4 ring-1 ring-line">
+        <Link href="/teacher/lessons" className="mr-1 text-sm font-semibold text-muted hover:text-accent">
+          <IconChevronLeft className="inline h-4 w-4" />
+        </Link>
+        <input
+          value={title}
+          maxLength={160}
+          onChange={(event) => { setTitle(event.target.value); setSaved(false); }}
+          className={`${inputCls} min-w-0 flex-1 font-bold`}
+        />
+        <button
+          type="button"
+          disabled={busy || !title.trim()}
+          onClick={() => startBusy(async () => {
+            setError(null);
+            const result = await saveLessonAction(lesson.id, { title });
+            if (result.error) setError(result.error);
+            else { setSaved(true); router.refresh(); }
+          })}
+          className="flex h-11 items-center gap-1.5 rounded-xl bg-accent px-4 text-sm font-bold text-white disabled:opacity-50"
+        >
+          <IconCheck className="h-4 w-4" />
+          {saved ? t.lessonUnits.saved : t.lessonUnits.save}
+        </button>
+        {error && <p className="w-full text-sm text-rose-500">{error}</p>}
+      </div>
+
+      {lesson.regularSections.length > 0 ? (
+        <RegularLessonView
+          sections={lesson.regularSections}
+          teacher
+          open={lesson.regularSections.map((section) => regularSectionKey(section.id))}
+        />
+      ) : (
+        <div className="rounded-2xl bg-surface p-8 text-center text-sm text-faint ring-1 ring-line">
+          {t.lessonUnits.emptyRegularLesson}
+        </div>
+      )}
     </div>
   );
 }
