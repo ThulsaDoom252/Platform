@@ -73,7 +73,7 @@ export async function submitHomeworkAutoAnswerAction(
   }
 
   const state = { ...(row.assignment.answers ?? {}) };
-  if (isStudent && homeworkStatus(state, found.item.id)) {
+  if (homeworkStatus(state, found.item.id)) {
     return publicItemState(state, found.item.id);
   }
 
@@ -81,14 +81,7 @@ export async function submitHomeworkAutoAnswerAction(
   if (!answer) return { error: "Введи ответ" };
 
   const attempts = homeworkAttempts(state, found.item.id);
-  if (isTeacher) {
-    state[homeworkValueKey(found.item.id)] = answer;
-    if (homeworkAnswerMatches(found.item, answer)) {
-      state[homeworkStatusKey(found.item.id)] = "correct";
-    } else {
-      delete state[homeworkStatusKey(found.item.id)];
-    }
-  } else if (homeworkAnswerMatches(found.item, answer)) {
+  if (homeworkAnswerMatches(found.item, answer)) {
     state[homeworkValueKey(found.item.id)] = answer;
     state[homeworkStatusKey(found.item.id)] = "correct";
   } else {
@@ -107,6 +100,32 @@ export async function submitHomeworkAutoAnswerAction(
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return publicItemState(state, found.item.id);
+}
+
+/** Удалить ответ и историю попыток у одного задания, не затрагивая заметку учителя. */
+export async function resetHomeworkAnswerAction(
+  assignmentId: string,
+  itemId: string,
+): Promise<{ error?: string }> {
+  const session = await requireUser();
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  const isStudent = session.role === "STUDENT" && row?.assignment.studentId === session.userId;
+  const isTeacher = session.role === "TEACHER" && row?.authorId === session.userId;
+  if (!row || (!isStudent && !isTeacher)) return { error: "Домашняя работа не найдена" };
+  const found = findHomeworkItem(row.plan, String(itemId ?? ""));
+  if (!found) return { error: "Задание не найдено" };
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  delete state[homeworkValueKey(found.item.id)];
+  delete state[homeworkStatusKey(found.item.id)];
+  delete state[homeworkAttemptsKey(found.item.id)];
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  return {};
 }
 
 /** Сохранить свободный ответ, перевод или ссылку на запись. */

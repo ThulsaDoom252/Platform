@@ -700,6 +700,8 @@ export const en = {
     showAnswers: "Show correct answers",
     hideAnswers: "Hide correct answers",
     correctAnswer: "Correct answer",
+    options: "Options",
+    resetAnswer: "Reset answers",
     instructions: {
       fill: "Complete each sentence with a word or phrase from the list.",
       definition: "Read the definition and write the exact word or phrase.",

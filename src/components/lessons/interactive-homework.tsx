@@ -11,6 +11,7 @@ import { useT } from "@/components/i18n-provider";
 import {
   addHomeworkQuestionAction,
   removeHomeworkQuestionAction,
+  resetHomeworkAnswerAction,
   saveHomeworkResponseAction,
   saveHomeworkTeacherNoteAction,
   submitHomeworkAutoAnswerAction,
@@ -32,6 +33,7 @@ import {
 import {
   IconCheck,
   IconChevronDown,
+  IconDots,
   IconEye,
   IconEyeOff,
   IconPencil,
@@ -241,6 +243,7 @@ function AutoTextExercise({
 
   const submit = (item: HomeworkItem) => {
     const value = drafts[item.id] ?? "";
+    if (!value.trim() || busy) return;
     startBusy(async () => {
       const result = await submitHomeworkAutoAnswerAction(session.assignmentId, item.id, value);
       if ("error" in result && result.error) return;
@@ -257,7 +260,7 @@ function AutoTextExercise({
       });
       setDrafts((current) => ({
         ...current,
-        [item.id]: session.teacher || next.status ? next.value : "",
+        [item.id]: next.status ? next.value : "",
       }));
       const tone = next.status === "correct" ? "right" : "wrong";
       setFeedback((current) => ({ ...current, [item.id]: undefined }));
@@ -281,39 +284,19 @@ function AutoTextExercise({
             session={session}
             state={state}
             setState={setState}
-            feedback={feedback[item.id]}
             showAnswers={showAnswers}
+            onReset={() => setDrafts((current) => ({ ...current, [item.id]: "" }))}
           >
-            <p className="text-sm font-semibold leading-relaxed text-content">{item.prompt}</p>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <input
-                value={drafts[item.id] ?? ""}
-                disabled={(!session.teacher && Boolean(status)) || busy}
-                onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") submit(item);
-                }}
-                placeholder={t.interactiveHomework.answerPlaceholder}
-                className={cn(
-                  "h-10 min-w-0 flex-1 rounded-xl border bg-surface-2 px-3 text-sm font-semibold text-content outline-none transition",
-                  status === "correct"
-                    ? "border-emerald-500 ring-2 ring-emerald-300/40"
-                    : status === "locked"
-                      ? "border-rose-500 ring-2 ring-rose-300/40"
-                      : "border-line focus:border-accent",
-                )}
-              />
-              {(session.teacher || !status) && (
-                <button
-                  type="button"
-                  disabled={busy || !(drafts[item.id] ?? "").trim()}
-                  onClick={() => submit(item)}
-                  className="h-10 rounded-xl bg-accent px-4 text-xs font-black text-white transition hover:brightness-95 disabled:opacity-40"
-                >
-                  {session.teacher ? t.lessonUnits.save : t.interactiveHomework.check}
-                </button>
-              )}
-            </div>
+            <InlineHomeworkAnswer
+              item={item}
+              value={drafts[item.id] ?? ""}
+              state={state}
+              feedback={feedback[item.id]}
+              disabled={Boolean(status) || busy}
+              placeholder={t.interactiveHomework.answerPlaceholder}
+              onChange={(value) => setDrafts((current) => ({ ...current, [item.id]: value }))}
+              onCommit={() => submit(item)}
+            />
           </HomeworkItemShell>
         );
       })}
@@ -350,7 +333,7 @@ function DragExercise({
   );
 
   const drop = (item: HomeworkItem, answer: string | null) => {
-    if (!answer || (!session.teacher && homeworkStatus(state, item.id))) return;
+    if (!answer || homeworkStatus(state, item.id)) return;
     startBusy(async () => {
       const result = await submitHomeworkAutoAnswerAction(session.assignmentId, item.id, answer);
       if ("error" in result && result.error) return;
@@ -418,29 +401,36 @@ function DragExercise({
               session={session}
               state={state}
               setState={setState}
-              feedback={feedback[item.id]}
               showAnswers={showAnswers}
+              onReset={() => setSelected(null)}
             >
-              <p className="text-sm font-semibold leading-relaxed text-content">{item.prompt}</p>
-              <button
-                type="button"
-                disabled={(!session.teacher && Boolean(status)) || busy}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => onDrop(event, item)}
-                onClick={() => drop(item, selected)}
-                className={cn(
-                  "mt-2 min-h-11 w-full rounded-xl border-2 border-dashed px-3 py-2 text-left text-sm font-bold transition",
-                  status === "correct"
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-800"
-                    : status === "locked"
-                      ? "border-rose-500 bg-rose-50 text-rose-800"
-                      : selected
-                        ? "border-accent bg-accent-soft text-accent"
-                        : "border-line bg-surface-2 text-faint",
-                )}
-              >
-                {value || (selected ? `${t.interactiveHomework.place}: ${selected}` : t.interactiveHomework.dropHere)}
-              </button>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm font-semibold leading-relaxed text-content">
+                <span>{item.prompt}</span>
+                <span className="inline-flex max-w-full items-center gap-1.5 align-middle">
+                  <button
+                    type="button"
+                    disabled={Boolean(status) || busy}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => onDrop(event, item)}
+                    onClick={() => drop(item, selected)}
+                    className={cn(
+                      "min-h-9 w-56 max-w-full rounded-lg border-2 border-dashed px-3 py-1.5 text-left text-sm font-bold transition",
+                      feedback[item.id] === "wrong" && "homework-error-flash",
+                      feedback[item.id] === "right" && "homework-correct-pop",
+                      status === "correct"
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                        : status === "locked"
+                          ? "border-rose-500 bg-rose-50 text-rose-800"
+                          : selected
+                            ? "border-accent bg-accent-soft text-accent"
+                            : "border-line bg-surface-2 text-faint",
+                    )}
+                  >
+                    {value || (selected ? `${t.interactiveHomework.place}: ${selected}` : t.interactiveHomework.dropHere)}
+                  </button>
+                  <AttemptDots item={item} state={state} />
+                </span>
+              </div>
             </HomeworkItemShell>
           );
         })}
@@ -467,23 +457,21 @@ function ManualExercise({
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(exercise.items.map((item) => [item.id, state[homeworkValueKey(item.id)] ?? ""])),
   );
-  const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newQuestion, setNewQuestion] = useState("");
   const [busy, startBusy] = useTransition();
 
   const save = (item: HomeworkItem) => {
+    const value = drafts[item.id] ?? "";
+    if (busy || value.trim() === (state[homeworkValueKey(item.id)] ?? "").trim()) return;
     setError(null);
     startBusy(async () => {
-      const value = drafts[item.id] ?? "";
       const result = await saveHomeworkResponseAction(session.assignmentId, item.id, value);
       if (result.error) {
         setError(result.error);
         return;
       }
       setState((current) => ({ ...current, [homeworkValueKey(item.id)]: value.trim() }));
-      setSaved(item.id);
-      window.setTimeout(() => setSaved((current) => current === item.id ? null : current), 1_500);
     });
   };
 
@@ -519,6 +507,7 @@ function ManualExercise({
             state={state}
             setState={setState}
             showAnswers={showAnswers}
+            onReset={() => setDrafts((current) => ({ ...current, [item.id]: "" }))}
           >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
@@ -565,22 +554,30 @@ function ManualExercise({
                 <input
                   value={drafts[item.id] ?? ""}
                   onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
+                  onBlur={() => save(item)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }}
                   placeholder="https://voca.ro/..."
                   className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 text-sm text-content outline-none focus:border-accent"
                 />
-                <SaveButton busy={busy} saved={saved === item.id} onClick={() => save(item)} />
               </div>
             ) : (
               <div className="mt-2">
                 <textarea
                   value={drafts[item.id] ?? ""}
                   onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
+                  onBlur={() => save(item)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || event.shiftKey) return;
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }}
                   placeholder={t.interactiveHomework.writeAnswer}
                   className="min-h-24 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed text-content outline-none transition focus:border-accent"
                 />
-                <div className="mt-2 flex justify-end">
-                  <SaveButton busy={busy} saved={saved === item.id} onClick={() => save(item)} />
-                </div>
               </div>
             )}
           </HomeworkItemShell>
@@ -611,20 +608,105 @@ function ManualExercise({
   );
 }
 
-function SaveButton({ busy, saved, onClick }: { busy: boolean; saved: boolean; onClick: () => void }) {
-  const { t } = useT();
+function InlineHomeworkAnswer({
+  item,
+  value,
+  state,
+  feedback,
+  disabled,
+  placeholder,
+  onChange,
+  onCommit,
+}: {
+  item: HomeworkItem;
+  value: string;
+  state: HomeworkStoredState;
+  feedback?: "wrong" | "right";
+  disabled: boolean;
+  placeholder: string;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+}) {
+  const status = homeworkStatus(state, item.id);
+  const blankAt = item.prompt.indexOf("___");
+  const before = blankAt >= 0 ? item.prompt.slice(0, blankAt) : item.prompt;
+  const after = blankAt >= 0 ? item.prompt.slice(blankAt + 3) : "";
+
   return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={onClick}
-      className={cn(
-        "h-10 rounded-xl px-4 text-xs font-black text-white transition disabled:opacity-50",
-        saved ? "bg-emerald-500" : "bg-accent",
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm font-semibold leading-relaxed text-content">
+      {before && <span>{before}</span>}
+      <span className="inline-flex max-w-full items-center gap-1.5 align-middle">
+        <input
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onCommit}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            event.currentTarget.blur();
+          }}
+          placeholder={placeholder}
+          className={cn(
+            "h-9 w-56 max-w-full rounded-lg border bg-surface-2 px-3 text-sm font-bold text-content outline-none transition focus:border-accent disabled:cursor-default",
+            feedback === "wrong" && "homework-error-flash",
+            feedback === "right" && "homework-correct-pop",
+            status === "correct"
+              ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+              : status === "locked"
+                ? "border-rose-500 bg-rose-50 text-rose-800"
+                : "border-line",
+          )}
+        />
+        <AttemptDots item={item} state={state} />
+      </span>
+      {after && <span>{after}</span>}
+    </div>
+  );
+}
+
+function AttemptDots({ item, state }: { item: HomeworkItem; state: HomeworkStoredState }) {
+  const { t } = useT();
+  const attempts = homeworkAttempts(state, item.id);
+  const status = homeworkStatus(state, item.id);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const successAt = status === "correct" ? Math.min(attempts.length, 2) : -1;
+
+  return (
+    <span className="relative inline-flex shrink-0 flex-col gap-1" aria-label={t.interactiveHomework.showAttempts}>
+      {[0, 1, 2].map((at) => {
+        const wrong = at < attempts.length;
+        const correct = at === successAt;
+        if (wrong) {
+          return (
+            <button
+              key={at}
+              type="button"
+              onClick={() => setHistoryOpen((open) => !open)}
+              title={t.interactiveHomework.showAttempts}
+              className="h-2 w-2 rounded-full bg-rose-500 ring-1 ring-rose-100 transition hover:scale-125"
+            />
+          );
+        }
+        return (
+          <span
+            key={at}
+            className={cn(
+              "h-2 w-2 rounded-full",
+              correct ? "bg-emerald-500 ring-1 ring-emerald-100" : "bg-line",
+            )}
+          />
+        );
+      })}
+      {historyOpen && attempts.length > 0 && (
+        <span className="absolute right-0 top-full z-30 mt-2 w-64 rounded-xl bg-surface p-3 text-left text-xs text-content shadow-xl ring-1 ring-line">
+          <span className="block font-black text-faint">{t.interactiveHomework.wrongAttempts}</span>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-4">
+            {attempts.map((attempt, at) => <li key={`${at}-${attempt}`}>{attempt}</li>)}
+          </ol>
+        </span>
       )}
-    >
-      {saved ? t.lessonUnits.saved : t.lessonUnits.save}
-    </button>
+    </span>
   );
 }
 
@@ -634,8 +716,8 @@ function HomeworkItemShell({
   session,
   state,
   setState,
-  feedback,
   showAnswers,
+  onReset,
   children,
 }: {
   item: HomeworkItem;
@@ -643,14 +725,12 @@ function HomeworkItemShell({
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
-  feedback?: "wrong" | "right";
   showAnswers: boolean;
+  onReset?: () => void;
   children: React.ReactNode;
 }) {
   const { t } = useT();
-  const attempts = homeworkAttempts(state, item.id);
   const status = homeworkStatus(state, item.id);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState(state[homeworkNoteKey(item.id)] ?? "");
   const [visible, setVisible] = useState(state[homeworkNoteVisibleKey(item.id)] === "1");
@@ -667,8 +747,6 @@ function HomeworkItemShell({
           : status === "locked"
             ? "border-rose-500"
             : "border-line",
-        feedback === "wrong" && "homework-error-flash",
-        feedback === "right" && "homework-correct-pop",
       )}
     >
       <div className="flex items-start gap-3">
@@ -676,32 +754,40 @@ function HomeworkItemShell({
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">{children}</div>
-        {(attempts.length > 0 || status === "correct") && (
-          <div className="flex shrink-0 items-center gap-1">
-            {attempts.map((_, at) => (
-              <button
-                key={at}
-                type="button"
-                onClick={() => setHistoryOpen((open) => !open)}
-                title={t.interactiveHomework.showAttempts}
-                className="h-3.5 w-3.5 rounded-full bg-rose-500 ring-2 ring-rose-100 transition hover:scale-125"
-              />
-            ))}
-            {status === "correct" && (
-              <span className="h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-emerald-100" />
-            )}
+        <details className="relative shrink-0">
+          <summary
+            className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content [&::-webkit-details-marker]:hidden"
+            title={t.interactiveHomework.options}
+          >
+            <IconDots className="h-4 w-4" />
+          </summary>
+          <div className="absolute right-0 top-9 z-30 w-44 rounded-xl bg-surface p-1.5 shadow-xl ring-1 ring-line">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={(event) => {
+                const menu = event.currentTarget.closest("details");
+                startBusy(async () => {
+                  const result = await resetHomeworkAnswerAction(session.assignmentId, item.id);
+                  if (result.error) return;
+                  setState((current) => {
+                    const updated = { ...current };
+                    delete updated[homeworkValueKey(item.id)];
+                    delete updated[homeworkStatusKey(item.id)];
+                    delete updated[homeworkAttemptsKey(item.id)];
+                    return updated;
+                  });
+                  onReset?.();
+                  menu?.removeAttribute("open");
+                });
+              }}
+              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-bold text-content transition hover:bg-surface-2 disabled:opacity-50"
+            >
+              {t.interactiveHomework.resetAnswer}
+            </button>
           </div>
-        )}
+        </details>
       </div>
-
-      {historyOpen && attempts.length > 0 && (
-        <div className="ml-10 mt-3 rounded-xl bg-rose-50 p-3 text-xs text-rose-800 ring-1 ring-rose-200">
-          <p className="font-black">{t.interactiveHomework.wrongAttempts}</p>
-          <ol className="mt-1 list-decimal space-y-1 pl-4">
-            {attempts.map((attempt, at) => <li key={at}>{attempt}</li>)}
-          </ol>
-        </div>
-      )}
 
       {session.teacher && showAnswers && item.answer && (
         <div className="ml-10 mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-800 ring-1 ring-emerald-200">
