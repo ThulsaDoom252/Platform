@@ -85,6 +85,24 @@ async function requireUser() {
 const isOnline = (seen: Date | null) =>
   !!seen && Date.now() - seen.getTime() < ONLINE_WINDOW_MS;
 
+async function countUnreadMessages(userId: string, studentId: string | null) {
+  if (!studentId) return 0;
+
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(classMessages)
+    .where(
+      and(
+        eq(classMessages.studentId, studentId),
+        ne(classMessages.authorId, userId),
+        isNull(classMessages.readAt),
+        isNull(classMessages.deletedAt),
+      ),
+    );
+
+  return row?.n ?? 0;
+}
+
 /**
  * Отметиться живым и узнать обстановку.
  *
@@ -148,21 +166,7 @@ export async function heartbeatAction(): Promise<{
 
   const studentId = role === "TEACHER" ? (me?.classWithId ?? null) : session.userId;
 
-  let unread = 0;
-  if (studentId) {
-    const [row] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(classMessages)
-      .where(
-        and(
-          eq(classMessages.studentId, studentId),
-          ne(classMessages.authorId, session.userId),
-          isNull(classMessages.readAt),
-          isNull(classMessages.deletedAt),
-        ),
-      );
-    unread = row?.n ?? 0;
-  }
+  const unread = await countUnreadMessages(session.userId, studentId);
 
   return {
     role,
@@ -176,6 +180,19 @@ export async function heartbeatAction(): Promise<{
       : null,
     unread,
   };
+}
+
+/** Быстрый счётчик для закрытого чата — без тяжёлой загрузки всей ленты. */
+export async function unreadMessagesAction(): Promise<number> {
+  const session = await requireUser();
+  const [me] = await db
+    .select({ role: users.role, classWithId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+
+  const studentId = me?.role === "TEACHER" ? (me.classWithId ?? null) : session.userId;
+  return countUnreadMessages(session.userId, studentId);
 }
 
 /** Публичная карточка именно того учителя, который сейчас ведёт класс. */

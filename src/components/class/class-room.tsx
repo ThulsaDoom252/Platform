@@ -29,6 +29,7 @@ import {
   classSyncAction,
   classTeacherProfileAction,
   heartbeatAction,
+  unreadMessagesAction,
   listClassPeopleAction,
   enterClassAction,
   leaveClassAction,
@@ -84,6 +85,7 @@ import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
 
 const BEAT_MS = 30_000;
+const CHAT_UNREAD_MS = 4_000;
 /*
  * «Перейди на доску» не должно ждать полминуты до отметки о живости,
  * поэтому у команд свой такт — короткий и с двумя полями в ответе.
@@ -197,7 +199,10 @@ export function ClassRoom({
   const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
   const [sortDesc, setSortDesc] = useLocalJson("class-sort-desc", false);
   const [showTimer, setShowTimer] = useState(false);
-  const [unread, setUnread] = useState(0);
+  const [unreadState, setUnreadState] = useState<{
+    conversation: string | null;
+    count: number;
+  }>({ conversation: null, count: 0 });
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [partnerOnBoard, setPartnerOnBoard] = useState(false);
   const [boardFocus, setBoardFocus] = useState<{
@@ -220,6 +225,7 @@ export function ClassRoom({
   const [teacherProfile, setTeacherProfile] = useState<ClassPartnerProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const chime = useRef<(() => void) | null>(null);
+  const unreadRef = useRef(0);
   const boardOpen = useRef(false);
   const appliedView = useRef<string | null>(null);
   const seenVocabularyEvents = useRef(new Set<string>());
@@ -300,6 +306,38 @@ export function ClassRoom({
 
   // У учителя разговор принадлежит ученику, у ученика — ему самому.
   const conversation = teacher ? (partner?.id ?? null) : selfId;
+  const unread = unreadState.conversation === conversation ? unreadState.count : 0;
+
+  useEffect(() => {
+    unreadRef.current = 0;
+    if (open.chat || !conversation) return;
+
+    let alive = true;
+    let ready = false;
+
+    const loadUnread = () => {
+      unreadMessagesAction()
+        .then((next) => {
+          if (!alive) return;
+          const previous = unreadRef.current;
+          unreadRef.current = next;
+          setUnreadState({ conversation, count: next });
+          // При первом такте показываем уже накопленное без внезапного звука.
+          if (ready && next > previous) chime.current?.();
+          ready = true;
+        })
+        .catch(() => {
+          /* следующий такт подхватит */
+        });
+    };
+
+    loadUnread();
+    const timer = setInterval(loadUnread, CHAT_UNREAD_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [conversation, open.chat]);
 
   useEffect(() => {
     seenVocabularyEvents.current.clear();
@@ -308,19 +346,6 @@ export function ClassRoom({
 
   useEffect(() => () => {
     if (vocabularyNoticeTimer.current) clearTimeout(vocabularyNoticeTimer.current);
-  }, []);
-
-  // Свёрнутость нужна обработчику чата, а не разметке, поэтому живёт
-  // в ref: перерисовывать панель из-за неё незачем.
-  const chatOpen = useRef(true);
-  useEffect(() => {
-    chatOpen.current = open.chat;
-  }, [open.chat]);
-
-  const onUnread = useCallback((n: number) => {
-    if (n <= 0 || chatOpen.current) return;
-    setUnread((v) => v + n);
-    chime.current?.();
   }, []);
 
   const showVocabularyNotice = useCallback((word: {
@@ -344,7 +369,10 @@ export function ClassRoom({
 
   const toggle = (key: PanelKey) => {
     setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
-    if (key === "chat") setUnread(0);
+    if (key === "chat" && !open.chat) {
+      unreadRef.current = 0;
+      setUnreadState({ conversation, count: 0 });
+    }
   };
 
   const placementOf = (key: ClassUtilityPanel) =>
@@ -501,13 +529,14 @@ export function ClassRoom({
         className={cn(
           "relative flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition",
           open[key] ? "bg-accent text-white" : "text-muted hover:bg-surface-2 hover:text-content",
+          key === "chat" && !open.chat && !!badge && badge > 0 && "class-chat-unread",
         )}
       >
         {icon}
         <span className="hidden sm:inline">{label}</span>
         {!!badge && badge > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-            {badge}
+          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-black text-white shadow-sm ring-2 ring-surface">
+            {badge > 99 ? "99+" : badge}
           </span>
         )}
       </button>
@@ -956,7 +985,6 @@ export function ClassRoom({
                 studentId={conversation}
                 title={chatTitle}
                 canArchive={teacher}
-                onUnread={onUnread}
                 compact
               />
             </DockablePanel>

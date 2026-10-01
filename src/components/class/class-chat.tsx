@@ -26,15 +26,12 @@ export function ClassChat({
   studentId,
   title,
   canArchive,
-  onUnread,
   compact = false,
 }: {
   /** Чей разговор. Пусто — учитель ещё не выбрал класс. */
   studentId: string | null;
   title: string;
   canArchive: boolean;
-  /** Сколько чужих сообщений пришло, пока панель свёрнута. */
-  onUnread?: (n: number) => void;
   /** Заголовок уже показан общей оболочкой плавающей панели. */
   compact?: boolean;
 }) {
@@ -45,7 +42,6 @@ export function ClassChat({
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [busy, startBusy] = useTransition();
   const feed = useRef<HTMLDivElement>(null);
-  const seen = useRef(0);
 
   useEffect(() => {
     // Чужую переписку чистить незачем: при смене ученика родитель
@@ -58,11 +54,6 @@ export function ClassChat({
         const list = await listMessagesAction(studentId, withArchived);
         if (!alive) return;
         setMessages(list);
-
-        // Считаем только чужие: свои сообщения уведомлением быть не могут.
-        const theirs = list.filter((m) => !m.mine).length;
-        if (theirs > seen.current) onUnread?.(theirs - seen.current);
-        seen.current = theirs;
       } catch {
         /* сеть моргнула — следующий опрос подхватит */
       }
@@ -74,7 +65,7 @@ export function ClassChat({
       alive = false;
       clearInterval(timer);
     };
-  }, [studentId, withArchived, onUnread]);
+  }, [studentId, withArchived]);
 
   // Лента всегда показывает последнее сообщение.
   useEffect(() => {

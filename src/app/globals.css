@@ -859,6 +859,33 @@ body {
   content: "План урока: с чего начать, какие слова, что спросить…";
 }
 
+/* Закрытый чат мягко мигает цветом личной темы, не пряча число. */
+@keyframes class-chat-unread {
+  0%,
+  100% {
+    color: var(--muted);
+    background: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+}
+
+.class-chat-unread {
+  animation: class-chat-unread 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .class-chat-unread {
+    animation: none;
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+}
+
 /* ---------- Повторение слов ----------
    Промах в парах и в «собери слово» надо почувствовать, а не вычитать:
    короткая встряска читается быстрее любой надписи. */
