@@ -16,13 +16,17 @@ import { fmt } from "@/lib/i18n";
 import {
   createLessonAction,
   deleteLessonAction,
+  saveLessonAction,
   type LessonCard,
 } from "@/lib/actions/lessons";
 import {
+  IconCheck,
   IconChevronRight,
   IconLayers,
+  IconPencil,
   IconPlus,
   IconTrash,
+  IconX,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
@@ -118,6 +122,31 @@ function Row({ item }: { item: LessonCard }) {
   const { t } = useT();
   const router = useRouter();
   const [busy, startBusy] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.title);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  function rename() {
+    const next = draft.trim().slice(0, 160);
+    if (!next) return;
+    setRenameError(null);
+    startBusy(async () => {
+      const result = await saveLessonAction(item.id, { title: next });
+      if (result.error) {
+        setRenameError(result.error);
+        return;
+      }
+      setDraft(next);
+      setEditing(false);
+      router.refresh();
+    });
+  }
+
+  function cancelRename() {
+    setDraft(item.title);
+    setRenameError(null);
+    setEditing(false);
+  }
 
   /* Чем урок наполнен — одной строкой; пустое просто не упоминается. */
   const filled = [
@@ -139,18 +168,66 @@ function Row({ item }: { item: LessonCard }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={`/teacher/lessons/${item.id}`}
-            className="font-semibold text-content transition hover:text-accent"
-          >
-            {item.title}
-          </Link>
+          {editing ? (
+            <div className="flex min-w-0 max-w-xl flex-1 items-center gap-1.5">
+              <input
+                autoFocus
+                value={draft}
+                maxLength={160}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") rename();
+                  if (event.key === "Escape") cancelRename();
+                }}
+                className="h-9 min-w-0 flex-1 rounded-xl border border-accent bg-surface-2 px-3 text-sm font-semibold text-content outline-none"
+              />
+              <button
+                type="button"
+                disabled={busy || !draft.trim()}
+                title={t.lessonUnits.save}
+                onClick={rename}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                <IconCheck className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                title={t.common.cancel}
+                onClick={cancelRename}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line text-muted transition hover:border-accent hover:text-content disabled:opacity-50"
+              >
+                <IconX className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <Link
+                href={`/teacher/lessons/${item.id}`}
+                className="font-semibold text-content transition hover:text-accent"
+              >
+                {item.title}
+              </Link>
+              <button
+                type="button"
+                title={t.lessonUnits.renameLesson}
+                onClick={() => setEditing(true)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-accent"
+              >
+                <IconPencil className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
           <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-faint">
             {item.kind === "ACTIVITY"
               ? t.lessonUnits.kindActivity
               : t.lessonUnits.kindRegular}
           </span>
         </div>
+
+        {renameError && (
+          <p className="mt-1 text-[12px] font-semibold text-rose-500">{renameError}</p>
+        )}
 
         <p className="mt-0.5 text-[12px] text-muted">
           {item.vocabName ? `${item.vocabName} · ` : ""}

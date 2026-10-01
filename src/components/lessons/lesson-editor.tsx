@@ -41,6 +41,7 @@ import { RuleReader } from "@/components/materials/rule-reader";
 import {
   IconCheck,
   IconChevronLeft,
+  IconPencil,
   IconPlus,
   IconTrash,
   IconVolume,
@@ -89,6 +90,7 @@ export function LessonEditor({
   const [homework, setHomework] = useState(lesson.homework);
   const [activityIds, setActivityIds] = useState(() => new Set(lesson.activities.map((activity) => activity.id)));
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [filled, setFilled] = useState<number | null>(null);
   const [busy, startBusy] = useTransition();
 
@@ -186,6 +188,7 @@ export function LessonEditor({
 
   function save() {
     setSaved(false);
+    setSaveError(null);
     startBusy(async () => {
       const result = await saveLessonAction(lesson.id, {
         title,
@@ -198,8 +201,28 @@ export function LessonEditor({
         homework,
         activityIds: [...activityIds],
       });
-      if (result.error) return;
+      if (result.error) {
+        setSaveError(result.error);
+        return;
+      }
       setSaved(true);
+    });
+  }
+
+  function saveTitle() {
+    const next = title.trim().slice(0, 160);
+    if (!next) return;
+    setSaved(false);
+    setSaveError(null);
+    startBusy(async () => {
+      const result = await saveLessonAction(lesson.id, { title: next });
+      if (result.error) {
+        setSaveError(result.error);
+        return;
+      }
+      setTitle(next);
+      setSaved(true);
+      router.refresh();
     });
   }
 
@@ -213,11 +236,39 @@ export function LessonEditor({
         {t.lessonUnits.title}
       </Link>
 
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="w-full rounded-xl bg-transparent text-2xl font-bold text-content outline-none"
-      />
+      <div>
+        <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-faint">
+          {t.lessonUnits.lessonName}
+        </label>
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-line bg-surface px-4 shadow-sm transition focus-within:border-accent">
+            <IconPencil className="h-4 w-4 shrink-0 text-accent" />
+            <input
+              value={title}
+              maxLength={160}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setSaved(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") saveTitle();
+              }}
+              className="h-14 min-w-0 flex-1 bg-transparent text-xl font-bold text-content outline-none sm:text-2xl"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={busy || !title.trim()}
+            onClick={saveTitle}
+            className="h-14 shrink-0 rounded-2xl bg-accent px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? t.lessonUnits.saving : t.lessonUnits.save}
+          </button>
+        </div>
+        {saveError && (
+          <p className="mt-1.5 text-[12px] font-semibold text-rose-500">{saveError}</p>
+        )}
+      </div>
 
       {/* Словник: свой у урока, наполняется из материалов по желанию. */}
       <Section title={t.lessonUnits.secVocab}>

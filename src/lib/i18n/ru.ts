@@ -646,6 +646,8 @@ export const ru: Dict = {
     subtitle: "Заготовки уроков: собрал один раз — выдаёшь скольким угодно.",
     empty: "Уроков пока нет.",
     newLesson: "Новый урок",
+    lessonName: "Название урока",
+    renameLesson: "Переименовать урок",
     namePlaceholder: "Mendel interview, часть 1",
     kindRegular: "Обычный",
     kindActivity: "Активность",

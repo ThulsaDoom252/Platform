@@ -573,6 +573,8 @@ export const en = {
     subtitle: "Lesson templates: build once, hand out as many times as you like.",
     empty: "No lessons yet.",
     newLesson: "New lesson",
+    lessonName: "Lesson name",
+    renameLesson: "Rename lesson",
     namePlaceholder: "Mendel interview, part 1",
     kindRegular: "Regular",
     kindActivity: "Activity",

@@ -646,6 +646,8 @@ export const uk: Dict = {
     subtitle: "Заготовки уроків: зібрав один раз — видаєш скільком завгодно.",
     empty: "Уроків поки немає.",
     newLesson: "Новий урок",
+    lessonName: "Назва уроку",
+    renameLesson: "Перейменувати урок",
     namePlaceholder: "Mendel interview, частина 1",
     kindRegular: "Звичайний",
     kindActivity: "Активність",
