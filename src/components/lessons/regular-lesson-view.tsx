@@ -351,10 +351,10 @@ export function RegularLessonView({
       activeId === "__homework"
     ) return;
     const cleanups: (() => void)[] = [];
-    const save = (key: string, value: string) => {
+    const save = async (key: string, value: string) => {
       responseRef.current = { ...responseRef.current, [key]: value };
       setResponseState(responseRef.current);
-      void onSaveResponse?.(key, value);
+      return onSaveResponse?.(key, value);
     };
     const read = (responseId: string) => {
       const key = regularResponseKey(active.id, responseId);
@@ -450,8 +450,14 @@ export function RegularLessonView({
           event.stopPropagation();
           panel.hidden = !panel.hidden;
         };
-        const saveNote = () => save(noteKey, field.value.trim());
-        const saveVisibility = () => save(visibleKey, checkbox.checked ? "1" : "");
+        const saveNote = (event: FocusEvent) => {
+          if (event.relatedTarget === checkbox) return;
+          void save(noteKey, field.value.trim());
+        };
+        const saveVisibility = async () => {
+          await save(noteKey, field.value.trim());
+          await save(visibleKey, checkbox.checked ? "1" : "");
+        };
         button.addEventListener("click", toggle);
         field.addEventListener("blur", saveNote);
         checkbox.addEventListener("change", saveVisibility);
@@ -632,7 +638,7 @@ export function RegularLessonView({
           field.rows = 2;
           field.placeholder = "Write your answer…";
           field.className = "regular-open-answer";
-          const blur = () => save(regularResponseKey(active.id, id), field.value.trim());
+          const blur = () => { void save(regularResponseKey(active.id, id), field.value.trim()); };
           field.addEventListener("blur", blur);
           item.append(field);
           addNote(item, `list-${listIndex + 1}-item-${itemIndex + 1}`);
