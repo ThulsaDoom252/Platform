@@ -223,7 +223,6 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
 export async function installNewDerekLessonAction() {
   const session = await requireTeacher();
   const id = await installNewDerekLesson(session.userId);
-  revalidatePath("/teacher/lessons");
   return { id };
 }
 
