@@ -19,6 +19,22 @@ export const LESSON_SECTIONS = [
 export type LessonSection = (typeof LESSON_SECTIONS)[number];
 
 /**
+ * Shorts are deliberately compact: vocabulary and lexis lead into one
+ * video/transcript flow, followed by the discussion questions.
+ */
+export const SHORTS_SECTIONS = [
+  "vocab",
+  "lexis",
+  "video",
+  "transcript",
+  "questions",
+] as const satisfies readonly LessonSection[];
+
+export function lessonSectionsForKind(kind: string): LessonSection[] {
+  return kind === "SHORTS" ? [...SHORTS_SECTIONS] : [...LESSON_SECTIONS];
+}
+
+/**
  * Словник открыт всегда.
  *
  * С него урок начинается: пока ученик не разобрал слова, видео и

@@ -39,6 +39,7 @@ import {
   normalizeLessonHighlights,
   normalizeLessonVocabularyReveal,
   openSections,
+  lessonSectionsForKind,
   lessonVocabularyReveal,
   lessonVocabularyRevealOptions,
   parseKey,
@@ -90,7 +91,12 @@ async function requireUser() {
 /* Заготовки                                                           */
 /* ------------------------------------------------------------------ */
 
-export type LessonKind = "REGULAR" | "ACTIVITY";
+export type LessonKind = "REGULAR" | "ACTIVITY" | "SHORTS";
+
+function normalizeLessonKind(value: unknown): LessonKind {
+  if (value === "REGULAR" || value === "SHORTS") return value;
+  return "ACTIVITY";
+}
 
 export type LessonLexisGroup = {
   id: string;
@@ -192,7 +198,7 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
     const questions = unit.questions ?? { afterVideo: [], afterReading: [] };
     return {
       id: unit.id,
-      kind: (unit.kind === "REGULAR" ? "REGULAR" : "ACTIVITY") as LessonKind,
+      kind: normalizeLessonKind(unit.kind),
       title: unit.title,
       description: unit.description,
       vocabName,
@@ -224,7 +230,7 @@ export async function createLessonAction(
     .insert(lessonUnits)
     .values({
       authorId: session.userId,
-      kind: kind === "REGULAR" ? "REGULAR" : "ACTIVITY",
+      kind: normalizeLessonKind(kind),
       title: name,
     })
     .returning({ id: lessonUnits.id });
@@ -516,7 +522,7 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
 
   return {
     id: unit.id,
-    kind: (unit.kind === "REGULAR" ? "REGULAR" : "ACTIVITY") as LessonKind,
+    kind: normalizeLessonKind(unit.kind),
     title: unit.title,
     description: unit.description,
     vocabNodeId: unit.vocabNodeId,
@@ -1001,6 +1007,9 @@ export async function openSectionAction(
     if (!target || target.teacherOnly) return { error: "Неизвестная секция" };
   } else {
     if (!isSection(section)) return { error: "Неизвестная секция" };
+    if (!lessonSectionsForKind(row.kind).includes(section)) {
+      return { error: "Этой секции нет в формате урока" };
+    }
     if (section === "vocab") return { error: "Словник открыт всегда" };
   }
 
@@ -1061,7 +1070,7 @@ export async function focusLessonSectionAction(
     target.kind === "REGULAR"
       ? !regularLessonSection(section, target.sections) ||
         regularLessonSection(section, target.sections)?.teacherOnly
-      : !isSection(section)
+      : !isSection(section) || !lessonSectionsForKind(target.kind).includes(section)
   ) {
     return { error: "Неизвестная секция" };
   }

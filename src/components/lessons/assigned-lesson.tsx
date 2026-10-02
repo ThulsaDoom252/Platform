@@ -20,6 +20,7 @@ import {
 import type { LessonAssignmentCard, LessonView as Lesson } from "@/lib/actions/lessons";
 import {
   LESSON_SECTIONS,
+  lessonSectionsForKind,
   lessonFocus,
   selectLexisGroup,
   selectedLexisGroup,
@@ -174,6 +175,7 @@ export function AssignedLesson({
     sectionFocus && LESSON_SECTIONS.includes(sectionFocus.section as (typeof LESSON_SECTIONS)[number])
       ? { ...sectionFocus, section: sectionFocus.section as (typeof LESSON_SECTIONS)[number] }
       : null;
+  const lessonSections = lessonSectionsForKind(data.lesson.kind);
 
   return (
     <div className="flex flex-col gap-4">
@@ -251,12 +253,12 @@ export function AssignedLesson({
         lesson={data.lesson}
         open={
           teacher || liveClass
-            ? [...LESSON_SECTIONS]
-            : data.open.filter((section) => LESSON_SECTIONS.includes(section as (typeof LESSON_SECTIONS)[number])) as (typeof LESSON_SECTIONS)[number][]
+            ? lessonSections
+            : data.open.filter((section) => lessonSections.includes(section as (typeof LESSON_SECTIONS)[number])) as (typeof LESSON_SECTIONS)[number][]
         }
         closed={
           teacher || liveClass
-            ? LESSON_SECTIONS.filter((s) => !data.open.includes(s))
+            ? lessonSections.filter((s) => !data.open.includes(s))
             : undefined
         }
         lockClosed={liveClass && !teacher}

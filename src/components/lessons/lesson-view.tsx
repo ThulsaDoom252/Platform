@@ -358,7 +358,27 @@ export function LessonView({
                   <p className="text-sm text-faint">{t.lessonUnits.emptyLexis}</p>
                 ))}
               {section === "video" && (
-                <Video lesson={lesson} session={videoSession} />
+                lesson.kind === "SHORTS" ? (
+                  <div className="flex flex-col gap-4">
+                    <Video lesson={lesson} session={videoSession} />
+                    <section className="rounded-2xl bg-surface-2 p-3 ring-1 ring-line sm:p-4">
+                      <h3 className="mb-3 text-[11px] font-black uppercase tracking-[0.14em] text-faint">
+                        {t.lessonUnits.secTranscript}
+                      </h3>
+                      <Transcript
+                        lines={lesson.transcript}
+                        highlights={highlights}
+                        focus={focus}
+                        onPick={onPick}
+                        highlightMode={highlightMode}
+                        highlightColor={highlightColor}
+                        onHighlight={onHighlight}
+                      />
+                    </section>
+                  </div>
+                ) : (
+                  <Video lesson={lesson} session={videoSession} />
+                )
               )}
               {section === "transcript" && (
                 <Transcript

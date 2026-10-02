@@ -329,7 +329,7 @@ function ActivityLessonEditor({
         {lesson.words.length > 0 && <VocabPreview words={lesson.words} />}
       </Section>
 
-      {lesson.kind === "ACTIVITY" && (
+      {lesson.kind !== "REGULAR" && (
         <Section title={t.lessonUnits.secLexis} hint={t.lessonUnits.lexisHint}>
           <div className="flex flex-wrap items-center gap-2">
             <select
@@ -588,8 +588,8 @@ function ActivityLessonEditor({
         </div>
       </Section>
 
-      {/* Домашка */}
-      <Section title={t.wordDeck.attachedGames}>
+      {/* Shorts ends with Questions; activities and homework stay out of this format. */}
+      {lesson.kind !== "SHORTS" && <Section title={t.wordDeck.attachedGames}>
         {activities.length === 0 ? (
           <p className="text-sm text-faint">{t.wordDeck.empty}</p>
         ) : (
@@ -623,10 +623,10 @@ function ActivityLessonEditor({
             })}
           </div>
         )}
-      </Section>
+      </Section>}
 
       {/* Домашка */}
-      <Section title={t.lessonUnits.secHomework}>
+      {lesson.kind !== "SHORTS" && <Section title={t.lessonUnits.secHomework}>
         <div className="flex flex-col gap-2.5">
           {homework.map((task, i) => (
             <div key={i} className="flex items-start gap-2 rounded-xl bg-surface-2 p-2.5">
@@ -671,7 +671,7 @@ function ActivityLessonEditor({
             {t.lessonUnits.addTask}
           </button>
         </div>
-      </Section>
+      </Section>}
 
       <div className="sticky bottom-4 flex items-center gap-3">
         <button

@@ -13,7 +13,7 @@ import {
   openSectionAction,
   type LessonCard,
 } from "@/lib/actions/lessons";
-import { LESSON_SECTIONS, type LessonSection } from "@/lib/lesson-unit";
+import { lessonSectionsForKind, type LessonSection } from "@/lib/lesson-unit";
 import { regularSectionKey } from "@/lib/regular-lesson";
 import { IconCheck, IconEye, IconEyeOff, IconPencil, IconPlus, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -134,7 +134,8 @@ export function ClassLesson({
     ? data.lesson.regularSections
         .filter((section) => !section.teacherOnly)
         .map((section) => ({ key: regularSectionKey(section.id), label: section.title }))
-    : LESSON_SECTIONS.map((section) => ({ key: section, label: LABEL[section] }));
+    : lessonSectionsForKind(data?.lesson.kind ?? "ACTIVITY")
+        .map((section) => ({ key: section, label: LABEL[section] }));
 
   const captureSelection = (
     event: MouseEvent<HTMLDivElement>,

@@ -18,7 +18,7 @@ import {
   type LessonAssignmentCard,
   type LessonKind,
 } from "@/lib/actions/lessons";
-import { LESSON_SECTIONS, type LessonSection } from "@/lib/lesson-unit";
+import { lessonSectionsForKind, type LessonSection } from "@/lib/lesson-unit";
 import { regularSectionKey, type RegularLessonSection } from "@/lib/regular-lesson";
 import { Avatar } from "@/components/avatar";
 import { IconCheck, IconChevronRight, IconTrash } from "@/components/icons";
@@ -73,12 +73,12 @@ export function LessonPin({
     ? regularSections
         .filter((section) => !section.teacherOnly)
         .map((section) => ({ key: regularSectionKey(section.id), label: section.title }))
-    : LESSON_SECTIONS.map((section) => ({ key: section, label: LABEL[section] }));
+    : lessonSectionsForKind(kind).map((section) => ({ key: section, label: LABEL[section] }));
 
   return (
     <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5">
       <p className="text-sm font-bold text-content">{t.lessonUnits.pinTo}</p>
-      {kind === "ACTIVITY" && (
+      {kind !== "REGULAR" && (
         <p className="mt-0.5 text-[12px] text-faint">{t.lessonUnits.onlyVocabAtFirst}</p>
       )}
 
@@ -102,7 +102,7 @@ export function LessonPin({
                   {/* Что открыто ученику. Словник закрыть нельзя. */}
                   <span className="ml-2 flex flex-wrap items-center gap-1">
                     {controlledSections.map(({ key: section, label }) => {
-                      const always = kind === "ACTIVITY" && section === "vocab";
+                      const always = kind !== "REGULAR" && section === "vocab";
                       const on = always || card.openSections.includes(section);
 
                       return (

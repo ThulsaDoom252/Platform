@@ -37,11 +37,12 @@ export function LessonsList({ items }: { items: LessonCard[] }) {
   const { t } = useT();
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<"ACTIVITY" | "REGULAR">("ACTIVITY");
+  const [kind, setKind] = useState<"ACTIVITY" | "REGULAR" | "SHORTS">("ACTIVITY");
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
   const regular = items.filter((item) => item.kind === "REGULAR");
   const activities = items.filter((item) => item.kind === "ACTIVITY");
+  const shorts = items.filter((item) => item.kind === "SHORTS");
 
   function create() {
     setError(null);
@@ -75,6 +76,7 @@ export function LessonsList({ items }: { items: LessonCard[] }) {
               [
                 ["ACTIVITY", t.lessonUnits.kindActivity],
                 ["REGULAR", t.lessonUnits.kindRegular],
+                ["SHORTS", t.lessonUnits.kindShorts],
               ] as const
             ).map(([value, label]) => (
               <button
@@ -109,6 +111,7 @@ export function LessonsList({ items }: { items: LessonCard[] }) {
 
       <LessonGroup title={t.lessonUnits.regularLessons} empty={t.lessonUnits.noRegularLessons} items={regular} />
       <LessonGroup title={t.lessonUnits.activityLessons} empty={t.lessonUnits.noActivityLessons} items={activities} />
+      <LessonGroup title={t.lessonUnits.shortsLessons} empty={t.lessonUnits.noShortsLessons} items={shorts} />
     </div>
   );
 }
@@ -228,7 +231,9 @@ function Row({ item }: { item: LessonCard }) {
           <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-faint">
             {item.kind === "ACTIVITY"
               ? t.lessonUnits.kindActivity
-              : t.lessonUnits.kindRegular}
+              : item.kind === "SHORTS"
+                ? t.lessonUnits.kindShorts
+                : t.lessonUnits.kindRegular}
           </span>
         </div>
 

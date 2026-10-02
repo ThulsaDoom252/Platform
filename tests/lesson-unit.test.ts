@@ -35,6 +35,7 @@ import {
   dialogueHighlights,
   wordKey,
   LESSON_SECTIONS,
+  lessonSectionsForKind,
 } from "../src/lib/lesson-unit";
 
 // ---------- что ученику видно ----------
@@ -98,6 +99,17 @@ test("чужое имя секции не проходит", () => {
 
 test("настройка UK не превращается в секцию урока", () => {
   assert.deepEqual(openSections(["video", BRITISH_OPTION]), ["vocab", "video"]);
+});
+
+test("shorts заканчивается вопросами и не показывает домашку", () => {
+  assert.deepEqual(lessonSectionsForKind("SHORTS"), [
+    "vocab",
+    "lexis",
+    "video",
+    "transcript",
+    "questions",
+  ]);
+  assert.deepEqual(lessonSectionsForKind("ACTIVITY"), LESSON_SECTIONS);
 });
 
 test("раскрытые учителем переводы и описания сохраняются в выдаче урока", () => {

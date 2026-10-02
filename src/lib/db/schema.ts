@@ -991,7 +991,7 @@ export type LessonLexisGroupData = {
  * ученикам. Поэтому таблица отдельная: у занятия есть время и ученик, у
  * заготовки — только содержимое.
  *
- * Обычный урок — заголовок и домашка. Урок-активность собран из секций:
+ * Обычный урок — заголовок и домашка. Activity и Shorts собраны из секций:
  * словник, лексика, видео, расшифровка, вопросы, домашка. Секции не в отдельной
  * таблице: их шесть, они заранее известны и у каждой своя форма, так что
  * строки с общим «content» были бы честнее только на вид.
@@ -1001,7 +1001,7 @@ export const lessonUnits = pgTable("lesson_units", {
   authorId: uuid("author_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  /** REGULAR — обычный урок, ACTIVITY — с секциями. */
+  /** REGULAR — обычный, ACTIVITY — активность, SHORTS — короткий видеоурок. */
   kind: text("kind").notNull().default("ACTIVITY"),
   title: text("title").notNull(),
   description: text("description"),
