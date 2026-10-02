@@ -74,6 +74,7 @@ import {
   legacyHomeworkFromEntries,
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
+import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -216,6 +217,14 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
       createdAt: unit.createdAt.toISOString(),
     };
   });
+}
+
+/** One-time, authenticated import that runs against the app's current database. */
+export async function installNewDerekLessonAction() {
+  const session = await requireTeacher();
+  const id = await installNewDerekLesson(session.userId);
+  revalidatePath("/teacher/lessons");
+  return { id };
 }
 
 export async function createLessonAction(

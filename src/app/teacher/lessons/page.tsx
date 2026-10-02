@@ -1,5 +1,8 @@
 import { getDict } from "@/lib/i18n/server";
-import { listLessonsAction } from "@/lib/actions/lessons";
+import {
+  installNewDerekLessonAction,
+  listLessonsAction,
+} from "@/lib/actions/lessons";
 import { LessonsList } from "@/components/lessons/lessons-list";
 
 /**
@@ -8,7 +11,15 @@ import { LessonsList } from "@/components/lessons/lessons-list";
  * Заготовки, а не занятия из расписания: урок собирается один раз и
  * выдаётся скольким угодно ученикам, у каждого своя копия состояния.
  */
-export default async function TeacherLessonsPage() {
+export default async function TeacherLessonsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ install?: string }>;
+}) {
+  const params = await searchParams;
+  if (params.install === "new-derek") {
+    await installNewDerekLessonAction();
+  }
   const { t } = await getDict();
   const items = await listLessonsAction();
 
