@@ -11,9 +11,13 @@ import {
   homeworkExerciseHiddenKey,
   homeworkExerciseFocusId,
   homeworkExerciseProgress,
+  homeworkFillEditorLine,
+  homeworkFillItemFromEditorLine,
   homeworkFocusTarget,
   homeworkItemFocusId,
   homeworkProgress,
+  homeworkPlanForAssignment,
+  homeworkPlanOverrideKey,
   homeworkStarted,
   homeworkStatusKey,
   homeworkValueKey,
@@ -154,4 +158,31 @@ test("отметка назначения не считается начатой
   };
   assert.equal(homeworkStarted(assignedOnly), false);
   assert.equal(homeworkStarted({ ...assignedOnly, [homeworkValueKey("free-one")]: "My answer" }), true);
+});
+
+test("редактор вставки показывает ответ в двойных звёздочках и собирает пропуск обратно", () => {
+  const item = plan.exercises[0].items[0];
+  assert.equal(homeworkFillEditorLine(item), "I have **got to** go.");
+  assert.deepEqual(homeworkFillItemFromEditorLine("custom", "Please **squeeze** the lemon."), {
+    id: "custom",
+    prompt: "Please ___ the lemon.",
+    answer: "squeeze",
+  });
+  assert.equal(homeworkFillItemFromEditorLine("bad", "Please squeeze the lemon."), null);
+  assert.equal(homeworkFillItemFromEditorLine("bad", "**One** and **two**"), null);
+});
+
+test("индивидуальная копия домашки сильнее шаблона урока", () => {
+  const individual: InteractiveHomeworkPlan = {
+    ...plan,
+    title: "Homework for one student",
+    exercises: [plan.exercises[1]],
+  };
+  const state = { [homeworkPlanOverrideKey()]: JSON.stringify(individual) };
+  assert.equal(homeworkPlanForAssignment(plan, state)?.title, "Homework for one student");
+  assert.deepEqual(
+    homeworkPlanForAssignment(plan, state)?.exercises.map((exercise) => exercise.id),
+    ["free-main"],
+  );
+  assert.equal(homeworkPlanForAssignment(plan, {})?.title, "Homework");
 });

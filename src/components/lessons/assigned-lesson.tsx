@@ -316,6 +316,7 @@ export function AssignedLesson({
           teacher,
           state: data.answers,
           canAssign: teacher,
+          canEdit: teacher,
         }}
         videoSession={
           liveClass

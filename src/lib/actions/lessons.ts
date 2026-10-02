@@ -72,6 +72,7 @@ import {
   assignedInteractiveHomework,
   homeworkExerciseHidden,
   homeworkFocusTarget,
+  homeworkPlanForAssignment,
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
   type InteractiveHomeworkPlan,
@@ -1923,6 +1924,10 @@ export async function assignedLessonAction(
 
   const lesson = await loadUnit(row.a.unitId, session.role === "TEACHER");
   if (!lesson) return null;
+  lesson.interactiveHomework = homeworkPlanForAssignment(
+    lesson.interactiveHomework,
+    row.a.answers ?? {},
+  );
   if (session.role === "STUDENT" && lesson.interactiveHomework) {
     const visiblePlan = {
       ...lesson.interactiveHomework,

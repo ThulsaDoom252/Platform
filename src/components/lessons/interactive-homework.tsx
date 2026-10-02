@@ -57,6 +57,7 @@ import {
   IconX,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { StudentHomeworkExerciseEditor } from "@/components/lessons/student-homework-editor";
 
 export type InteractiveHomeworkSession = {
   assignmentId: string;
@@ -64,6 +65,7 @@ export type InteractiveHomeworkSession = {
   teacher: boolean;
   state: HomeworkStoredState;
   canAssign?: boolean;
+  canEdit?: boolean;
 };
 
 export function InteractiveHomework({
@@ -81,13 +83,16 @@ export function InteractiveHomework({
 }) {
   const { t } = useT();
   const [state, setState] = useState(session.state);
+  const [editedPlan, setEditedPlan] = useState<InteractiveHomeworkPlan | null>(null);
+  const currentPlan = editedPlan ?? plan;
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null | undefined>(undefined);
   const [showAnswers, setShowAnswers] = useState(false);
   const [reviewBusy, startReview] = useTransition();
   const rootRef = useRef<HTMLDivElement>(null);
-  const progress = homeworkExerciseProgress(plan, state);
+  const progress = homeworkExerciseProgress(currentPlan, state);
   const submittedAt = homeworkSubmittedAt(state);
   const assignedAt = homeworkAssignedAt(state);
-  const exercises = plan.exercises.filter(
+  const exercises = currentPlan.exercises.filter(
     (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
   );
 
@@ -116,7 +121,7 @@ export function InteractiveHomework({
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-accent">
               {t.interactiveHomework.eyebrow}
             </p>
-            <h2 className="mt-1 text-xl font-black text-content">{plan.title}</h2>
+            <h2 className="mt-1 text-xl font-black text-content">{currentPlan.title}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {session.teacher && (
@@ -165,7 +170,8 @@ export function InteractiveHomework({
 
       {session.teacher && session.canAssign && (
         <HomeworkAssignmentPanel
-          plan={plan}
+          key={`${currentPlan.exercises.map((exercise) => exercise.id).join(":")}:${homeworkAssignedAt(state) ?? "draft"}:${homeworkAssignedExercisesKey() in state ? state[homeworkAssignedExercisesKey()] : ""}`}
+          plan={currentPlan}
           assignmentId={session.assignmentId}
           state={state}
           onAssigned={(assigned, exerciseIds) => {
@@ -184,7 +190,7 @@ export function InteractiveHomework({
 
       {exercises.map((exercise, index) => (
         <HomeworkExerciseView
-          key={exercise.id}
+          key={JSON.stringify(exercise)}
           exercise={exercise}
           number={exercises.slice(0, index + 1).filter((item) => !item.optional).length}
           session={session}
@@ -193,8 +199,20 @@ export function InteractiveHomework({
           showAnswers={showAnswers}
           focusId={focusId}
           onFocus={onFocus}
+          onEdit={session.canEdit ? () => setEditingExerciseId(exercise.id) : undefined}
         />
       ))}
+
+      {session.teacher && session.canEdit && (
+        <button
+          type="button"
+          onClick={() => setEditingExerciseId(null)}
+          className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-dashed border-accent/45 bg-accent-soft/40 px-4 text-sm font-black text-accent transition hover:bg-accent-soft"
+        >
+          <IconPlus className="h-4 w-4" />
+          {t.interactiveHomework.addExercise}
+        </button>
+      )}
 
       {!session.teacher && assignedAt && (
         <div className="sticky bottom-20 z-10 flex justify-end lg:bottom-4">
@@ -216,6 +234,19 @@ export function InteractiveHomework({
               : t.interactiveHomework.sendForReview}
           </button>
         </div>
+      )}
+
+      {session.teacher && session.canEdit && editingExerciseId !== undefined && (
+        <StudentHomeworkExerciseEditor
+          assignmentId={session.assignmentId}
+          plan={currentPlan}
+          exerciseId={editingExerciseId}
+          onClose={() => setEditingExerciseId(undefined)}
+          onSaved={(nextPlan, nextState) => {
+            setEditedPlan(nextPlan);
+            setState(nextState);
+          }}
+        />
       )}
     </div>
   );
@@ -339,6 +370,7 @@ function HomeworkExerciseView({
   showAnswers,
   focusId,
   onFocus,
+  onEdit,
 }: {
   exercise: HomeworkExercise;
   number: number;
@@ -348,6 +380,7 @@ function HomeworkExerciseView({
   showAnswers: boolean;
   focusId?: string | null;
   onFocus?: (elementId: string) => void;
+  onEdit?: () => void;
 }) {
   const { t } = useT();
   const [resetKey, setResetKey] = useState(0);
@@ -452,6 +485,17 @@ function HomeworkExerciseView({
             <IconEye className="h-4 w-4" />
           </button>
         )}
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            title={t.interactiveHomework.editExercise}
+            aria-label={t.interactiveHomework.editExercise}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft"
+          >
+            <IconPencil className="h-4 w-4" />
+          </button>
+        )}
         <ExerciseOptionsMenu
           busy={busy}
           teacher={session.teacher}
@@ -493,6 +537,17 @@ function HomeworkExerciseView({
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft"
           >
             <IconEye className="h-4 w-4" />
+          </button>
+        )}
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            title={t.interactiveHomework.editExercise}
+            aria-label={t.interactiveHomework.editExercise}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft"
+          >
+            <IconPencil className="h-4 w-4" />
           </button>
         )}
         <ExerciseOptionsMenu
@@ -927,7 +982,7 @@ function ManualExercise({
                   </span>
                 )}
               </div>
-              {session.teacher && (exercise.kind === "question-text" || exercise.kind === "question-audio") && (
+              {session.teacher && !session.canEdit && (exercise.kind === "question-text" || exercise.kind === "question-audio") && (
                 <button
                   type="button"
                   disabled={busy}
@@ -990,7 +1045,7 @@ function ManualExercise({
         );
       })}
 
-      {session.teacher && (exercise.kind === "question-text" || exercise.kind === "question-audio") && (
+      {session.teacher && !session.canEdit && (exercise.kind === "question-text" || exercise.kind === "question-audio") && (
         <div className="rounded-xl border border-dashed border-accent/40 bg-accent-soft/30 p-3">
           <textarea
             value={newQuestion}

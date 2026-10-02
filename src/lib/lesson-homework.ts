@@ -83,6 +83,7 @@ const EXERCISE_HIDDEN = "hw:exercise-hidden:";
 const SUBMITTED_AT = "hw:submitted-at";
 const ASSIGNED_AT = "hw:assigned-at";
 const ASSIGNED_EXERCISES = "hw:assigned-exercises";
+const PLAN_OVERRIDE = "hw:plan-override";
 
 export const homeworkValueKey = (id: string) => `${VALUE}${id}`;
 export const homeworkStatusKey = (id: string) => `${STATUS}${id}`;
@@ -93,6 +94,7 @@ export const homeworkExerciseHiddenKey = (id: string) => `${EXERCISE_HIDDEN}${id
 export const homeworkSubmittedAtKey = () => SUBMITTED_AT;
 export const homeworkAssignedAtKey = () => ASSIGNED_AT;
 export const homeworkAssignedExercisesKey = () => ASSIGNED_EXERCISES;
+export const homeworkPlanOverrideKey = () => PLAN_OVERRIDE;
 
 export function homeworkExerciseHidden(state: HomeworkStoredState, exerciseId: string) {
   return state[homeworkExerciseHiddenKey(exerciseId)] === "1";
@@ -104,6 +106,41 @@ export function homeworkSubmittedAt(state: HomeworkStoredState) {
 
 export function homeworkAssignedAt(state: HomeworkStoredState) {
   return state[ASSIGNED_AT] || null;
+}
+
+/** Индивидуальная копия домашки, сохранённая внутри закрепления ученика. */
+export function homeworkPlanOverride(state: HomeworkStoredState) {
+  try {
+    return normalizeInteractiveHomework(JSON.parse(state[PLAN_OVERRIDE] ?? "null"));
+  } catch {
+    return null;
+  }
+}
+
+export function homeworkPlanForAssignment(
+  template: InteractiveHomeworkPlan | null,
+  state: HomeworkStoredState,
+) {
+  return homeworkPlanOverride(state) ?? template;
+}
+
+/** В редакторе ответ отмечается прямо в предложении: I **have got to** go. */
+export function homeworkFillEditorLine(item: HomeworkItem) {
+  if (!item.answer) return item.prompt;
+  return item.prompt.includes("___")
+    ? item.prompt.replace("___", `**${item.answer}**`)
+    : `${item.prompt} **${item.answer}**`.trim();
+}
+
+export function homeworkFillItemFromEditorLine(id: string, value: string): HomeworkItem | null {
+  const line = String(value ?? "").trim();
+  const matches = [...line.matchAll(/\*\*([^*\n]+)\*\*/g)];
+  if (matches.length !== 1) return null;
+  const answer = matches[0][1]?.trim();
+  if (!answer) return null;
+  const prompt = line.replace(matches[0][0], "___").trim();
+  if (!prompt) return null;
+  return { id, prompt, answer };
 }
 
 /** Упражнения, которые учитель явно выдал как домашнюю работу. */

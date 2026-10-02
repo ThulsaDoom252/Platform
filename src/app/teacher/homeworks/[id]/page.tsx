@@ -52,6 +52,7 @@ export default async function TeacherHomeworkReviewPage({
             unitId: data.assignment.unitId,
             teacher: true,
             state: data.answers,
+            canEdit: true,
           }}
         />
       ) : (
