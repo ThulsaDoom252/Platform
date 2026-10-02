@@ -20,7 +20,7 @@ export type LessonSection = (typeof LESSON_SECTIONS)[number];
 
 /**
  * Shorts are deliberately compact: vocabulary and lexis lead into one
- * video/transcript flow, followed by the discussion questions.
+ * video/transcript flow, followed by discussion questions and homework.
  */
 export const SHORTS_SECTIONS = [
   "vocab",
@@ -28,6 +28,7 @@ export const SHORTS_SECTIONS = [
   "video",
   "transcript",
   "questions",
+  "homework",
 ] as const satisfies readonly LessonSection[];
 
 export function lessonSectionsForKind(kind: string): LessonSection[] {

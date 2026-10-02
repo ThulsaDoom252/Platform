@@ -101,13 +101,14 @@ test("настройка UK не превращается в секцию уро
   assert.deepEqual(openSections(["video", BRITISH_OPTION]), ["vocab", "video"]);
 });
 
-test("shorts заканчивается вопросами и не показывает домашку", () => {
+test("shorts показывает домашку после вопросов", () => {
   assert.deepEqual(lessonSectionsForKind("SHORTS"), [
     "vocab",
     "lexis",
     "video",
     "transcript",
     "questions",
+    "homework",
   ]);
   assert.deepEqual(lessonSectionsForKind("ACTIVITY"), LESSON_SECTIONS);
 });

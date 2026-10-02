@@ -41,6 +41,8 @@ import { RuleReader } from "@/components/materials/rule-reader";
 import {
   IconCheck,
   IconChevronLeft,
+  IconEye,
+  IconEyeOff,
   IconPencil,
   IconPlus,
   IconTrash,
@@ -588,7 +590,7 @@ function ActivityLessonEditor({
         </div>
       </Section>
 
-      {/* Shorts ends with Questions; activities and homework stay out of this format. */}
+      {/* Shorts keeps its compact content flow; attached games stay in full activities. */}
       {lesson.kind !== "SHORTS" && <Section title={t.wordDeck.attachedGames}>
         {activities.length === 0 ? (
           <p className="text-sm text-faint">{t.wordDeck.empty}</p>
@@ -626,8 +628,11 @@ function ActivityLessonEditor({
       </Section>}
 
       {/* Домашка */}
-      {lesson.kind !== "SHORTS" && <Section id="lesson-homework" title={t.lessonUnits.secHomework}>
+      <Section id="lesson-homework" title={t.lessonUnits.secHomework}>
         <div className="flex flex-col gap-2.5">
+          {lesson.interactiveHomework && (
+            <InteractiveHomeworkPreview plan={lesson.interactiveHomework} />
+          )}
           {homework.map((task, i) => (
             <div key={i} className="flex items-start gap-2 rounded-xl bg-surface-2 p-2.5">
               <div className="min-w-0 flex-1">
@@ -671,7 +676,7 @@ function ActivityLessonEditor({
             {t.lessonUnits.addTask}
           </button>
         </div>
-      </Section>}
+      </Section>
 
       <div className="sticky bottom-4 flex items-center gap-3">
         <button
@@ -688,6 +693,73 @@ function ActivityLessonEditor({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+function InteractiveHomeworkPreview({
+  plan,
+}: {
+  plan: NonNullable<LessonView["interactiveHomework"]>;
+}) {
+  const { t } = useT();
+  const [showAnswers, setShowAnswers] = useState(false);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-accent/25 bg-accent-soft/30 p-3 sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-accent">
+            {t.interactiveHomework.eyebrow}
+          </p>
+          <p className="mt-0.5 text-base font-black text-content">{plan.title}</p>
+        </div>
+        <button
+          type="button"
+          aria-pressed={showAnswers}
+          onClick={() => setShowAnswers((current) => !current)}
+          className="flex h-9 items-center gap-2 rounded-xl bg-surface px-3 text-xs font-black text-accent ring-1 ring-line transition hover:ring-accent"
+        >
+          {showAnswers ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
+          {showAnswers
+            ? t.interactiveHomework.hideAnswers
+            : t.interactiveHomework.showAnswers}
+        </button>
+      </div>
+
+      {plan.exercises.map((exercise, exerciseIndex) => (
+        <div key={exercise.id} className="rounded-xl bg-surface p-3 ring-1 ring-line">
+          <div className="flex items-start gap-2">
+            <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-accent text-xs font-black text-white">
+              {exerciseIndex + 1}
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-black text-content">{exercise.title}</p>
+              <p className="mt-0.5 text-xs text-muted">{exercise.instruction}</p>
+            </div>
+          </div>
+
+          {exercise.wordBank && exercise.kind !== "describe" && (
+            <ul className="mt-3 grid gap-1 rounded-xl bg-accent-soft/60 p-3 sm:grid-cols-2">
+              {exercise.wordBank.map((word) => (
+                <li key={word} className="text-xs font-semibold text-content">{word}</li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-3 flex flex-col gap-1.5">
+            {exercise.items.map((item, itemIndex) => (
+              <div key={item.id} className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-content">
+                <span className="mr-2 font-black text-accent">{itemIndex + 1}.</span>
+                <span className="font-semibold">{exercise.kind === "describe" ? item.word : item.prompt}</span>
+                {showAnswers && item.answer && (
+                  <span className="mt-1 block pl-5 font-bold text-emerald-600">{item.answer}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
