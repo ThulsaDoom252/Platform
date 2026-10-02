@@ -154,22 +154,22 @@ const DRAG_EXERCISES: HomeworkExercise[] = [
       "gotta",
       "would call",
       "getting dark",
-      "have got to",
+      "have got",
       "'d help",
       "got to the airport",
       "would rain",
       "got to meet",
     ],
     items: [
-      { id: "drag-1-have-got-to", prompt: "I ___ leave before the meeting starts.", answer: "have got to", hint: "use the full form" },
-      { id: "drag-1-gotta", prompt: "Sorry, I ___ go.", answer: "gotta", hint: "use contraction" },
-      { id: "drag-1-got-opportunity", prompt: "Last year, I ___ my favourite singer.", answer: "got to meet", hint: "past opportunity" },
-      { id: "drag-1-got-place", prompt: "We ___ at six.", answer: "got to the airport", hint: "past destination" },
-      { id: "drag-1-would-said", prompt: "He said he ___ me after the meeting.", answer: "would call", hint: "future in the past" },
-      { id: "drag-1-would-thought", prompt: "We thought it ___ all day.", answer: "would rain", hint: "future in the past" },
-      { id: "drag-1-would-short", prompt: "They said they ___ us.", answer: "'d help", hint: "use contraction" },
-      { id: "drag-1-wouldnt", prompt: "The door ___, so we used the window.", answer: "wouldn't open", hint: "negative form" },
-      { id: "drag-1-get-adjective", prompt: "It is ___ outside.", answer: "getting dark", hint: "change of state" },
+      { id: "drag-1-have-got-to", prompt: "I ___ to leave before the meeting starts.", answer: "have got" },
+      { id: "drag-1-gotta", prompt: "Sorry, I ___ go now.", answer: "gotta" },
+      { id: "drag-1-got-opportunity", prompt: "Last year, I ___ my favorite singer backstage.", answer: "got to meet" },
+      { id: "drag-1-got-place", prompt: "We ___ at six, two hours before our flight.", answer: "got to the airport" },
+      { id: "drag-1-would-said", prompt: "He said he ___ me after the meeting.", answer: "would call" },
+      { id: "drag-1-would-thought", prompt: "We thought it ___ all day, so we took umbrellas.", answer: "would rain" },
+      { id: "drag-1-would-short", prompt: "They said they ___ us with the boxes.", answer: "'d help" },
+      { id: "drag-1-wouldnt", prompt: "The old door ___, so we used the window.", answer: "wouldn't open" },
+      { id: "drag-1-get-adjective", prompt: "The sky is ___; let's go home before night.", answer: "getting dark" },
     ],
   },
   {
@@ -188,17 +188,37 @@ const DRAG_EXERCISES: HomeworkExercise[] = [
       "Though it was late",
     ],
     items: [
-      { id: "drag-2-get-comparative", prompt: "Your English is ___.", answer: "getting better", hint: "use comparative" },
-      { id: "drag-2-become-adjective", prompt: "She ___ after the interview.", answer: "became famous", hint: "use become + adjective" },
-      { id: "drag-2-become-noun", prompt: "She ___ after her service.", answer: "became a doctor", hint: "use become + noun" },
-      { id: "drag-2-though-start", prompt: "___, we continued working.", answer: "Though it was late", hint: "put though at the beginning" },
-      { id: "drag-2-though-end", prompt: "The film was long. It was ___.", answer: "good, though", hint: "put though at the end" },
-      { id: "drag-2-even-though", prompt: "___, he continued the mission.", answer: "Even though he was wounded", hint: "use strong contrast" },
-      { id: "drag-2-as-though", prompt: "He looks ___.", answer: "as though he is tired", hint: "use as though" },
-      { id: "drag-2-mistake", prompt: "I ___ him.", answer: "made a mistake underestimating", hint: "use make a mistake + -ing" },
+      { id: "drag-2-get-comparative", prompt: "After a week of rest, his injured leg is ___.", answer: "getting better" },
+      { id: "drag-2-become-adjective", prompt: "After her first movie, she ___.", answer: "became famous" },
+      { id: "drag-2-become-noun", prompt: "After six years at medical school, she ___.", answer: "became a doctor" },
+      { id: "drag-2-though-start", prompt: "___, we finished the last task before going home.", answer: "Though it was late" },
+      { id: "drag-2-though-end", prompt: "The hotel was expensive. The room was ___.", answer: "good, though" },
+      { id: "drag-2-even-though", prompt: "___, he finished the mission.", answer: "Even though he was wounded" },
+      { id: "drag-2-as-though", prompt: "He has dark circles under his eyes. He looks ___.", answer: "as though he is tired" },
+      { id: "drag-2-mistake", prompt: "I ___ such a quiet person.", answer: "made a mistake underestimating" },
     ],
   },
 ];
+
+const DRAG_ITEM_IDS = new Set(DRAG_EXERCISES.flatMap((exercise) =>
+  exercise.items.map((item) => item.id),
+));
+
+for (const exercise of DRAG_EXERCISES) {
+  const wordBank = new Set(exercise.wordBank ?? []);
+  for (const item of exercise.items) {
+    if (/[^\u0000-\u007f]/u.test(item.prompt)) {
+      throw new Error(`${item.id}: drag-and-drop prompt must be plain English`);
+    }
+    if ((item.prompt.match(/___/g) ?? []).length !== 1) {
+      throw new Error(`${item.id}: drag-and-drop prompt must contain one gap`);
+    }
+    if (!item.answer || !wordBank.has(item.answer)) {
+      throw new Error(`${item.id}: answer is missing from the word bank`);
+    }
+    if (item.hint) throw new Error(`${item.id}: drag-and-drop must not reveal a hint`);
+  }
+}
 
 const plainTranslations = (items: HomeworkItem[]): HomeworkItem[] =>
   items.map(({ id, prompt, answer, accepted }) => ({
@@ -303,15 +323,27 @@ async function main() {
       .where(eq(lessonUnits.id, unit.id));
 
     const assignments = await tx
-      .select({ id: lessonAssignments.id, openSections: lessonAssignments.openSections })
+      .select({
+        id: lessonAssignments.id,
+        openSections: lessonAssignments.openSections,
+        answers: lessonAssignments.answers,
+      })
       .from(lessonAssignments)
       .where(eq(lessonAssignments.unitId, unit.id));
     for (const assignment of assignments) {
       const open = new Set(assignment.openSections ?? []);
       open.add("homework");
+      const answers = Object.fromEntries(
+        Object.entries(assignment.answers ?? {}).filter(([key]) => {
+          if (!key.startsWith("hw:value:") &&
+              !key.startsWith("hw:status:") &&
+              !key.startsWith("hw:attempts:")) return true;
+          return !DRAG_ITEM_IDS.has(key.slice(key.lastIndexOf(":") + 1));
+        }),
+      );
       await tx
         .update(lessonAssignments)
-        .set({ openSections: [...open], updatedAt: new Date() })
+        .set({ openSections: [...open], answers, updatedAt: new Date() })
         .where(and(
           eq(lessonAssignments.id, assignment.id),
           eq(lessonAssignments.unitId, unit.id),
