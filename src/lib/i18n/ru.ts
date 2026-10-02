@@ -1038,6 +1038,7 @@ export const ru: Dict = {
     lessonTime: "Время урока",
     lessonScript: "Скрипт урока",
     studentProfile: "Профиль ученика",
+    toClass: "В класс",
     commentPlaceholder: "Ученик увидит этот комментарий…",
     rescheduleTo: "Перенести на",
     cancelLesson: "Отменить урок",

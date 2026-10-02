@@ -22,6 +22,7 @@ import {
   type AssignState,
   type RescheduleState,
 } from "@/lib/actions/teacher";
+import { enterClassFromScheduleAction } from "@/lib/actions/class";
 import {
   IconPencil,
   IconTrash,
@@ -31,6 +32,7 @@ import {
   IconPlus,
   IconUser,
   IconCheck,
+  IconCap,
 } from "@/components/icons";
 
 export type LessonItem = {
@@ -693,7 +695,7 @@ function EditLessonBody({
 
       {/* Подготовка к занятию и карточка ученика — прямо отсюда.
           Под маской профиль не показываем: он раскрыл бы скрытое имя. */}
-      <div className={cn("mt-3 grid gap-2", !masked && "sm:grid-cols-2")}>
+      <div className={cn("mt-3 grid gap-2", !masked && "sm:grid-cols-3")}>
         <Link
           href={`/teacher/script?lesson=${lesson.id}`}
           className="flex h-10 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent-soft text-sm font-semibold text-accent transition hover:border-accent"
@@ -707,6 +709,17 @@ function EditLessonBody({
           >
             <IconUser className="h-4 w-4" /> {t.schedule.studentProfile}
           </Link>
+        )}
+        {!masked && (
+          <form action={enterClassFromScheduleAction}>
+            <input type="hidden" name="studentId" value={lesson.studentId} />
+            <button
+              type="submit"
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-line text-sm font-semibold text-content transition hover:border-accent hover:text-accent"
+            >
+              <IconCap className="h-4 w-4" /> {t.schedule.toClass}
+            </button>
+          </form>
         )}
       </div>
 

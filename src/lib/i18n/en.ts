@@ -949,6 +949,7 @@ export const en = {
     lessonTime: "Lesson time",
     lessonScript: "Lesson script",
     studentProfile: "Student profile",
+    toClass: "To class",
     commentPlaceholder: "The student will see this comment…",
     rescheduleTo: "Reschedule to",
     cancelLesson: "Cancel lesson",

@@ -9,6 +9,7 @@
  * человек в уроке.
  */
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { and, asc, desc, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -361,6 +362,13 @@ export async function enterClassAction(studentId: string): Promise<{ error?: str
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
   return {};
+}
+
+/** Выбрать ученика из расписания и сразу перейти в его класс. */
+export async function enterClassFromScheduleAction(formData: FormData): Promise<void> {
+  const result = await enterClassAction(String(formData.get("studentId") ?? ""));
+  if (result.error) return;
+  redirect("/teacher/class");
 }
 
 /** Одноразово открыть класс на уже активной вкладке выбранного ученика. */
