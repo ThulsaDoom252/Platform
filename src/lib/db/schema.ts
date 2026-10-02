@@ -759,6 +759,8 @@ export const tongueTwisterAssignments = pgTable("tongue_twister_assignments", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   pinned: boolean("pinned").notNull().default(false),
+  /** Рисунок живёт столько же, сколько карточка закреплена в классе. */
+  drawingStrokes: jsonb("drawing_strokes").$type<TwisterStroke[]>().default([]).notNull(),
   assignedAt: timestamp("assigned_at").notNull().defaultNow(),
 });
 

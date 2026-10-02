@@ -16,6 +16,7 @@ import {
   clearTwisterStrokesAction,
   closeTwisterInClassAction,
   focusTwisterInClassAction,
+  pinnedTwisterDrawingsAction,
   setStudentTwisterDrawingAction,
   twisterSessionAction,
   undoTwisterStrokeAction,
@@ -23,6 +24,7 @@ import {
   type Twister,
 } from "@/lib/actions/tongue-twisters";
 import {
+  mergeTwisterStrokes,
   strokeStyle,
   type TwisterDrawTool,
   type TwisterPoint,
@@ -87,6 +89,19 @@ export function TwisterViewer({
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    if (!teacher || initialSession) return;
+    let alive = true;
+    pinnedTwisterDrawingsAction()
+      .then((saved) => {
+        if (alive) setLocalStrokes((local) => mergeTwisterStrokes(saved, local));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [initialSession, teacher]);
 
   useEffect(() => () => {
     const active = sessionRef.current;
@@ -154,13 +169,13 @@ export function TwisterViewer({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape" && teacher) close();
       if (event.key === "ArrowRight" && items.length > 1) go(1);
       if (event.key === "ArrowLeft" && items.length > 1) go(-1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [close, go, items.length]);
+  }, [close, go, items.length, teacher]);
 
   const shownStrokes = useMemo(
     () => strokes.filter((stroke) => stroke.twisterId === current?.id),
@@ -249,30 +264,37 @@ export function TwisterViewer({
       void addTwisterStrokeAction(session.id, next);
     } else {
       setLocalStrokes((value) => [...value, next]);
+      if (teacher) void addTwisterStrokeAction(null, next);
     }
   };
 
   const undo = () => {
     const list = [...strokes];
     for (let index = list.length - 1; index >= 0; index -= 1) {
-      if (list[index].author !== author) continue;
+      if (list[index].author !== author || list[index].twisterId !== current?.id) continue;
       list.splice(index, 1);
       break;
     }
     if (session) {
       setSession({ ...session, strokes: list });
-      void undoTwisterStrokeAction(session.id);
+      if (current) void undoTwisterStrokeAction(session.id, current.id);
     } else {
       setLocalStrokes(list);
+      if (teacher && current) void undoTwisterStrokeAction(null, current.id);
     }
   };
 
   const clear = () => {
+    if (!current || !teacher) return;
     if (session) {
-      setSession({ ...session, strokes: [] });
-      void clearTwisterStrokesAction(session.id);
+      setSession({
+        ...session,
+        strokes: session.strokes.filter((stroke) => stroke.twisterId !== current.id),
+      });
+      void clearTwisterStrokesAction(session.id, current.id);
     } else {
-      setLocalStrokes([]);
+      setLocalStrokes((value) => value.filter((stroke) => stroke.twisterId !== current.id));
+      void clearTwisterStrokesAction(null, current.id);
     }
   };
 
@@ -340,14 +362,16 @@ export function TwisterViewer({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={close}
-          aria-label={t.twisters.exitFocus}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-white/70 transition hover:bg-white/10 hover:text-white"
-        >
-          <IconX className="h-5 w-5" />
-        </button>
+        {teacher && (
+          <button
+            type="button"
+            onClick={close}
+            aria-label={t.twisters.exitFocus}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-white/70 transition hover:bg-white/10 hover:text-white"
+          >
+            <IconX className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-1.5 border-b border-white/10 px-2 py-2 text-white">
@@ -385,9 +409,11 @@ export function TwisterViewer({
         <button type="button" onClick={undo} className="h-9 rounded-lg bg-white/10 px-3 text-xs font-bold hover:bg-white/20">
           ↶ {t.twisters.undoDrawing}
         </button>
-        <button type="button" onClick={clear} className="flex h-9 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-xs font-bold hover:bg-white/20">
-          <IconTrash className="h-3.5 w-3.5" /> {t.twisters.clearDrawing}
-        </button>
+        {teacher && (
+          <button type="button" onClick={clear} className="flex h-9 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-xs font-bold hover:bg-white/20">
+            <IconTrash className="h-3.5 w-3.5" /> {t.twisters.clearDrawing}
+          </button>
+        )}
         {!canDraw && <span className="text-xs font-semibold text-amber-300">{t.twisters.drawingLocked}</span>}
       </div>
 

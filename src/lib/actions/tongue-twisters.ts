@@ -17,6 +17,7 @@ import { getSession } from "@/lib/session";
 import { isStoredImage, removeStoredImage } from "@/lib/image-store";
 import { storePublicFile } from "@/lib/public-file-store";
 import {
+  mergeTwisterStrokes,
   sanitizeTwisterStroke,
   type TwisterDrawingSession,
   type TwisterStroke,
@@ -343,7 +344,7 @@ export async function setPinnedTwistersAction(
   if (toUnpin.length > 0) {
     await db
       .update(tongueTwisterAssignments)
-      .set({ pinned: false })
+      .set({ pinned: false, drawingStrokes: [] })
       .where(inArray(tongueTwisterAssignments.id, toUnpin));
   }
   if (toAdd.length > 0) {
@@ -381,7 +382,10 @@ export async function unpinTwisterAction(
         eq(tongueTwisterAssignments.pinned, true),
       );
 
-  await db.update(tongueTwisterAssignments).set({ pinned: false }).where(where);
+  await db
+    .update(tongueTwisterAssignments)
+    .set({ pinned: false, drawingStrokes: [] })
+    .where(where);
 
   revalidatePath("/teacher/class");
   return { ok: true };
@@ -539,6 +543,23 @@ async function drawingTarget() {
   return student ? { ...student, role: "TEACHER" as const } : null;
 }
 
+/** Все сохранённые рисунки карточек, которые сейчас находятся в классе. */
+export async function pinnedTwisterDrawingsAction(): Promise<TwisterStroke[]> {
+  await requireTeacher();
+  const target = await drawingTarget();
+  if (!target || target.role !== "TEACHER") return [];
+  const rows = await db
+    .select({ strokes: tongueTwisterAssignments.drawingStrokes })
+    .from(tongueTwisterAssignments)
+    .where(
+      and(
+        eq(tongueTwisterAssignments.studentId, target.id),
+        eq(tongueTwisterAssignments.pinned, true),
+      ),
+    );
+  return mergeTwisterStrokes(...rows.map((row) => row.strokes ?? []));
+}
+
 /** Текущее временное полотно; опрашивается только пока открыт viewer. */
 export async function twisterSessionAction(): Promise<ClassTwisterSession | null> {
   const target = await drawingTarget();
@@ -550,19 +571,26 @@ export async function twisterSessionAction(): Promise<ClassTwisterSession | null
     !focus.twisterSessionId
   ) return null;
 
-  const [twister] = await db
-    .select()
-    .from(tongueTwisters)
-    .where(eq(tongueTwisters.id, focus.twisterId))
+  const [row] = await db
+    .select({ twister: tongueTwisters })
+    .from(tongueTwisterAssignments)
+    .innerJoin(tongueTwisters, eq(tongueTwisters.id, tongueTwisterAssignments.twisterId))
+    .where(
+      and(
+        eq(tongueTwisterAssignments.studentId, target.id),
+        eq(tongueTwisterAssignments.twisterId, focus.twisterId),
+        eq(tongueTwisterAssignments.pinned, true),
+      ),
+    )
     .limit(1);
-  if (!twister) return null;
+  if (!row) return null;
 
   return {
     id: focus.twisterSessionId,
     twisterId: focus.twisterId,
     strokes: focus.twisterStrokes ?? [],
     studentDrawingAllowed: focus.twisterStudentDrawingAllowed !== false,
-    twister: toTwister(twister),
+    twister: toTwister(row.twister),
   };
 }
 
@@ -577,7 +605,10 @@ export async function focusTwisterInClassAction(
   if (!target || target.role !== "TEACHER") return { error: "Класс не начат" };
 
   const [assigned] = await db
-    .select({ id: tongueTwisterAssignments.id })
+    .select({
+      id: tongueTwisterAssignments.id,
+      drawingStrokes: tongueTwisterAssignments.drawingStrokes,
+    })
     .from(tongueTwisterAssignments)
     .where(
       and(
@@ -591,12 +622,21 @@ export async function focusTwisterInClassAction(
 
   const current = target.classFocus;
   const sameSession = current?.view === "TWISTER" && !!current.twisterSessionId;
-  const strokes = sameSession
-    ? (current.twisterStrokes ?? [])
-    : initialStrokes.flatMap((stroke) => {
-        const clean = sanitizeTwisterStroke(stroke, "TEACHER");
-        return clean ? [clean] : [];
-      });
+  const cleanInitial = initialStrokes.flatMap((stroke) => {
+    const author = stroke.author === "STUDENT" ? "STUDENT" : "TEACHER";
+    const clean = sanitizeTwisterStroke(stroke, author);
+    return clean ? [clean] : [];
+  });
+  const strokes = mergeTwisterStrokes(
+    assigned.drawingStrokes ?? [],
+    sameSession ? (current.twisterStrokes ?? []) : [],
+    cleanInitial,
+  );
+  const now = new Date().toISOString();
+  await db
+    .update(tongueTwisterAssignments)
+    .set({ drawingStrokes: strokes.filter((stroke) => stroke.twisterId === id) })
+    .where(eq(tongueTwisterAssignments.id, assigned.id));
   await db
     .update(users)
     .set({
@@ -605,7 +645,8 @@ export async function focusTwisterInClassAction(
           ? { lessonAssignmentId: current.lessonAssignmentId }
           : {}),
         view: "TWISTER",
-        at: new Date().toISOString(),
+        at: now,
+        enterClassAt: now,
         twisterId: id,
         twisterSessionId: sameSession ? current.twisterSessionId : randomUUID(),
         twisterStrokes: strokes,
@@ -619,12 +660,30 @@ export async function focusTwisterInClassAction(
   return { session: (await twisterSessionAction()) ?? undefined };
 }
 
-/** Закрытие уничтожает рисунок и возвращает ученика к уроку. */
+/** Закрытие возвращает ученика к уроку, но рисунок хранится у закреплённой карточки. */
 export async function closeTwisterInClassAction(sessionId: string): Promise<void> {
   await requireTeacher();
   const target = await drawingTarget();
   if (!target || target.role !== "TEACHER") return;
   if (target.classFocus?.twisterSessionId !== String(sessionId ?? "")) return;
+  const grouped = new Map<string, TwisterStroke[]>();
+  for (const stroke of target.classFocus.twisterStrokes ?? []) {
+    grouped.set(stroke.twisterId, [...(grouped.get(stroke.twisterId) ?? []), stroke]);
+  }
+  await Promise.all(
+    [...grouped].map(([twisterId, drawingStrokes]) =>
+      db
+        .update(tongueTwisterAssignments)
+        .set({ drawingStrokes })
+        .where(
+          and(
+            eq(tongueTwisterAssignments.studentId, target.id),
+            eq(tongueTwisterAssignments.twisterId, twisterId),
+            eq(tongueTwisterAssignments.pinned, true),
+          ),
+        ),
+    ),
+  );
   await db
     .update(users)
     .set({
@@ -640,50 +699,119 @@ export async function closeTwisterInClassAction(sessionId: string): Promise<void
 }
 
 export async function addTwisterStrokeAction(
-  sessionId: string,
+  sessionId: string | null,
   stroke: TwisterStroke,
 ): Promise<{ error?: string }> {
   const target = await drawingTarget();
   const focus = target?.classFocus;
-  if (!target || focus?.twisterSessionId !== String(sessionId ?? "")) {
+  const shared = Boolean(sessionId) && focus?.twisterSessionId === String(sessionId);
+  if (!target || (sessionId && !shared)) {
     return { error: "Просмотр уже закрыт" };
   }
-  if (target.role === "STUDENT" && focus.twisterStudentDrawingAllowed === false) {
+  if (!shared && target.role !== "TEACHER") return { error: "Просмотр уже закрыт" };
+  if (target.role === "STUDENT" && focus?.twisterStudentDrawingAllowed === false) {
     return { error: "Рисование ученика заблокировано" };
   }
   const clean = sanitizeTwisterStroke(stroke, target.role);
   if (!clean) return { error: "Пустой штрих" };
-  const strokes = focus.twisterStrokes ?? [];
+  const strokes = shared ? (focus?.twisterStrokes ?? []) : [];
   if (strokes.some((item) => item.id === clean.id)) return {};
+  const nextStrokes = mergeTwisterStrokes(strokes, [clean]);
+  if (shared && focus) {
+    await db
+      .update(users)
+      .set({ classFocus: { ...focus, twisterStrokes: nextStrokes } })
+      .where(eq(users.id, target.id));
+  }
+  const [assignment] = await db
+    .select({ id: tongueTwisterAssignments.id, strokes: tongueTwisterAssignments.drawingStrokes })
+    .from(tongueTwisterAssignments)
+    .where(
+      and(
+        eq(tongueTwisterAssignments.studentId, target.id),
+        eq(tongueTwisterAssignments.twisterId, clean.twisterId),
+        eq(tongueTwisterAssignments.pinned, true),
+      ),
+    )
+    .limit(1);
+  if (!assignment) return { error: "Скороговорка не добавлена в этот урок" };
   await db
-    .update(users)
-    .set({ classFocus: { ...focus, twisterStrokes: [...strokes.slice(-799), clean] } })
-    .where(eq(users.id, target.id));
+    .update(tongueTwisterAssignments)
+    .set({ drawingStrokes: mergeTwisterStrokes(assignment.strokes ?? [], [clean]) })
+    .where(eq(tongueTwisterAssignments.id, assignment.id));
   return {};
 }
 
-export async function undoTwisterStrokeAction(sessionId: string): Promise<void> {
+export async function undoTwisterStrokeAction(
+  sessionId: string | null,
+  twisterId: string,
+): Promise<void> {
   const target = await drawingTarget();
   const focus = target?.classFocus;
-  if (!target || focus?.twisterSessionId !== String(sessionId ?? "")) return;
-  const strokes = [...(focus.twisterStrokes ?? [])];
-  const index = strokes.findLastIndex((stroke) => stroke.author === target.role);
+  const shared = Boolean(sessionId) && focus?.twisterSessionId === String(sessionId);
+  if (!target || (sessionId && !shared) || (!shared && target.role !== "TEACHER")) return;
+  const [assignment] = await db
+    .select({ id: tongueTwisterAssignments.id, strokes: tongueTwisterAssignments.drawingStrokes })
+    .from(tongueTwisterAssignments)
+    .where(
+      and(
+        eq(tongueTwisterAssignments.studentId, target.id),
+        eq(tongueTwisterAssignments.twisterId, String(twisterId)),
+        eq(tongueTwisterAssignments.pinned, true),
+      ),
+    )
+    .limit(1);
+  if (!assignment) return;
+  const strokes = shared ? [...(focus?.twisterStrokes ?? [])] : [...(assignment.strokes ?? [])];
+  const index = strokes.findLastIndex(
+    (stroke) => stroke.author === target.role && stroke.twisterId === twisterId,
+  );
   if (index < 0) return;
   strokes.splice(index, 1);
+  if (shared && focus) {
+    await db
+      .update(users)
+      .set({ classFocus: { ...focus, twisterStrokes: strokes } })
+      .where(eq(users.id, target.id));
+  }
   await db
-    .update(users)
-    .set({ classFocus: { ...focus, twisterStrokes: strokes } })
-    .where(eq(users.id, target.id));
+    .update(tongueTwisterAssignments)
+    .set({ drawingStrokes: strokes.filter((stroke) => stroke.twisterId === twisterId) })
+    .where(eq(tongueTwisterAssignments.id, assignment.id));
 }
 
-export async function clearTwisterStrokesAction(sessionId: string): Promise<void> {
+export async function clearTwisterStrokesAction(
+  sessionId: string | null,
+  twisterId: string,
+): Promise<void> {
+  await requireTeacher();
   const target = await drawingTarget();
   const focus = target?.classFocus;
-  if (!target || focus?.twisterSessionId !== String(sessionId ?? "")) return;
+  const shared = Boolean(sessionId) && focus?.twisterSessionId === String(sessionId);
+  if (!target || target.role !== "TEACHER" || (sessionId && !shared)) return;
+  if (shared && focus) {
+    await db
+      .update(users)
+      .set({
+        classFocus: {
+          ...focus,
+          twisterStrokes: (focus.twisterStrokes ?? []).filter(
+            (stroke) => stroke.twisterId !== twisterId,
+          ),
+        },
+      })
+      .where(eq(users.id, target.id));
+  }
   await db
-    .update(users)
-    .set({ classFocus: { ...focus, twisterStrokes: [] } })
-    .where(eq(users.id, target.id));
+    .update(tongueTwisterAssignments)
+    .set({ drawingStrokes: [] })
+    .where(
+      and(
+        eq(tongueTwisterAssignments.studentId, target.id),
+        eq(tongueTwisterAssignments.twisterId, String(twisterId)),
+        eq(tongueTwisterAssignments.pinned, true),
+      ),
+    );
 }
 
 export async function setStudentTwisterDrawingAction(

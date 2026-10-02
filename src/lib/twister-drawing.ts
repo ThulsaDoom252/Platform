@@ -57,6 +57,23 @@ export function sanitizeTwisterStroke(
   return { id, twisterId, author, tool, color, points };
 }
 
+/**
+ * Собрать локальные, сохранённые и синхронные штрихи без дублей.
+ * Один и тот же штрих может успеть прийти из optimistic UI и из базы.
+ */
+export function mergeTwisterStrokes(
+  ...groups: ReadonlyArray<ReadonlyArray<TwisterStroke>>
+): TwisterStroke[] {
+  const byId = new Map<string, TwisterStroke>();
+  for (const group of groups) {
+    for (const stroke of group) {
+      if (!stroke?.id) continue;
+      byId.set(stroke.id, stroke);
+    }
+  }
+  return [...byId.values()].slice(-800);
+}
+
 export function strokeStyle(tool: TwisterDrawTool) {
   if (tool === "pencil") return { width: 3, opacity: 0.95 };
   if (tool === "brush") return { width: 10, opacity: 0.9 };

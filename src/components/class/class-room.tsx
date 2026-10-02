@@ -415,14 +415,23 @@ export function ClassRoom({
           }
 
           if (teacher || !sync.view || appliedView.current === sync.view.at) return;
-          appliedView.current = sync.view.at;
           if (sync.view.target === "TWISTER") {
-            setLessonSectionFocus(null);
-            setFocusedWordDeck(null);
-            setOpen((prev) => ({ ...prev, board: false }));
-            void twisterSessionAction().then(setTwisterSession);
+            const commandAt = sync.view.at;
+            void twisterSessionAction()
+              .then((next) => {
+                if (!alive || !next || appliedView.current === commandAt) return;
+                setLessonSectionFocus(null);
+                setFocusedWordDeck(null);
+                setOpen((prev) => ({ ...prev, board: false }));
+                setTwisterSession(next);
+                // Считаем команду выполненной только после успешной загрузки.
+                // При временном сбое следующий такт попробует ещё раз.
+                appliedView.current = commandAt;
+              })
+              .catch(() => {});
             return;
           }
+          appliedView.current = sync.view.at;
           setTwisterSession(null);
           if (sync.view.target === "BOARD") {
             setLessonSectionFocus(null);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeTwisterStroke } from "../src/lib/twister-drawing";
+import { mergeTwisterStrokes, sanitizeTwisterStroke } from "../src/lib/twister-drawing";
 
 test("штрих получает автора из сессии, а не из браузера", () => {
   const stroke = sanitizeTwisterStroke(
@@ -38,5 +38,21 @@ test("пустой или одиночный штрих не сохраняет�
       "TEACHER",
     ),
     null,
+  );
+});
+
+test("рисунки из базы и optimistic UI объединяются без дублей", () => {
+  const first = {
+    id: "one",
+    twisterId: "card",
+    author: "TEACHER" as const,
+    tool: "marker" as const,
+    color: "#facc15",
+    points: [{ x: 1, y: 1 }, { x: 2, y: 2 }],
+  };
+  const second = { ...first, id: "two" };
+  assert.deepEqual(
+    mergeTwisterStrokes([first], [first, second]).map((stroke) => stroke.id),
+    ["one", "two"],
   );
 });
