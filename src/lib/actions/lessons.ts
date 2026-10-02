@@ -2035,17 +2035,22 @@ export async function submitRegularLessonAnswerAction(
 
   const answer = String(supplied ?? "").trim().slice(0, 300);
   if (!answer) return { error: "Введи ответ" };
-  if ((state[responseKey] ?? "").trim() === answer) {
+  const previousAttempts = regularAttempts(state, responseKey);
+  if (
+    (state[responseKey] ?? "").trim() === answer &&
+    previousAttempts.some(
+      (attempt) => normalizeHomeworkAnswer(attempt) === normalizeHomeworkAnswer(answer),
+    )
+  ) {
     return {
       value: state[responseKey],
       status: currentStatus,
-      attempts: regularAttempts(state, responseKey),
+      attempts: previousAttempts,
     };
   }
   const matches = spec.accepted
     .map(normalizeHomeworkAnswer)
     .includes(normalizeHomeworkAnswer(answer));
-  const previousAttempts = regularAttempts(state, responseKey);
   let attempts = previousAttempts;
   let status: "correct" | "locked" | null = null;
   let value = answer;
