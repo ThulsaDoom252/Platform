@@ -55,6 +55,21 @@ test("домашка очищает повреждённый json и сохра�
   assert.equal(normalized.exercises.length, 3);
 });
 
+test("домашка сохраняет направление перевода с английского", () => {
+  const normalized = normalizeInteractiveHomework({
+    ...plan,
+    exercises: plan.exercises.map((exercise) =>
+      exercise.id === "bonus"
+        ? { ...exercise, translationDirection: "from-english" }
+        : exercise,
+    ),
+  });
+  assert.equal(
+    normalized?.exercises.find((exercise) => exercise.id === "bonus")?.translationDirection,
+    "from-english",
+  );
+});
+
 test("проверка ответа принимает регистр, знаки и допустимый вариант", () => {
   const item = plan.exercises[0].items[0];
   assert.equal(homeworkAnswerMatches(item, "GOT TO!"), true);

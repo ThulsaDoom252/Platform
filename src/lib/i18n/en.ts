@@ -767,6 +767,7 @@ export const en = {
       describe: "Explain each word or phrase in simple English. Add a short example if you can.",
       drag: "Drag each card into the missing part of the English sentence.",
       translate: "Translate each sentence into English.",
+      translateFromEnglish: "Translate each sentence from English.",
       questionText: "Write your answer below each question.",
       questionAudio: "Record your answer on Vocaroo and paste the link below.",
     },

@@ -229,7 +229,9 @@ function HomeworkExerciseView({
           : exercise.kind === "drag"
             ? t.interactiveHomework.instructions.drag
             : exercise.kind === "translate"
-              ? t.interactiveHomework.instructions.translate
+              ? exercise.translationDirection === "from-english"
+                ? t.interactiveHomework.instructions.translateFromEnglish
+                : t.interactiveHomework.instructions.translate
               : exercise.kind === "question-audio"
                 ? t.interactiveHomework.instructions.questionAudio
                 : t.interactiveHomework.instructions.questionText;

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, ilike } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { lessonUnits, lessonWords } from "@/lib/db/schema";
+import { lessonAssignments, lessonUnits, lessonWords } from "@/lib/db/schema";
 import { parseLexisDocuments } from "@/lib/keyed-parser";
+import type { InteractiveHomeworkPlan } from "@/lib/lesson-homework";
 
 const title = "new derek";
 
@@ -72,6 +73,70 @@ const questions = [
   "How would you feel if you had to face such an opponent during a short trash-talk exchange?",
 ];
 
+export const newDerekHomework: InteractiveHomeworkPlan = {
+  kind: "INTERACTIVE_HOMEWORK_V1",
+  title: "New Derek — Homework",
+  exercises: [
+    {
+      id: "new-derek-fill",
+      title: "Vocabulary 1 — Fill in the gaps",
+      instruction: "Complete each sentence with a word or phrase from the list.",
+      kind: "fill",
+      wordBank: vocabulary.map(([, word]) => word),
+      items: [
+        { id: "nd-fill-mercy", prompt: "The judge showed ___ and gave the young man a lighter sentence.", answer: "mercy" },
+        { id: "nd-fill-mercy-kill", prompt: "The vet had to ___ the badly injured animal to end its suffering.", answer: "mercy kill", accepted: ["mercy-kill"] },
+        { id: "nd-fill-old-man", prompt: "The ___ walks slowly with a cane every morning.", answer: "old man" },
+        { id: "nd-fill-squeeze", prompt: "It is easy ___ a soft ball.", answer: "to squeeze", accepted: ["squeeze"] },
+        { id: "nd-fill-lungs", prompt: "Smoking can damage your ___.", answer: "lungs" },
+        { id: "nd-fill-beg", prompt: "He was terrified and started ___.", answer: "to beg for life", accepted: ["begging for life"] },
+        { id: "nd-fill-open-up", prompt: "She was quiet at first, but later she began ___.", answer: "to open up", accepted: ["opening up"] },
+        { id: "nd-fill-lord", prompt: "They prayed to ___ before dinner.", answer: "the Lord", accepted: ["Lord"] },
+        { id: "nd-fill-knock-out", prompt: "The boxer hopes ___ his opponent in the first round.", answer: "to knock out", accepted: ["knock out"] },
+        { id: "nd-fill-make-sense", prompt: "For this explanation ___, we need one more fact.", answer: "to make sense", accepted: ["make sense"] },
+        { id: "nd-fill-kinda", prompt: "I am ___ tired, so I will go home early.", answer: "kind of", accepted: ["kinda", "kind of (kinda)"] },
+        { id: "nd-fill-tube", prompt: "The nurse used ___ to give him water.", answer: "a plastic tube", accepted: ["plastic tube"] },
+        { id: "nd-fill-paralyzed", prompt: "No one wants ___ after an accident.", answer: "to be paralyzed from the neck down", accepted: ["be paralyzed from the neck down"] },
+      ],
+    },
+    {
+      id: "new-derek-describe",
+      title: "Vocabulary 2 — Explain it yourself",
+      instruction: "Explain each word or phrase in simple English.",
+      kind: "describe",
+      items: vocabulary.map(([, word], index) => ({
+        id: `nd-describe-${index + 1}`,
+        prompt: word,
+        word,
+      })),
+    },
+    {
+      id: "new-derek-translate",
+      title: "Translation — From English",
+      instruction: "Translate each sentence from English.",
+      kind: "translate",
+      translationDirection: "from-english",
+      items: [
+        { id: "nd-tr-mercy", prompt: "The judge showed mercy to the young man.", answer: "Суддя проявив милосердя до молодого чоловіка." },
+        { id: "nd-tr-mercy-kill", prompt: "The vet decided to mercy-kill the badly injured horse.", answer: "Ветеринар вирішив приспати тяжко пораненого коня з милосердя." },
+        { id: "nd-tr-old-man", prompt: "The old man walks in the park every morning.", answer: "Старий чоловік гуляє в парку щоранку." },
+        { id: "nd-tr-squeeze", prompt: "Please squeeze the lemon into the tea.", answer: "Будь ласка, вичави лимон у чай." },
+        { id: "nd-tr-lungs", prompt: "Smoking can damage your lungs.", answer: "Куріння може пошкодити твої легені." },
+        { id: "nd-tr-beg", prompt: "The frightened man began to beg for his life.", answer: "Наляканий чоловік почав благати зберегти йому життя." },
+        { id: "nd-tr-open-up", prompt: "It is hard for him to open up to strangers.", answer: "Йому важко відкритися незнайомим людям." },
+        { id: "nd-tr-lord", prompt: "They prayed to the Lord for help.", answer: "Вони молили Господа про допомогу." },
+        { id: "nd-tr-knock-out", prompt: "The boxer knocked out his opponent in round two.", answer: "Боксер нокаутував суперника в другому раунді." },
+        { id: "nd-tr-make-sense", prompt: "Your plan makes sense to me.", answer: "Твій план здається мені логічним." },
+        { id: "nd-tr-kind-of", prompt: "I am kind of tired today.", answer: "Я сьогодні трохи втомився." },
+        { id: "nd-tr-tube", prompt: "The nurse used a plastic tube to give him water.", answer: "Медсестра використала пластикову трубку, щоб дати йому води." },
+        { id: "nd-tr-paralyzed", prompt: "After the accident, he was paralyzed from the neck down.", answer: "Після аварії його паралізувало нижче шиї." },
+        { id: "nd-tr-aint", prompt: "This ain't gonna be easy.", answer: "Це буде нелегко." },
+        { id: "nd-tr-kinda", prompt: "The film was kinda strange, but I liked it.", answer: "Фільм був трохи дивним, але мені сподобався." },
+      ],
+    },
+  ],
+};
+
 /** Installs the bundled lesson into the database used by the running app. */
 export async function installNewDerekLesson(authorId: string) {
   const [parsedLexis] = parseLexisDocuments(lexisSource);
@@ -102,7 +167,7 @@ export async function installNewDerekLesson(authorId: string) {
       videoTitle: "Derek vs. The Teacher",
       transcript,
       questions: { afterVideo: questions, afterReading: [] },
-      homework: [],
+      homework: [newDerekHomework],
       activityIds: [],
       sections: [],
       updatedAt: new Date(),
@@ -134,6 +199,19 @@ export async function installNewDerekLesson(authorId: string) {
         sortOrder: index + 1,
       })),
     );
+
+    const assignments = await tx
+      .select({ id: lessonAssignments.id, openSections: lessonAssignments.openSections })
+      .from(lessonAssignments)
+      .where(eq(lessonAssignments.unitId, unitId));
+    for (const assignment of assignments) {
+      const openSections = new Set(assignment.openSections ?? []);
+      openSections.add("homework");
+      await tx
+        .update(lessonAssignments)
+        .set({ openSections: [...openSections], updatedAt: new Date() })
+        .where(eq(lessonAssignments.id, assignment.id));
+    }
 
     return unitId;
   });

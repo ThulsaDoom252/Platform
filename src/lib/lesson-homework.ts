@@ -26,6 +26,8 @@ export type HomeworkExercise = {
   title: string;
   instruction: string;
   kind: HomeworkExerciseKind;
+  /** Direction for translation tasks; old homework defaults to translating into English. */
+  translationDirection?: "to-english" | "from-english";
   optional?: boolean;
   wordBank?: string[];
   items: HomeworkItem[];
@@ -161,6 +163,12 @@ export function normalizeInteractiveHomework(value: unknown): InteractiveHomewor
       title,
       instruction,
       kind,
+      translationDirection:
+        kind === "translate" && item.translationDirection === "from-english"
+          ? "from-english"
+          : kind === "translate" && item.translationDirection === "to-english"
+            ? "to-english"
+            : undefined,
       optional: item.optional === true,
       wordBank: Array.isArray(item.wordBank)
         ? [...new Set(item.wordBank.map(String).map((word) => word.trim()).filter(Boolean))]

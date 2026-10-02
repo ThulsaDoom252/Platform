@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq, ilike } from "drizzle-orm";
 import { db } from "../src/lib/db";
-import { lessonUnits, lessonWords, users } from "../src/lib/db/schema";
+import { lessonAssignments, lessonUnits, lessonWords, users } from "../src/lib/db/schema";
 import { parseLexisDocuments } from "../src/lib/keyed-parser";
+import { newDerekHomework } from "../src/lib/bundled-lessons/new-derek";
 
 const title = "new derek";
 
@@ -173,7 +174,7 @@ async function main() {
     videoTitle: "Derek vs. The Teacher",
     transcript,
     questions: { afterVideo: questions, afterReading: [] },
-    homework: [],
+    homework: [newDerekHomework],
     activityIds: [],
     sections: [],
     updatedAt: new Date(),
@@ -201,6 +202,19 @@ async function main() {
       sortOrder: index + 1,
     })),
   );
+
+  const assignments = await db
+    .select({ id: lessonAssignments.id, openSections: lessonAssignments.openSections })
+    .from(lessonAssignments)
+    .where(eq(lessonAssignments.unitId, unitId));
+  for (const assignment of assignments) {
+    const openSections = new Set(assignment.openSections ?? []);
+    openSections.add("homework");
+    await db
+      .update(lessonAssignments)
+      .set({ openSections: [...openSections], updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, assignment.id));
+  }
 
   console.log(JSON.stringify({
     id: unitId,
