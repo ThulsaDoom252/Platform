@@ -12,6 +12,7 @@ import {
   homeworkAttempts,
   homeworkAttemptsKey,
   homeworkExerciseHiddenKey,
+  homeworkExerciseProgress,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
   homeworkProgress,
@@ -21,6 +22,7 @@ import {
   homeworkSubmittedAtKey,
   homeworkValueKey,
   interactiveHomeworkFromEntries,
+  legacyHomeworkFromEntries,
   isHomeworkAutoKind,
   type HomeworkExerciseKind,
   type HomeworkStoredState,
@@ -344,6 +346,10 @@ export type HomeworkAssignmentCard = {
   homeworkTitle: string;
   done: number;
   total: number;
+  requiredDone: number;
+  requiredTotal: number;
+  bonusDone: number;
+  bonusTotal: number;
   updatedAt: string;
 };
 
@@ -359,17 +365,27 @@ export async function myInteractiveHomeworkAction(): Promise<HomeworkAssignmentC
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
     .where(eq(lessonAssignments.studentId, session.userId))
-    .orderBy(desc(lessonAssignments.updatedAt));
+    .orderBy(desc(lessonAssignments.createdAt));
 
   return rows.flatMap((row): HomeworkAssignmentCard[] => {
     const plan = interactiveHomeworkFromEntries(row.homework);
-    if (!plan) return [];
-    const progress = homeworkProgress(plan, row.assignment.answers ?? {});
+    const legacy = legacyHomeworkFromEntries(row.homework);
+    if (!plan && legacy.length === 0) return [];
+    const progress = plan
+      ? homeworkProgress(plan, row.assignment.answers ?? {})
+      : { done: 0, total: 0 };
+    const exerciseProgress = plan
+      ? homeworkExerciseProgress(plan, row.assignment.answers ?? {})
+      : { required: { done: 0, total: 0 }, bonuses: { done: 0, total: 0 } };
     return [{
       id: row.assignment.id,
       title: row.title,
-      homeworkTitle: plan.title,
+      homeworkTitle: plan?.title || legacy[0]?.title || "Homework",
       ...progress,
+      requiredDone: exerciseProgress.required.done,
+      requiredTotal: exerciseProgress.required.total,
+      bonusDone: exerciseProgress.bonuses.done,
+      bonusTotal: exerciseProgress.bonuses.total,
       updatedAt: row.assignment.updatedAt.toISOString(),
     }];
   });

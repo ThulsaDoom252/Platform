@@ -626,7 +626,7 @@ function ActivityLessonEditor({
       </Section>}
 
       {/* Домашка */}
-      {lesson.kind !== "SHORTS" && <Section title={t.lessonUnits.secHomework}>
+      {lesson.kind !== "SHORTS" && <Section id="lesson-homework" title={t.lessonUnits.secHomework}>
         <div className="flex flex-col gap-2.5">
           {homework.map((task, i) => (
             <div key={i} className="flex items-start gap-2 rounded-xl bg-surface-2 p-2.5">
@@ -745,16 +745,18 @@ function RegularLessonEditor({ lesson }: { lesson: LessonView }) {
 }
 
 function Section({
+  id,
   title,
   hint,
   children,
 }: {
+  id?: string;
   title: string;
   hint?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5">
+    <section id={id} className="scroll-mt-24 rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5">
       <p className="text-sm font-bold text-content">{title}</p>
       {hint && <p className="mb-2 mt-0.5 text-[12px] text-faint">{hint}</p>}
       <div className={hint ? "" : "mt-3"}>{children}</div>

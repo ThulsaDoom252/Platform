@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
   useTransition,
@@ -22,10 +23,10 @@ import {
   homeworkAttempts,
   homeworkAttemptsKey,
   homeworkExerciseHidden,
+  homeworkExerciseProgress,
   homeworkExerciseHiddenKey,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
-  homeworkProgress,
   homeworkStatus,
   homeworkStatusKey,
   homeworkSubmittedAt,
@@ -59,19 +60,25 @@ export type InteractiveHomeworkSession = {
 export function InteractiveHomework({
   plan,
   session,
+  onStateChange,
 }: {
   plan: InteractiveHomeworkPlan;
   session: InteractiveHomeworkSession;
+  onStateChange?: (state: HomeworkStoredState) => void;
 }) {
   const { t } = useT();
   const [state, setState] = useState(session.state);
   const [showAnswers, setShowAnswers] = useState(false);
   const [reviewBusy, startReview] = useTransition();
-  const progress = homeworkProgress(plan, state);
+  const progress = homeworkExerciseProgress(plan, state);
   const submittedAt = homeworkSubmittedAt(state);
   const exercises = plan.exercises.filter(
     (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
   );
+
+  useEffect(() => {
+    onStateChange?.(state);
+  }, [onStateChange, state]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -104,10 +111,18 @@ export function InteractiveHomework({
             )}
             <div className="rounded-xl bg-surface px-3 py-2 text-right ring-1 ring-line">
               <p className="text-[10px] font-bold uppercase tracking-wide text-faint">
-                {t.interactiveHomework.requiredProgress}
+                {t.interactiveHomework.exercisesProgress}
               </p>
               <p className="text-lg font-black text-accent">
-                {progress.done}/{progress.total}
+                {progress.required.done}/{progress.required.total}
+              </p>
+            </div>
+            <div className="rounded-xl bg-surface px-3 py-2 text-right ring-1 ring-line">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-faint">
+                {t.interactiveHomework.bonusesProgress}
+              </p>
+              <p className="text-lg font-black text-accent">
+                {progress.bonuses.done}/{progress.bonuses.total}
               </p>
             </div>
           </div>
@@ -115,7 +130,7 @@ export function InteractiveHomework({
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-line/60">
           <div
             className="h-full rounded-full bg-accent transition-[width] duration-500"
-            style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+            style={{ width: `${progress.required.total ? (progress.required.done / progress.required.total) * 100 : 0}%` }}
           />
         </div>
       </section>

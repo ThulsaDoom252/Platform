@@ -12,6 +12,7 @@
  * подчёркнуто своё, и заготовка от этого не меняется.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
 import { useLocalNumber } from "@/lib/use-local-number";
 import {
@@ -36,7 +37,7 @@ import {
   type LessonView as Lesson,
   type LessonVideoUpdate,
 } from "@/lib/actions/lessons";
-import { IconEye, IconEyeOff } from "@/components/icons";
+import { IconEye, IconEyeOff, IconPlus } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
 import {
@@ -47,9 +48,12 @@ import {
   InteractiveHomework,
   type InteractiveHomeworkSession,
 } from "@/components/lessons/interactive-homework";
+import { homeworkExerciseProgress } from "@/lib/lesson-homework";
 
 export type LessonViewProps = {
   lesson: Lesson;
+  /** Open this tab first when the viewer came from a direct navigation item. */
+  initialSection?: LessonSection;
   /** Какие секции показывать. */
   open: LessonSection[];
   /**
@@ -97,6 +101,7 @@ const MAX_PANELS = 4;
 
 export function LessonView({
   lesson,
+  initialSection,
   open,
   closed,
   lockClosed = false,
@@ -145,7 +150,12 @@ export function LessonView({
   );
 
   /** Что стоит в каждом окне. Первое окно ведёт себя как вкладки. */
-  const [picked, setPicked] = useState<LessonSection[]>([]);
+  const [picked, setPicked] = useState<LessonSection[]>(
+    initialSection ? [initialSection] : [],
+  );
+  const [homeworkCounterState, setHomeworkCounterState] = useState(
+    homeworkSession?.state ?? {},
+  );
 
   const LABEL: Record<LessonSection, string> = {
     vocab: t.lessonUnits.secVocab,
@@ -155,6 +165,25 @@ export function LessonView({
     questions: t.lessonUnits.secQuestions,
     homework: t.lessonUnits.secHomework,
   };
+  const homeworkCounters = lesson.interactiveHomework && homeworkSession
+    ? homeworkExerciseProgress(lesson.interactiveHomework, homeworkCounterState)
+    : null;
+
+  useEffect(() => {
+    if (!homeworkSession) return;
+    const frame = requestAnimationFrame(() => setHomeworkCounterState(homeworkSession.state));
+    return () => cancelAnimationFrame(frame);
+  }, [homeworkSession]);
+
+  useEffect(() => {
+    if (!initialSection) return;
+    const frame = requestAnimationFrame(() => {
+      setPicked((current) => current[0] === initialSection
+        ? current
+        : [initialSection, ...current.slice(1)]);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialSection]);
 
   /*
    * Окна добираются по порядку урока: открыл второе — рядом встаёт
@@ -316,7 +345,7 @@ export function LessonView({
                     title={hidden ? t.lessonUnits.hiddenFromStudent : undefined}
                     aria-disabled={unavailable}
                     className={cn(
-                      "flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold transition",
+                      "flex min-h-8 items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-semibold transition",
                       section === key
                         ? "bg-accent text-white"
                         : "text-muted hover:bg-surface-2 hover:text-content",
@@ -324,7 +353,18 @@ export function LessonView({
                       unavailable && "cursor-not-allowed hover:bg-transparent hover:text-muted",
                     )}
                   >
-                    {LABEL[key]}
+                    <span className="flex flex-col items-start leading-tight">
+                      <span>{LABEL[key]}</span>
+                      {key === "homework" && homeworkCounters && (
+                        <span className={cn(
+                          "text-[9px] font-bold",
+                          section === key ? "text-white/80" : "text-faint",
+                        )}>
+                          {t.interactiveHomework.exercisesProgress} {homeworkCounters.required.done}/{homeworkCounters.required.total}
+                          {" · "}{t.interactiveHomework.bonusesProgress} {homeworkCounters.bonuses.done}/{homeworkCounters.bonuses.total}
+                        </span>
+                      )}
+                    </span>
                     {hidden && <IconEyeOff className="h-3 w-3" />}
                   </button>
                 );
@@ -393,7 +433,11 @@ export function LessonView({
               )}
               {section === "questions" && <Questions lesson={lesson} />}
               {section === "homework" && (
-                <Homework lesson={lesson} session={homeworkSession} />
+                <Homework
+                  lesson={lesson}
+                  session={homeworkSession}
+                  onStateChange={setHomeworkCounterState}
+                />
               )}
             </div>
           </div>
@@ -912,9 +956,11 @@ function Questions({ lesson }: { lesson: Lesson }) {
 function Homework({
   lesson,
   session,
+  onStateChange,
 }: {
   lesson: Lesson;
   session?: InteractiveHomeworkSession;
+  onStateChange?: (state: InteractiveHomeworkSession["state"]) => void;
 }) {
   const { t } = useT();
 
@@ -923,7 +969,20 @@ function Homework({
     lesson.activities.length === 0 &&
     !lesson.interactiveHomework
   ) {
-    return <p className="text-sm text-faint">{t.lessonUnits.empty}</p>;
+    return (
+      <div className="rounded-2xl bg-surface p-6 text-center ring-1 ring-line">
+        <p className="text-sm font-semibold text-faint">{t.lessonUnits.noHomework}</p>
+        {session?.teacher && (
+          <Link
+            href={`/teacher/lessons/${session.unitId}#lesson-homework`}
+            className="mx-auto mt-3 flex h-10 w-fit items-center gap-1.5 rounded-xl bg-accent px-4 text-sm font-bold text-white transition hover:brightness-95"
+          >
+            <IconPlus className="h-4 w-4" />
+            {t.lessonUnits.addHomework}
+          </Link>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -936,6 +995,7 @@ function Homework({
           key={`${session.assignmentId}:${JSON.stringify(session.state)}`}
           plan={lesson.interactiveHomework}
           session={session}
+          onStateChange={onStateChange}
         />
       )}
       {lesson.homework.map((task, i) => (

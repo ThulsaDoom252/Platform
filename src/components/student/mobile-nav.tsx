@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n-provider";
 import {
@@ -14,6 +14,7 @@ import {
 
 export function StudentMobileNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t } = useT();
 
   const items = [
@@ -27,7 +28,13 @@ export function StudentMobileNav() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 flex items-stretch justify-around border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden">
       {items.map(({ href, label, Icon, exact }) => {
-        const active = exact ? pathname === href : pathname.startsWith(href);
+        const active = exact
+          ? pathname === href
+          : pathname.startsWith(href) || (
+              href === "/student/homework" &&
+              pathname.startsWith("/student/lessons/") &&
+              searchParams.get("section") === "homework"
+            );
         return (
           <Link
             key={href}

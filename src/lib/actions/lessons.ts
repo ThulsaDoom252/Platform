@@ -280,6 +280,7 @@ export async function saveLessonAction(
   if (!mine) return { error: "Урок не найден" };
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
+  let homeworkAvailable: boolean | null = null;
   const lines = (list: string[] | undefined) =>
     (list ?? []).map((s) => String(s ?? "").trim()).filter(Boolean);
 
@@ -326,6 +327,7 @@ export async function saveLessonAction(
       .filter((task) => task.title || task.text);
     const interactive = interactiveHomeworkFromEntries(mine.homework);
     patch.homework = [...legacy, ...(interactive ? [interactive] : [])];
+    homeworkAvailable = legacy.length > 0 || Boolean(interactive);
   }
   if (edit.activityIds !== undefined) {
     const requested = [...new Set((edit.activityIds ?? []).map(String).filter(Boolean))];
@@ -346,7 +348,23 @@ export async function saveLessonAction(
   }
 
   await db.update(lessonUnits).set(patch).where(eq(lessonUnits.id, unitId));
+  if (homeworkAvailable !== null) {
+    const assignments = await db
+      .select({ id: lessonAssignments.id, openSections: lessonAssignments.openSections })
+      .from(lessonAssignments)
+      .where(eq(lessonAssignments.unitId, unitId));
+    for (const assignment of assignments) {
+      const open = new Set(assignment.openSections ?? []);
+      if (homeworkAvailable) open.add("homework");
+      else open.delete("homework");
+      await db
+        .update(lessonAssignments)
+        .set({ openSections: [...open], updatedAt: new Date() })
+        .where(eq(lessonAssignments.id, assignment.id));
+    }
+  }
   revalidatePath("/teacher/lessons");
+  revalidatePath("/student/homework");
   return {};
 }
 
@@ -1658,6 +1676,10 @@ export async function assignedLessonAction(assignmentId: string): Promise<
   }
 
   const stored = row.a.openSections ?? [];
+  const storedWithHomework =
+    lesson.homework.length > 0 || lesson.interactiveHomework
+      ? [...stored, "homework"]
+      : stored;
   return {
     assignment: {
       id: row.a.id,
@@ -1675,7 +1697,7 @@ export async function assignedLessonAction(assignmentId: string): Promise<
     open:
       lesson.kind === "REGULAR"
         ? stored.filter((key) => !!regularLessonSection(key, lesson.regularSections))
-        : openSections(stored),
+        : openSections(storedWithHomework),
     showBritish: stored.includes(BRITISH_OPTION),
     vocabularyReveal: lessonVocabularyReveal(stored),
   };

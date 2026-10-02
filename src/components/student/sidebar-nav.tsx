@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { RAIL_ONLY_OPEN } from "@/components/sidebar-rail";
 import { useT } from "@/components/i18n-provider";
@@ -17,6 +17,7 @@ import {
 
 export function StudentSidebarNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t } = useT();
 
   const items = [
@@ -32,7 +33,11 @@ export function StudentSidebarNav() {
   return (
     <nav className="flex flex-col gap-1">
       {items.map(({ href, label, Icon }) => {
-        const active = pathname.startsWith(href);
+        const active = pathname.startsWith(href) || (
+          href === "/student/homework" &&
+          pathname.startsWith("/student/lessons/") &&
+          searchParams.get("section") === "homework"
+        );
         return (
           <Link
             key={href}

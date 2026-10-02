@@ -242,3 +242,28 @@ export function homeworkProgress(plan: InteractiveHomeworkPlan, state: HomeworkS
   }).length;
   return { done, total: required.length };
 }
+
+/** Progress by exercise blocks, split into required work and bonuses. */
+export function homeworkExerciseProgress(
+  plan: InteractiveHomeworkPlan,
+  state: HomeworkStoredState,
+) {
+  const completed = (exercise: HomeworkExercise) =>
+    exercise.items.length > 0 && exercise.items.every((item) =>
+      isHomeworkAutoKind(exercise.kind)
+        ? Boolean(homeworkStatus(state, item.id))
+        : Boolean((state[homeworkValueKey(item.id)] ?? "").trim()),
+    );
+  const count = (optional: boolean) => {
+    const exercises = plan.exercises.filter((exercise) =>
+      Boolean(exercise.optional) === optional &&
+      exercise.items.length > 0 &&
+      !homeworkExerciseHidden(state, exercise.id),
+    );
+    return {
+      done: exercises.filter(completed).length,
+      total: exercises.length,
+    };
+  };
+  return { required: count(false), bonuses: count(true) };
+}

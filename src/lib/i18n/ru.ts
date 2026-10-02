@@ -718,6 +718,8 @@ export const ru: Dict = {
     secTranscript: "Расшифровка",
     secQuestions: "Вопросы",
     secHomework: "Домашка",
+    noHomework: "Учитель пока не добавил домашку к этому уроку.",
+    addHomework: "Добавить домашку",
     pickVocab: "Выбери словник",
     noVocab: "Словников пока нет",
     videoLink: "Ссылка на видео",
@@ -771,6 +773,8 @@ export const ru: Dict = {
   interactiveHomework: {
     eyebrow: "Интерактивная домашняя работа",
     requiredProgress: "Основные задания",
+    exercisesProgress: "Упражнения",
+    bonusesProgress: "Бонусы",
     bonus: "Бонус",
     useWords: "Используй эти слова",
     showAnswers: "Показать правильные ответы",

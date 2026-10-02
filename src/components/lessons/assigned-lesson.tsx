@@ -42,6 +42,7 @@ export function AssignedLesson({
   classVideo,
   sectionFocus,
   liveClass = false,
+  initialSection,
 }: {
   data: {
     assignment: LessonAssignmentCard;
@@ -57,6 +58,7 @@ export function AssignedLesson({
   /** Разовая команда учителя: показать секцию, не открывая её навсегда. */
   sectionFocus?: { section: string; elementId?: string | null; at: string } | null;
   liveClass?: boolean;
+  initialSection?: (typeof LESSON_SECTIONS)[number];
 }) {
   const { t } = useT();
   const [marks, setMarks] = useState(data.assignment.highlights);
@@ -251,6 +253,7 @@ export function AssignedLesson({
       {/* В классе ученик видит все вкладки, но сам открывает только разрешённые. */}
       <LessonView
         lesson={data.lesson}
+        initialSection={initialSection}
         open={
           teacher || liveClass
             ? lessonSections
@@ -277,16 +280,12 @@ export function AssignedLesson({
         highlightMode={teacher && highlightMode}
         highlightColor={highlightColor}
         onHighlight={teacher ? highlight : undefined}
-        homeworkSession={
-          data.lesson.interactiveHomework
-            ? {
-                assignmentId: data.assignment.id,
-                unitId: data.assignment.unitId,
-                teacher,
-                state: data.answers,
-              }
-            : undefined
-        }
+        homeworkSession={{
+          assignmentId: data.assignment.id,
+          unitId: data.assignment.unitId,
+          teacher,
+          state: data.answers,
+        }}
         videoSession={
           liveClass
             ? {

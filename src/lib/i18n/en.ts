@@ -645,6 +645,8 @@ export const en = {
     secTranscript: "Transcript",
     secQuestions: "Questions",
     secHomework: "Homework",
+    noHomework: "The teacher has not added homework to this lesson yet.",
+    addHomework: "Add homework",
     pickVocab: "Pick a vocabulary",
     noVocab: "No vocabulary yet",
     videoLink: "Video link",
@@ -698,6 +700,8 @@ export const en = {
   interactiveHomework: {
     eyebrow: "Interactive homework",
     requiredProgress: "Required tasks",
+    exercisesProgress: "Exercises",
+    bonusesProgress: "Bonuses",
     bonus: "Bonus",
     useWords: "Use these words",
     showAnswers: "Show correct answers",

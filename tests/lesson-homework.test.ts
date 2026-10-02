@@ -6,6 +6,7 @@ import {
   homeworkAttemptsKey,
   homeworkExerciseHidden,
   homeworkExerciseHiddenKey,
+  homeworkExerciseProgress,
   homeworkProgress,
   homeworkStatusKey,
   homeworkValueKey,
@@ -79,4 +80,15 @@ test("скрытое учителем упражнение не видно уч�
   assert.equal(homeworkExerciseHidden(state, "free-main"), true);
   assert.equal(homeworkExerciseHidden(state, "fill-main"), false);
   assert.deepEqual(homeworkProgress(plan, state), { done: 0, total: 1 });
+});
+
+test("прогресс секций отдельно считает обязательные упражнения и бонусы", () => {
+  const state = {
+    [homeworkStatusKey("fill-one")]: "correct",
+    [homeworkValueKey("free-one")]: "A short explanation",
+  };
+  assert.deepEqual(homeworkExerciseProgress(plan, state), {
+    required: { done: 2, total: 2 },
+    bonuses: { done: 0, total: 1 },
+  });
 });
