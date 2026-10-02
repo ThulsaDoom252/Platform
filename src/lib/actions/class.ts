@@ -15,6 +15,7 @@ import {
   users,
   activityGames,
   classMessages,
+  classLessonNotes,
   classVocabularyWords,
   lessons,
   lessonPackages,
@@ -27,6 +28,7 @@ import {
   type ClassVideoState,
 } from "@/lib/class-video";
 import { scheduleNow } from "@/lib/schedule-time";
+import { liveClassTimerState, type ClassTimerState } from "@/lib/class-timer";
 
 /** Сколько отметка держится за «онлайн». */
 const ONLINE_WINDOW_MS = 75_000;
@@ -341,6 +343,20 @@ export async function enterClassAction(studentId: string): Promise<{ error?: str
     .limit(1);
   if (!student || student.role !== "STUDENT") return { error: "Это не ученик" };
 
+  const [teacher] = await db
+    .select({ previousStudentId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (teacher?.previousStudentId && teacher.previousStudentId !== id) {
+    await db
+      .update(users)
+      .set({
+        classFocus: sql`(coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus'`,
+      })
+      .where(eq(users.id, teacher.previousStudentId));
+  }
+
   await db.update(users).set({ classWithId: id }).where(eq(users.id, session.userId));
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
@@ -443,6 +459,19 @@ export async function leaveClassAction(): Promise<{ error?: string }> {
   const session = await requireUser();
   if (session.role !== "TEACHER") return { error: "Класс ведёт учитель" };
 
+  const [teacher] = await db
+    .select({ studentId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (teacher?.studentId) {
+    await db
+      .update(users)
+      .set({
+        classFocus: sql`(coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus'`,
+      })
+      .where(eq(users.id, teacher.studentId));
+  }
   await db.update(users).set({ classWithId: null }).where(eq(users.id, session.userId));
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
@@ -665,6 +694,15 @@ export type ClassSync = {
   partnerOnBoard: boolean;
   /** Состояние общего плеера текущей пары в классе. */
   video: ClassVideoState | null;
+  /** Shared blocking timer. It is visible to the student only after teacher focus. */
+  timer: ClassTimerState | null;
+  /** One-shot teacher note shown to the student. */
+  noteFocus: {
+    id: string;
+    body: string;
+    lessonDay: string;
+    at: string;
+  } | null;
   /** Последние добавления нужны для заметного уведомления обоим участникам. */
   vocabularyEvents: {
     id: string;
@@ -702,6 +740,8 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
       view: null,
       partnerOnBoard: false,
       video: null,
+      timer: null,
+      noteFocus: null,
       vocabularyEvents: [],
     };
   }
@@ -711,13 +751,13 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
     me.role === "TEACHER"
       ? me.classWithId
         ? await db
-            .select({ classWhere: users.classWhere, classFocus: users.classFocus })
+            .select({ id: users.id, classWhere: users.classWhere, classFocus: users.classFocus })
             .from(users)
             .where(eq(users.id, me.classWithId))
             .limit(1)
         : []
       : await db
-          .select({ classWhere: users.classWhere, classFocus: users.classFocus })
+          .select({ id: users.id, classWhere: users.classWhere, classFocus: users.classFocus })
           .from(users)
           .where(and(eq(users.classWithId, session.userId), eq(users.role, "TEACHER")))
           .limit(1);
@@ -784,6 +824,53 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
       ? null
       : storedView;
 
+  const timer = liveClassTimerState(
+    me.role === "TEACHER" ? partner?.classFocus?.timerState : me.classFocus?.timerState,
+  );
+
+  let noteFocus: ClassSync["noteFocus"] = null;
+  const requestedNote = me.role === "STUDENT" ? me.classFocus?.noteFocus : null;
+  if (requestedNote?.id && requestedNote.at && partner?.id) {
+    const requestedAt = Date.parse(requestedNote.at);
+    if (Number.isFinite(requestedAt) && Date.now() - requestedAt <= 60_000) {
+      const [note] = await db
+        .select({
+          id: classLessonNotes.id,
+          body: classLessonNotes.body,
+          lessonDay: classLessonNotes.lessonDay,
+        })
+        .from(classLessonNotes)
+        .where(
+          and(
+            eq(classLessonNotes.id, requestedNote.id),
+            eq(classLessonNotes.studentId, session.userId),
+            eq(classLessonNotes.teacherId, partner.id),
+          ),
+        )
+        .limit(1);
+      if (note) {
+        noteFocus = {
+          id: note.id,
+          body: note.body,
+          lessonDay: note.lessonDay.toISOString(),
+          at: requestedNote.at,
+        };
+      }
+    }
+    await db
+      .update(users)
+      .set({
+        classFocus: sql`coalesce(${users.classFocus}, '{}'::jsonb) - 'noteFocus'`,
+      })
+      .where(
+        and(
+          eq(users.id, session.userId),
+          eq(users.role, "STUDENT"),
+          sql`${users.classFocus}->'noteFocus'->>'at' = ${requestedNote.at}`,
+        ),
+      );
+  }
+
   /*
    * Lesson focus is a one-shot command. Return it once, then remove only
    * navigation fields while keeping the active lesson and shared video state.
@@ -826,6 +913,8 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
         ? partner?.classFocus?.videoState
         : me.classFocus?.videoState,
     ),
+    timer,
+    noteFocus,
     vocabularyEvents: vocabularyEvents.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),

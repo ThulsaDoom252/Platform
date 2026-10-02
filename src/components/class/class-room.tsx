@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { NotebookPen } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
 import { fmt, type Dict } from "@/lib/i18n";
 import {
@@ -85,6 +86,13 @@ import {
 } from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
+import type { ClassTimerState } from "@/lib/class-timer";
+import { ClassTimerManager, StudentClassTimer } from "./class-timer";
+import {
+  ClassNotes,
+  StudentFocusedNote,
+  type FocusedClassNote,
+} from "./class-notes";
 
 const BEAT_MS = 30_000;
 const CHAT_UNREAD_MS = 4_000;
@@ -108,56 +116,7 @@ function Dot({ presence, t }: { presence: Presence; t: Dict }) {
   );
 }
 
-function Timer({ t }: { t: Dict }) {
-  // Считаем от метки времени: накопление по тику уезжает на длинном уроке.
-  // Само время читается в интервале, а не в рендере — иначе разметка
-  // разойдётся при гидратации.
-  const [ms, setMs] = useState(0);
-  const [running, setRunning] = useState(false);
-  const before = useRef(0);
-
-  useEffect(() => {
-    if (!running) return;
-    const start = Date.now();
-    const t = setInterval(() => setMs(before.current + (Date.now() - start)), 250);
-    return () => {
-      clearInterval(t);
-      before.current += Date.now() - start;
-    };
-  }, [running]);
-
-  const mm = String(Math.floor(ms / 60000)).padStart(2, "0");
-  const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2, "0");
-
-  return (
-    <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-1.5">
-      <IconClock className="h-4 w-4 text-accent" />
-      <span className="font-mono text-sm font-bold text-content">
-        {mm}:{ss}
-      </span>
-      <button
-        type="button"
-        onClick={() => setRunning((v) => !v)}
-        className="text-[11px] font-semibold text-muted transition hover:text-content"
-      >
-        {running ? t.classRoom.timerPause : t.classRoom.timerStart}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setRunning(false);
-          before.current = 0;
-          setMs(0);
-        }}
-        className="text-[11px] font-semibold text-faint transition hover:text-content"
-      >
-        {t.classRoom.timerReset}
-      </button>
-    </div>
-  );
-}
-
-type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "script";
+type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "script" | "notes";
 
 /** Части урока. Их разбор видит только учитель — ученику показан сам урок. */
 type LessonTab = "lesson" | "twister" | "activities";
@@ -192,6 +151,7 @@ export function ClassRoom({
     dictionary: false,
     board: false,
     script: false,
+    notes: false,
   });
   const [panelLayout, setPanelLayout] = useLocalJson<
     Record<ClassUtilityPanel, ClassPanelPlacement>
@@ -201,6 +161,8 @@ export function ClassRoom({
   const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
   const [sortDesc, setSortDesc] = useLocalJson("class-sort-desc", false);
   const [showTimer, setShowTimer] = useState(false);
+  const [timerState, setTimerState] = useState<ClassTimerState | null>(null);
+  const [focusedNote, setFocusedNote] = useState<FocusedClassNote | null>(null);
   const [unreadState, setUnreadState] = useState<{
     conversation: string | null;
     count: number;
@@ -237,6 +199,7 @@ export function ClassRoom({
   const unreadRef = useRef(0);
   const boardOpen = useRef(false);
   const appliedView = useRef<string | null>(null);
+  const appliedNote = useRef<string | null>(null);
   const seenVocabularyEvents = useRef(new Set<string>());
   const vocabularyEventsReady = useRef(false);
   const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -434,6 +397,11 @@ export function ClassRoom({
           setActiveLessonId(sync.lessonAssignmentId);
           setPartnerOnBoard(sync.partnerOnBoard);
           setVideoSync(sync.video);
+          setTimerState(sync.timer);
+          if (!teacher && sync.noteFocus && appliedNote.current !== sync.noteFocus.at) {
+            appliedNote.current = sync.noteFocus.at;
+            setFocusedNote(sync.noteFocus);
+          }
 
           if (!vocabularyEventsReady.current) {
             sync.vocabularyEvents.forEach((event) => seenVocabularyEvents.current.add(event.id));
@@ -926,6 +894,8 @@ export function ClassRoom({
               await leaveClassAction();
               setPartner(null);
               setActiveLessonId(null);
+              setTimerState(null);
+              setShowTimer(false);
               setNonce((n) => n + 1);
             })}
             className="ml-auto flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-content transition hover:border-rose-400 hover:text-rose-500"
@@ -1171,6 +1141,30 @@ export function ClassRoom({
         }}
       />
 
+      {!teacher && <StudentClassTimer state={timerState} />}
+      {!teacher && (
+        <StudentFocusedNote note={focusedNote} onClose={() => setFocusedNote(null)} />
+      )}
+
+      {teacher && partner && open.notes && (
+        <div className="fixed bottom-20 right-2 z-[75] sm:right-4 lg:bottom-16">
+          <ClassNotes
+            studentName={partner.name}
+            onClose={() => setOpen((prev) => ({ ...prev, notes: false }))}
+          />
+        </div>
+      )}
+
+      {teacher && partner && showTimer && (
+        <ClassTimerManager
+          state={timerState}
+          studentName={partner.name}
+          onStateChange={setTimerState}
+          onClose={() => setShowTimer(false)}
+          notes={<ClassNotes studentName={partner.name} compact />}
+        />
+      )}
+
       {vocabularyNotice && (
         <div className="fixed right-4 top-4 z-[80] w-[min(24rem,calc(100vw-2rem))] rounded-2xl bg-emerald-500 p-4 text-white shadow-2xl ring-4 ring-emerald-300/40">
           <div className="flex items-start gap-3">
@@ -1199,24 +1193,23 @@ export function ClassRoom({
           {tabBtn("verbs", <IconList className="h-4 w-4" />, t.classRoom.verbs)}
           {teacher && tabBtn("script", <IconFile className="h-4 w-4" />, t.classRoom.script)}
           {tabBtn("board", <IconGrid className="h-4 w-4" />, t.classRoom.board)}
+          {teacher && tabBtn("notes", <NotebookPen className="h-4 w-4" />, t.classRoom.notes)}
 
           {teacher && (
-            <span className="flex items-center gap-2">
-              {showTimer && <Timer t={t} />}
-              <button
-                type="button"
-                onClick={() => setShowTimer((v) => !v)}
-                className={cn(
-                  "flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition",
-                  showTimer
-                    ? "bg-accent text-white"
-                    : "text-muted hover:bg-surface-2 hover:text-content",
-                )}
-              >
-                <IconClock className="h-4 w-4" />
-                <span className="hidden sm:inline">{t.classRoom.timer}</span>
-              </button>
-            </span>
+            <button
+              type="button"
+              disabled={!partner}
+              onClick={() => setShowTimer(true)}
+              className={cn(
+                "flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-35",
+                showTimer || timerState
+                  ? "bg-accent text-white"
+                  : "text-muted hover:bg-surface-2 hover:text-content",
+              )}
+            >
+              <IconClock className="h-4 w-4" />
+              <span className="hidden sm:inline">{t.classRoom.timer}</span>
+            </button>
           )}
         </div>
       </div>

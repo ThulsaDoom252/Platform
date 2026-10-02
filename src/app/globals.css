@@ -886,6 +886,38 @@ body {
   }
 }
 
+/* ---------- Class timer and focused teacher note ---------- */
+.timer-input {
+  @apply h-11 rounded-xl bg-surface px-3 text-sm font-bold normal-case tracking-normal text-content outline-none ring-1 ring-line transition focus:ring-2 focus:ring-accent;
+}
+
+@keyframes class-timer-start {
+  0% { opacity: 0; transform: translateX(-55%) translateY(-50%) scale(.55) rotate(-8deg); }
+  24% { opacity: 1; transform: translateX(0) translateY(-50%) scale(1.15) rotate(2deg); }
+  68% { opacity: 1; transform: translateX(0) translateY(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(55%) translateY(-50%) scale(1.05); }
+}
+
+@keyframes class-timer-finish {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.08); }
+}
+
+@keyframes class-note-focus {
+  0% { opacity: 0; transform: translateY(28px) scale(.94); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.class-timer-start { animation: class-timer-start 1.75s ease-out forwards; }
+.class-timer-finish { animation: class-timer-finish 1.15s ease-in-out infinite; }
+.class-note-focus { animation: class-note-focus .35s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .class-timer-start,
+  .class-timer-finish,
+  .class-note-focus { animation: none; }
+}
+
 /* Imported two-layer lessons. The HTML is sanitized; these classes supply its design. */
 .regular-lesson-content {
   --lesson-tint: color-mix(in srgb, var(--accent) 10%, var(--surface));

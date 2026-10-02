@@ -1,6 +1,7 @@
 import type { RuleBlock, RuleBlockVariant } from "@/lib/rule-blocks";
 import type { TwisterStroke } from "@/lib/twister-drawing";
 import type { ClassVideoState } from "@/lib/class-video";
+import type { ClassTimerState } from "@/lib/class-timer";
 import type { RegularLessonSection } from "@/lib/regular-lesson";
 import type { LessonHomeworkEntry } from "@/lib/lesson-homework";
 import type {
@@ -131,6 +132,10 @@ export const users = pgTable("users", {
     twisterStudentDrawingAllowed?: boolean;
     /** Синхронный плеер текущего выданного урока. */
     videoState?: ClassVideoState;
+    /** Общий таймер выбранного ученика. */
+    timerState?: ClassTimerState;
+    /** Одноразовый показ одной учительской заметки ученику. */
+    noteFocus?: { id: string; at: string };
   }>(),
   /** Цифры за весь период показывать как приблизительные. */
   statsApproximate: boolean("stats_approximate").notNull().default(false),
@@ -613,6 +618,55 @@ export const wishlistNotesRelations = relations(wishlistNotes, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+/** Reusable timer templates owned by a teacher. */
+export const classTimerPresets = pgTable(
+  "class_timer_presets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    topic: text("topic").notNull().default(""),
+    durationSeconds: integer("duration_seconds").notNull().default(300),
+    theme: text("theme").notNull().default("violet"),
+    tickSound: text("tick_sound").notNull().default("soft"),
+    endSound: text("end_sound").notNull().default("bell"),
+    tickSoundEnabled: boolean("tick_sound_enabled").notNull().default(false),
+    endSoundEnabled: boolean("end_sound_enabled").notNull().default(true),
+    startVoiceEnabled: boolean("start_voice_enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("class_timer_teacher_updated_idx").on(table.teacherId, table.updatedAt)],
+);
+
+/** Teacher-only lesson notes, grouped by student and lesson day. */
+export const classLessonNotes = pgTable(
+  "class_lesson_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lessonId: uuid("lesson_id").references(() => lessons.id, { onDelete: "set null" }),
+    lessonDay: timestamp("lesson_day").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("class_lesson_notes_student_day_idx").on(
+      table.teacherId,
+      table.studentId,
+      table.lessonDay,
+    ),
+  ],
+);
 
 // ---------- Contact change requests ----------
 export const contactChangeRequests = pgTable("contact_change_requests", {
