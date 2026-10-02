@@ -912,6 +912,75 @@ body {
 .class-timer-finish { animation: class-timer-finish 1.15s ease-in-out infinite; }
 .class-note-focus { animation: class-note-focus .35s ease-out both; }
 
+/* Custom lesson player: one compact chrome for local files and YouTube. */
+.lesson-video-player {
+  --video-progress: 0%;
+  color-scheme: dark;
+}
+.lesson-video-player iframe { display: block; width: 100%; height: 100%; border: 0; }
+.lesson-video-range {
+  height: 1rem;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background: transparent;
+}
+.lesson-video-range:disabled { cursor: not-allowed; opacity: .42; }
+.lesson-video-range::-webkit-slider-runnable-track {
+  height: .24rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #60a5fa 0,
+    #818cf8 var(--video-progress),
+    rgb(255 255 255 / .18) var(--video-progress),
+    rgb(255 255 255 / .18) 100%
+  );
+}
+.lesson-video-range::-moz-range-track {
+  height: .24rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / .18);
+}
+.lesson-video-range::-moz-range-progress {
+  height: .24rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #818cf8);
+}
+.lesson-video-range::-webkit-slider-thumb {
+  width: .82rem;
+  height: .82rem;
+  margin-top: -.29rem;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #60a5fa;
+  box-shadow: 0 2px 9px rgb(37 99 235 / .55);
+}
+.lesson-video-range::-moz-range-thumb {
+  width: .72rem;
+  height: .72rem;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #60a5fa;
+  box-shadow: 0 2px 9px rgb(37 99 235 / .55);
+}
+.lesson-video-player:fullscreen,
+.lesson-video-player:-webkit-full-screen {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  flex-direction: column;
+  background: #000;
+}
+.lesson-video-player:fullscreen > .aspect-video,
+.lesson-video-player:-webkit-full-screen > .aspect-video {
+  min-height: 0;
+  flex: 1;
+  aspect-ratio: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .class-timer-start,
   .class-timer-finish,

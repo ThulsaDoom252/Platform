@@ -11,7 +11,7 @@
  * Подсветки приходят из закрепления, а не из урока: у каждого ученика
  * подчёркнуто своё, и заготовка от этого не меняется.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
 import { useLocalNumber } from "@/lib/use-local-number";
@@ -33,17 +33,13 @@ import { LessonVocab } from "@/components/lessons/lesson-vocab";
 import { RuleReader } from "@/components/materials/rule-reader";
 import {
   focusLessonVideoAction,
-  syncLessonVideoAction,
   type LessonView as Lesson,
-  type LessonVideoUpdate,
 } from "@/lib/actions/lessons";
 import { IconEye, IconEyeOff, IconPlus } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
-import {
-  expectedClassVideoTime,
-  type ClassVideoState,
-} from "@/lib/class-video";
+import type { ClassVideoState } from "@/lib/class-video";
+import { LessonVideoPlayer } from "@/components/lessons/lesson-video-player";
 import {
   InteractiveHomework,
   type InteractiveHomeworkSession,
@@ -396,7 +392,7 @@ export function LessonView({
               {section === "video" && (
                 lesson.kind === "SHORTS" ? (
                   <div className="flex flex-col gap-4">
-                    <Video lesson={lesson} session={videoSession} />
+                    <Video lesson={lesson} session={videoSession} teacher={teacher} />
                     <section className="rounded-2xl bg-surface-2 p-3 ring-1 ring-line sm:p-4">
                       <h3 className="mb-3 text-[11px] font-black uppercase tracking-[0.14em] text-faint">
                         {t.lessonUnits.secTranscript}
@@ -413,7 +409,7 @@ export function LessonView({
                     </section>
                   </div>
                 ) : (
-                  <Video lesson={lesson} session={videoSession} />
+                  <Video lesson={lesson} session={videoSession} teacher={teacher} />
                 )
               )}
               {section === "transcript" && (
@@ -528,49 +524,16 @@ function LexisGroups({
   );
 }
 
-/**
- * Чем показывать ссылку.
- *
- * YouTube идёт своим плеером, обычный файл — родным браузерным: у него
- * есть и перемотка, и скорость, и громкость, и полный экран. Всё
- * остальное — просто ссылка: чужой плеер в iframe может и не открыться,
- * а битый кадр вместо видео посреди урока хуже честной ссылки.
- */
-const VIDEO_FILE = /\.(mp4|webm|ogv|ogg|mov|m4v)(\?.*)?$/i;
-
-export function videoSource(
-  url: string,
-): { kind: "youtube" | "file" | "link"; src: string } {
-  const raw = String(url ?? "").trim();
-
-  try {
-    const u = new URL(raw);
-    if (u.hostname === "youtu.be" && u.pathname.length > 1) {
-      return { kind: "youtube", src: `https://www.youtube.com/embed${u.pathname}` };
-    }
-    if (u.hostname.endsWith("youtube.com")) {
-      const id = u.searchParams.get("v");
-      if (id) return { kind: "youtube", src: `https://www.youtube.com/embed/${id}` };
-      if (u.pathname.startsWith("/embed/")) return { kind: "youtube", src: u.toString() };
-    }
-    if (VIDEO_FILE.test(u.pathname)) return { kind: "file", src: raw };
-    return { kind: "link", src: raw };
-  } catch {
-    // Не адрес целиком, а путь вроде /uploads/video/lesson.mp4 — тоже файл.
-    if (VIDEO_FILE.test(raw)) return { kind: "file", src: raw };
-    return { kind: "link", src: raw };
-  }
-}
-
 function Video({
   lesson,
   session,
+  teacher,
 }: {
   lesson: Lesson;
   session?: LessonViewProps["videoSession"];
+  teacher: boolean;
 }) {
   const { t } = useT();
-  const video = lesson.videoUrl ? videoSource(lesson.videoUrl) : null;
   const [focusError, setFocusError] = useState<string | null>(null);
   const [focusBusy, startFocus] = useTransition();
 
@@ -584,15 +547,20 @@ function Video({
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
-      {(lesson.videoTitle || (session?.teacher && video)) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
-          {lesson.videoTitle && (
-            <p className="mr-auto text-sm font-semibold text-content">
-              {lesson.videoTitle}
-            </p>
-          )}
-          {session?.teacher && video && (
+    <section className="overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-slate-900/20 shadow-[0_18px_50px_rgba(2,6,23,.18)]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-4 py-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/15 text-blue-300 ring-1 ring-blue-400/20">
+          ▶
+        </span>
+        <div className="mr-auto min-w-0">
+          <p className="truncate text-sm font-extrabold text-white">
+            {lesson.videoTitle || t.lessonUnits.secVideo}
+          </p>
+          <p className="text-[10px] font-semibold text-white/40">
+            {teacher ? t.lessonUnits.videoSyncHint : t.lessonUnits.videoControlledByTeacher}
+          </p>
+        </div>
+        {session?.teacher && lesson.videoUrl && (
             <button
               type="button"
               disabled={focusBusy}
@@ -602,202 +570,17 @@ function Video({
               <IconEye className="h-3.5 w-3.5" />
               {t.lessonUnits.focusVideo}
             </button>
-          )}
-          {focusError && <p className="w-full text-[12px] text-rose-500">{focusError}</p>}
-        </div>
-      )}
-
-      {!video ? (
-        /* Видео ещё нет: место под него уже стоит, чтобы урок не прыгал. */
-        <div className="flex aspect-video w-full items-center justify-center bg-surface-2">
-          <p className="text-sm text-faint">{t.lessonUnits.videoSoon}</p>
-        </div>
-      ) : video.kind === "youtube" ? (
-        <iframe
-          src={video.src}
-          title={lesson.videoTitle ?? "video"}
-          allowFullScreen
-          allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
-          className="aspect-video w-full border-0"
-        />
-      ) : video.kind === "file" ? (
-        <NativeClassVideo src={video.src} session={session} />
-      ) : (
-        <a
-          href={video.src}
-          target="_blank"
-          rel="noreferrer"
-          className="block px-4 py-6 text-sm font-semibold text-accent underline"
-        >
-          {video.src}
-        </a>
-      )}
-    </section>
-  );
-}
-
-function NativeClassVideo({
-  src,
-  session,
-}: {
-  src: string;
-  session?: LessonViewProps["videoSession"];
-}) {
-  const { t } = useT();
-  const player = useRef<HTMLVideoElement>(null);
-  const [captions, setCaptions] = useState(session?.state?.captions ?? true);
-  const [hasCaptions, setHasCaptions] = useState(false);
-  const [playBlocked, setPlayBlocked] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [, startSync] = useTransition();
-
-  const applyCaptions = useCallback((enabled: boolean) => {
-    const tracks = player.current?.textTracks;
-    if (!tracks) return;
-    for (let index = 0; index < tracks.length; index += 1) {
-      tracks[index].mode = enabled && index === 0 ? "showing" : "disabled";
-    }
-    setHasCaptions(tracks.length > 0);
-  }, []);
-
-  const publish = useCallback((patch: Partial<LessonVideoUpdate> = {}) => {
-    if (!session?.teacher || !player.current) return;
-    const element = player.current;
-    const update: LessonVideoUpdate = {
-      currentTime: element.currentTime || 0,
-      playing: !element.paused && !element.ended,
-      captions,
-      muted: element.muted,
-      volume: element.volume,
-      playbackRate: element.playbackRate,
-      ...patch,
-    };
-    startSync(async () => {
-      const result = await syncLessonVideoAction(session.assignmentId, update);
-      setSyncError(result.error ?? null);
-    });
-  }, [captions, session]);
-
-  const applyStudentState = useCallback((state: ClassVideoState) => {
-    const element = player.current;
-    if (!element) return;
-
-    element.muted = state.muted;
-    element.volume = state.volume;
-    element.playbackRate = state.playbackRate;
-    setCaptions(state.captions);
-    applyCaptions(state.captions);
-
-    const expected = expectedClassVideoTime(state);
-    const capped = Number.isFinite(element.duration)
-      ? Math.min(expected, element.duration)
-      : expected;
-    if (Math.abs(element.currentTime - capped) > 0.65) element.currentTime = capped;
-
-    if (!state.playing) {
-      element.pause();
-      setPlayBlocked(false);
-      return;
-    }
-    void element.play().then(
-      () => setPlayBlocked(false),
-      () => setPlayBlocked(true),
-    );
-  }, [applyCaptions]);
-
-  // Ученик не управляет общим состоянием: каждый новый такт класса
-  // выравнивает позицию и повторяет Play/Pause учителя.
-  useEffect(() => {
-    if (!session || session.teacher || !session.state) return;
-    const state = session.state;
-    const frame = requestAnimationFrame(() => applyStudentState(state));
-    return () => cancelAnimationFrame(frame);
-  }, [applyStudentState, session]);
-
-  useEffect(() => {
-    const element = player.current;
-    if (!element) return;
-    const tracks = element.textTracks;
-    const refresh = () => applyCaptions(captions);
-    refresh();
-    tracks.addEventListener("addtrack", refresh);
-    tracks.addEventListener("removetrack", refresh);
-    return () => {
-      tracks.removeEventListener("addtrack", refresh);
-      tracks.removeEventListener("removetrack", refresh);
-    };
-  }, [applyCaptions, captions]);
-
-  const toggleCaptions = () => {
-    const next = !captions;
-    setCaptions(next);
-    applyCaptions(next);
-    publish({ captions: next });
-  };
-
-  const unlockPlayback = () => {
-    if (!session?.state || !player.current) return;
-    applyStudentState(session.state);
-  };
-
-  return (
-    <div className="relative bg-black">
-      {session?.teacher && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-slate-950 px-3 py-2">
-          <button
-            type="button"
-            onClick={toggleCaptions}
-            disabled={!hasCaptions}
-            aria-pressed={captions && hasCaptions}
-            className={cn(
-              "h-8 rounded-lg px-3 text-[11px] font-bold ring-1 transition disabled:cursor-not-allowed disabled:opacity-45",
-              captions && hasCaptions
-                ? "bg-white text-slate-950 ring-white"
-                : "text-white ring-white/25 hover:bg-white/10",
-            )}
-          >
-            CC · {hasCaptions
-              ? captions
-                ? t.lessonUnits.captionsOn
-                : t.lessonUnits.captionsOff
-              : t.lessonUnits.noCaptions}
-          </button>
-          <span className="text-[11px] text-white/55">
-            {t.lessonUnits.videoSyncHint}
-          </span>
-          {syncError && <span className="text-[11px] text-rose-400">{syncError}</span>}
-        </div>
-      )}
-      <video
-        ref={player}
-        src={src}
-        controls={!session || session.teacher}
-        controlsList="nodownload"
-        preload="metadata"
-        playsInline
-        onLoadedMetadata={() => {
-          applyCaptions(captions);
-          if (session?.teacher) publish({ captions });
-          else if (session?.state) applyStudentState(session.state);
-        }}
-        onPlay={() => publish({ playing: true })}
-        onPause={() => publish({ playing: false })}
-        onSeeked={() => publish()}
-        onRateChange={() => publish()}
-        onVolumeChange={() => publish()}
-        onEnded={() => publish({ playing: false })}
-        className="aspect-video w-full bg-black"
+        )}
+        {focusError && <p className="w-full text-[11px] font-semibold text-rose-300">{focusError}</p>}
+      </div>
+      <LessonVideoPlayer
+        lessonId={lesson.id}
+        url={lesson.videoUrl}
+        title={lesson.videoTitle}
+        teacher={teacher}
+        session={session}
       />
-      {playBlocked && !session?.teacher && (
-        <button
-          type="button"
-          onClick={unlockPlayback}
-          className="absolute inset-0 flex items-center justify-center bg-black/55 p-5 text-center text-sm font-bold text-white"
-        >
-          {t.lessonUnits.enableSyncedVideo}
-        </button>
-      )}
-    </div>
+    </section>
   );
 }
 

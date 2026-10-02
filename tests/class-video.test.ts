@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   expectedClassVideoTime,
   normalizeClassVideoState,
+  parseLessonVideoSource,
 } from "../src/lib/class-video";
 
 test("normalizes and clamps shared video state", () => {
@@ -25,8 +26,24 @@ test("normalizes and clamps shared video state", () => {
     muted: true,
     volume: 1,
     playbackRate: 4,
+    captionLanguage: "en",
+    quality: "auto",
     at: "2026-09-30T10:00:00.000Z",
   });
+});
+
+test("video language and quality are normalized with English defaults", () => {
+  const state = normalizeClassVideoState({
+    assignmentId: "lesson-1",
+    currentTime: 0,
+    playing: false,
+    captionLanguage: " EN-us! ",
+    quality: "HD1080",
+    at: "2026-09-30T10:00:00.000Z",
+  });
+
+  assert.equal(state?.captionLanguage, "en-us");
+  assert.equal(state?.quality, "hd1080");
 });
 
 test("advances playing video from the teacher timestamp", () => {
@@ -65,4 +82,20 @@ test("does not advance paused video", () => {
     expectedClassVideoTime(state, Date.parse("2026-09-30T10:10:00.000Z")),
     42,
   );
+});
+
+test("recognizes YouTube links and local lesson files", () => {
+  assert.equal(
+    parseLessonVideoSource("https://youtu.be/dQw4w9WgXcQ?t=4")?.kind,
+    "youtube",
+  );
+  assert.equal(
+    parseLessonVideoSource("https://www.youtube.com/shorts/dQw4w9WgXcQ")?.kind,
+    "youtube",
+  );
+  assert.equal(
+    parseLessonVideoSource("/uploads/lesson-videos/example.mp4")?.kind,
+    "file",
+  );
+  assert.equal(parseLessonVideoSource("https://example.com/watch")?.kind, "link");
 });

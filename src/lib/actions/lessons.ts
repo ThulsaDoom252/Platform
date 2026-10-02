@@ -389,6 +389,9 @@ export async function saveLessonAction(
     }
   }
   revalidatePath("/teacher/lessons");
+  revalidatePath(`/teacher/lessons/${unitId}`);
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
   revalidatePath("/student/homework");
   return {};
 }
@@ -1513,7 +1516,14 @@ export async function focusHomeworkElementAction(
 
 export type LessonVideoUpdate = Pick<
   ClassVideoState,
-  "currentTime" | "playing" | "captions" | "muted" | "volume" | "playbackRate"
+  | "currentTime"
+  | "playing"
+  | "captions"
+  | "muted"
+  | "volume"
+  | "playbackRate"
+  | "captionLanguage"
+  | "quality"
 >;
 
 /**
@@ -1633,6 +1643,8 @@ export async function focusLessonVideoAction(
     muted: sameVideo?.muted ?? false,
     volume: sameVideo?.volume ?? 1,
     playbackRate: sameVideo?.playbackRate ?? 1,
+    captionLanguage: sameVideo?.captionLanguage ?? "en",
+    quality: sameVideo?.quality ?? "auto",
     at: now,
     focusAt: now,
   });
