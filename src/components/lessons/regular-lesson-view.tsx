@@ -265,7 +265,14 @@ export function RegularLessonView({
   /* Add saved controls to the old lesson body without duplicating its design. */
   useEffect(() => {
     const root = contentRef.current;
-    if (!root || !active || showingAnswers || nativeVocabulary || activeId === "__homework") return;
+    if (
+      !root ||
+      !active ||
+      !onSaveResponse ||
+      showingAnswers ||
+      nativeVocabulary ||
+      activeId === "__homework"
+    ) return;
     const cleanups: (() => void)[] = [];
     const save = (responseId: string, value: string) => {
       const key = regularResponseKey(active.id, responseId);

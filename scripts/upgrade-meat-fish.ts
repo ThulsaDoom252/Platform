@@ -131,11 +131,11 @@ const homework: InteractiveHomeworkPlan = {
       instruction: "Explain each word in simple English and give one short example.",
       kind: "describe",
       items: [
-        { id: "mf-describe-1", prompt: "", word: "pork" },
-        { id: "mf-describe-2", prompt: "", word: "a patty" },
-        { id: "mf-describe-3", prompt: "", word: "smoked" },
-        { id: "mf-describe-4", prompt: "", word: "fried" },
-        { id: "mf-describe-5", prompt: "", word: "beef" },
+        { id: "mf-describe-1", prompt: "pork", word: "pork" },
+        { id: "mf-describe-2", prompt: "a patty", word: "a patty" },
+        { id: "mf-describe-3", prompt: "smoked", word: "smoked" },
+        { id: "mf-describe-4", prompt: "fried", word: "fried" },
+        { id: "mf-describe-5", prompt: "beef", word: "beef" },
       ],
     },
     {
