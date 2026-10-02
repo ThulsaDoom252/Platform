@@ -271,6 +271,30 @@ function HomeworkAssignmentPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, startAssign] = useTransition();
+  const exerciseGroups = useMemo(() => {
+    const groups: Array<{ exercise: HomeworkExercise; bonuses: HomeworkExercise[] }> = [];
+    for (const exercise of plan.exercises) {
+      const current = groups.at(-1);
+      if (exercise.optional && current) {
+        current.bonuses.push(exercise);
+      } else {
+        groups.push({ exercise, bonuses: [] });
+      }
+    }
+    return groups;
+  }, [plan.exercises]);
+
+  const exerciseType = (exercise: HomeworkExercise) =>
+    exercise.kind === "describe"
+      ? t.interactiveHomework.typeDescribe
+      : exercise.kind === "translate"
+        ? t.interactiveHomework.typeTranslate
+        : exercise.kind === "question-text" || exercise.kind === "question-audio"
+          ? t.interactiveHomework.typeQuestions
+          : t.interactiveHomework.typeFill;
+
+  const bonusTitle = (exercise: HomeworkExercise) =>
+    exercise.title.match(/(?:^|[—–-]\s*)(Bonus\b.*)$/i)?.[1] ?? exercise.title;
 
   const toggle = (exerciseId: string) => {
     setError(null);
@@ -325,34 +349,66 @@ function HomeworkAssignmentPanel({
         </button>
       </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        {plan.exercises.map((exercise) => {
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {exerciseGroups.map(({ exercise, bonuses }, index) => {
           const checked = selected.includes(exercise.id);
           return (
-            <label
+            <div
               key={exercise.id}
               className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition",
+                "overflow-hidden rounded-2xl border transition",
                 checked
                   ? "border-accent/40 bg-accent-soft"
                   : "border-line bg-canvas hover:border-accent/25",
               )}
             >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggle(exercise.id)}
-                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-black text-content">{exercise.title}</span>
-                {exercise.optional && (
-                  <span className="mt-0.5 block text-[11px] font-bold uppercase tracking-wide text-accent">
-                    {t.interactiveHomework.bonus}
+              <label className="flex cursor-pointer items-center gap-3 p-3.5">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(exercise.id)}
+                  className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+                />
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface text-sm font-black text-accent ring-1 ring-accent/20">
+                  {index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-black text-content">
+                    {exercise.title}
                   </span>
-                )}
-              </span>
-            </label>
+                  <span className="mt-0.5 block text-[11px] font-bold text-muted">
+                    {exerciseType(exercise)}
+                  </span>
+                </span>
+              </label>
+
+              {bonuses.length > 0 && (
+                <div className="border-t border-accent/15 bg-surface/70 px-3.5 py-3">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-accent">
+                    {t.interactiveHomework.bonusesProgress}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {bonuses.map((bonus) => {
+                      const bonusChecked = selected.includes(bonus.id);
+                      return (
+                        <label
+                          key={bonus.id}
+                          className="flex cursor-pointer items-center gap-2.5 text-sm font-bold text-content"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={bonusChecked}
+                            onChange={() => toggle(bonus.id)}
+                            className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+                          />
+                          <span className="min-w-0 truncate">{bonusTitle(bonus)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
