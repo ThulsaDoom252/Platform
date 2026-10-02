@@ -976,8 +976,44 @@ body {
 .regular-lesson-body .tr, .regular-lesson-body .hint { color: var(--muted); font-size: 0.88em; }
 .regular-lesson-body .ua, .regular-lesson-body .ans { color: #059669; font-weight: 800; }
 .regular-lesson-body .note { margin-top: 0.35rem; color: var(--muted); font-size: 0.88rem; }
-.regular-lesson-body .blank { display: inline-block; min-width: 5rem; height: 1.25em; border-bottom: 2px solid var(--accent); vertical-align: baseline; }
+.regular-lesson-body .blank { display: inline-block; min-width: 5rem; min-height: 1.45em; border-bottom: 2px solid var(--accent); vertical-align: baseline; }
 .regular-lesson-body .tfbox { margin-left: 0.4rem; white-space: nowrap; color: var(--accent); font-weight: 800; }
+.regular-lesson-body .regular-answer-control {
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  padding: 0.05rem 0.35rem;
+  outline: none;
+  transition: box-shadow 150ms ease, background-color 150ms ease;
+}
+.regular-lesson-body .regular-answer-control:focus {
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.regular-lesson-body .regular-tf-control {
+  display: inline-flex;
+  min-width: 3.2rem;
+  cursor: pointer;
+  justify-content: center;
+}
+.regular-lesson-body .regular-open-answer {
+  display: block;
+  width: 100%;
+  min-height: 4.25rem;
+  margin-top: 0.55rem;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface-2);
+  padding: 0.65rem 0.75rem;
+  color: var(--content);
+  font: inherit;
+  line-height: 1.45;
+  outline: none;
+}
+.regular-lesson-body .regular-open-answer:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .regular-lesson-body table { width: 100%; margin: 0.9rem 0; border-collapse: collapse; overflow: hidden; border-radius: 0.8rem; }
 .regular-lesson-body th, .regular-lesson-body td { border: 1px solid var(--line); padding: 0.65rem; text-align: left; vertical-align: top; }
 .regular-lesson-body th { background: var(--lesson-tint); font-weight: 800; }

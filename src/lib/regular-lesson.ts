@@ -1,6 +1,7 @@
 import { cleanScriptHtml } from "@/lib/script-html";
 
 export const REGULAR_SECTION_PREFIX = "regular:";
+export const REGULAR_RESPONSE_PREFIX = "regular-answer:";
 
 export type RegularLessonTone =
   | "warm"
@@ -33,6 +34,11 @@ const TONES = new Set<RegularLessonTone>([
 
 export function regularSectionKey(id: string): string {
   return `${REGULAR_SECTION_PREFIX}${id}`;
+}
+
+/** Ответ внутри обычного HTML-урока хранится в закреплении ученика. */
+export function regularResponseKey(sectionId: string, responseId: string): string {
+  return `${REGULAR_RESPONSE_PREFIX}${sectionId}:${responseId}`;
 }
 
 export function normalizeRegularLessonSections(value: unknown): RegularLessonSection[] {

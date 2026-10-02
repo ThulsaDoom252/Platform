@@ -814,11 +814,19 @@ function RegularLessonEditor({ lesson }: { lesson: LessonView }) {
           sections={lesson.regularSections}
           teacher
           open={lesson.regularSections.map((section) => regularSectionKey(section.id))}
+          words={lesson.words}
+          unitId={lesson.id}
+          lessonTitle={lesson.title}
         />
       ) : (
         <div className="rounded-2xl bg-surface p-8 text-center text-sm text-faint ring-1 ring-line">
           {t.lessonUnits.emptyRegularLesson}
         </div>
+      )}
+      {lesson.interactiveHomework && (
+        <Section id="lesson-homework" title={t.lessonUnits.secHomework}>
+          <InteractiveHomeworkPreview plan={lesson.interactiveHomework} />
+        </Section>
       )}
     </div>
   );

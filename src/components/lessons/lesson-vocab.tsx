@@ -11,8 +11,9 @@
  * ученик сначала вспоминает сам, и только потом проверяет себя. Открыть
  * можно всё разом или по одному нажатию на само слово, и закрыть так же.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { hasTranscription } from "@/lib/phrase-words";
@@ -32,6 +33,7 @@ import {
 } from "@/lib/lesson-unit";
 import { IconEye, IconEyeOff, IconSearch } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { translateLessonVocabularyAction } from "@/lib/actions/lessons";
 
 export function LessonVocab({
   words,
@@ -63,6 +65,7 @@ export function LessonVocab({
   defaultStudentId?: string | null;
 }) {
   const { t } = useT();
+  const router = useRouter();
   const speech = useSpeech();
 
   const [query, setQuery] = useState("");
@@ -71,9 +74,15 @@ export function LessonVocab({
   const reveal = revealState ?? localReveal;
   const focusedCard = useRef<HTMLDivElement>(null);
   const pickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [translationError, setTranslationError] = useState<string | null>(null);
+  const [translationBusy, startTranslation] = useTransition();
 
   const groups = useMemo(() => groupWords(words), [words]);
   const categories = useMemo(() => groups.map((g) => g.category), [groups]);
+  const translationLanguage = useMemo(() => {
+    const joined = words.map((word) => word.translation ?? "").join(" ");
+    return /[іїєґ]/i.test(joined) ? "UK" : "RU";
+  }, [words]);
 
   const visible = useMemo(() => {
     const picked = category
@@ -148,15 +157,48 @@ export function LessonVocab({
             <Toggle on={reveal.allExamples} onClick={() => toggleReveal("example")} label="Examples" />
             <Toggle on={reveal.allNotes} onClick={() => toggleReveal("note")} label="Hints" />
             {teacher && unitId && lessonTitle && (
-              <LessonVocabToMaterials
-                unitId={unitId}
-                lessonTitle={lessonTitle}
-                defaultStudentId={defaultStudentId}
-              />
+              <>
+                <span className="flex rounded-xl bg-surface-2 p-1 ring-1 ring-line">
+                  {(["UK", "RU"] as const).map((language) => (
+                    <button
+                      key={language}
+                      type="button"
+                      disabled={translationBusy || language === translationLanguage}
+                      onClick={() => {
+                        setTranslationError(null);
+                        startTranslation(async () => {
+                          const result = await translateLessonVocabularyAction(unitId, language);
+                          if (result.error) setTranslationError(result.error);
+                          else router.refresh();
+                        });
+                      }}
+                      className={cn(
+                        "h-7 rounded-lg px-2.5 text-[10px] font-black transition disabled:cursor-default",
+                        language === translationLanguage
+                          ? "bg-accent text-white"
+                          : "text-muted hover:text-content disabled:opacity-45",
+                      )}
+                      title={`DeepL · ${language === "UK" ? "українська" : "русский"}`}
+                    >
+                      {language === "UK" ? "UA" : "RU"}
+                    </button>
+                  ))}
+                </span>
+                <LessonVocabToMaterials
+                  unitId={unitId}
+                  lessonTitle={lessonTitle}
+                  defaultStudentId={defaultStudentId}
+                />
+              </>
             )}
           </span>
         )}
       </div>
+      {translationError && (
+        <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200">
+          {translationError}
+        </p>
+      )}
 
       <label className="relative flex items-center">
         <IconSearch className="absolute left-3 h-4 w-4 text-faint" />

@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
+  answerAction,
   focusHomeworkElementAction,
   focusLessonWordAction,
   focusRegularLessonElementAction,
@@ -186,6 +187,37 @@ export function AssignedLesson({
                     section,
                     elementId,
                   ).then(() => undefined),
+                );
+              }
+            : undefined}
+          assignmentId={data.assignment.id}
+          responses={data.answers}
+          onSaveResponse={(key, value) => answerAction(data.assignment.id, key, value)}
+          words={data.lesson.words}
+          unitId={data.lesson.id}
+          lessonTitle={data.lesson.title}
+          defaultStudentId={data.assignment.studentId}
+          vocabularyHighlights={marks}
+          vocabularyFocus={focus}
+          onPickVocabulary={teacher ? pick : undefined}
+          canRevealVocabulary={teacher || !liveClass}
+          vocabularyReveal={liveClass ? vocabularyReveal : undefined}
+          onVocabularyRevealChange={
+            liveClass && teacher ? changeVocabularyReveal : undefined
+          }
+          homeworkPlan={data.lesson.interactiveHomework}
+          homeworkSession={data.lesson.interactiveHomework ? {
+            assignmentId: data.assignment.id,
+            unitId: data.assignment.unitId,
+            teacher,
+            state: data.answers,
+            canAssign: teacher,
+            canEdit: teacher,
+          } : undefined}
+          onFocusHomework={teacher && liveClass
+            ? (elementId) => {
+                startBusy(() =>
+                  focusHomeworkElementAction(data.assignment.id, elementId).then(() => undefined),
                 );
               }
             : undefined}

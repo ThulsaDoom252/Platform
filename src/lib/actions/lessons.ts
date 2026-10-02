@@ -78,6 +78,10 @@ import {
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
 import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
+import {
+  translateVocabulary,
+  type MaterialTranslationLang,
+} from "@/lib/material-translation";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -541,6 +545,74 @@ export async function saveWordAction(
   return {};
 }
 
+/** Одной кнопкой переключить весь словник урока между RU и UA. */
+export async function translateLessonVocabularyAction(
+  unitId: string,
+  target: MaterialTranslationLang,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(unitId ?? "");
+  if (target !== "RU" && target !== "UK") return { error: "Неизвестный язык" };
+
+  const [unit] = await db
+    .select({ id: lessonUnits.id })
+    .from(lessonUnits)
+    .where(and(eq(lessonUnits.id, id), eq(lessonUnits.authorId, session.userId)))
+    .limit(1);
+  if (!unit) return { error: "Урок не найден" };
+
+  const words = await db
+    .select()
+    .from(lessonWords)
+    .where(eq(lessonWords.unitId, id))
+    .orderBy(asc(lessonWords.sortOrder));
+  if (words.length === 0) return { error: "В уроке пока нет слов" };
+
+  try {
+    const translated = await translateVocabulary(
+      words.map((word) => ({
+        id: word.id,
+        phrase: word.word,
+        section: word.category,
+        currentTranslation: word.translation,
+        note: word.note,
+        examples: (word.examples ?? []).map((example) => ({
+          en: example.en,
+          currentTranslation: example.tr,
+        })),
+      })),
+      target,
+      target === "UK" ? "RU" : "UK",
+    );
+
+    await db.transaction(async (tx) => {
+      for (const word of words) {
+        const next = translated.get(word.id);
+        if (!next) continue;
+        await tx
+          .update(lessonWords)
+          .set({
+            translation: next.translation || null,
+            note: next.note || null,
+            examples: (word.examples ?? []).map((example, index) => ({
+              en: example.en,
+              tr: next.examples[index] ?? example.tr,
+            })),
+          })
+          .where(eq(lessonWords.id, word.id));
+      }
+    });
+
+    revalidatePath(`/teacher/lessons/${id}`);
+    revalidatePath("/student/class");
+    return {};
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "DeepL не смог перевести словарь",
+    };
+  }
+}
+
 export type LessonVocabularyMaterialTarget = {
   id: string;
   name: string;
@@ -611,7 +683,7 @@ export async function addLessonVocabularyToMaterialsAction(
       .where(eq(lessonWords.unitId, id))
       .orderBy(asc(lessonWords.sortOrder)),
   ]);
-  if (!unit || unit.kind === "REGULAR") return { error: "Урок Activity/Shorts не найден" };
+  if (!unit) return { error: "Урок не найден" };
   if (!student) return { error: "Ученик не найден" };
   if (words.length === 0) return { error: "В уроке пока нет слов" };
 
@@ -1873,18 +1945,28 @@ export async function answerAction(
   const id = String(assignmentId ?? "");
 
   const [row] = await db
-    .select({ studentId: lessonAssignments.studentId, answers: lessonAssignments.answers })
+    .select({
+      studentId: lessonAssignments.studentId,
+      answers: lessonAssignments.answers,
+      authorId: lessonUnits.authorId,
+    })
     .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
     .where(eq(lessonAssignments.id, id))
     .limit(1);
 
   if (!row) return { error: "Урок не найден" };
-  if (row.studentId !== session.userId) return { error: "Это чужой урок" };
+  const isStudent = session.role === "STUDENT" && row.studentId === session.userId;
+  const isTeacher = session.role === "TEACHER" && row.authorId === session.userId;
+  if (!isStudent && !isTeacher) return { error: "Это чужой урок" };
 
   await db
     .update(lessonAssignments)
     .set({
-      answers: { ...(row.answers ?? {}), [String(key ?? "")]: String(text ?? "") },
+      answers: {
+        ...(row.answers ?? {}),
+        [String(key ?? "").slice(0, 240)]: String(text ?? "").slice(0, 8_000),
+      },
       updatedAt: new Date(),
     })
     .where(eq(lessonAssignments.id, id));
@@ -1961,7 +2043,10 @@ export async function assignedLessonAction(
     answers: row.a.answers ?? {},
     open:
       lesson.kind === "REGULAR"
-        ? stored.filter((key) => !!regularLessonSection(key, lesson.regularSections))
+        ? [
+            ...stored.filter((key) => !!regularLessonSection(key, lesson.regularSections)),
+            ...(homeworkAvailable ? ["homework"] : []),
+          ]
         : openSections(session.role === "STUDENT" && context === "class" ? stored : storedWithHomework),
     showBritish: stored.includes(BRITISH_OPTION),
     vocabularyReveal: lessonVocabularyReveal(stored),
