@@ -65,7 +65,16 @@ import {
   isRegularLessonFocusId,
   normalizeRegularLessonSections,
   publicRegularLessonSections,
+  regularAnswerMap,
+  regularAttempts,
+  regularAttemptsKey,
+  regularExerciseOverride,
+  regularExerciseOverrideKey,
+  regularResponseKey,
   regularLessonSection,
+  regularStatus,
+  regularStatusKey,
+  type RegularExerciseOverride,
   type RegularLessonSection,
 } from "@/lib/regular-lesson";
 import {
@@ -75,6 +84,7 @@ import {
   homeworkPlanForAssignment,
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
+  normalizeHomeworkAnswer,
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
 import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
@@ -1972,6 +1982,178 @@ export async function answerAction(
     .where(eq(lessonAssignments.id, id));
 
   return {};
+}
+
+async function regularAssignmentForUser(id: string) {
+  const session = await requireUser();
+  const [row] = await db
+    .select({
+      assignment: lessonAssignments,
+      authorId: lessonUnits.authorId,
+      sections: lessonUnits.sections,
+    })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(eq(lessonAssignments.id, id))
+    .limit(1);
+  if (!row) return null;
+  const isStudent = session.role === "STUDENT" && row.assignment.studentId === session.userId;
+  const isTeacher = session.role === "TEACHER" && row.authorId === session.userId;
+  return isStudent || isTeacher ? { ...row, session } : null;
+}
+
+/** Three-attempt checking for exercises inside a regular lesson. */
+export async function submitRegularLessonAnswerAction(
+  assignmentId: string,
+  sectionId: string,
+  responseId: string,
+  supplied: string,
+): Promise<{
+  error?: string;
+  value?: string;
+  status?: "correct" | "locked" | null;
+  attempts?: string[];
+}> {
+  const row = await regularAssignmentForUser(String(assignmentId ?? ""));
+  if (!row) return { error: "Урок не найден" };
+  const section = normalizeRegularLessonSections(row.sections)
+    .find((item) => item.id === String(sectionId ?? ""));
+  if (!section) return { error: "Секция не найдена" };
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  const spec = regularAnswerMap(section, state).get(String(responseId ?? ""));
+  if (!spec) return { error: "Ответ для этого поля не задан" };
+  const responseKey = regularResponseKey(section.id, String(responseId ?? ""));
+  const currentStatus = regularStatus(state, responseKey);
+  if (currentStatus) {
+    return {
+      value: state[responseKey] ?? "",
+      status: currentStatus,
+      attempts: regularAttempts(state, responseKey),
+    };
+  }
+
+  const answer = String(supplied ?? "").trim().slice(0, 300);
+  if (!answer) return { error: "Введи ответ" };
+  if ((state[responseKey] ?? "").trim() === answer) {
+    return {
+      value: state[responseKey],
+      status: currentStatus,
+      attempts: regularAttempts(state, responseKey),
+    };
+  }
+  const matches = spec.accepted
+    .map(normalizeHomeworkAnswer)
+    .includes(normalizeHomeworkAnswer(answer));
+  const previousAttempts = regularAttempts(state, responseKey);
+  let attempts = previousAttempts;
+  let status: "correct" | "locked" | null = null;
+  let value = answer;
+
+  if (matches) {
+    status = "correct";
+  } else {
+    attempts = [...previousAttempts, answer].slice(0, 3);
+    state[regularAttemptsKey(responseKey)] = JSON.stringify(attempts);
+    if (spec.kind === "true-false" || attempts.length >= 3) {
+      status = "locked";
+      value = spec.kind === "true-false" ? answer : spec.answer;
+    }
+  }
+  state[responseKey] = value;
+  if (status) state[regularStatusKey(responseKey)] = status;
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  return { value, status, attempts };
+}
+
+/** Reset attempts and answers for one exercise while preserving teacher notes. */
+export async function resetRegularLessonExerciseAction(
+  assignmentId: string,
+  sectionId: string,
+  listIndex: number,
+): Promise<{ error?: string; state?: Record<string, string> }> {
+  const row = await regularAssignmentForUser(String(assignmentId ?? ""));
+  if (!row || row.session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const section = normalizeRegularLessonSections(row.sections)
+    .find((item) => item.id === String(sectionId ?? ""));
+  const at = Math.trunc(Number(listIndex));
+  if (!section || at < 1 || at > 100) return { error: "Упражнение не найдено" };
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  const prefix = regularResponseKey(section.id, `list-${at}-`);
+  for (const key of Object.keys(state)) {
+    if (
+      key.startsWith(prefix) ||
+      key.startsWith(`regular-attempts:${prefix}`) ||
+      key.startsWith(`regular-status:${prefix}`)
+    ) delete state[key];
+  }
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  return { state };
+}
+
+/** Save a personalized version of a regular-lesson exercise for this student. */
+export async function saveRegularLessonExerciseAction(
+  assignmentId: string,
+  sectionId: string,
+  listIndex: number,
+  candidate: RegularExerciseOverride,
+): Promise<{
+  error?: string;
+  exercise?: RegularExerciseOverride;
+  state?: Record<string, string>;
+}> {
+  const row = await regularAssignmentForUser(String(assignmentId ?? ""));
+  if (!row || row.session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const section = normalizeRegularLessonSections(row.sections)
+    .find((item) => item.id === String(sectionId ?? ""));
+  const at = Math.trunc(Number(listIndex));
+  if (!section || at < 1 || at > 100) return { error: "Упражнение не найдено" };
+  const overrideKey = regularExerciseOverrideKey(section.id, at);
+  const normalized = regularExerciseOverride(
+    { [overrideKey]: JSON.stringify(candidate) },
+    section.id,
+    at,
+  );
+  if (!normalized) return { error: "Добавь хотя бы одно заполненное задание" };
+  if (
+    normalized.kind !== "open" &&
+    normalized.items.some((item) => item.answers.length === 0)
+  ) return { error: "Добавь правильный ответ к каждому заданию" };
+  if (
+    normalized.kind === "fill" &&
+    normalized.items.some(
+      (item) => (item.prompt.match(/___/g) ?? []).length !== item.answers.length,
+    )
+  ) return { error: "Количество пропусков ___ должно совпадать с количеством ответов" };
+
+  const state = { ...(row.assignment.answers ?? {}), [overrideKey]: JSON.stringify(normalized) };
+  const prefix = regularResponseKey(section.id, `list-${at}-`);
+  for (const key of Object.keys(state)) {
+    if (
+      key.startsWith(prefix) ||
+      key.startsWith(`regular-attempts:${prefix}`) ||
+      key.startsWith(`regular-status:${prefix}`)
+    ) delete state[key];
+  }
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  return { exercise: normalized, state };
 }
 
 /** Урок с состоянием конкретного ученика — и ему, и учителю. */

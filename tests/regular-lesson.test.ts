@@ -5,6 +5,8 @@ import {
   defaultRegularOpenSections,
   normalizeRegularLessonSections,
   publicRegularLessonSections,
+  regularAnswerMap,
+  regularExerciseOverrideKey,
   regularLessonSection,
 } from "../src/lib/regular-lesson";
 import { cleanScriptHtml } from "../src/lib/script-html";
@@ -74,4 +76,52 @@ test("student and teacher content receive matching focus ids", () => {
     ["item-1", "item-2", "item-3", "item-4"],
   );
   assert.match(cleanScriptHtml(student), /data-focus-id="item-4"/);
+});
+
+test("checked regular exercises map blanks and true-false answers without exposing them", () => {
+  const section = normalizeRegularLessonSections([{
+    id: "practice",
+    title: "Practice",
+    tone: "exercise",
+    defaultOpen: true,
+    studentHtml:
+      '<ol><li>I <span class="blank"></span> fish.</li></ol>' +
+      '<ol><li>Salmon is a fish. <span class="tfbox">T / F</span></li></ol>',
+    teacherHtml:
+      '<ol><li>I <span class="ans">eat / have</span> fish.</li></ol>' +
+      '<ol><li>Salmon is a fish. <span class="ans">T</span></li></ol>',
+  }])[0];
+  const answers = regularAnswerMap(section);
+
+  assert.deepEqual(answers.get("list-1-item-1-blank-1"), {
+    answer: "eat",
+    accepted: ["eat", "have"],
+    kind: "fill",
+  });
+  assert.deepEqual(answers.get("list-2-item-1-tf-1"), {
+    answer: "T",
+    accepted: ["T"],
+    kind: "true-false",
+  });
+});
+
+test("a personalized exercise override replaces the checked answer", () => {
+  const section = normalizeRegularLessonSections([{
+    id: "practice",
+    title: "Practice",
+    tone: "exercise",
+    defaultOpen: true,
+    studentHtml: '<ol><li>I <span class="blank"></span> fish.</li></ol>',
+    teacherHtml: '<ol><li>I <span class="ans">eat</span> fish.</li></ol>',
+  }])[0];
+  const state = {
+    [regularExerciseOverrideKey(section.id, 1)]: JSON.stringify({
+      title: "Edited practice",
+      instruction: "Complete the sentence.",
+      kind: "fill",
+      items: [{ prompt: "I ___ salmon.", answers: ["like"] }],
+    }),
+  };
+
+  assert.equal(regularAnswerMap(section, state).get("list-1-item-1-blank-1")?.answer, "like");
 });

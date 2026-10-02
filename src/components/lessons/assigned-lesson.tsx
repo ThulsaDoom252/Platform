@@ -18,6 +18,7 @@ import {
   selectLessonLexisGroupAction,
   setLessonVocabularyRevealAction,
   showBritishAction,
+  submitRegularLessonAnswerAction,
 } from "@/lib/actions/lessons";
 import type { LessonAssignmentCard, LessonView as Lesson } from "@/lib/actions/lessons";
 import {
@@ -193,6 +194,14 @@ export function AssignedLesson({
           assignmentId={data.assignment.id}
           responses={data.answers}
           onSaveResponse={(key, value) => answerAction(data.assignment.id, key, value)}
+          onSubmitAnswer={(sectionId, responseId, value) =>
+            submitRegularLessonAnswerAction(
+              data.assignment.id,
+              sectionId,
+              responseId,
+              value,
+            )
+          }
           words={data.lesson.words}
           unitId={data.lesson.id}
           lessonTitle={data.lesson.title}

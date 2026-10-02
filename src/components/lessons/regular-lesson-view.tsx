@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
-import { IconEyeOff, IconPlus } from "@/components/icons";
+import { IconDots, IconEyeOff, IconPencil, IconPlus } from "@/components/icons";
 import { LessonVocab } from "@/components/lessons/lesson-vocab";
 import {
   InteractiveHomework,
@@ -18,15 +18,32 @@ import {
 } from "@/components/lessons/interactive-homework";
 import { saveStudentHomeworkPlanAction } from "@/lib/actions/lesson-homework";
 import {
+  resetRegularLessonExerciseAction,
+  saveRegularLessonExerciseAction,
+} from "@/lib/actions/lessons";
+import {
+  regularAttempts,
+  regularExerciseOverride,
+  regularNoteKey,
+  regularNoteVisibleKey,
   regularResponseKey,
   regularSectionKey,
+  regularStatus,
+  regularStatusKey,
+  regularAttemptsKey,
+  type RegularExerciseOverride,
   type RegularLessonSection,
 } from "@/lib/regular-lesson";
 import type { HomeworkExercise, InteractiveHomeworkPlan } from "@/lib/lesson-homework";
 import type { LessonVocabularyReveal, LessonWord } from "@/lib/lesson-unit";
 import { cn } from "@/lib/utils";
 
-type HomeworkCandidate = { label: string; exercise: HomeworkExercise };
+type HomeworkCandidate = {
+  label: string;
+  listIndex: number;
+  exercise: HomeworkExercise;
+  editor: RegularExerciseOverride;
+};
 
 const cleanText = (value: string | null | undefined) =>
   String(value ?? "")
@@ -46,8 +63,21 @@ function headingBefore(list: Element) {
   return "";
 }
 
+function instructionBefore(list: Element) {
+  let node: Element | null = list.previousElementSibling;
+  while (node) {
+    if (node.matches(".instr")) return cleanText(node.textContent);
+    if (node.tagName === "H3") break;
+    node = node.previousElementSibling;
+  }
+  return "";
+}
+
 /** Extract a real exercise from the imported HTML, never a grammar explanation. */
-function homeworkCandidates(section: RegularLessonSection): HomeworkCandidate[] {
+function homeworkCandidates(
+  section: RegularLessonSection,
+  state: Record<string, string>,
+): HomeworkCandidate[] {
   if (typeof DOMParser === "undefined") return [];
   const parser = new DOMParser();
   const studentDoc = parser.parseFromString(`<main>${section.studentHtml}</main>`, "text/html");
@@ -73,11 +103,22 @@ function homeworkCandidates(section: RegularLessonSection): HomeworkCandidate[] 
     ];
     if (studentItems.length === 0) return;
 
+    const kind: RegularExerciseOverride["kind"] = hasTrueFalse
+      ? "true-false"
+      : hasBlank
+        ? "fill"
+        : "open";
     const parsed = studentItems.map((item, itemIndex) => {
       const clone = item.cloneNode(true) as HTMLElement;
       const controls = [...clone.querySelectorAll(".blank, .tfbox")];
-      controls.forEach((control) => { control.textContent = "___"; });
-      const prompt = cleanText(clone.textContent).replace(/→\s*___$/, "→ ___");
+      controls.forEach((control) => {
+        if (control.classList.contains("tfbox")) control.remove();
+        else control.textContent = "___";
+      });
+      const prompt = cleanText(clone.textContent)
+        .replace(/→\s*___$/, "→ ___")
+        .replace(/\s*T\s*\/\s*F\s*$/i, "")
+        .trim();
       const answerNodes = [
         ...(teacherItems[itemIndex]?.querySelectorAll(".ans") ?? []),
       ];
@@ -86,6 +127,7 @@ function homeworkCandidates(section: RegularLessonSection): HomeworkCandidate[] 
         id: `regular-${safeId(section.id)}-${listIndex + 1}-${itemIndex + 1}`,
         prompt,
         answer: answers.length === 1 ? answers[0] : undefined,
+        answers,
         answerCount: answers.length,
         blankCount: controls.length,
       };
@@ -93,20 +135,38 @@ function homeworkCandidates(section: RegularLessonSection): HomeworkCandidate[] 
     const auto = (hasBlank || hasTrueFalse) && parsed.every(
       (item) => item.answer && item.answerCount === 1 && item.blankCount === 1,
     );
-    const title = heading || section.title;
+    const storedOverride = regularExerciseOverride(state, section.id, listIndex + 1);
+    const title = storedOverride?.title || heading || section.title;
+    const instruction = storedOverride?.instruction || instructionBefore(list) || (
+      kind === "true-false"
+        ? "Choose True or False for every sentence."
+        : kind === "fill"
+          ? "Complete each sentence with the correct answer."
+          : "Write a clear answer for every item."
+    );
+    const editor: RegularExerciseOverride = storedOverride ?? {
+      title,
+      instruction,
+      kind,
+      items: parsed.map((item) => ({ prompt: item.prompt, answers: item.answers })),
+    };
     const id = `regular-${safeId(section.id)}-${listIndex + 1}`;
-    const exercise: HomeworkExercise = auto
+    const exerciseParsed = editor.items.map((item, itemIndex) => ({
+      id: parsed[itemIndex]?.id ?? `${id}-${itemIndex + 1}`,
+      prompt: item.prompt,
+      answer: item.answers.length === 1 ? item.answers[0] : undefined,
+      answers: item.answers,
+    }));
+    const exercise: HomeworkExercise = auto && editor.kind !== "open"
       ? {
           id,
           title,
-          instruction: hasTrueFalse
-            ? "Choose True or False for every sentence."
-            : "Complete each sentence with the correct answer.",
+          instruction,
           kind: "fill",
-          wordBank: parsed.map((item) => item.answer!).filter(
+          wordBank: exerciseParsed.map((item) => item.answer!).filter(
             (answer, index, answers) => answers.indexOf(answer) === index,
           ),
-          items: parsed.map(({ id: itemId, prompt, answer }) => ({
+          items: exerciseParsed.map(({ id: itemId, prompt, answer }) => ({
             id: itemId,
             prompt,
             answer,
@@ -115,11 +175,11 @@ function homeworkCandidates(section: RegularLessonSection): HomeworkCandidate[] 
       : {
           id,
           title,
-          instruction: "Write a clear answer for every item.",
+          instruction,
           kind: "question-text",
-          items: parsed.map(({ id: itemId, prompt }) => ({ id: itemId, prompt })),
+          items: exerciseParsed.map(({ id: itemId, prompt }) => ({ id: itemId, prompt })),
         };
-    candidates.push({ label: title, exercise });
+    candidates.push({ label: title, listIndex: listIndex + 1, exercise, editor });
   });
 
   return candidates;
@@ -141,6 +201,7 @@ export function RegularLessonView({
   assignmentId,
   responses = {},
   onSaveResponse,
+  onSubmitAnswer,
   words = [],
   unitId,
   lessonTitle,
@@ -164,6 +225,16 @@ export function RegularLessonView({
   assignmentId?: string;
   responses?: Record<string, string>;
   onSaveResponse?: (key: string, value: string) => Promise<{ error?: string }>;
+  onSubmitAnswer?: (
+    sectionId: string,
+    responseId: string,
+    value: string,
+  ) => Promise<{
+    error?: string;
+    value?: string;
+    status?: "correct" | "locked" | null;
+    attempts?: string[];
+  }>;
   words?: LessonWord[];
   unitId?: string;
   lessonTitle?: string;
@@ -195,6 +266,12 @@ export function RegularLessonView({
   const responseRef = useRef(responses);
   const [candidates, setCandidates] = useState<HomeworkCandidate[]>([]);
   const [candidateId, setCandidateId] = useState("");
+  const [exerciseMenu, setExerciseMenu] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<{
+    listIndex: number;
+    value: RegularExerciseOverride;
+  } | null>(null);
+  const [exerciseError, setExerciseError] = useState<string | null>(null);
   const [homeworkMessage, setHomeworkMessage] = useState<string | null>(null);
   const [localHomeworkPlan, setLocalHomeworkPlan] = useState(homeworkPlan ?? null);
   const contentRef = useRef<HTMLElement | null>(null);
@@ -255,14 +332,14 @@ export function RegularLessonView({
     const frame = requestAnimationFrame(() => {
       const next = !active || activeId === "__homework" || nativeVocabulary
         ? []
-        : homeworkCandidates(active);
+        : homeworkCandidates(active, responseRef.current);
       setCandidates(next);
       setCandidateId(next[0]?.exercise.id ?? "");
     });
     return () => cancelAnimationFrame(frame);
-  }, [active, activeId, nativeVocabulary]);
+  }, [active, activeId, nativeVocabulary, responseState]);
 
-  /* Add saved controls to the old lesson body without duplicating its design. */
+  /* Add checked controls, attempts and teacher notes to the imported lesson body. */
   useEffect(() => {
     const root = contentRef.current;
     if (
@@ -274,26 +351,213 @@ export function RegularLessonView({
       activeId === "__homework"
     ) return;
     const cleanups: (() => void)[] = [];
-    const save = (responseId: string, value: string) => {
-      const key = regularResponseKey(active.id, responseId);
+    const save = (key: string, value: string) => {
       responseRef.current = { ...responseRef.current, [key]: value };
       setResponseState(responseRef.current);
       void onSaveResponse?.(key, value);
     };
-    const read = (responseId: string) =>
-      responseRef.current[regularResponseKey(active.id, responseId)] ?? "";
+    const read = (responseId: string) => {
+      const key = regularResponseKey(active.id, responseId);
+      return responseRef.current[key] ?? "";
+    };
+    const applyResult = (
+      responseKey: string,
+      result: {
+        value?: string;
+        status?: "correct" | "locked" | null;
+        attempts?: string[];
+      },
+    ) => {
+      const next = { ...responseRef.current };
+      if (result.value !== undefined) next[responseKey] = result.value;
+      if (result.attempts) next[regularAttemptsKey(responseKey)] = JSON.stringify(result.attempts);
+      if (result.status) next[regularStatusKey(responseKey)] = result.status;
+      else delete next[regularStatusKey(responseKey)];
+      responseRef.current = next;
+      setResponseState(next);
+    };
+    const addAttempts = (control: HTMLElement, responseKey: string) => {
+      const attempts = regularAttempts(responseRef.current, responseKey);
+      const status = regularStatus(responseRef.current, responseKey);
+      control.classList.toggle("regular-answer-correct", status === "correct");
+      control.classList.toggle("regular-answer-locked", status === "locked");
+      const wrap = document.createElement("span");
+      wrap.className = "regular-attempt-wrap";
+      const dots = document.createElement("button");
+      dots.type = "button";
+      dots.className = "regular-attempt-dots";
+      dots.setAttribute("aria-label", "Show previous attempts");
+      for (let index = 0; index < 3; index += 1) {
+        const dot = document.createElement("span");
+        dot.className = cn(
+          "regular-attempt-dot",
+          index < attempts.length && "regular-attempt-dot-wrong",
+          status === "correct" && index === attempts.length && "regular-attempt-dot-correct",
+        );
+        dots.append(dot);
+      }
+      const popover = document.createElement("span");
+      popover.className = "regular-attempt-popover";
+      popover.hidden = true;
+      if (attempts.length > 0) {
+        popover.textContent = attempts.map((attempt, index) => `${index + 1}. ${attempt}`).join("\n");
+      } else if (status === "correct") {
+        popover.textContent = "Correct on the first try";
+      } else {
+        popover.textContent = "No attempts yet";
+      }
+      const toggle = (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        popover.hidden = !popover.hidden;
+      };
+      dots.addEventListener("click", toggle);
+      wrap.append(dots, popover);
+      control.insertAdjacentElement("afterend", wrap);
+      cleanups.push(() => {
+        dots.removeEventListener("click", toggle);
+        wrap.remove();
+      });
+    };
+    const addNote = (item: HTMLElement, itemId: string) => {
+      const noteKey = regularNoteKey(active.id, itemId);
+      const visibleKey = regularNoteVisibleKey(active.id, itemId);
+      const note = responseRef.current[noteKey] ?? "";
+      const visible = responseRef.current[visibleKey] === "1";
+      if (!teacher && (!visible || !note.trim())) return;
+      const wrap = document.createElement(teacher ? "div" : "details");
+      wrap.className = "regular-note";
+      if (teacher) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "regular-note-toggle";
+        button.textContent = note ? "✎ Edit note" : "✎ Add note";
+        const panel = document.createElement("div");
+        panel.className = "regular-note-panel";
+        panel.hidden = true;
+        const field = document.createElement("textarea");
+        field.rows = 3;
+        field.placeholder = "Teacher's note…";
+        field.value = note;
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = visible;
+        label.append(checkbox, document.createTextNode(" Show to student"));
+        panel.append(field, label);
+        const toggle = (event: Event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          panel.hidden = !panel.hidden;
+        };
+        const saveNote = () => save(noteKey, field.value.trim());
+        const saveVisibility = () => save(visibleKey, checkbox.checked ? "1" : "");
+        button.addEventListener("click", toggle);
+        field.addEventListener("blur", saveNote);
+        checkbox.addEventListener("change", saveVisibility);
+        wrap.append(button, panel);
+        cleanups.push(() => {
+          button.removeEventListener("click", toggle);
+          field.removeEventListener("blur", saveNote);
+          checkbox.removeEventListener("change", saveVisibility);
+          wrap.remove();
+        });
+      } else {
+        const summary = document.createElement("summary");
+        summary.textContent = "Teacher's note";
+        const text = document.createElement("p");
+        text.textContent = note;
+        wrap.append(summary, text);
+        cleanups.push(() => wrap.remove());
+      }
+      item.append(wrap);
+    };
 
     [...root.querySelectorAll<HTMLOListElement>("ol")].forEach((list, listIndex) => {
-      const items = [...list.querySelectorAll<HTMLElement>(":scope > li")];
+      let items = [...list.querySelectorAll<HTMLElement>(":scope > li")];
+      const override = regularExerciseOverride(responseRef.current, active.id, listIndex + 1);
+      if (override) {
+        const heading = (() => {
+          let node: Element | null = list.previousElementSibling;
+          while (node) {
+            if (node.tagName === "H3") return node as HTMLElement;
+            node = node.previousElementSibling;
+          }
+          return null;
+        })();
+        const instruction = (() => {
+          let node: Element | null = list.previousElementSibling;
+          while (node) {
+            if (node.matches(".instr")) return node as HTMLElement;
+            if (node.tagName === "H3") return null;
+            node = node.previousElementSibling;
+          }
+          return null;
+        })();
+        if (heading && override.title) {
+          const original = heading.textContent;
+          heading.textContent = override.title;
+          cleanups.push(() => { heading.textContent = original; });
+        }
+        if (instruction && override.instruction) {
+          const original = instruction.textContent;
+          instruction.textContent = override.instruction;
+          cleanups.push(() => { instruction.textContent = original; });
+        }
+        items.forEach((item, itemIndex) => {
+          const edited = override.items[itemIndex];
+          if (!edited) return;
+          const original = item.innerHTML;
+          item.textContent = "";
+          if (override.kind === "fill") {
+            edited.prompt.split(/(___)/g).forEach((part) => {
+              if (part === "___") {
+                const blank = document.createElement("span");
+                blank.className = "blank";
+                item.append(blank);
+              } else item.append(document.createTextNode(part));
+            });
+          } else {
+            item.append(document.createTextNode(edited.prompt));
+            if (override.kind === "true-false") {
+              const tf = document.createElement("span");
+              tf.className = "tfbox";
+              item.append(" ", tf);
+            }
+          }
+          cleanups.push(() => { item.innerHTML = original; });
+        });
+        items = [...list.querySelectorAll<HTMLElement>(":scope > li")];
+      }
       items.forEach((item, itemIndex) => {
         [...item.querySelectorAll<HTMLElement>(".blank")].forEach((control, controlIndex) => {
           const id = `list-${listIndex + 1}-item-${itemIndex + 1}-blank-${controlIndex + 1}`;
+          const responseKey = regularResponseKey(active.id, id);
+          const status = regularStatus(responseRef.current, responseKey);
           control.textContent = read(id);
-          control.contentEditable = "true";
+          control.contentEditable = status ? "false" : "true";
           control.setAttribute("role", "textbox");
           control.setAttribute("aria-label", `Answer ${itemIndex + 1}`);
           control.classList.add("regular-answer-control");
-          const blur = () => save(id, cleanText(control.textContent));
+          addAttempts(control, responseKey);
+          const blur = async () => {
+            const value = cleanText(control.textContent);
+            if (!value || status || control.dataset.busy === "1") return;
+            control.dataset.busy = "1";
+            const result = onSubmitAnswer
+              ? await onSubmitAnswer(active.id, id, value)
+              : await onSaveResponse(responseKey, value).then((saved) => ({
+                  ...saved,
+                  value,
+                  status: null as "correct" | "locked" | null,
+                  attempts: [] as string[],
+                }));
+            delete control.dataset.busy;
+            if (result.value !== undefined && !result.error) {
+              applyResult(responseKey, result);
+              if (!result.status) control.classList.add("regular-answer-wrong-flash");
+            }
+          };
           const keydown = (event: KeyboardEvent) => {
             if (event.key !== "Enter") return;
             event.preventDefault();
@@ -309,28 +573,55 @@ export function RegularLessonView({
 
         [...item.querySelectorAll<HTMLElement>(".tfbox")].forEach((control, controlIndex) => {
           const id = `list-${listIndex + 1}-item-${itemIndex + 1}-tf-${controlIndex + 1}`;
-          const render = () => { control.textContent = read(id) || "T / F"; };
-          render();
-          control.setAttribute("role", "button");
-          control.setAttribute("tabindex", "0");
+          const responseKey = regularResponseKey(active.id, id);
+          const status = regularStatus(responseRef.current, responseKey);
+          const current = read(id);
+          control.textContent = "";
           control.classList.add("regular-answer-control", "regular-tf-control");
-          const choose = () => {
-            const current = read(id);
-            save(id, current === "T" ? "F" : "T");
-            render();
+          const buttons = (["T", "F"] as const).map((value) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = value;
+            button.disabled = !!status;
+            button.className = cn(
+              "regular-tf-choice",
+              current === value && "regular-tf-choice-selected",
+            );
+            control.append(button);
+            return button;
+          });
+          addAttempts(control, responseKey);
+          const choose = async (value: string) => {
+            if (status || control.dataset.busy === "1") return;
+            control.dataset.busy = "1";
+            const result = onSubmitAnswer
+              ? await onSubmitAnswer(active.id, id, value)
+              : await onSaveResponse(responseKey, value).then((saved) => ({
+                  ...saved,
+                  value,
+                  status: null as "correct" | "locked" | null,
+                  attempts: [] as string[],
+                }));
+            delete control.dataset.busy;
+            if (result.value !== undefined && !result.error) applyResult(responseKey, result);
           };
-          const keydown = (event: KeyboardEvent) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            choose();
-          };
-          control.addEventListener("click", choose);
-          control.addEventListener("keydown", keydown);
+          const listeners = buttons.map((button) => {
+            const listener = (event: Event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void choose(button.textContent ?? "");
+            };
+            button.addEventListener("click", listener);
+            return { button, listener };
+          });
           cleanups.push(() => {
-            control.removeEventListener("click", choose);
-            control.removeEventListener("keydown", keydown);
+            listeners.forEach(({ button, listener }) => button.removeEventListener("click", listener));
           });
         });
+
+        if (item.querySelector(".blank, .tfbox")) {
+          addNote(item, `list-${listIndex + 1}-item-${itemIndex + 1}`);
+        }
       });
 
       if (!list.querySelector(".blank, .tfbox") && isOpenQuestionList(list, active)) {
@@ -341,9 +632,10 @@ export function RegularLessonView({
           field.rows = 2;
           field.placeholder = "Write your answer…";
           field.className = "regular-open-answer";
-          const blur = () => save(id, field.value.trim());
+          const blur = () => save(regularResponseKey(active.id, id), field.value.trim());
           field.addEventListener("blur", blur);
           item.append(field);
+          addNote(item, `list-${listIndex + 1}-item-${itemIndex + 1}`);
           cleanups.push(() => {
             field.removeEventListener("blur", blur);
             field.remove();
@@ -352,7 +644,7 @@ export function RegularLessonView({
       }
     });
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [active, activeId, nativeVocabulary, onSaveResponse, responseState, showingAnswers]);
+  }, [active, activeId, nativeVocabulary, onSaveResponse, onSubmitAnswer, responseState, showingAnswers, teacher]);
 
   if (!active && activeId !== "__homework") return null;
 
@@ -392,6 +684,65 @@ export function RegularLessonView({
       setLocalHomeworkPlan(result.plan);
       setHomeworkMessage("Упражнение добавлено в домашку этого ученика.");
       router.refresh();
+    });
+  };
+
+  const selectedCandidate = candidates.find((item) => item.exercise.id === candidateId)
+    ?? candidates[0]
+    ?? null;
+
+  const resetExercise = () => {
+    if (!assignmentId || !active || !selectedCandidate) return;
+    setExerciseError(null);
+    setExerciseMenu(false);
+    startBusy(async () => {
+      const result = await resetRegularLessonExerciseAction(
+        assignmentId,
+        active.id,
+        selectedCandidate.listIndex,
+      );
+      if (result.error || !result.state) {
+        setExerciseError(result.error ?? "Не удалось сбросить упражнение");
+        return;
+      }
+      responseRef.current = result.state;
+      setResponseState(result.state);
+    });
+  };
+
+  const openExerciseEditor = () => {
+    if (!selectedCandidate) return;
+    setExerciseError(null);
+    setExerciseMenu(false);
+    setEditingExercise({
+      listIndex: selectedCandidate.listIndex,
+      value: {
+        ...selectedCandidate.editor,
+        items: selectedCandidate.editor.items.map((item) => ({
+          prompt: item.prompt,
+          answers: [...item.answers],
+        })),
+      },
+    });
+  };
+
+  const saveExercise = () => {
+    if (!assignmentId || !active || !editingExercise) return;
+    setExerciseError(null);
+    startBusy(async () => {
+      const result = await saveRegularLessonExerciseAction(
+        assignmentId,
+        active.id,
+        editingExercise.listIndex,
+        editingExercise.value,
+      );
+      if (result.error || !result.state) {
+        setExerciseError(result.error ?? "Не удалось сохранить упражнение");
+        return;
+      }
+      responseRef.current = result.state;
+      setResponseState(result.state);
+      setEditingExercise(null);
     });
   };
 
@@ -464,7 +815,7 @@ export function RegularLessonView({
               {active.title}
             </h2>
             <div className="flex flex-wrap items-center gap-2">
-              {teacher && candidates.length > 0 && localHomeworkPlan && assignmentId && (
+              {teacher && candidates.length > 0 && assignmentId && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   {candidates.length > 1 && (
                     <select
@@ -479,15 +830,49 @@ export function RegularLessonView({
                       ))}
                     </select>
                   )}
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={addToHomework}
-                    className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
-                  >
-                    <IconPlus className="h-3.5 w-3.5" />
-                    Add to homework
-                  </button>
+                  {localHomeworkPlan && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={addToHomework}
+                      className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
+                    >
+                      <IconPlus className="h-3.5 w-3.5" />
+                      Add to homework
+                    </button>
+                  )}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-label="Exercise options"
+                      aria-expanded={exerciseMenu}
+                      onClick={() => setExerciseMenu((value) => !value)}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-surface text-muted transition hover:border-accent hover:text-accent"
+                    >
+                      <IconDots className="h-4 w-4" />
+                    </button>
+                    {exerciseMenu && (
+                      <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-xl">
+                        <button
+                          type="button"
+                          onClick={openExerciseEditor}
+                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-content hover:bg-surface-2"
+                        >
+                          <IconPencil className="h-4 w-4 text-accent" />
+                          Edit exercise
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={resetExercise}
+                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <span aria-hidden="true" className="text-base leading-none">↺</span>
+                          Reset answers
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {teacher && active.teacherHtml !== active.studentHtml && !active.teacherOnly && !nativeVocabulary && (
@@ -509,6 +894,11 @@ export function RegularLessonView({
           {homeworkMessage && (
             <p className="mx-4 mt-3 rounded-xl bg-accent-soft px-3 py-2 text-xs font-semibold text-accent sm:mx-6">
               {homeworkMessage}
+            </p>
+          )}
+          {exerciseError && !editingExercise && (
+            <p className="mx-4 mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 sm:mx-6">
+              {exerciseError}
             </p>
           )}
           {nativeVocabulary ? (
@@ -540,6 +930,142 @@ export function RegularLessonView({
           )}
         </article>
       ) : null}
+
+      {editingExercise && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onMouseDown={(event) => event.target === event.currentTarget && setEditingExercise(null)}
+        >
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] bg-surface p-5 shadow-2xl sm:rounded-[28px] sm:p-7">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-accent">
+                  Personalized for this student
+                </p>
+                <h3 className="mt-1 text-xl font-black text-content">Edit exercise</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingExercise(null)}
+                className="rounded-xl border border-line px-3 py-2 text-sm font-bold text-muted hover:text-content"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-[1fr_180px]">
+              <label className="grid gap-1.5 text-xs font-bold text-muted">
+                Exercise title
+                <input
+                  value={editingExercise.value.title}
+                  onChange={(event) => setEditingExercise((current) => current && ({
+                    ...current,
+                    value: { ...current.value, title: event.target.value },
+                  }))}
+                  className="h-11 rounded-xl border border-line bg-surface-2 px-3 text-sm font-semibold text-content outline-none focus:border-accent"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-bold text-muted">
+                Exercise type
+                <select
+                  value={editingExercise.value.kind}
+                  onChange={(event) => setEditingExercise((current) => current && ({
+                    ...current,
+                    value: {
+                      ...current.value,
+                      kind: event.target.value as RegularExerciseOverride["kind"],
+                    },
+                  }))}
+                  className="h-11 rounded-xl border border-line bg-surface-2 px-3 text-sm font-semibold text-content outline-none focus:border-accent"
+                >
+                  <option value="fill">Fill in the gaps</option>
+                  <option value="true-false">True / False</option>
+                  <option value="open">Personal questions</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="mt-4 grid gap-1.5 text-xs font-bold text-muted">
+              Instruction
+              <textarea
+                rows={2}
+                value={editingExercise.value.instruction}
+                onChange={(event) => setEditingExercise((current) => current && ({
+                  ...current,
+                  value: { ...current.value, instruction: event.target.value },
+                }))}
+                className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-semibold text-content outline-none focus:border-accent"
+              />
+            </label>
+
+            <div className="mt-5 grid gap-3">
+              {editingExercise.value.items.map((item, itemIndex) => (
+                <div key={itemIndex} className="rounded-2xl border border-line bg-surface-2 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-xs font-black text-accent">
+                      {itemIndex + 1}
+                    </span>
+                    <textarea
+                      rows={2}
+                      value={item.prompt}
+                      onChange={(event) => setEditingExercise((current) => {
+                        if (!current) return current;
+                        const items = current.value.items.map((entry, index) =>
+                          index === itemIndex ? { ...entry, prompt: event.target.value } : entry,
+                        );
+                        return { ...current, value: { ...current.value, items } };
+                      })}
+                      className="min-h-16 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-content outline-none focus:border-accent"
+                    />
+                  </div>
+                  {editingExercise.value.kind !== "open" && (
+                    <label className="mt-2 grid gap-1 pl-9 text-[11px] font-bold text-muted">
+                      {editingExercise.value.kind === "fill"
+                        ? "Correct answer for every ___ (separate multiple blanks with |)"
+                        : "Correct answer: T or F"}
+                      <input
+                        value={item.answers.join(" | ")}
+                        onChange={(event) => setEditingExercise((current) => {
+                          if (!current) return current;
+                          const answers = event.target.value.split("|").map((value) => value.trim());
+                          const items = current.value.items.map((entry, index) =>
+                            index === itemIndex ? { ...entry, answers } : entry,
+                          );
+                          return { ...current, value: { ...current.value, items } };
+                        })}
+                        className="h-10 rounded-xl border border-line bg-surface px-3 text-sm font-semibold text-content outline-none focus:border-accent"
+                      />
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {exerciseError && (
+              <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-600">
+                {exerciseError}
+              </p>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingExercise(null)}
+                className="h-11 rounded-xl border border-line px-4 text-sm font-bold text-content"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={saveExercise}
+                className="h-11 rounded-xl bg-accent px-5 text-sm font-black text-white disabled:opacity-50"
+              >
+                {busy ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

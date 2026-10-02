@@ -989,11 +989,146 @@ body {
   background: var(--surface);
   box-shadow: 0 0 0 2px var(--accent);
 }
+.regular-lesson-body .regular-answer-correct,
+.regular-lesson-body .regular-answer-correct:focus {
+  border-color: #10b981 !important;
+  background: #d1fae5 !important;
+  color: #047857 !important;
+  box-shadow: inset 0 0 0 1px #34d399;
+}
+.regular-lesson-body .regular-answer-locked,
+.regular-lesson-body .regular-answer-locked:focus {
+  border-color: #fb7185 !important;
+  background: #ffe4e6 !important;
+  color: #be123c !important;
+  box-shadow: inset 0 0 0 1px #fda4af;
+}
+@keyframes regular-answer-wrong-flash {
+  0%, 100% { background: color-mix(in srgb, var(--accent-soft) 72%, transparent); }
+  35% { background: #fecdd3; box-shadow: 0 0 0 4px rgb(244 63 94 / 0.18); }
+}
+.regular-lesson-body .regular-answer-wrong-flash {
+  animation: regular-answer-wrong-flash .55s ease-out;
+}
+.regular-lesson-body .regular-attempt-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: .28rem;
+  vertical-align: middle;
+}
+.regular-lesson-body .regular-attempt-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: .18rem;
+  min-height: 1.5rem;
+  border: 0;
+  background: transparent;
+  padding: .2rem;
+  cursor: pointer;
+}
+.regular-lesson-body .regular-attempt-dot {
+  width: .32rem;
+  height: .32rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 82%, #cbd5e1);
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+.regular-lesson-body .regular-attempt-dots:hover .regular-attempt-dot { transform: scale(1.25); }
+.regular-lesson-body .regular-attempt-dot-wrong { background: #fb7185; }
+.regular-lesson-body .regular-attempt-dot-correct { background: #10b981; }
+.regular-lesson-body .regular-attempt-popover {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  top: calc(100% + .35rem);
+  width: max-content;
+  max-width: min(18rem, 72vw);
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  border-radius: .8rem;
+  background: var(--surface);
+  padding: .55rem .7rem;
+  color: var(--content);
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1.5;
+  box-shadow: 0 12px 30px rgb(15 23 42 / .16);
+}
 .regular-lesson-body .regular-tf-control {
   display: inline-flex;
-  min-width: 3.2rem;
-  cursor: pointer;
+  gap: .25rem;
+  min-width: 4rem;
   justify-content: center;
+  padding: .16rem;
+}
+.regular-lesson-body .regular-tf-choice {
+  min-width: 1.65rem;
+  border: 0;
+  border-radius: .38rem;
+  background: transparent;
+  padding: .05rem .3rem;
+  color: inherit;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+.regular-lesson-body .regular-tf-choice:hover,
+.regular-lesson-body .regular-tf-choice-selected { background: rgb(255 255 255 / .72); }
+.regular-lesson-body .regular-tf-choice:disabled { cursor: default; }
+.regular-lesson-body .regular-note {
+  display: block;
+  margin: .55rem 0 .2rem;
+  padding-left: .15rem;
+  color: var(--muted);
+  font-size: .78rem;
+}
+.regular-lesson-body .regular-note-toggle,
+.regular-lesson-body .regular-note > summary {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  padding: .15rem 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.regular-lesson-body .regular-note-panel {
+  width: min(30rem, 100%);
+  margin-top: .35rem;
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  background: var(--surface-2);
+  padding: .55rem;
+}
+.regular-lesson-body .regular-note-panel textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: .6rem;
+  background: var(--surface);
+  padding: .5rem .6rem;
+  color: var(--content);
+  font: inherit;
+  outline: none;
+}
+.regular-lesson-body .regular-note-panel label {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-top: .45rem;
+  font-weight: 750;
+}
+.regular-lesson-body details.regular-note > p {
+  width: min(30rem, 100%);
+  margin: .35rem 0 0;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 .65rem .65rem 0;
+  background: var(--accent-soft);
+  padding: .55rem .7rem;
+  color: var(--content);
 }
 .regular-lesson-body .regular-open-answer {
   display: block;
