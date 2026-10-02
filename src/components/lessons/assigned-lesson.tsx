@@ -274,6 +274,8 @@ export function AssignedLesson({
       {/* В классе ученик видит все вкладки, но сам открывает только разрешённые. */}
       <LessonView
         lesson={data.lesson}
+        teacher={teacher}
+        defaultStudentId={data.assignment.studentId}
         initialSection={initialSection}
         open={
           teacher || liveClass

@@ -49,20 +49,30 @@ export const BRITISH_OPTION = "option:british";
 const VOCAB_REVEAL_PREFIX = "option:vocab-reveal:";
 const VOCAB_ALL_TRANSLATIONS = `${VOCAB_REVEAL_PREFIX}translations:all`;
 const VOCAB_ALL_DESCRIPTIONS = `${VOCAB_REVEAL_PREFIX}descriptions:all`;
+const VOCAB_ALL_EXAMPLES = `${VOCAB_REVEAL_PREFIX}examples:all`;
+const VOCAB_ALL_NOTES = `${VOCAB_REVEAL_PREFIX}notes:all`;
 
 export type LessonVocabularyReveal = {
   allTranslations: boolean;
   allDescriptions: boolean;
+  allExamples: boolean;
+  allNotes: boolean;
   /** При общем показе это исключения; без него — открытые записи. */
   translations: string[];
   descriptions: string[];
+  examples: string[];
+  notes: string[];
 };
 
 export const emptyLessonVocabularyReveal = (): LessonVocabularyReveal => ({
   allTranslations: false,
   allDescriptions: false,
+  allExamples: false,
+  allNotes: false,
   translations: [],
   descriptions: [],
+  examples: [],
+  notes: [],
 });
 
 export function isLessonVocabularyRevealOption(value: string): boolean {
@@ -76,12 +86,20 @@ export function lessonVocabularyReveal(
   for (const option of stored ?? []) {
     if (option === VOCAB_ALL_TRANSLATIONS) state.allTranslations = true;
     else if (option === VOCAB_ALL_DESCRIPTIONS) state.allDescriptions = true;
+    else if (option === VOCAB_ALL_EXAMPLES) state.allExamples = true;
+    else if (option === VOCAB_ALL_NOTES) state.allNotes = true;
     else if (option.startsWith(`${VOCAB_REVEAL_PREFIX}translation:`)) {
       const id = option.slice(`${VOCAB_REVEAL_PREFIX}translation:`.length);
       if (id && !state.translations.includes(id)) state.translations.push(id);
     } else if (option.startsWith(`${VOCAB_REVEAL_PREFIX}description:`)) {
       const id = option.slice(`${VOCAB_REVEAL_PREFIX}description:`.length);
       if (id && !state.descriptions.includes(id)) state.descriptions.push(id);
+    } else if (option.startsWith(`${VOCAB_REVEAL_PREFIX}example:`)) {
+      const id = option.slice(`${VOCAB_REVEAL_PREFIX}example:`.length);
+      if (id && !state.examples.includes(id)) state.examples.push(id);
+    } else if (option.startsWith(`${VOCAB_REVEAL_PREFIX}note:`)) {
+      const id = option.slice(`${VOCAB_REVEAL_PREFIX}note:`.length);
+      if (id && !state.notes.includes(id)) state.notes.push(id);
     }
   }
   return state;
@@ -102,8 +120,12 @@ export function normalizeLessonVocabularyReveal(
   return {
     allTranslations: value?.allTranslations === true,
     allDescriptions: value?.allDescriptions === true,
+    allExamples: value?.allExamples === true,
+    allNotes: value?.allNotes === true,
     translations: ids(value?.translations),
     descriptions: ids(value?.descriptions),
+    examples: ids(value?.examples),
+    notes: ids(value?.notes),
   };
 }
 
@@ -114,19 +136,35 @@ export function lessonVocabularyRevealOptions(
   return [
     ...(value.allTranslations ? [VOCAB_ALL_TRANSLATIONS] : []),
     ...(value.allDescriptions ? [VOCAB_ALL_DESCRIPTIONS] : []),
+    ...(value.allExamples ? [VOCAB_ALL_EXAMPLES] : []),
+    ...(value.allNotes ? [VOCAB_ALL_NOTES] : []),
     ...value.translations.map((id) => `${VOCAB_REVEAL_PREFIX}translation:${id}`),
     ...value.descriptions.map((id) => `${VOCAB_REVEAL_PREFIX}description:${id}`),
+    ...value.examples.map((id) => `${VOCAB_REVEAL_PREFIX}example:${id}`),
+    ...value.notes.map((id) => `${VOCAB_REVEAL_PREFIX}note:${id}`),
   ];
 }
 
 export function toggleLessonVocabularyReveal(
   raw: LessonVocabularyReveal,
-  kind: "translation" | "description",
+  kind: "translation" | "description" | "example" | "note",
   wordId?: string,
 ): LessonVocabularyReveal {
   const next = normalizeLessonVocabularyReveal(raw);
-  const list = kind === "translation" ? "translations" : "descriptions";
-  const all = kind === "translation" ? "allTranslations" : "allDescriptions";
+  const list = kind === "translation"
+    ? "translations"
+    : kind === "description"
+      ? "descriptions"
+      : kind === "example"
+        ? "examples"
+        : "notes";
+  const all = kind === "translation"
+    ? "allTranslations"
+    : kind === "description"
+      ? "allDescriptions"
+      : kind === "example"
+        ? "allExamples"
+        : "allNotes";
   if (!wordId) return { ...next, [all]: !next[all], [list]: [] };
   const values = next[list];
   return {
@@ -485,6 +523,9 @@ export type LessonWord = {
   ipaUk: string | null;
   translation: string | null;
   description: string | null;
+  note: string | null;
+  examples: { en: string; tr: string }[];
+  sectionColor: string | null;
   imageUrl: string | null;
 };
 

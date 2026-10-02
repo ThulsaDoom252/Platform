@@ -52,6 +52,8 @@ import { homeworkExerciseProgress } from "@/lib/lesson-homework";
 
 export type LessonViewProps = {
   lesson: Lesson;
+  teacher?: boolean;
+  defaultStudentId?: string | null;
   /** Open this tab first when the viewer came from a direct navigation item. */
   initialSection?: LessonSection;
   /** Какие секции показывать. */
@@ -103,6 +105,8 @@ const MAX_PANELS = 4;
 
 export function LessonView({
   lesson,
+  teacher = false,
+  defaultStudentId,
   initialSection,
   open,
   closed,
@@ -370,6 +374,10 @@ export function LessonView({
                   canReveal={canRevealVocabulary}
                   revealState={vocabularyReveal}
                   onRevealStateChange={onVocabularyRevealChange}
+                  teacher={teacher}
+                  unitId={lesson.id}
+                  lessonTitle={lesson.title}
+                  defaultStudentId={defaultStudentId}
                 />
               )}
               {section === "lexis" &&

@@ -1551,6 +1551,7 @@ export async function translateVocabularyDraftAction(
 
 export type PhraseInput = {
   section: string | null;
+  sectionColor?: string | null;
   icon: string | null;
   phrase: string;
   transcription: string | null;
@@ -1572,6 +1573,9 @@ function cleanPhrase(p: PhraseInput): PhraseInput | null {
   if (!phrase) return null;
   return {
     section: p.section ? String(p.section).trim().slice(0, 200) || null : null,
+    ...(p.sectionColor !== undefined
+      ? { sectionColor: p.sectionColor ? String(p.sectionColor).trim().slice(0, 40) || null : null }
+      : {}),
     icon: p.icon ? String(p.icon).slice(0, 64) : null,
     phrase,
     transcription: p.transcription ? String(p.transcription).trim().slice(0, 120) : null,
@@ -1835,6 +1839,7 @@ export async function saveVocabularyEditAction(
         translation: item.translation,
         note: item.note,
         section: item.section,
+        sectionColor: item.sectionColor ?? null,
         kind: item.kind,
         examples: item.examples,
       })),

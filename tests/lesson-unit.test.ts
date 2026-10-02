@@ -113,10 +113,12 @@ test("shorts показывает домашку после вопросов", (
   assert.deepEqual(lessonSectionsForKind("ACTIVITY"), LESSON_SECTIONS);
 });
 
-test("раскрытые учителем переводы и описания сохраняются в выдаче урока", () => {
+test("раскрытые учителем части словника сохраняются в выдаче урока", () => {
   let reveal = lessonVocabularyReveal([]);
   reveal = toggleLessonVocabularyReveal(reveal, "translation", "word-1");
   reveal = toggleLessonVocabularyReveal(reveal, "description", "word-2");
+  reveal = toggleLessonVocabularyReveal(reveal, "example", "word-1");
+  reveal = toggleLessonVocabularyReveal(reveal, "note", "word-2");
   assert.deepEqual(lessonVocabularyReveal(lessonVocabularyRevealOptions(reveal)), reveal);
 });
 
@@ -399,6 +401,9 @@ const vocabWord = (word: string, extra: Partial<LessonWord> = {}): LessonWord =>
   ipaUk: null,
   translation: null,
   description: null,
+  note: null,
+  examples: [],
+  sectionColor: null,
   imageUrl: null,
   ...extra,
 });

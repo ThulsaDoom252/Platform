@@ -17,6 +17,8 @@ import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { hasTranscription } from "@/lib/phrase-words";
 import { SpeakPair, useSpeech } from "@/components/materials/speech";
+import { LessonVocabToMaterials } from "@/components/lessons/lesson-vocab-to-materials";
+import { categoryColor } from "@/lib/category-color";
 import {
   categoryKey,
   emptyLessonVocabularyReveal,
@@ -40,6 +42,10 @@ export function LessonVocab({
   canReveal = true,
   revealState,
   onRevealStateChange,
+  teacher = false,
+  unitId,
+  lessonTitle,
+  defaultStudentId,
 }: {
   words: LessonWord[];
   highlights: Record<string, string>;
@@ -51,6 +57,10 @@ export function LessonVocab({
   /** В классе состояние общее: учитель меняет, ученик только наблюдает. */
   revealState?: LessonVocabularyReveal;
   onRevealStateChange?: (next: LessonVocabularyReveal) => void;
+  teacher?: boolean;
+  unitId?: string;
+  lessonTitle?: string;
+  defaultStudentId?: string | null;
 }) {
   const { t } = useT();
   const speech = useSpeech();
@@ -99,13 +109,29 @@ export function LessonVocab({
     if (revealState) onRevealStateChange?.(next);
     else setLocalReveal(next);
   };
-  const toggleReveal = (kind: "translation" | "description", wordId?: string) =>
+  const toggleReveal = (
+    kind: "translation" | "description" | "example" | "note",
+    wordId?: string,
+  ) =>
     updateReveal(toggleLessonVocabularyReveal(reveal, kind, wordId));
 
   const trShown = (id: string) =>
-    reveal.allTranslations !== reveal.translations.includes(id);
+    teacher || reveal.allTranslations !== reveal.translations.includes(id);
   const descShown = (id: string) =>
-    reveal.allDescriptions !== reveal.descriptions.includes(id);
+    teacher || reveal.allDescriptions !== reveal.descriptions.includes(id);
+  const examplesShown = (id: string) =>
+    teacher || reveal.allExamples !== reveal.examples.includes(id);
+  const noteShown = (id: string) =>
+    teacher || reveal.allNotes !== reveal.notes.includes(id);
+  const studentShown = (
+    kind: "translation" | "description" | "example" | "note",
+    id: string,
+  ) => {
+    if (kind === "translation") return reveal.allTranslations !== reveal.translations.includes(id);
+    if (kind === "description") return reveal.allDescriptions !== reveal.descriptions.includes(id);
+    if (kind === "example") return reveal.allExamples !== reveal.examples.includes(id);
+    return reveal.allNotes !== reveal.notes.includes(id);
+  };
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -116,9 +142,18 @@ export function LessonVocab({
         </span>
 
         {canReveal && (
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
             <Toggle on={reveal.allTranslations} onClick={() => toggleReveal("translation")} label={t.lessonUnits.showTranslations} />
             <Toggle on={reveal.allDescriptions} onClick={() => toggleReveal("description")} label={t.lessonUnits.showDescriptions} />
+            <Toggle on={reveal.allExamples} onClick={() => toggleReveal("example")} label="Examples" />
+            <Toggle on={reveal.allNotes} onClick={() => toggleReveal("note")} label="Hints" />
+            {teacher && unitId && lessonTitle && (
+              <LessonVocabToMaterials
+                unitId={unitId}
+                lessonTitle={lessonTitle}
+                defaultStudentId={defaultStudentId}
+              />
+            )}
           </span>
         )}
       </div>
@@ -144,6 +179,7 @@ export function LessonVocab({
               key={c}
               on={category === categoryKey(c)}
               onClick={() => setCategory(categoryKey(c))}
+              color={categoryColor(c, groups.find((group) => group.category === c)?.words[0]?.sectionColor)}
             >
               {c}
             </Chip>
@@ -159,7 +195,11 @@ export function LessonVocab({
         {visible.map((group) => (
           <section key={group.category}>
             {group.category && !category && (
-              <h3 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-faint">
+              <h3 className="mb-1.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-faint">
+                <span
+                  className="h-4 w-1 rounded-full"
+                  style={{ backgroundColor: categoryColor(group.category, group.words[0]?.sectionColor) }}
+                />
                 {group.category}
               </h3>
             )}
@@ -231,8 +271,15 @@ export function LessonVocab({
                         />
 
                         {trShown(w.id) ? (
-                          <span className="text-[13px] text-accent">
+                          <span className="inline-flex items-center gap-1 text-[13px] text-accent">
                             — {w.translation ?? "—"}
+                            {teacher && w.translation && (
+                              <RevealOne
+                                on={studentShown("translation", w.id)}
+                                onClick={() => toggleReveal("translation", w.id)}
+                                label="translation"
+                              />
+                            )}
                           </span>
                         ) : canReveal ? (
                           <button
@@ -261,8 +308,15 @@ export function LessonVocab({
 
                       {w.description &&
                         (descShown(w.id) ? (
-                          <p className="mt-1 text-[12px] leading-snug text-muted">
-                            {w.description}
+                          <p className="mt-1 flex items-start gap-1 text-[12px] leading-snug text-muted">
+                            <span className="flex-1">{w.description}</span>
+                            {teacher && (
+                              <RevealOne
+                                on={studentShown("description", w.id)}
+                                onClick={() => toggleReveal("description", w.id)}
+                                label="description"
+                              />
+                            )}
                           </p>
                         ) : canReveal ? (
                           <button
@@ -274,6 +328,65 @@ export function LessonVocab({
                           </button>
                         ) : (
                           <span className="mt-1 block text-[11px] text-faint">•••</span>
+                        ))}
+
+                      {w.examples.length > 0 &&
+                        (examplesShown(w.id) ? (
+                          <div className="mt-2 rounded-xl bg-surface-2 px-3 py-2">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-black uppercase tracking-wide text-accent">Examples</span>
+                              {teacher && (
+                                <RevealOne
+                                  on={studentShown("example", w.id)}
+                                  onClick={() => toggleReveal("example", w.id)}
+                                  label="examples"
+                                />
+                              )}
+                            </div>
+                            <ul className="grid gap-1.5">
+                              {w.examples.map((example, index) => (
+                                <li key={index} className="text-[12px] leading-snug text-content">
+                                  <span>{example.en}</span>
+                                  {example.tr && <span className="ml-1.5 italic text-muted">— {example.tr}</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : canReveal ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleReveal("example", w.id)}
+                            className="mt-1.5 text-[11px] text-faint transition hover:text-accent"
+                          >
+                            Show examples
+                          </button>
+                        ) : (
+                          <span className="mt-1.5 block text-[11px] text-faint">Examples: •••</span>
+                        ))}
+
+                      {w.note &&
+                        (noteShown(w.id) ? (
+                          <div className="mt-2 flex items-start gap-2 rounded-xl bg-amber-400/10 px-3 py-2 text-[12px] leading-snug text-content ring-1 ring-amber-400/25">
+                            <span aria-hidden>💡</span>
+                            <span className="min-w-0 flex-1 whitespace-pre-line">{w.note}</span>
+                            {teacher && (
+                              <RevealOne
+                                on={studentShown("note", w.id)}
+                                onClick={() => toggleReveal("note", w.id)}
+                                label="hint"
+                              />
+                            )}
+                          </div>
+                        ) : canReveal ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleReveal("note", w.id)}
+                            className="mt-1.5 text-[11px] text-faint transition hover:text-accent"
+                          >
+                            Show hint
+                          </button>
+                        ) : (
+                          <span className="mt-1.5 block text-[11px] text-faint">Hint: •••</span>
                         ))}
                     </div>
                   </div>
@@ -316,10 +429,12 @@ function Toggle({
 function Chip({
   on,
   onClick,
+  color,
   children,
 }: {
   on: boolean;
   onClick: () => void;
+  color?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -328,10 +443,38 @@ function Chip({
       onClick={onClick}
       className={cn(
         "h-7 rounded-lg px-2.5 text-[11px] font-semibold transition",
-        on ? "bg-accent text-white" : "bg-surface-2 text-muted hover:text-content",
+        on
+          ? color ? "text-white" : "bg-accent text-white"
+          : "bg-surface-2 text-muted hover:text-content",
       )}
+      style={on && color ? { backgroundColor: color } : undefined}
     >
       {children}
+    </button>
+  );
+}
+
+function RevealOne({
+  on,
+  onClick,
+  label,
+}: {
+  on: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${on ? "Hide" : "Show"} ${label} for the student`}
+      aria-label={`${on ? "Hide" : "Show"} ${label} for the student`}
+      className={cn(
+        "flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition",
+        on ? "bg-accent text-white" : "bg-surface text-faint ring-1 ring-line",
+      )}
+    >
+      {on ? <IconEye className="h-3 w-3" /> : <IconEyeOff className="h-3 w-3" />}
     </button>
   );
 }

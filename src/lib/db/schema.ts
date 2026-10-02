@@ -1199,6 +1199,12 @@ export const lessonWords = pgTable("lesson_words", {
   ipaUk: text("ipa_uk"),
   translation: text("translation"),
   description: text("description"),
+  /** Подсказка «что стоит знать» — учитель видит всегда, ученику открывает сам. */
+  note: text("note"),
+  /** Примеры употребления в том же формате, что и в материалах. */
+  examples: jsonb("examples").$type<PhraseExample[]>().default([]).notNull(),
+  /** Цвет смысловой категории; null означает автоматический цвет темы. */
+  sectionColor: text("section_color"),
   imageUrl: text("image_url"),
   /** Порядок внутри категории на случай ручной раскладки. */
   sortOrder: integer("sort_order").notNull().default(0),

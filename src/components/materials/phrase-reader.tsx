@@ -16,6 +16,7 @@ import { hasTranscription } from "@/lib/phrase-words";
 import { fmt } from "@/lib/i18n";
 import { useSpeech } from "./speech";
 import { cn } from "@/lib/utils";
+import { categoryColor } from "@/lib/category-color";
 import {
   IconVolume,
   IconChevronDown,
@@ -43,6 +44,7 @@ export type MaterialPhrase = {
   description: string | null;
   gameImageUrl: string | null;
   section: string | null;
+  sectionColor?: string | null;
   kind: string;
   examples: PhraseExample[];
 };
@@ -528,11 +530,15 @@ export function PhraseReader({
   }
 
   // Группируем по секциям, сохраняя исходный порядок.
-  const groups: { section: string | null; items: MaterialPhrase[] }[] = [];
+  const groups: { section: string | null; color: string; items: MaterialPhrase[] }[] = [];
   for (const p of phrases) {
     const last = groups[groups.length - 1];
     if (last && last.section === (p.section ?? null)) last.items.push(p);
-    else groups.push({ section: p.section ?? null, items: [p] });
+    else groups.push({
+      section: p.section ?? null,
+      color: categoryColor(p.section, p.sectionColor),
+      items: [p],
+    });
   }
 
   const phraseCount = phrases.filter((p) => p.kind !== "NOTE").length;
@@ -822,7 +828,10 @@ export function PhraseReader({
                 dropSection === g.section && "bg-accent-soft ring-1 ring-accent",
               )}
             >
-              <span className="h-4 w-1 shrink-0 rounded-full bg-accent" />
+              <span
+                className="h-4 w-1 shrink-0 rounded-full"
+                style={{ backgroundColor: g.color }}
+              />
               <h3 className="flex-1 text-sm font-bold text-content">
                 {g.section ?? (editable ? "Без категории" : "")}
               </h3>

@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 type EditableItem = Draft & {
   kind: "PHRASE" | "NOTE";
   imageUrl: string | null;
+  sectionColor: string | null;
 };
 
 type VocabularyNode = {
@@ -54,6 +55,7 @@ function fromStored(phrase: MaterialPhrase): EditableItem {
     key: phrase.id,
     kind: phrase.kind === "NOTE" ? "NOTE" : "PHRASE",
     imageUrl: phrase.imageUrl,
+    sectionColor: phrase.sectionColor ?? null,
     description: phrase.description ?? "",
     section: phrase.section ?? "",
     icon: phrase.icon ?? (phrase.kind === "NOTE" ? "💡" : "💬"),
@@ -74,6 +76,7 @@ function fromParsed(phrase: ParsedPhrase): EditableItem {
     ...draft,
     kind: phrase.kind,
     imageUrl: null,
+    sectionColor: null,
     phrase: phrase.phrase,
     transcription: phrase.transcription ?? "",
     translation: phrase.translation,
@@ -99,13 +102,19 @@ function toPreview(item: EditableItem): MaterialPhrase {
     translation: clean.translation || null,
     note: clean.note,
     section: clean.section,
+    sectionColor: item.sectionColor,
     kind: item.kind,
     examples: clean.examples,
   };
 }
 
 function toSave(item: EditableItem): VocabularyEditInput {
-  return { ...toInput(item), kind: item.kind, imageUrl: item.imageUrl };
+  return {
+    ...toInput(item),
+    sectionColor: item.sectionColor,
+    kind: item.kind,
+    imageUrl: item.imageUrl,
+  };
 }
 
 export function VocabularyEditor({
@@ -397,6 +406,7 @@ export function VocabularyEditor({
                       ...newDraft(sections.at(-1)?.name ?? "", sections.at(-1)?.icon ?? "💬"),
                       kind: "PHRASE",
                       imageUrl: null,
+                      sectionColor: null,
                     },
                   ])
                 }
@@ -409,7 +419,12 @@ export function VocabularyEditor({
                 onClick={() =>
                   setItems((current) => [
                     ...current,
-                    { ...newDraft("", "💡"), kind: "NOTE", imageUrl: null },
+                    {
+                      ...newDraft("", "💡"),
+                      kind: "NOTE",
+                      imageUrl: null,
+                      sectionColor: null,
+                    },
                   ])
                 }
                 className="flex h-9 items-center gap-2 rounded-xl border border-dashed border-line px-3 text-xs font-semibold text-muted transition hover:border-accent hover:text-accent"

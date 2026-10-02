@@ -51,6 +51,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { WordDeckActivity } from "@/lib/actions/word-deck";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
+import { LessonVocabToMaterials } from "@/components/lessons/lesson-vocab-to-materials";
 import { regularSectionKey } from "@/lib/regular-lesson";
 
 const inputCls =
@@ -328,7 +329,14 @@ function ActivityLessonEditor({
           </p>
         )}
 
-        {lesson.words.length > 0 && <VocabPreview words={lesson.words} />}
+        {lesson.words.length > 0 && (
+          <>
+            <div className="mt-3 flex justify-end">
+              <LessonVocabToMaterials unitId={lesson.id} lessonTitle={lesson.title} />
+            </div>
+            <VocabPreview words={lesson.words} />
+          </>
+        )}
       </Section>
 
       {lesson.kind !== "REGULAR" && (

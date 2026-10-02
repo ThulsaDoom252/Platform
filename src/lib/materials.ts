@@ -71,6 +71,7 @@ export type MaterialPhrase = {
   /** Заметка «что стоит знать» под словом. */
   note: string | null;
   section: string | null;
+  sectionColor: string | null;
   kind: string;
   examples: PhraseExample[];
 };
@@ -159,6 +160,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
       description: p.description,
       gameImageUrl: gameImageOf.get(p.id) ?? null,
       section: p.section,
+      sectionColor: p.sectionColor,
       kind: p.kind,
       examples: (p.examples ?? []) as PhraseExample[],
     });

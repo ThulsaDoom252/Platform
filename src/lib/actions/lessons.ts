@@ -13,7 +13,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   lessonAssignments,
@@ -423,6 +423,9 @@ async function wordsOfUnit(unitId: string): Promise<LessonWord[]> {
     ipaUk: r.ipaUk,
     translation: r.translation,
     description: r.description,
+    note: r.note,
+    examples: r.examples ?? [],
+    sectionColor: r.sectionColor,
     imageUrl: r.imageUrl,
   }));
 }
@@ -458,6 +461,9 @@ export async function fillVocabAction(
       ipaUk: materialPhrases.transcriptionUk,
       translation: materialPhrases.translation,
       description: materialPhrases.description,
+      note: materialPhrases.note,
+      examples: materialPhrases.examples,
+      sectionColor: materialPhrases.sectionColor,
       category: materialPhrases.section,
       kind: materialPhrases.kind,
     })
@@ -487,6 +493,9 @@ export async function fillVocabAction(
       ipaUk: r.ipaUk,
       translation: r.translation,
       description: r.description,
+      note: r.note,
+      examples: r.examples ?? [],
+      sectionColor: r.sectionColor,
       imageUrl: imageOf.get(r.phraseId) ?? null,
       sortOrder: at + 1,
     })),
@@ -504,21 +513,192 @@ export async function fillVocabAction(
 /** Правка одного слова словника: перевод, описание, категория. */
 export async function saveWordAction(
   wordId: string,
-  edit: Partial<Pick<LessonWord, "word" | "translation" | "description" | "category" | "icon">>,
+  edit: Partial<Pick<LessonWord, "word" | "translation" | "description" | "category" | "icon" | "note" | "examples" | "sectionColor">>,
 ): Promise<{ error?: string }> {
   await requireTeacher();
   const patch: Record<string, unknown> = {};
-  for (const key of ["word", "translation", "description", "category", "icon"] as const) {
+  for (const key of ["word", "translation", "description", "category", "icon", "note", "sectionColor"] as const) {
     const value = edit[key];
     if (value === undefined) continue;
     patch[key] = key === "word" || key === "category"
       ? String(value ?? "").trim()
       : (String(value ?? "").trim() || null);
   }
+  if (edit.examples !== undefined) {
+    patch.examples = (Array.isArray(edit.examples) ? edit.examples : [])
+      .slice(0, 20)
+      .map((example) => ({
+        en: String(example?.en ?? "").trim().slice(0, 1_000),
+        tr: String(example?.tr ?? "").trim().slice(0, 1_000),
+      }))
+      .filter((example) => example.en);
+  }
   if (Object.keys(patch).length === 0) return {};
 
   await db.update(lessonWords).set(patch).where(eq(lessonWords.id, String(wordId ?? "")));
   return {};
+}
+
+export type LessonVocabularyMaterialTarget = {
+  id: string;
+  name: string;
+  folders: { id: string; parentId: string | null; name: string }[];
+};
+
+/** Ученики и их личные папки для окна «Добавить в материалы». */
+export async function lessonVocabularyMaterialTargetsAction(): Promise<
+  LessonVocabularyMaterialTarget[]
+> {
+  await requireTeacher();
+  const [students, folders] = await Promise.all([
+    db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.role, "STUDENT"))
+      .orderBy(asc(users.name)),
+    db
+      .select({
+        id: materialNodes.id,
+        parentId: materialNodes.parentId,
+        ownerId: materialNodes.ownerId,
+        name: materialNodes.name,
+      })
+      .from(materialNodes)
+      .where(and(eq(materialNodes.scope, "STUDENT"), eq(materialNodes.type, "FOLDER")))
+      .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name)),
+  ]);
+
+  return students.map((student) => ({
+    ...student,
+    folders: folders
+      .filter((folder) => folder.ownerId === student.id)
+      .map(({ id, parentId, name }) => ({ id, parentId, name })),
+  }));
+}
+
+/**
+ * Снять со словника урока полноценную копию в личное дерево ученика.
+ * В материалах примеры и подсказки уже обычное содержимое: ученик видит их
+ * без классных ограничений и может вернуться к ним после урока.
+ */
+export async function addLessonVocabularyToMaterialsAction(
+  unitId: string,
+  input: { studentId: string; parentId?: string | null; name: string },
+): Promise<{ nodeId?: string; error?: string }> {
+  const session = await requireTeacher();
+  const id = String(unitId ?? "");
+  const studentId = String(input?.studentId ?? "");
+  const parentId = input?.parentId ? String(input.parentId) : null;
+  const name = String(input?.name ?? "").trim().slice(0, 200);
+  if (!name) return { error: "Введи название словаря" };
+
+  const [[unit], [student], words] = await Promise.all([
+    db
+      .select({ id: lessonUnits.id, kind: lessonUnits.kind })
+      .from(lessonUnits)
+      .where(and(eq(lessonUnits.id, id), eq(lessonUnits.authorId, session.userId)))
+      .limit(1),
+    db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
+      .limit(1),
+    db
+      .select()
+      .from(lessonWords)
+      .where(eq(lessonWords.unitId, id))
+      .orderBy(asc(lessonWords.sortOrder)),
+  ]);
+  if (!unit || unit.kind === "REGULAR") return { error: "Урок Activity/Shorts не найден" };
+  if (!student) return { error: "Ученик не найден" };
+  if (words.length === 0) return { error: "В уроке пока нет слов" };
+
+  if (parentId) {
+    const [parent] = await db
+      .select({ id: materialNodes.id })
+      .from(materialNodes)
+      .where(
+        and(
+          eq(materialNodes.id, parentId),
+          eq(materialNodes.type, "FOLDER"),
+          eq(materialNodes.scope, "STUDENT"),
+          eq(materialNodes.ownerId, studentId),
+        ),
+      )
+      .limit(1);
+    if (!parent) return { error: "Папка ученика не найдена" };
+  }
+
+  const [{ value: lastOrder } = { value: 0 }] = await db
+    .select({ value: max(materialNodes.sortOrder) })
+    .from(materialNodes)
+    .where(
+      parentId
+        ? eq(materialNodes.parentId, parentId)
+        : and(
+            isNull(materialNodes.parentId),
+            eq(materialNodes.scope, "STUDENT"),
+            eq(materialNodes.ownerId, studentId),
+          ),
+    );
+
+  const nodeId = await db.transaction(async (tx) => {
+    const [node] = await tx
+      .insert(materialNodes)
+      .values({
+        parentId,
+        scope: "STUDENT",
+        ownerId: studentId,
+        name,
+        icon: "📚",
+        type: "FILE",
+        pageKind: "VOCAB",
+        sortOrder: (lastOrder ?? 0) + 1,
+      })
+      .returning({ id: materialNodes.id });
+
+    const phraseIds = words.map(() => randomUUID());
+    await tx
+      .insert(materialPhrases)
+      .values(
+        words.map((word, index) => ({
+          id: phraseIds[index],
+          nodeId: node.id,
+          sortOrder: index + 1,
+          icon: word.icon,
+          imageUrl: word.imageUrl,
+          phrase: word.word,
+          transcription: word.ipaUs ?? word.ipaUk,
+          transcriptionUs: word.ipaUs,
+          transcriptionUk: word.ipaUk,
+          translation: word.translation,
+          description: word.description,
+          note: word.note,
+          examples: word.examples ?? [],
+          section: word.category || null,
+          sectionColor: word.sectionColor,
+          kind: "PHRASE",
+        })),
+      );
+
+    const images = phraseIds.flatMap((phraseId, index) =>
+      words[index]?.imageUrl
+        ? [{
+            phraseId,
+            url: words[index].imageUrl!,
+            origin: "manual",
+            sortOrder: 0,
+            picked: true,
+          }]
+        : [],
+    );
+    if (images.length > 0) await tx.insert(phraseImages).values(images);
+    return node.id;
+  });
+
+  revalidatePath(`/teacher/students/${studentId}/materials`);
+  revalidatePath("/student/materials");
+  return { nodeId };
 }
 
 export async function deleteWordAction(wordId: string): Promise<{ error?: string }> {
