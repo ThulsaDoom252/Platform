@@ -23,6 +23,7 @@ import {
   homeworkNoteVisibleKey,
   homeworkProgress,
   homeworkPlanForAssignment,
+  homeworkPlanEditIssue,
   homeworkPlanOverrideKey,
   homeworkStatus,
   homeworkStatusKey,
@@ -120,22 +121,15 @@ export async function saveStudentHomeworkPlanAction(
 
   const plan = normalizeInteractiveHomework(candidate);
   if (!plan) return { error: "Добавь хотя бы одно заполненное упражнение" };
-  if (plan.exercises.some((exercise) =>
-    exercise.items.length === 0 &&
-    exercise.kind !== "question-text" &&
-    exercise.kind !== "question-audio",
-  )) {
-    return { error: "В каждом упражнении должно быть хотя бы одно задание" };
+  const editIssue = homeworkPlanEditIssue(row.plan, plan);
+  if (editIssue === "empty-exercise") {
+    return { error: "В изменённом упражнении должно быть хотя бы одно задание" };
   }
-  if (plan.exercises.some((exercise) =>
-    exercise.kind === "fill" && exercise.items.some((item) => !item.answer || !item.prompt.includes("___")),
-  )) {
+  if (editIssue === "invalid-fill") {
     return { error: "В предложении для вставки отметь ответ двойными звёздочками" };
   }
-  if (plan.exercises.some((exercise) =>
-    exercise.kind === "translate" && exercise.items.some((item) => !item.answer),
-  )) {
-    return { error: "Добавь правильный перевод к каждому предложению" };
+  if (editIssue === "missing-translation") {
+    return { error: "Добавь правильный перевод к каждому изменённому предложению" };
   }
 
   const state = { ...(row.assignment.answers ?? {}) };

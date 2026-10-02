@@ -17,6 +17,7 @@ import {
   homeworkItemFocusId,
   homeworkProgress,
   homeworkPlanForAssignment,
+  homeworkPlanEditIssue,
   homeworkPlanOverrideKey,
   homeworkStarted,
   homeworkStatusKey,
@@ -185,4 +186,44 @@ test("индивидуальная копия домашки сильнее ша
     ["free-main"],
   );
   assert.equal(homeworkPlanForAssignment(plan, {})?.title, "Homework");
+});
+
+test("правка вопросов не блокируется неполными переводами из старой домашки", () => {
+  const legacy: InteractiveHomeworkPlan = {
+    kind: "INTERACTIVE_HOMEWORK_V1",
+    title: "Legacy homework",
+    exercises: [
+      {
+        id: "legacy-translation",
+        title: "Translation",
+        instruction: "Translate",
+        kind: "translate",
+        items: [{ id: "legacy-row", prompt: "Переклади це." }],
+      },
+      {
+        id: "questions",
+        title: "Questions",
+        instruction: "Answer",
+        kind: "question-text",
+        items: [],
+      },
+    ],
+  };
+  const withQuestion: InteractiveHomeworkPlan = {
+    ...legacy,
+    exercises: legacy.exercises.map((exercise) => exercise.id === "questions"
+      ? { ...exercise, items: [{ id: "question-one", prompt: "What happened?" }] }
+      : exercise),
+  };
+
+  assert.equal(homeworkPlanEditIssue(legacy, withQuestion), null);
+  assert.equal(
+    homeworkPlanEditIssue(legacy, {
+      ...legacy,
+      exercises: legacy.exercises.map((exercise) => exercise.id === "legacy-translation"
+        ? { ...exercise, instruction: "Translate this sentence" }
+        : exercise),
+    }),
+    "missing-translation",
+  );
 });

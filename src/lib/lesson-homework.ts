@@ -40,6 +40,12 @@ export type InteractiveHomeworkPlan = {
   exercises: HomeworkExercise[];
 };
 
+export type HomeworkPlanEditIssue =
+  | "empty-exercise"
+  | "invalid-fill"
+  | "missing-translation"
+  | null;
+
 export type LegacyHomeworkTask = { title: string; text: string };
 export type LessonHomeworkEntry = LegacyHomeworkTask | InteractiveHomeworkPlan;
 export type HomeworkStoredState = Record<string, string>;
@@ -122,6 +128,35 @@ export function homeworkPlanForAssignment(
   state: HomeworkStoredState,
 ) {
   return homeworkPlanOverride(state) ?? template;
+}
+
+/** Старые блоки могут быть неполными; при персональной правке проверяем только изменённые. */
+export function homeworkPlanEditIssue(
+  previous: InteractiveHomeworkPlan,
+  next: InteractiveHomeworkPlan,
+): HomeworkPlanEditIssue {
+  const oldExercises = new Map(previous.exercises.map((exercise) => [exercise.id, exercise]));
+  const changed = next.exercises.filter((exercise) => {
+    const old = oldExercises.get(exercise.id);
+    return !old || JSON.stringify(old) !== JSON.stringify(exercise);
+  });
+
+  if (changed.some((exercise) =>
+    exercise.items.length === 0 &&
+    exercise.kind !== "question-text" &&
+    exercise.kind !== "question-audio",
+  )) return "empty-exercise";
+
+  if (changed.some((exercise) =>
+    exercise.kind === "fill" &&
+    exercise.items.some((item) => !item.answer || !item.prompt.includes("___")),
+  )) return "invalid-fill";
+
+  if (changed.some((exercise) =>
+    exercise.kind === "translate" && exercise.items.some((item) => !item.answer),
+  )) return "missing-translation";
+
+  return null;
 }
 
 /** В редакторе ответ отмечается прямо в предложении: I **have got to** go. */
