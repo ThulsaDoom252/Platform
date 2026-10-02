@@ -3,7 +3,7 @@ import { asc, eq, ilike } from "drizzle-orm";
 import { db } from "../src/lib/db";
 import { lessonAssignments, lessonUnits, lessonWords, users } from "../src/lib/db/schema";
 import { parseLexisDocuments } from "../src/lib/keyed-parser";
-import { newDerekHomework } from "../src/lib/bundled-lessons/new-derek";
+import { newDerekHomework, newDerekVocabularyDetails } from "../src/lib/bundled-lessons/new-derek";
 
 const title = "new derek";
 
@@ -199,6 +199,10 @@ async function main() {
       unitId,
       category: "Derek vs. The Teacher",
       ...entry,
+      note: newDerekVocabularyDetails[entry.word].note,
+      examples: newDerekVocabularyDetails[entry.word].examples,
+      ipaUs: newDerekVocabularyDetails[entry.word].ipaUs,
+      sectionColor: newDerekVocabularyDetails[entry.word].sectionColor,
       sortOrder: index + 1,
     })),
   );

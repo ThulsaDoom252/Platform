@@ -23,6 +23,134 @@ const vocabulary = [
   ["🏥", "to be paralyzed from the neck down", "бути паралізованим нижче шиї", "To be unable to move the body below the neck."],
 ] as const;
 
+type VocabularyDetails = {
+  note: string;
+  examples: { en: string; tr: string }[];
+  ipaUs: string | null;
+  sectionColor: string;
+};
+
+/** Full Materials-compatible payload, kept here so reinstalling the lesson is lossless. */
+export const newDerekVocabularyDetails: Record<string, VocabularyDetails> = {
+  mercy: {
+    note: "Common patterns: show mercy, have mercy on someone, and beg for mercy.",
+    examples: [
+      { en: "The judge showed mercy to the young man.", tr: "Суддя змилувався над юнаком." },
+      { en: "They begged the soldier for mercy.", tr: "Вони благали солдата про пощаду." },
+    ],
+    ipaUs: "/ˈmɜrsi/",
+    sectionColor: "#ec4899",
+  },
+  "mercy kill": {
+    note: "Mercy killing is the usual noun. The verb mercy-kill is rare and often figurative or darkly humorous.",
+    examples: [
+      { en: "The vet had to mercy-kill the badly injured animal.", tr: "Ветеринару довелося приспати тяжко поранену тварину, щоб припинити її страждання." },
+      { en: "The fighter joked that the match would be a mercy kill.", tr: "Боєць пожартував, що цей поєдинок буде «вбивством з милосердя»." },
+    ],
+    ipaUs: "/ˈmɜrsi kɪl/",
+    sectionColor: "#ec4899",
+  },
+  "old man": {
+    note: "Normally an elderly man; informally, someone's father or male partner.",
+    examples: [
+      { en: "The old man walks in the park every morning.", tr: "Старий чоловік щоранку гуляє парком." },
+      { en: "Her old man still works at the factory.", tr: "Її чоловік досі працює на заводі." },
+    ],
+    ipaUs: "/oʊld mæn/",
+    sectionColor: "#ec4899",
+  },
+  "to squeeze": {
+    note: "Means press firmly from two or more sides; it can also mean fit into a tight space.",
+    examples: [
+      { en: "Squeeze the lemon into the tea.", tr: "Вичави лимон у чай." },
+      { en: "She squeezed my hand gently.", tr: "Вона ніжно стиснула мою руку." },
+    ],
+    ipaUs: "/skwiːz/",
+    sectionColor: "#ec4899",
+  },
+  lungs: {
+    note: "Normally used in the plural because people have two lungs.",
+    examples: [
+      { en: "Smoking can damage your lungs.", tr: "Куріння може пошкодити твої легені." },
+      { en: "Take a deep breath and fill your lungs with air.", tr: "Зроби глибокий вдих і наповни легені повітрям." },
+    ],
+    ipaUs: "/lʌŋz/",
+    sectionColor: "#ec4899",
+  },
+  "to beg for life": {
+    note: "The natural phrase is beg for one's life, so the possessive changes with the person.",
+    examples: [
+      { en: "The prisoner began to beg for his life.", tr: "В'язень почав благати зберегти йому життя." },
+      { en: "In the film, the victim begs for her life.", tr: "У фільмі жертва благає зберегти їй життя." },
+    ],
+    ipaUs: "/bɛɡ fɔr laɪf/",
+    sectionColor: "#ec4899",
+  },
+  "to open up": {
+    note: "Use open up to someone or open up about a subject.",
+    examples: [
+      { en: "It took him time to open up to his therapist.", tr: "Йому знадобився час, щоб відкритися своєму терапевту." },
+      { en: "She opened up about her childhood.", tr: "Вона відверто розповіла про своє дитинство." },
+    ],
+    ipaUs: "/ˈoʊpən ʌp/",
+    sectionColor: "#ec4899",
+  },
+  "the Lord": {
+    note: "A respectful religious title for God; it is capitalized in this meaning.",
+    examples: [
+      { en: "They prayed to the Lord for help.", tr: "Вони молили Господа про допомогу." },
+      { en: "He thanked the Lord for bringing them home safely.", tr: "Він подякував Господу за їхнє безпечне повернення додому." },
+    ],
+    ipaUs: "/ðə lɔrd/",
+    sectionColor: "#ec4899",
+  },
+  "to knock out": {
+    note: "It can make someone unconscious literally or make someone sleep very deeply.",
+    examples: [
+      { en: "The boxer knocked out his opponent in round two.", tr: "Боксер нокаутував суперника у другому раунді." },
+      { en: "The medicine knocked me out for eight hours.", tr: "Через ліки я проспав вісім годин без пробудження." },
+    ],
+    ipaUs: "/nɑk aʊt/",
+    sectionColor: "#ec4899",
+  },
+  "to make sense": {
+    note: "The subject is the idea or statement: it makes sense. Do not say it has sense.",
+    examples: [
+      { en: "Your plan makes sense to me.", tr: "Твій план здається мені логічним." },
+      { en: "This sentence does not make sense.", tr: "Це речення не має сенсу." },
+    ],
+    ipaUs: "/meɪk sɛns/",
+    sectionColor: "#ec4899",
+  },
+  "kind of (kinda)": {
+    note: "Kind of softens a statement. Kinda is very informal and mainly represents speech.",
+    examples: [
+      { en: "I am kind of tired today.", tr: "Я сьогодні трохи втомився." },
+      { en: "The film was kinda strange, but I liked it.", tr: "Фільм був трохи дивним, але мені сподобався." },
+    ],
+    ipaUs: "/kaɪnd ʌv/",
+    sectionColor: "#ec4899",
+  },
+  "a plastic tube": {
+    note: "Tube is a hollow cylinder used to carry air, liquid, or food.",
+    examples: [
+      { en: "The nurse used a plastic tube to give him water.", tr: "Медсестра використала пластикову трубку, щоб дати йому води." },
+      { en: "Air travels through the plastic tube.", tr: "Повітря проходить крізь пластикову трубку." },
+    ],
+    ipaUs: "/ə ˈplæstɪk tuːb/",
+    sectionColor: "#ec4899",
+  },
+  "to be paralyzed from the neck down": {
+    note: "Use be or become paralyzed from the neck down. Paralyzed is the American spelling; paralysed is British.",
+    examples: [
+      { en: "After the accident, he was paralyzed from the neck down.", tr: "Після аварії його паралізувало нижче шиї." },
+      { en: "The injury left her paralyzed from the neck down.", tr: "Через травму її паралізувало нижче шиї." },
+    ],
+    ipaUs: null,
+    sectionColor: "#ec4899",
+  },
+};
+
 const lexisSource = `TYPE: LEXIS
 TITLE: ain't & kinda
 INTRO: Two very common informal forms in spoken English.
@@ -196,6 +324,10 @@ export async function installNewDerekLesson(authorId: string) {
         word,
         translation,
         description,
+        note: newDerekVocabularyDetails[word].note,
+        examples: newDerekVocabularyDetails[word].examples,
+        ipaUs: newDerekVocabularyDetails[word].ipaUs,
+        sectionColor: newDerekVocabularyDetails[word].sectionColor,
         sortOrder: index + 1,
       })),
     );
