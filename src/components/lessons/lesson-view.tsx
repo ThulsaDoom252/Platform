@@ -67,7 +67,7 @@ export type LessonViewProps = {
   /** Запретить зрителю самому выбирать закрытые вкладки. */
   lockClosed?: boolean;
   /** Разовая команда учителя показать секцию, даже если она закрыта. */
-  sectionFocus?: { section: LessonSection; at: string } | null;
+  sectionFocus?: { section: LessonSection; elementId?: string | null; at: string } | null;
   highlights: Record<string, string>;
   /** Куда смотреть прямо сейчас — ключ места из lesson-unit. */
   focus?: string | null;
@@ -93,6 +93,8 @@ export type LessonViewProps = {
     state: ClassVideoState | null;
   };
   homeworkSession?: InteractiveHomeworkSession;
+  /** Teacher command to focus one homework exercise or sentence. */
+  onFocusHomework?: (elementId: string) => void;
 };
 
 /** Сколько секций держать на экране разом. */
@@ -120,6 +122,7 @@ export function LessonView({
   onSelectLexis,
   videoSession,
   homeworkSession,
+  onFocusHomework,
 }: LessonViewProps) {
   const { t } = useT();
   /*
@@ -211,7 +214,6 @@ export function LessonView({
   const focusSectionOpen = !!focusSection && (
     selectable.includes(focusSection) || focusSection === forcedSection
   );
-  const lexisSectionOpen = selectable.includes("lexis") || forcedSection === "lexis";
   const videoSectionOpen = selectable.includes("video") || forcedSection === "video";
   const videoFocusAt = videoSession?.state?.focusAt;
 
@@ -247,20 +249,6 @@ export function LessonView({
     });
     return () => cancelAnimationFrame(frame);
   }, [focus, focusSection, focusSectionOpen]);
-
-  // Выбор учителем лексической группы приводит ученика в секцию Lexis.
-  useEffect(() => {
-    if (!selectedLexisId || !lexisSectionOpen) return;
-    const frame = requestAnimationFrame(() => {
-      setPicked((current) => {
-        if (current.includes("lexis")) return current;
-        const next = [...current];
-        next[0] = "lexis";
-        return next;
-      });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [lexisSectionOpen, selectedLexisId]);
 
   // Явная команда Focus открывает ученику Video даже поверх другой секции.
   useEffect(() => {
@@ -437,6 +425,12 @@ export function LessonView({
                   lesson={lesson}
                   session={homeworkSession}
                   onStateChange={setHomeworkCounterState}
+                  focusId={
+                    sectionFocus?.section === "homework"
+                      ? (sectionFocus.elementId ?? null)
+                      : null
+                  }
+                  onFocus={onFocusHomework}
                 />
               )}
             </div>
@@ -957,10 +951,14 @@ function Homework({
   lesson,
   session,
   onStateChange,
+  focusId,
+  onFocus,
 }: {
   lesson: Lesson;
   session?: InteractiveHomeworkSession;
   onStateChange?: (state: InteractiveHomeworkSession["state"]) => void;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
 
@@ -996,6 +994,8 @@ function Homework({
           plan={lesson.interactiveHomework}
           session={session}
           onStateChange={onStateChange}
+          focusId={focusId}
+          onFocus={onFocus}
         />
       )}
       {lesson.homework.map((task, i) => (

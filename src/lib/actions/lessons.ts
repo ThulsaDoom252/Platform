@@ -32,6 +32,7 @@ import { parseLexisDocuments } from "@/lib/keyed-parser";
 import { sanitizeBlocks, type RuleBlock } from "@/lib/rule-blocks";
 import {
   BRITISH_OPTION,
+  FOCUS_SLOT,
   isLessonVocabularyRevealOption,
   isDialogueHighlightKey,
   isWordFocusKey,
@@ -45,7 +46,6 @@ import {
   parseKey,
   parseTranscript,
   selectLexisGroup,
-  toggleWordFocus,
   toggleDialogueHighlight,
   isHighlightColor,
   type HighlightColor,
@@ -70,6 +70,7 @@ import {
 } from "@/lib/regular-lesson";
 import {
   homeworkExerciseHidden,
+  homeworkFocusTarget,
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
   type InteractiveHomeworkPlan,
@@ -1186,6 +1187,66 @@ export async function focusRegularLessonElementAction(
   return {};
 }
 
+/** Put one homework exercise or sentence in the centre of the student's screen. */
+export async function focusHomeworkElementAction(
+  assignmentId: string,
+  elementId: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+  const focusId = String(elementId ?? "").trim();
+
+  const [[teacher], [target]] = await Promise.all([
+    db
+      .select({ studentId: users.classWithId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1),
+    db
+      .select({
+        studentId: lessonAssignments.studentId,
+        classFocus: users.classFocus,
+        homework: lessonUnits.homework,
+      })
+      .from(lessonAssignments)
+      .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+      .innerJoin(users, eq(users.id, lessonAssignments.studentId))
+      .where(
+        and(
+          eq(lessonAssignments.id, id),
+          eq(lessonUnits.authorId, session.userId),
+          eq(users.role, "STUDENT"),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
+    return { error: "Этот ученик сейчас не в классе" };
+  }
+  const homework = interactiveHomeworkFromEntries(target.homework);
+  if (!homework || !homeworkFocusTarget(homework, focusId)) {
+    return { error: "Элемент домашки не найден" };
+  }
+
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        ...target.classFocus,
+        at: new Date().toISOString(),
+        view: "LESSON",
+        boardObjectId: null,
+        lessonAssignmentId: id,
+        lessonSection: "homework",
+        lessonElementId: focusId,
+      },
+    })
+    .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
+
+  return {};
+}
+
 export type LessonVideoUpdate = Pick<
   ClassVideoState,
   "currentTime" | "playing" | "captions" | "muted" | "volume" | "playbackRate"
@@ -1372,7 +1433,8 @@ export async function focusLessonWordAction(
   }
   const current = parsedFocus?.kind === "lexisBlock"
     ? selectLexisGroup(row.highlights, parsedFocus.groupId)
-    : row.highlights;
+    : normalizeLessonHighlights(row.highlights);
+  delete current[FOCUS_SLOT];
   const lessonSection: LessonSection =
     parsedFocus?.kind === "lexisBlock"
       ? "lexis"
@@ -1384,7 +1446,9 @@ export async function focusLessonWordAction(
   await db
     .update(lessonAssignments)
     .set({
-      highlights: toggleWordFocus(current, focusKey),
+      // Navigation focus is an event, not saved lesson content. Clear any
+      // legacy persistent focus while preserving coloured transcript marks.
+      highlights: current,
       updatedAt: now,
     })
     .where(eq(lessonAssignments.id, id));
@@ -1408,6 +1472,7 @@ export async function focusLessonWordAction(
           boardObjectId: null,
           lessonAssignmentId: id,
           lessonSection,
+          lessonElementId: focusKey,
         },
       })
       .where(and(eq(users.id, row.studentId), eq(users.role, "STUDENT")));

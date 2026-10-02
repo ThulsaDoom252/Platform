@@ -737,51 +737,89 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
         .limit(8)
     : [];
 
+  const storedView: ClassSync["view"] =
+    me.role === "STUDENT" &&
+    !!partner &&
+    (me.classFocus?.view === "BOARD" ||
+      me.classFocus?.view === "LESSON" ||
+      me.classFocus?.view === "GAME" ||
+      me.classFocus?.view === "TWISTER") &&
+    me.classFocus.at
+      ? {
+          target: me.classFocus.view,
+          at: me.classFocus.at,
+          boardObjectId: me.classFocus.boardObjectId ?? null,
+          gameId:
+            me.classFocus.view === "GAME"
+              ? (me.classFocus.gameId ?? null)
+              : null,
+          lessonSection:
+            me.classFocus.view === "LESSON" &&
+            typeof me.classFocus.lessonSection === "string" &&
+            me.classFocus.lessonSection.length <= 100
+              ? me.classFocus.lessonSection
+              : null,
+          lessonElementId:
+            me.classFocus.view === "LESSON" &&
+            typeof me.classFocus.lessonElementId === "string" &&
+            me.classFocus.lessonElementId.length <= 128
+              ? me.classFocus.lessonElementId
+              : null,
+          boardCommand:
+            me.classFocus.view !== "BOARD"
+              ? null
+              : me.classFocus.boardCommand === "SHOW" ||
+                  me.classFocus.boardCommand === "FOCUS" ||
+                  me.classFocus.boardCommand === "FLASH"
+                ? me.classFocus.boardCommand
+                : me.classFocus.boardObjectId
+                  ? "FOCUS"
+                  : "SHOW",
+        }
+      : null;
+  const storedViewAt = storedView ? Date.parse(storedView.at) : Number.NaN;
+  const view =
+    storedView?.target === "LESSON" &&
+    (!Number.isFinite(storedViewAt) || Date.now() - storedViewAt > 60_000)
+      ? null
+      : storedView;
+
+  /*
+   * Lesson focus is a one-shot command. Return it once, then remove only
+   * navigation fields while keeping the active lesson and shared video state.
+   * The timestamp guard prevents an older poll from deleting a newer command.
+  */
+  if (storedView?.target === "LESSON" && me.classFocus) {
+    const consumed = { ...me.classFocus };
+    delete consumed.view;
+    delete consumed.at;
+    delete consumed.boardObjectId;
+    delete consumed.boardCommand;
+    delete consumed.lessonSection;
+    delete consumed.lessonElementId;
+    if (consumed.videoState?.focusAt) {
+      const videoState = { ...consumed.videoState };
+      delete videoState.focusAt;
+      consumed.videoState = videoState;
+    }
+    await db
+      .update(users)
+      .set({ classFocus: consumed })
+      .where(
+        and(
+          eq(users.id, session.userId),
+          eq(users.role, "STUDENT"),
+          sql`${users.classFocus}->>'at' = ${storedView.at}`,
+        ),
+      );
+  }
+
   return {
     lessonAssignmentId:
       me.role === "TEACHER"
         ? (partner?.classFocus?.lessonAssignmentId ?? null)
         : (me.classFocus?.lessonAssignmentId ?? null),
-    view:
-      me.role === "STUDENT" &&
-      !!partner &&
-      (me.classFocus?.view === "BOARD" ||
-        me.classFocus?.view === "LESSON" ||
-        me.classFocus?.view === "GAME" ||
-        me.classFocus?.view === "TWISTER") &&
-      me.classFocus.at
-        ? {
-            target: me.classFocus.view,
-            at: me.classFocus.at,
-            boardObjectId: me.classFocus.boardObjectId ?? null,
-            gameId:
-              me.classFocus.view === "GAME"
-                ? (me.classFocus.gameId ?? null)
-                : null,
-            lessonSection:
-              me.classFocus.view === "LESSON" &&
-              typeof me.classFocus.lessonSection === "string" &&
-              me.classFocus.lessonSection.length <= 100
-                ? me.classFocus.lessonSection
-                : null,
-            lessonElementId:
-              me.classFocus.view === "LESSON" &&
-              typeof me.classFocus.lessonElementId === "string" &&
-              me.classFocus.lessonElementId.length <= 80
-                ? me.classFocus.lessonElementId
-                : null,
-            boardCommand:
-              me.classFocus.view !== "BOARD"
-                ? null
-                : me.classFocus.boardCommand === "SHOW" ||
-                    me.classFocus.boardCommand === "FOCUS" ||
-                    me.classFocus.boardCommand === "FLASH"
-                  ? me.classFocus.boardCommand
-                  : me.classFocus.boardObjectId
-                    ? "FOCUS"
-                    : "SHOW",
-          }
-        : null,
+    view,
     partnerOnBoard: me.role === "TEACHER" && partner?.classWhere === "board",
     video: normalizeClassVideoState(
       me.role === "TEACHER"

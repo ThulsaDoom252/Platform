@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type DragEvent,
@@ -25,6 +26,8 @@ import {
   homeworkExerciseHidden,
   homeworkExerciseProgress,
   homeworkExerciseHiddenKey,
+  homeworkExerciseFocusId,
+  homeworkItemFocusId,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
   homeworkStatus,
@@ -61,15 +64,20 @@ export function InteractiveHomework({
   plan,
   session,
   onStateChange,
+  focusId,
+  onFocus,
 }: {
   plan: InteractiveHomeworkPlan;
   session: InteractiveHomeworkSession;
   onStateChange?: (state: HomeworkStoredState) => void;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
   const [state, setState] = useState(session.state);
   const [showAnswers, setShowAnswers] = useState(false);
   const [reviewBusy, startReview] = useTransition();
+  const rootRef = useRef<HTMLDivElement>(null);
   const progress = homeworkExerciseProgress(plan, state);
   const submittedAt = homeworkSubmittedAt(state);
   const exercises = plan.exercises.filter(
@@ -80,8 +88,21 @@ export function InteractiveHomework({
     onStateChange?.(state);
   }, [onStateChange, state]);
 
+  useEffect(() => {
+    if (!focusId || !rootRef.current) return;
+    const target = [...rootRef.current.querySelectorAll<HTMLElement>("[data-homework-focus]")]
+      .find((node) => node.dataset.homeworkFocus === focusId);
+    if (!target) return;
+    const details = target.closest("details");
+    if (details) details.open = true;
+    const frame = requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusId]);
+
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={rootRef} className="flex flex-col gap-4">
       <section className="overflow-hidden rounded-2xl border border-accent/25 bg-gradient-to-br from-accent-soft via-surface to-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -144,6 +165,8 @@ export function InteractiveHomework({
           state={state}
           setState={setState}
           showAnswers={showAnswers}
+          focusId={focusId}
+          onFocus={onFocus}
         />
       ))}
 
@@ -179,6 +202,8 @@ function HomeworkExerciseView({
   state,
   setState,
   showAnswers,
+  focusId,
+  onFocus,
 }: {
   exercise: HomeworkExercise;
   number: number;
@@ -186,11 +211,14 @@ function HomeworkExerciseView({
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   showAnswers: boolean;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
   const [resetKey, setResetKey] = useState(0);
   const [busy, startAction] = useTransition();
   const hidden = homeworkExerciseHidden(state, exercise.id);
+  const exerciseFocusId = homeworkExerciseFocusId(exercise.id);
   const instruction =
     exercise.kind === "fill"
       ? t.interactiveHomework.instructions.fill
@@ -228,6 +256,8 @@ function HomeworkExerciseView({
         state={state}
         setState={setState}
         showAnswers={showAnswers}
+        focusId={focusId}
+        onFocus={onFocus}
       />
     </div>
   );
@@ -256,8 +286,9 @@ function HomeworkExerciseView({
       <section className={cn(
         "flex items-start gap-2 rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm",
         hidden && "border-faint/40 opacity-70",
+        focusId === exerciseFocusId && "border-accent ring-2 ring-accent/40",
       )}>
-        <details className="group min-w-0 flex-1">
+        <details data-homework-focus={exerciseFocusId} className="group min-w-0 flex-1">
           <summary className="flex min-w-0 flex-1 cursor-pointer list-none items-center gap-3">
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
               {t.interactiveHomework.bonus}
@@ -273,6 +304,17 @@ function HomeworkExerciseView({
           <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
           {body}
         </details>
+        {session.teacher && onFocus && (
+          <button
+            type="button"
+            onClick={() => onFocus(exerciseFocusId)}
+            title={t.lessonUnits.focusElement}
+            aria-label={t.lessonUnits.focusElement}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft"
+          >
+            <IconEye className="h-4 w-4" />
+          </button>
+        )}
         <ExerciseOptionsMenu
           busy={busy}
           teacher={session.teacher}
@@ -288,8 +330,9 @@ function HomeworkExerciseView({
     <section className={cn(
       "rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5",
       hidden && "opacity-70 ring-faint/40",
+      focusId === exerciseFocusId && "ring-2 ring-accent",
     )}>
-      <div className="flex items-start gap-3">
+      <div data-homework-focus={exerciseFocusId} className="flex items-start gap-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-black text-white">
           {number}
         </span>
@@ -304,6 +347,17 @@ function HomeworkExerciseView({
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">{instruction}</p>
         </div>
+        {session.teacher && onFocus && (
+          <button
+            type="button"
+            onClick={() => onFocus(exerciseFocusId)}
+            title={t.lessonUnits.focusElement}
+            aria-label={t.lessonUnits.focusElement}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft"
+          >
+            <IconEye className="h-4 w-4" />
+          </button>
+        )}
         <ExerciseOptionsMenu
           busy={busy}
           teacher={session.teacher}
@@ -393,6 +447,8 @@ function ExerciseItems(props: {
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   showAnswers: boolean;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
 }) {
   if (props.exercise.kind === "drag") return <DragExercise {...props} />;
   if (props.exercise.kind === "fill" || props.exercise.kind === "definition") {
@@ -407,12 +463,16 @@ function AutoTextExercise({
   state,
   setState,
   showAnswers,
+  focusId,
+  onFocus,
 }: {
   exercise: HomeworkExercise;
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   showAnswers: boolean;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
@@ -467,6 +527,8 @@ function AutoTextExercise({
             state={state}
             setState={setState}
             showAnswers={showAnswers}
+            focusId={focusId}
+            onFocus={onFocus}
           >
             <InlineHomeworkAnswer
               item={item}
@@ -491,12 +553,16 @@ function DragExercise({
   state,
   setState,
   showAnswers,
+  focusId,
+  onFocus,
 }: {
   exercise: HomeworkExercise;
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   showAnswers: boolean;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
   const [selected, setSelected] = useState<string | null>(null);
@@ -587,6 +653,8 @@ function DragExercise({
               state={state}
               setState={setState}
               showAnswers={showAnswers}
+              focusId={focusId}
+              onFocus={onFocus}
             >
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm font-semibold leading-relaxed text-content">
                 {before && <span>{before}</span>}
@@ -635,12 +703,16 @@ function ManualExercise({
   state,
   setState,
   showAnswers,
+  focusId,
+  onFocus,
 }: {
   exercise: HomeworkExercise;
   session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   showAnswers: boolean;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
   const router = useRouter();
@@ -701,6 +773,8 @@ function ManualExercise({
             state={state}
             setState={setState}
             showAnswers={showAnswers}
+            focusId={focusId}
+            onFocus={onFocus}
           >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
@@ -912,6 +986,8 @@ function HomeworkItemShell({
   state,
   setState,
   showAnswers,
+  focusId,
+  onFocus,
   children,
 }: {
   item: HomeworkItem;
@@ -920,6 +996,8 @@ function HomeworkItemShell({
   state: HomeworkStoredState;
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
   showAnswers: boolean;
+  focusId?: string | null;
+  onFocus?: (elementId: string) => void;
   children: React.ReactNode;
 }) {
   const { t } = useT();
@@ -930,9 +1008,11 @@ function HomeworkItemShell({
   const [busy, startBusy] = useTransition();
   const note = state[homeworkNoteKey(item.id)] ?? "";
   const noteVisible = state[homeworkNoteVisibleKey(item.id)] === "1";
+  const itemFocusId = homeworkItemFocusId(item.id);
 
   return (
     <article
+      data-homework-focus={itemFocusId}
       className={cn(
         "rounded-2xl border bg-surface p-3 transition sm:p-4",
         status === "correct"
@@ -940,6 +1020,7 @@ function HomeworkItemShell({
           : status === "locked"
             ? "border-rose-500"
             : "border-line",
+        focusId === itemFocusId && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
       )}
     >
       <div className="flex items-start gap-3">
@@ -947,6 +1028,17 @@ function HomeworkItemShell({
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">{children}</div>
+        {session.teacher && onFocus && (
+          <button
+            type="button"
+            onClick={() => onFocus(itemFocusId)}
+            title={t.lessonUnits.focusElement}
+            aria-label={t.lessonUnits.focusElement}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft"
+          >
+            <IconEye className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {session.teacher && showAnswers && item.answer && (

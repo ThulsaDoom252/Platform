@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
+  focusHomeworkElementAction,
   focusLessonWordAction,
   focusRegularLessonElementAction,
   highlightLessonDialogueAction,
@@ -147,7 +148,13 @@ export function AssignedLesson({
     );
   };
 
-  const focus = lessonFocus(marks);
+  // Saved highlights are content; navigation focus exists only as the latest
+  // live-class command and must not survive a student page reload.
+  const focus = teacher
+    ? lessonFocus(marks)
+    : liveClass
+      ? (sectionFocus?.elementId ?? null)
+      : null;
   const dialogueMarks = dialogueHighlights(marks);
   const lexisGroup = selectedLexisGroup(marks);
 
@@ -280,6 +287,13 @@ export function AssignedLesson({
         highlightMode={teacher && highlightMode}
         highlightColor={highlightColor}
         onHighlight={teacher ? highlight : undefined}
+        onFocusHomework={teacher && liveClass
+          ? (elementId) => {
+              startBusy(() =>
+                focusHomeworkElementAction(data.assignment.id, elementId).then(() => undefined),
+              );
+            }
+          : undefined}
         homeworkSession={{
           assignmentId: data.assignment.id,
           unitId: data.assignment.unitId,

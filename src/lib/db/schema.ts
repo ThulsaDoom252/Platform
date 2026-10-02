@@ -107,7 +107,7 @@ export const users = pgTable("users", {
    */
   classFocus: jsonb("class_focus").$type<{
     panel?: string;
-    at: string;
+    at?: string;
     /** Явная команда показа: обычные панели остаются индивидуальными. */
     view?: "BOARD" | "LESSON" | "GAME" | "TWISTER";
     /** Объект, который надо показать в центре доски ученика. */

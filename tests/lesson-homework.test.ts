@@ -6,7 +6,10 @@ import {
   homeworkAttemptsKey,
   homeworkExerciseHidden,
   homeworkExerciseHiddenKey,
+  homeworkExerciseFocusId,
   homeworkExerciseProgress,
+  homeworkFocusTarget,
+  homeworkItemFocusId,
   homeworkProgress,
   homeworkStatusKey,
   homeworkValueKey,
@@ -91,4 +94,21 @@ test("прогресс секций отдельно считает обязат
     required: { done: 2, total: 2 },
     bonuses: { done: 0, total: 1 },
   });
+});
+
+test("фокус домашки принимает существующее упражнение и конкретное предложение", () => {
+  assert.deepEqual(homeworkFocusTarget(plan, homeworkExerciseFocusId("fill-main")), {
+    exerciseId: "fill-main",
+    itemId: null,
+  });
+  assert.deepEqual(homeworkFocusTarget(plan, homeworkItemFocusId("free-one")), {
+    exerciseId: "free-main",
+    itemId: "free-one",
+  });
+});
+
+test("фокус домашки отбрасывает чужие и повреждённые цели", () => {
+  assert.equal(homeworkFocusTarget(plan, homeworkExerciseFocusId("missing")), null);
+  assert.equal(homeworkFocusTarget(plan, homeworkItemFocusId("missing")), null);
+  assert.equal(homeworkFocusTarget(plan, "word:fill-one"), null);
 });

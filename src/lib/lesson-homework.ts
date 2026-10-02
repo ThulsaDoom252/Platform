@@ -43,6 +43,35 @@ export type LessonHomeworkEntry = LegacyHomeworkTask | InteractiveHomeworkPlan;
 export type HomeworkStoredState = Record<string, string>;
 export type HomeworkAutoStatus = "correct" | "locked" | null;
 
+const EXERCISE_FOCUS = "homework:exercise:";
+const ITEM_FOCUS = "homework:item:";
+
+export const homeworkExerciseFocusId = (exerciseId: string) =>
+  `${EXERCISE_FOCUS}${exerciseId}`;
+
+export const homeworkItemFocusId = (itemId: string) =>
+  `${ITEM_FOCUS}${itemId}`;
+
+/** Resolve a teacher focus target only when it belongs to this homework. */
+export function homeworkFocusTarget(
+  plan: InteractiveHomeworkPlan,
+  value: unknown,
+): { exerciseId: string; itemId: string | null } | null {
+  const target = String(value ?? "");
+  if (target.startsWith(EXERCISE_FOCUS)) {
+    const exerciseId = target.slice(EXERCISE_FOCUS.length);
+    return plan.exercises.some((exercise) => exercise.id === exerciseId)
+      ? { exerciseId, itemId: null }
+      : null;
+  }
+  if (target.startsWith(ITEM_FOCUS)) {
+    const itemId = target.slice(ITEM_FOCUS.length);
+    const found = findHomeworkItem(plan, itemId);
+    return found ? { exerciseId: found.exercise.id, itemId } : null;
+  }
+  return null;
+}
+
 const VALUE = "hw:value:";
 const STATUS = "hw:status:";
 const ATTEMPTS = "hw:attempts:";
