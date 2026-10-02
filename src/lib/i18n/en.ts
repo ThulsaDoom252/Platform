@@ -635,6 +635,7 @@ export const en = {
 
   lessonUnits: {
     title: "Lessons",
+    topic: "Lesson topic",
     subtitle: "Lesson templates: build once, hand out as many times as you like.",
     empty: "No lessons yet.",
     regularLessons: "Lessons",

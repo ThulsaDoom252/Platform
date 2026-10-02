@@ -157,27 +157,40 @@ export function AssignedLesson({
       : null;
   const dialogueMarks = dialogueHighlights(marks);
   const lexisGroup = selectedLexisGroup(marks);
+  const topic = (
+    <header className="overflow-hidden rounded-2xl border border-line bg-gradient-to-r from-accent-soft via-surface to-surface px-4 py-3 shadow-sm sm:px-5 sm:py-4">
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">
+        {t.lessonUnits.topic}
+      </p>
+      <h1 className="mt-1 text-xl font-black leading-tight text-content sm:text-2xl">
+        {data.lesson.title}
+      </h1>
+    </header>
+  );
 
   if (data.lesson.kind === "REGULAR") {
     return (
-      <RegularLessonView
-        sections={data.lesson.regularSections}
-        teacher={teacher}
-        open={data.open}
-        lockClosed={liveClass && !teacher}
-        sectionFocus={liveClass && !teacher ? sectionFocus : null}
-        onFocusElement={teacher && liveClass
-          ? (section, elementId) => {
-              startBusy(() =>
-                focusRegularLessonElementAction(
-                  data.assignment.id,
-                  section,
-                  elementId,
-                ).then(() => undefined),
-              );
-            }
-          : undefined}
-      />
+      <div className="flex flex-col gap-4">
+        {topic}
+        <RegularLessonView
+          sections={data.lesson.regularSections}
+          teacher={teacher}
+          open={data.open}
+          lockClosed={liveClass && !teacher}
+          sectionFocus={liveClass && !teacher ? sectionFocus : null}
+          onFocusElement={teacher && liveClass
+            ? (section, elementId) => {
+                startBusy(() =>
+                  focusRegularLessonElementAction(
+                    data.assignment.id,
+                    section,
+                    elementId,
+                  ).then(() => undefined),
+                );
+              }
+            : undefined}
+        />
+      </div>
     );
   }
   const activitySectionFocus =
@@ -188,6 +201,7 @@ export function AssignedLesson({
 
   return (
     <div className="flex flex-col gap-4">
+      {topic}
       {teacher && (
         <div className="sticky top-20 z-30 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/95 px-3 py-2 shadow-lg backdrop-blur-md">
           <span className="mr-auto text-[12px] font-semibold text-muted">

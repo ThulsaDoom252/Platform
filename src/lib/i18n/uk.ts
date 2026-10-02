@@ -708,6 +708,7 @@ export const uk: Dict = {
 
   lessonUnits: {
     title: "Уроки",
+    topic: "Тема уроку",
     subtitle: "Заготовки уроків: зібрав один раз — видаєш скільком завгодно.",
     empty: "Уроків поки немає.",
     regularLessons: "Уроки",
