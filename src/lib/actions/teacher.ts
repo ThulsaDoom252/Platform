@@ -15,6 +15,7 @@ import {
   lessonScripts,
   archivedLessonScripts,
   wordDeckActivities,
+  materialNodes,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import {
@@ -32,6 +33,7 @@ import {
   parseScheduleInput,
   scheduleStartOfWeek,
 } from "@/lib/schedule-time";
+import { removePublicFile } from "@/lib/public-file-store";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -201,6 +203,81 @@ export async function setStudentAccessBlockedAction(
 
   revalidatePath(`/teacher/students/${studentId}`);
   return { ok: true, blocked: !!blocked };
+}
+
+export type DeleteStudentState = { error?: string };
+
+/**
+ * Полностью удалить ученика и всё, что принадлежит именно ему.
+ *
+ * Большая часть связей удаляется каскадом от users: уроки и скрипты,
+ * домашки, переписка, задания, игры, доска, заметки и словники. Две
+ * исторические таблицы намеренно не имеют FK, поэтому чистим их явно.
+ */
+export async function deleteStudentAction(
+  _previous: DeleteStudentState,
+  formData: FormData,
+): Promise<DeleteStudentState> {
+  await requireTeacher();
+  const studentId = String(formData.get("studentId") || "");
+  const confirmation = String(formData.get("confirmation") || "").trim();
+  if (!userIdPattern.test(studentId)) return { error: "Ученик не выбран" };
+
+  const [student] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      packageId: users.packageId,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(users)
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
+    .limit(1);
+  if (!student) return { error: "Ученик не найден" };
+  if (confirmation !== student.name) {
+    return { error: `Для подтверждения введи точно: ${student.name}` };
+  }
+
+  await db.transaction(async (tx) => {
+    // Учитель не должен остаться в классе уже удалённого ученика.
+    await tx
+      .update(users)
+      .set({ classWithId: null, classWhere: null, classFocus: null, updatedAt: new Date() })
+      .where(eq(users.classWithId, student.id));
+
+    // Эти строки иначе сохранились бы без ссылки на ученика.
+    await tx.delete(notifications).where(eq(notifications.relatedStudentId, student.id));
+    await tx.delete(archivedLessonScripts).where(eq(archivedLessonScripts.studentId, student.id));
+    await tx.delete(materialNodes).where(eq(materialNodes.ownerId, student.id));
+
+    const [deleted] = await tx
+      .delete(users)
+      .where(and(eq(users.id, student.id), eq(users.role, "STUDENT")))
+      .returning({ id: users.id });
+    if (!deleted) throw new Error("Ученик не найден");
+
+    // Личный пакет больше никому не нужен; общий пакет оставляем участникам.
+    if (student.packageId) {
+      const [member] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.packageId, student.packageId))
+        .limit(1);
+      if (!member) {
+        await tx.delete(lessonPackages).where(eq(lessonPackages.id, student.packageId));
+      }
+    }
+  });
+
+  revalidatePath("/teacher");
+  revalidatePath("/teacher/students");
+  revalidatePath("/teacher/schedule");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/teacher/script");
+  if (student.avatarUrl) {
+    await removePublicFile(student.avatarUrl, "avatars").catch(() => undefined);
+  }
+  redirect("/teacher/students");
 }
 
 export async function adjustBalanceAction(formData: FormData) {

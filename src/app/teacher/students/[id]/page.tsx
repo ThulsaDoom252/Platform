@@ -26,6 +26,7 @@ import { getStudentStats, getStudentPackage } from "@/lib/packages";
 import { BalancePanel } from "@/components/teacher/balance-panel";
 import { listWordDeckActivitiesAction } from "@/lib/actions/word-deck";
 import { StudentPasswordPanel } from "@/components/teacher/student-password-panel";
+import { DeleteStudentPanel } from "@/components/teacher/delete-student-panel";
 
 export default async function StudentDetailPage({
   params,
@@ -132,6 +133,7 @@ export default async function StudentDetailPage({
           studentId={student.id}
           initialAccessBlocked={student.accessBlocked}
         />
+        <DeleteStudentPanel studentId={student.id} studentName={student.name} />
       </div>
 
       <Card>
