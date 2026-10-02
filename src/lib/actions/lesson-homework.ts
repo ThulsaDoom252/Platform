@@ -8,7 +8,11 @@ import { lessonAssignments, lessonUnits, notifications, users } from "@/lib/db/s
 import { getSession } from "@/lib/session";
 import {
   findHomeworkItem,
+  assignedInteractiveHomework,
   homeworkAnswerMatches,
+  homeworkAssignedAt,
+  homeworkAssignedAtKey,
+  homeworkAssignedExercisesKey,
   homeworkAttempts,
   homeworkAttemptsKey,
   homeworkExerciseHiddenKey,
@@ -20,6 +24,7 @@ import {
   homeworkStatusKey,
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
+  homeworkStarted,
   homeworkValueKey,
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
@@ -57,6 +62,40 @@ function publicItemState(state: HomeworkStoredState, itemId: string) {
     status: homeworkStatus(state, itemId),
     attempts: homeworkAttempts(state, itemId),
   };
+}
+
+/** Учитель назначает выбранные упражнения; ответы, уже сделанные в классе, остаются. */
+export async function assignInteractiveHomeworkAction(
+  assignmentId: string,
+  exerciseIds: string[],
+): Promise<{ error?: string; assignedAt?: string; exerciseIds?: string[] }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const wanted = new Set((Array.isArray(exerciseIds) ? exerciseIds : []).map(String));
+  const selected = row.plan.exercises
+    .map((exercise) => exercise.id)
+    .filter((id) => wanted.has(id));
+  if (selected.length === 0) return { error: "Выбери хотя бы одно упражнение" };
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  const assignedAt = new Date().toISOString();
+  state[homeworkAssignedAtKey()] = assignedAt;
+  state[homeworkAssignedExercisesKey()] = JSON.stringify(selected);
+  delete state[homeworkSubmittedAtKey()];
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath("/teacher/homeworks");
+  return { assignedAt, exerciseIds: selected };
 }
 
 /** Проверить один автоматически оцениваемый ответ и сохранить все попытки. */
@@ -226,6 +265,7 @@ export async function submitInteractiveHomeworkForReviewAction(
   }
 
   const state = { ...(row.assignment.answers ?? {}) };
+  if (!homeworkAssignedAt(state)) return { error: "Учитель ещё не назначил эту домашнюю работу" };
   const alreadySubmitted = homeworkSubmittedAt(state);
   if (alreadySubmitted) return { submittedAt: alreadySubmitted };
   const submittedAt = new Date().toISOString();
@@ -389,12 +429,14 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
     if (!plan && legacy.length === 0) return [];
 
     const state = row.assignment.answers ?? {};
-    const progress = plan ? homeworkProgress(plan, state) : { done: 0, total: 0 };
-    const exerciseProgress = plan
-      ? homeworkExerciseProgress(plan, state)
+    const assignedPlan = plan ? assignedInteractiveHomework(plan, state) : null;
+    if (plan && !assignedPlan) return [];
+    const progress = assignedPlan ? homeworkProgress(assignedPlan, state) : { done: 0, total: 0 };
+    const exerciseProgress = assignedPlan
+      ? homeworkExerciseProgress(assignedPlan, state)
       : { required: { done: 0, total: legacy.length }, bonuses: { done: 0, total: 0 } };
     const submittedAt = homeworkSubmittedAt(state);
-    const started = Object.keys(state).some((key) => key.startsWith("hw:"));
+    const started = homeworkStarted(state);
 
     return [{
       id: row.assignment.id,
@@ -433,11 +475,14 @@ export async function myInteractiveHomeworkAction(): Promise<HomeworkAssignmentC
     const plan = interactiveHomeworkFromEntries(row.homework);
     const legacy = legacyHomeworkFromEntries(row.homework);
     if (!plan && legacy.length === 0) return [];
-    const progress = plan
-      ? homeworkProgress(plan, row.assignment.answers ?? {})
+    const state = row.assignment.answers ?? {};
+    const assignedPlan = plan ? assignedInteractiveHomework(plan, state) : null;
+    if (plan && !assignedPlan) return [];
+    const progress = assignedPlan
+      ? homeworkProgress(assignedPlan, state)
       : { done: 0, total: 0 };
-    const exerciseProgress = plan
-      ? homeworkExerciseProgress(plan, row.assignment.answers ?? {})
+    const exerciseProgress = assignedPlan
+      ? homeworkExerciseProgress(assignedPlan, state)
       : { required: { done: 0, total: 0 }, bonuses: { done: 0, total: 0 } };
     return [{
       id: row.assignment.id,

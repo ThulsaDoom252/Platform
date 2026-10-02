@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
 import {
   addHomeworkQuestionAction,
+  assignInteractiveHomeworkAction,
   removeHomeworkQuestionAction,
   resetHomeworkExerciseAnswersAction,
   saveHomeworkResponseAction,
@@ -23,6 +24,10 @@ import {
 import {
   homeworkAttempts,
   homeworkAttemptsKey,
+  homeworkAssignedAt,
+  homeworkAssignedAtKey,
+  homeworkAssignedExerciseIds,
+  homeworkAssignedExercisesKey,
   homeworkExerciseHidden,
   homeworkExerciseProgress,
   homeworkExerciseHiddenKey,
@@ -58,6 +63,7 @@ export type InteractiveHomeworkSession = {
   unitId: string;
   teacher: boolean;
   state: HomeworkStoredState;
+  canAssign?: boolean;
 };
 
 export function InteractiveHomework({
@@ -80,6 +86,7 @@ export function InteractiveHomework({
   const rootRef = useRef<HTMLDivElement>(null);
   const progress = homeworkExerciseProgress(plan, state);
   const submittedAt = homeworkSubmittedAt(state);
+  const assignedAt = homeworkAssignedAt(state);
   const exercises = plan.exercises.filter(
     (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
   );
@@ -156,6 +163,25 @@ export function InteractiveHomework({
         </div>
       </section>
 
+      {session.teacher && session.canAssign && (
+        <HomeworkAssignmentPanel
+          plan={plan}
+          assignmentId={session.assignmentId}
+          state={state}
+          onAssigned={(assigned, exerciseIds) => {
+            setState((current) => {
+              const next = {
+                ...current,
+                [homeworkAssignedAtKey()]: assigned,
+                [homeworkAssignedExercisesKey()]: JSON.stringify(exerciseIds),
+              };
+              delete next[homeworkSubmittedAtKey()];
+              return next;
+            });
+          }}
+        />
+      )}
+
       {exercises.map((exercise, index) => (
         <HomeworkExerciseView
           key={exercise.id}
@@ -170,7 +196,7 @@ export function InteractiveHomework({
         />
       ))}
 
-      {!session.teacher && (
+      {!session.teacher && assignedAt && (
         <div className="sticky bottom-20 z-10 flex justify-end lg:bottom-4">
           <button
             type="button"
@@ -192,6 +218,115 @@ export function InteractiveHomework({
         </div>
       )}
     </div>
+  );
+}
+
+function HomeworkAssignmentPanel({
+  plan,
+  assignmentId,
+  state,
+  onAssigned,
+}: {
+  plan: InteractiveHomeworkPlan;
+  assignmentId: string;
+  state: HomeworkStoredState;
+  onAssigned: (assignedAt: string, exerciseIds: string[]) => void;
+}) {
+  const { t } = useT();
+  const assignedAt = homeworkAssignedAt(state);
+  const assignedIds = homeworkAssignedExerciseIds(plan, state);
+  const [selected, setSelected] = useState<string[]>(
+    assignedIds.length > 0 ? assignedIds : plan.exercises.map((exercise) => exercise.id),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startAssign] = useTransition();
+
+  const toggle = (exerciseId: string) => {
+    setError(null);
+    setSelected((current) =>
+      current.includes(exerciseId)
+        ? current.filter((id) => id !== exerciseId)
+        : [...current, exerciseId],
+    );
+  };
+
+  return (
+    <section className="rounded-2xl border border-accent/25 bg-surface p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-black text-content">
+              {t.interactiveHomework.assignmentTitle}
+            </h3>
+            {assignedAt && (
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-200">
+                {t.interactiveHomework.assigned}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-muted">{t.interactiveHomework.assignmentHint}</p>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (selected.length === 0) {
+              setError(t.interactiveHomework.selectAtLeastOne);
+              return;
+            }
+            startAssign(async () => {
+              const result = await assignInteractiveHomeworkAction(assignmentId, selected);
+              if (result.error || !result.assignedAt || !result.exerciseIds) {
+                setError(result.error ?? t.interactiveHomework.assignmentFailed);
+                return;
+              }
+              setError(null);
+              onAssigned(result.assignedAt, result.exerciseIds);
+            });
+          }}
+          className="min-h-11 rounded-xl bg-accent px-4 text-sm font-black text-white shadow-sm transition hover:brightness-95 disabled:opacity-50"
+        >
+          {busy
+            ? t.interactiveHomework.assigning
+            : assignedAt
+              ? t.interactiveHomework.updateAssignment
+              : t.interactiveHomework.assignHomework}
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {plan.exercises.map((exercise) => {
+          const checked = selected.includes(exercise.id);
+          return (
+            <label
+              key={exercise.id}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition",
+                checked
+                  ? "border-accent/40 bg-accent-soft"
+                  : "border-line bg-canvas hover:border-accent/25",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(exercise.id)}
+                className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-black text-content">{exercise.title}</span>
+                {exercise.optional && (
+                  <span className="mt-0.5 block text-[11px] font-bold uppercase tracking-wide text-accent">
+                    {t.interactiveHomework.bonus}
+                  </span>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {error && <p className="mt-3 text-sm font-bold text-rose-600">{error}</p>}
+    </section>
   );
 }
 

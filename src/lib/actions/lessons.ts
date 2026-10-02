@@ -69,6 +69,7 @@ import {
   type RegularLessonSection,
 } from "@/lib/regular-lesson";
 import {
+  assignedInteractiveHomework,
   homeworkExerciseHidden,
   homeworkFocusTarget,
   interactiveHomeworkFromEntries,
@@ -1891,7 +1892,10 @@ export async function answerAction(
 }
 
 /** Урок с состоянием конкретного ученика — и ему, и учителю. */
-export async function assignedLessonAction(assignmentId: string): Promise<
+export async function assignedLessonAction(
+  assignmentId: string,
+  context?: "class",
+): Promise<
   | {
       assignment: LessonAssignmentCard;
       lesson: LessonView;
@@ -1920,19 +1924,22 @@ export async function assignedLessonAction(assignmentId: string): Promise<
   const lesson = await loadUnit(row.a.unitId, session.role === "TEACHER");
   if (!lesson) return null;
   if (session.role === "STUDENT" && lesson.interactiveHomework) {
-    lesson.interactiveHomework = {
+    const visiblePlan = {
       ...lesson.interactiveHomework,
       exercises: lesson.interactiveHomework.exercises.filter(
         (exercise) => !homeworkExerciseHidden(row.a.answers ?? {}, exercise.id),
       ),
     };
+    lesson.interactiveHomework = context === "class"
+      ? visiblePlan
+      : assignedInteractiveHomework(visiblePlan, row.a.answers ?? {});
   }
 
   const stored = row.a.openSections ?? [];
-  const storedWithHomework =
-    lesson.homework.length > 0 || lesson.interactiveHomework
-      ? [...stored, "homework"]
-      : stored;
+  const homeworkAvailable = lesson.homework.length > 0 || Boolean(lesson.interactiveHomework);
+  const storedWithHomework = homeworkAvailable
+    ? [...new Set([...stored, "homework"])]
+    : stored.filter((section) => section !== "homework");
   return {
     assignment: {
       id: row.a.id,
@@ -1950,7 +1957,7 @@ export async function assignedLessonAction(assignmentId: string): Promise<
     open:
       lesson.kind === "REGULAR"
         ? stored.filter((key) => !!regularLessonSection(key, lesson.regularSections))
-        : openSections(storedWithHomework),
+        : openSections(session.role === "STUDENT" && context === "class" ? stored : storedWithHomework),
     showBritish: stored.includes(BRITISH_OPTION),
     vocabularyReveal: lessonVocabularyReveal(stored),
   };

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  assignedInteractiveHomework,
   homeworkAnswerMatches,
+  homeworkAssignedAtKey,
+  homeworkAssignedExercisesKey,
   homeworkAttempts,
   homeworkAttemptsKey,
   homeworkExerciseHidden,
@@ -11,6 +14,7 @@ import {
   homeworkFocusTarget,
   homeworkItemFocusId,
   homeworkProgress,
+  homeworkStarted,
   homeworkStatusKey,
   homeworkValueKey,
   normalizeInteractiveHomework,
@@ -126,4 +130,28 @@ test("фокус домашки отбрасывает чужие и повре�
   assert.equal(homeworkFocusTarget(plan, homeworkExerciseFocusId("missing")), null);
   assert.equal(homeworkFocusTarget(plan, homeworkItemFocusId("missing")), null);
   assert.equal(homeworkFocusTarget(plan, "word:fill-one"), null);
+});
+
+test("домашка не появляется у ученика до явного назначения", () => {
+  assert.equal(assignedInteractiveHomework(plan, {}), null);
+});
+
+test("назначение оставляет только выбранные упражнения в исходном порядке", () => {
+  const state = {
+    [homeworkAssignedAtKey()]: "2026-10-02T10:00:00.000Z",
+    [homeworkAssignedExercisesKey()]: JSON.stringify(["bonus", "missing", "fill-main"]),
+  };
+  assert.deepEqual(
+    assignedInteractiveHomework(plan, state)?.exercises.map((exercise) => exercise.id),
+    ["fill-main", "bonus"],
+  );
+});
+
+test("отметка назначения не считается начатой домашкой и не затрагивает ответы", () => {
+  const assignedOnly = {
+    [homeworkAssignedAtKey()]: "2026-10-02T10:00:00.000Z",
+    [homeworkAssignedExercisesKey()]: JSON.stringify(["free-main"]),
+  };
+  assert.equal(homeworkStarted(assignedOnly), false);
+  assert.equal(homeworkStarted({ ...assignedOnly, [homeworkValueKey("free-one")]: "My answer" }), true);
 });

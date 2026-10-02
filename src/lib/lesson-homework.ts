@@ -81,6 +81,8 @@ const NOTE = "hw:note:";
 const NOTE_VISIBLE = "hw:note-visible:";
 const EXERCISE_HIDDEN = "hw:exercise-hidden:";
 const SUBMITTED_AT = "hw:submitted-at";
+const ASSIGNED_AT = "hw:assigned-at";
+const ASSIGNED_EXERCISES = "hw:assigned-exercises";
 
 export const homeworkValueKey = (id: string) => `${VALUE}${id}`;
 export const homeworkStatusKey = (id: string) => `${STATUS}${id}`;
@@ -89,6 +91,8 @@ export const homeworkNoteKey = (id: string) => `${NOTE}${id}`;
 export const homeworkNoteVisibleKey = (id: string) => `${NOTE_VISIBLE}${id}`;
 export const homeworkExerciseHiddenKey = (id: string) => `${EXERCISE_HIDDEN}${id}`;
 export const homeworkSubmittedAtKey = () => SUBMITTED_AT;
+export const homeworkAssignedAtKey = () => ASSIGNED_AT;
+export const homeworkAssignedExercisesKey = () => ASSIGNED_EXERCISES;
 
 export function homeworkExerciseHidden(state: HomeworkStoredState, exerciseId: string) {
   return state[homeworkExerciseHiddenKey(exerciseId)] === "1";
@@ -96,6 +100,48 @@ export function homeworkExerciseHidden(state: HomeworkStoredState, exerciseId: s
 
 export function homeworkSubmittedAt(state: HomeworkStoredState) {
   return state[SUBMITTED_AT] || null;
+}
+
+export function homeworkAssignedAt(state: HomeworkStoredState) {
+  return state[ASSIGNED_AT] || null;
+}
+
+/** Упражнения, которые учитель явно выдал как домашнюю работу. */
+export function homeworkAssignedExerciseIds(
+  plan: InteractiveHomeworkPlan,
+  state: HomeworkStoredState,
+): string[] {
+  if (!homeworkAssignedAt(state)) return [];
+  try {
+    const value = JSON.parse(state[ASSIGNED_EXERCISES] ?? "[]");
+    if (!Array.isArray(value)) return [];
+    const selected = new Set(value.map(String));
+    return plan.exercises
+      .map((exercise) => exercise.id)
+      .filter((id) => selected.has(id));
+  } catch {
+    return [];
+  }
+}
+
+/** Та же домашка, но только с упражнениями, выбранными при назначении. */
+export function assignedInteractiveHomework(
+  plan: InteractiveHomeworkPlan,
+  state: HomeworkStoredState,
+): InteractiveHomeworkPlan | null {
+  const selected = new Set(homeworkAssignedExerciseIds(plan, state));
+  if (selected.size === 0) return null;
+  return {
+    ...plan,
+    exercises: plan.exercises.filter((exercise) => selected.has(exercise.id)),
+  };
+}
+
+/** Служебные отметки назначения сами по себе не означают, что ученик начал. */
+export function homeworkStarted(state: HomeworkStoredState) {
+  return Object.keys(state).some((key) =>
+    key.startsWith(VALUE) || key.startsWith(STATUS) || key.startsWith(ATTEMPTS),
+  );
 }
 
 const cleanId = (value: unknown) =>

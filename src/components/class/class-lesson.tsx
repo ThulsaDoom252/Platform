@@ -74,7 +74,7 @@ export function ClassLesson({
       setLoaded(true);
       return;
     }
-    const next = await assignedLessonAction(assignmentId);
+    const next = await assignedLessonAction(assignmentId, "class");
     setData(next);
     setLoaded(true);
     if (next && teacher) setSelected(next.lesson.id);
@@ -115,7 +115,7 @@ export function ClassLesson({
         return;
       }
       onAssigned?.(result.id);
-      const next = await assignedLessonAction(result.id);
+      const next = await assignedLessonAction(result.id, "class");
       setData(next);
       setLoaded(true);
       setChangingLesson(false);

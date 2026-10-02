@@ -7,6 +7,7 @@ import {
 } from "@/lib/actions/lesson-homework";
 import { assignedLessonAction } from "@/lib/actions/lessons";
 import { getDict } from "@/lib/i18n/server";
+import { assignedInteractiveHomework } from "@/lib/lesson-homework";
 
 export default async function TeacherHomeworkReviewPage({
   params,
@@ -21,6 +22,9 @@ export default async function TeacherHomeworkReviewPage({
   ]);
   const item = items.find((candidate) => candidate.id === id);
   if (!item || !data) notFound();
+  const assignedPlan = data.lesson.interactiveHomework
+    ? assignedInteractiveHomework(data.lesson.interactiveHomework, data.answers)
+    : null;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
@@ -40,9 +44,9 @@ export default async function TeacherHomeworkReviewPage({
         <p className="mt-1 text-sm text-muted">{item.homeworkTitle}</p>
       </header>
 
-      {data.lesson.interactiveHomework ? (
+      {assignedPlan ? (
         <InteractiveHomework
-          plan={data.lesson.interactiveHomework}
+          plan={assignedPlan}
           session={{
             assignmentId: data.assignment.id,
             unitId: data.assignment.unitId,
