@@ -798,6 +798,12 @@ export const en = {
     direction: "Translation direction",
     toEnglish: "Into English",
     fromEnglish: "From English",
+    translationLanguage: "Second language",
+    russian: "Russian",
+    ukrainian: "Ukrainian",
+    translateWithDeepL: "Translate with DeepL",
+    translatingWithDeepL: "Translating…",
+    translationFailed: "DeepL could not translate the sentences.",
     instructions: {
       fill: "Complete each sentence with a word or phrase from the list.",
       definition: "Read the definition and write the exact word or phrase.",

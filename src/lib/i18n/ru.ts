@@ -871,6 +871,12 @@ export const ru: Dict = {
     direction: "Направление перевода",
     toEnglish: "На английский",
     fromEnglish: "С английского",
+    translationLanguage: "Второй язык",
+    russian: "Русский",
+    ukrainian: "Украинский",
+    translateWithDeepL: "Перевести через DeepL",
+    translatingWithDeepL: "Перевожу…",
+    translationFailed: "DeepL не смог перевести предложения.",
     instructions: {
       fill: "Заполни каждое предложение словом или фразой из списка.",
       definition: "Прочитай определение и напиши точное слово или фразу.",

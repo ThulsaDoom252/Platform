@@ -871,6 +871,12 @@ export const uk: Dict = {
     direction: "Напрямок перекладу",
     toEnglish: "Англійською",
     fromEnglish: "З англійської",
+    translationLanguage: "Друга мова",
+    russian: "Російська",
+    ukrainian: "Українська",
+    translateWithDeepL: "Перекласти через DeepL",
+    translatingWithDeepL: "Перекладаю…",
+    translationFailed: "DeepL не зміг перекласти речення.",
     instructions: {
       fill: "Заповни кожне речення словом або фразою зі списку.",
       definition: "Прочитай визначення та напиши точне слово або фразу.",

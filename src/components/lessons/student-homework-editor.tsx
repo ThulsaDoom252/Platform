@@ -3,7 +3,10 @@
 import { useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { IconCheck, IconPlus, IconTrash, IconX } from "@/components/icons";
-import { saveStudentHomeworkPlanAction } from "@/lib/actions/lesson-homework";
+import {
+  saveStudentHomeworkPlanAction,
+  translateHomeworkRowsAction,
+} from "@/lib/actions/lesson-homework";
 import {
   homeworkFillEditorLine,
   homeworkFillItemFromEditorLine,
@@ -55,7 +58,7 @@ export function StudentHomeworkExerciseEditor({
   onClose: () => void;
   onSaved: (plan: InteractiveHomeworkPlan, state: HomeworkStoredState) => void;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const original = exerciseId
     ? plan.exercises.find((exercise) => exercise.id === exerciseId)
     : undefined;
@@ -66,15 +69,41 @@ export function StudentHomeworkExerciseEditor({
   const [direction, setDirection] = useState<"to-english" | "from-english">(
     original?.translationDirection === "from-english" ? "from-english" : "to-english",
   );
+  const [rowsDirection, setRowsDirection] = useState<"to-english" | "from-english">(
+    original?.translationDirection === "from-english" ? "from-english" : "to-english",
+  );
+  const [translationLanguage, setTranslationLanguage] = useState<"RU" | "UK">(
+    locale === "uk" ? "UK" : "RU",
+  );
   const [rows, setRows] = useState<EditorRow[]>(() => rowsFromExercise(original, initialKind));
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, startSave] = useTransition();
+  const [translating, startTranslation] = useTransition();
 
   const changeKind = (next: EditableKind) => {
     setKind(next);
     setRows([{ id: newId("item"), primary: "", answer: "" }]);
+    setRowsDirection("to-english");
     setError(null);
+  };
+
+  const translateRows = () => {
+    setError(null);
+    startTranslation(async () => {
+      const result = await translateHomeworkRowsAction(assignmentId, {
+        sourceDirection: rowsDirection,
+        targetDirection: direction,
+        language: translationLanguage,
+        rows,
+      });
+      if (result.error || !result.rows) {
+        setError(result.error ?? t.interactiveHomework.translationFailed);
+        return;
+      }
+      setRows(result.rows);
+      setRowsDirection(direction);
+    });
   };
 
   const updateRow = (id: string, field: "primary" | "answer", value: string) => {
@@ -225,17 +254,40 @@ export function StudentHomeworkExerciseEditor({
         </div>
 
         {kind === "translate" && (
-          <label className="mt-4 flex max-w-xs flex-col gap-1.5 text-xs font-black text-muted">
-            {t.interactiveHomework.direction}
-            <select
-              value={direction}
-              onChange={(event) => setDirection(event.target.value as "to-english" | "from-english")}
-              className="h-11 rounded-xl border border-line bg-surface-2 px-3 text-sm font-bold text-content outline-none focus:border-accent"
+          <div className="mt-4 grid gap-3 rounded-2xl bg-accent-soft/60 p-3 ring-1 ring-accent/20 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <label className="flex flex-col gap-1.5 text-xs font-black text-muted">
+              {t.interactiveHomework.direction}
+              <select
+                value={direction}
+                onChange={(event) => setDirection(event.target.value as "to-english" | "from-english")}
+                className="h-11 rounded-xl border border-line bg-surface px-3 text-sm font-bold text-content outline-none focus:border-accent"
+              >
+                <option value="to-english">{t.interactiveHomework.toEnglish}</option>
+                <option value="from-english">{t.interactiveHomework.fromEnglish}</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-xs font-black text-muted">
+              {t.interactiveHomework.translationLanguage}
+              <select
+                value={translationLanguage}
+                onChange={(event) => setTranslationLanguage(event.target.value as "RU" | "UK")}
+                className="h-11 rounded-xl border border-line bg-surface px-3 text-sm font-bold text-content outline-none focus:border-accent"
+              >
+                <option value="RU">{t.interactiveHomework.russian}</option>
+                <option value="UK">{t.interactiveHomework.ukrainian}</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={translating || rows.length === 0}
+              onClick={translateRows}
+              className="h-11 rounded-xl bg-accent px-4 text-sm font-black text-white shadow-sm transition hover:brightness-95 disabled:opacity-50"
             >
-              <option value="to-english">{t.interactiveHomework.toEnglish}</option>
-              <option value="from-english">{t.interactiveHomework.fromEnglish}</option>
-            </select>
-          </label>
+              {translating
+                ? t.interactiveHomework.translatingWithDeepL
+                : t.interactiveHomework.translateWithDeepL}
+            </button>
+          </div>
         )}
 
         {kind === "fill" && (

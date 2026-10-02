@@ -6,6 +6,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { lessonAssignments, lessonUnits, notifications, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { translateShortTexts, type MaterialTranslationLang } from "@/lib/material-translation";
 import {
   findHomeworkItem,
   assignedInteractiveHomework,
@@ -119,7 +120,11 @@ export async function saveStudentHomeworkPlanAction(
 
   const plan = normalizeInteractiveHomework(candidate);
   if (!plan) return { error: "Добавь хотя бы одно заполненное упражнение" };
-  if (plan.exercises.some((exercise) => exercise.items.length === 0)) {
+  if (plan.exercises.some((exercise) =>
+    exercise.items.length === 0 &&
+    exercise.kind !== "question-text" &&
+    exercise.kind !== "question-audio",
+  )) {
     return { error: "В каждом упражнении должно быть хотя бы одно задание" };
   }
   if (plan.exercises.some((exercise) =>
@@ -177,6 +182,63 @@ export async function saveStudentHomeworkPlanAction(
   revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
   revalidatePath("/teacher/homeworks");
   return { plan, state };
+}
+
+type HomeworkTranslationDirection = "to-english" | "from-english";
+type HomeworkTranslationRow = { id: string; primary: string; answer: string };
+
+/** Перестроить обе стороны упражнения перевода через DeepL, не сохраняя его без учителя. */
+export async function translateHomeworkRowsAction(
+  assignmentId: string,
+  input: {
+    sourceDirection: HomeworkTranslationDirection;
+    targetDirection: HomeworkTranslationDirection;
+    language: MaterialTranslationLang;
+    rows: HomeworkTranslationRow[];
+  },
+): Promise<{ rows?: HomeworkTranslationRow[]; error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const rows = (Array.isArray(input?.rows) ? input.rows : [])
+    .slice(0, 100)
+    .flatMap((item): HomeworkTranslationRow[] => {
+      if (!item || typeof item !== "object") return [];
+      return [{
+        id: String(item.id ?? "").slice(0, 120),
+        primary: String(item.primary ?? "").trim().slice(0, 1_500),
+        answer: String(item.answer ?? "").trim().slice(0, 1_500),
+      }];
+    });
+  const sourceDirection = input?.sourceDirection === "from-english" ? "from-english" : "to-english";
+  const targetDirection = input?.targetDirection === "from-english" ? "from-english" : "to-english";
+  const language: MaterialTranslationLang = input?.language === "UK" ? "UK" : "RU";
+  const english = rows.map((item) =>
+    sourceDirection === "to-english" ? item.answer : item.primary,
+  );
+  if (rows.length === 0 || english.some((value) => !value)) {
+    return { error: "Сначала заполни английскую сторону каждого предложения" };
+  }
+
+  try {
+    const translated = await translateShortTexts(
+      english,
+      language,
+      "EN",
+      "Simple real sentences for English homework",
+    );
+    return {
+      rows: rows.map((item, index) => ({
+        id: String(item.id),
+        primary: targetDirection === "to-english" ? translated[index] : english[index],
+        answer: targetDirection === "to-english" ? english[index] : translated[index],
+      })),
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "DeepL не смог перевести предложения" };
+  }
 }
 
 /** Проверить один автоматически оцениваемый ответ и сохранить все попытки. */

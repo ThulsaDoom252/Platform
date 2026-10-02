@@ -116,6 +116,33 @@ export async function translateShortText(
   return translated;
 }
 
+/** Пакетный перевод коротких учебных фраз, в том числе для редактора домашки. */
+export async function translateShortTexts(
+  values: string[],
+  target: TargetLanguage,
+  source: SourceLanguage,
+  context = "English lesson homework",
+): Promise<string[]> {
+  const texts = values
+    .map((value) => String(value ?? "").trim().slice(0, 1_500))
+    .filter(Boolean)
+    .slice(0, 100);
+  if (texts.length !== values.length) {
+    throw new Error("Заполни все предложения перед переводом");
+  }
+
+  const translated: string[] = [];
+  for (let offset = 0; offset < texts.length; offset += BATCH_SIZE) {
+    translated.push(...await requestDeepL(
+      texts.slice(offset, offset + BATCH_SIZE),
+      target,
+      source,
+      context,
+    ));
+  }
+  return translated;
+}
+
 async function translateSegments(
   segments: TranslationSegment[],
   target: MaterialTranslationLang,
