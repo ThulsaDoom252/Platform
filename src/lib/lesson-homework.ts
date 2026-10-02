@@ -48,12 +48,24 @@ const STATUS = "hw:status:";
 const ATTEMPTS = "hw:attempts:";
 const NOTE = "hw:note:";
 const NOTE_VISIBLE = "hw:note-visible:";
+const EXERCISE_HIDDEN = "hw:exercise-hidden:";
+const SUBMITTED_AT = "hw:submitted-at";
 
 export const homeworkValueKey = (id: string) => `${VALUE}${id}`;
 export const homeworkStatusKey = (id: string) => `${STATUS}${id}`;
 export const homeworkAttemptsKey = (id: string) => `${ATTEMPTS}${id}`;
 export const homeworkNoteKey = (id: string) => `${NOTE}${id}`;
 export const homeworkNoteVisibleKey = (id: string) => `${NOTE_VISIBLE}${id}`;
+export const homeworkExerciseHiddenKey = (id: string) => `${EXERCISE_HIDDEN}${id}`;
+export const homeworkSubmittedAtKey = () => SUBMITTED_AT;
+
+export function homeworkExerciseHidden(state: HomeworkStoredState, exerciseId: string) {
+  return state[homeworkExerciseHiddenKey(exerciseId)] === "1";
+}
+
+export function homeworkSubmittedAt(state: HomeworkStoredState) {
+  return state[SUBMITTED_AT] || null;
+}
 
 const cleanId = (value: unknown) =>
   typeof value === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/i.test(value)
@@ -219,7 +231,7 @@ export function homeworkAnswerMatches(item: HomeworkItem, supplied: string): boo
 
 export function homeworkProgress(plan: InteractiveHomeworkPlan, state: HomeworkStoredState) {
   const required = plan.exercises
-    .filter((exercise) => !exercise.optional)
+    .filter((exercise) => !exercise.optional && !homeworkExerciseHidden(state, exercise.id))
     .flatMap((exercise) => exercise.items);
   const done = required.filter((item) => {
     const found = findHomeworkItem(plan, item.id);

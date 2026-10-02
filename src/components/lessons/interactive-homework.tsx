@@ -14,16 +14,22 @@ import {
   resetHomeworkExerciseAnswersAction,
   saveHomeworkResponseAction,
   saveHomeworkTeacherNoteAction,
+  setHomeworkExerciseHiddenAction,
+  submitInteractiveHomeworkForReviewAction,
   submitHomeworkAutoAnswerAction,
 } from "@/lib/actions/lesson-homework";
 import {
   homeworkAttempts,
   homeworkAttemptsKey,
+  homeworkExerciseHidden,
+  homeworkExerciseHiddenKey,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
   homeworkProgress,
   homeworkStatus,
   homeworkStatusKey,
+  homeworkSubmittedAt,
+  homeworkSubmittedAtKey,
   homeworkValueKey,
   type HomeworkExercise,
   type HomeworkItem,
@@ -60,7 +66,12 @@ export function InteractiveHomework({
   const { t } = useT();
   const [state, setState] = useState(session.state);
   const [showAnswers, setShowAnswers] = useState(false);
+  const [reviewBusy, startReview] = useTransition();
   const progress = homeworkProgress(plan, state);
+  const submittedAt = homeworkSubmittedAt(state);
+  const exercises = plan.exercises.filter(
+    (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -86,6 +97,11 @@ export function InteractiveHomework({
                   : t.interactiveHomework.showAnswers}
               </button>
             )}
+            {session.teacher && submittedAt && (
+              <span className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-200">
+                {t.interactiveHomework.sentForReview}
+              </span>
+            )}
             <div className="rounded-xl bg-surface px-3 py-2 text-right ring-1 ring-line">
               <p className="text-[10px] font-bold uppercase tracking-wide text-faint">
                 {t.interactiveHomework.requiredProgress}
@@ -104,17 +120,39 @@ export function InteractiveHomework({
         </div>
       </section>
 
-      {plan.exercises.map((exercise, index) => (
+      {exercises.map((exercise, index) => (
         <HomeworkExerciseView
           key={exercise.id}
           exercise={exercise}
-          number={plan.exercises.slice(0, index + 1).filter((item) => !item.optional).length}
+          number={exercises.slice(0, index + 1).filter((item) => !item.optional).length}
           session={session}
           state={state}
           setState={setState}
           showAnswers={showAnswers}
         />
       ))}
+
+      {!session.teacher && (
+        <div className="sticky bottom-20 z-10 flex justify-end lg:bottom-4">
+          <button
+            type="button"
+            disabled={reviewBusy || Boolean(submittedAt)}
+            onClick={() => startReview(async () => {
+              const result = await submitInteractiveHomeworkForReviewAction(session.assignmentId);
+              if (result.error || !result.submittedAt) return;
+              setState((current) => ({
+                ...current,
+                [homeworkSubmittedAtKey()]: result.submittedAt!,
+              }));
+            })}
+            className="min-h-12 rounded-2xl bg-accent px-5 text-sm font-black text-white shadow-lg transition hover:-translate-y-0.5 hover:brightness-95 disabled:translate-y-0 disabled:opacity-60"
+          >
+            {submittedAt
+              ? t.interactiveHomework.sentForReview
+              : t.interactiveHomework.sendForReview}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -136,7 +174,8 @@ function HomeworkExerciseView({
 }) {
   const { t } = useT();
   const [resetKey, setResetKey] = useState(0);
-  const [resetting, startReset] = useTransition();
+  const [busy, startAction] = useTransition();
+  const hidden = homeworkExerciseHidden(state, exercise.id);
   const instruction =
     exercise.kind === "fill"
       ? t.interactiveHomework.instructions.fill
@@ -153,7 +192,7 @@ function HomeworkExerciseView({
                 : t.interactiveHomework.instructions.questionText;
   const body = (
     <div className="mt-4">
-      {exercise.wordBank && exercise.wordBank.length > 0 && exercise.kind !== "drag" && (
+      {exercise.wordBank && exercise.wordBank.length > 0 && exercise.kind !== "drag" && exercise.kind !== "describe" && (
         <div className="mb-4 rounded-xl bg-accent-soft/70 p-3 ring-1 ring-accent/15">
           <p className="text-[10px] font-black uppercase tracking-wide text-accent">
             {t.interactiveHomework.useWords}
@@ -178,51 +217,84 @@ function HomeworkExerciseView({
     </div>
   );
 
+  const reset = () => startAction(async () => {
+    const result = await resetHomeworkExerciseAnswersAction(session.assignmentId, exercise.id);
+    if (result.error) return;
+    setState((current) => clearExerciseAnswers(current, exercise, !session.teacher));
+    setResetKey((key) => key + 1);
+  });
+
+  const toggleHidden = () => startAction(async () => {
+    const result = await setHomeworkExerciseHiddenAction(session.assignmentId, exercise.id, !hidden);
+    if (result.error) return;
+    setState((current) => {
+      const updated = { ...current };
+      const key = homeworkExerciseHiddenKey(exercise.id);
+      if (hidden) delete updated[key];
+      else updated[key] = "1";
+      return updated;
+    });
+  });
+
   if (exercise.optional) {
     return (
-      <details className="group rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm">
-        <div className="flex items-start gap-2">
+      <section className={cn(
+        "flex items-start gap-2 rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm",
+        hidden && "border-faint/40 opacity-70",
+      )}>
+        <details className="group min-w-0 flex-1">
           <summary className="flex min-w-0 flex-1 cursor-pointer list-none items-center gap-3">
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
               {t.interactiveHomework.bonus}
             </span>
             <span className="min-w-0 flex-1 text-sm font-bold text-content">{exercise.title}</span>
+            {hidden && (
+              <span className="rounded-full bg-surface-2 px-2 py-1 text-[10px] font-bold text-faint">
+                {t.interactiveHomework.hiddenFromStudent}
+              </span>
+            )}
             <IconChevronDown className="h-4 w-4 text-faint transition group-open:rotate-180" />
           </summary>
-          <ExerciseOptionsMenu
-            busy={resetting}
-            onReset={() => startReset(async () => {
-              const result = await resetHomeworkExerciseAnswersAction(session.assignmentId, exercise.id);
-              if (result.error) return;
-              setState((current) => clearExerciseAnswers(current, exercise));
-              setResetKey((key) => key + 1);
-            })}
-          />
-        </div>
-        <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
-        {body}
-      </details>
+          <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
+          {body}
+        </details>
+        <ExerciseOptionsMenu
+          busy={busy}
+          teacher={session.teacher}
+          hidden={hidden}
+          onReset={reset}
+          onToggleHidden={toggleHidden}
+        />
+      </section>
     );
   }
 
   return (
-    <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5">
+    <section className={cn(
+      "rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5",
+      hidden && "opacity-70 ring-faint/40",
+    )}>
       <div className="flex items-start gap-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-black text-white">
           {number}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-black text-content">{exercise.title}</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-black text-content">{exercise.title}</h3>
+            {hidden && (
+              <span className="rounded-full bg-surface-2 px-2 py-1 text-[10px] font-bold text-faint">
+                {t.interactiveHomework.hiddenFromStudent}
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">{instruction}</p>
         </div>
         <ExerciseOptionsMenu
-          busy={resetting}
-          onReset={() => startReset(async () => {
-            const result = await resetHomeworkExerciseAnswersAction(session.assignmentId, exercise.id);
-            if (result.error) return;
-            setState((current) => clearExerciseAnswers(current, exercise));
-            setResetKey((key) => key + 1);
-          })}
+          busy={busy}
+          teacher={session.teacher}
+          hidden={hidden}
+          onReset={reset}
+          onToggleHidden={toggleHidden}
         />
       </div>
       {body}
@@ -230,17 +302,34 @@ function HomeworkExerciseView({
   );
 }
 
-function clearExerciseAnswers(state: HomeworkStoredState, exercise: HomeworkExercise) {
+function clearExerciseAnswers(
+  state: HomeworkStoredState,
+  exercise: HomeworkExercise,
+  markAsDraft: boolean,
+) {
   const updated = { ...state };
   for (const item of exercise.items) {
     delete updated[homeworkValueKey(item.id)];
     delete updated[homeworkStatusKey(item.id)];
     delete updated[homeworkAttemptsKey(item.id)];
   }
+  if (markAsDraft) delete updated[homeworkSubmittedAtKey()];
   return updated;
 }
 
-function ExerciseOptionsMenu({ busy, onReset }: { busy: boolean; onReset: () => void }) {
+function ExerciseOptionsMenu({
+  busy,
+  teacher,
+  hidden,
+  onReset,
+  onToggleHidden,
+}: {
+  busy: boolean;
+  teacher: boolean;
+  hidden: boolean;
+  onReset: () => void;
+  onToggleHidden: () => void;
+}) {
   const { t } = useT();
   return (
     <details className="relative shrink-0">
@@ -262,6 +351,22 @@ function ExerciseOptionsMenu({ busy, onReset }: { busy: boolean; onReset: () => 
         >
           {t.interactiveHomework.resetAnswer}
         </button>
+        {teacher && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(event) => {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+              onToggleHidden();
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-content transition hover:bg-surface-2 disabled:opacity-50"
+          >
+            {hidden ? <IconEye className="h-3.5 w-3.5" /> : <IconEyeOff className="h-3.5 w-3.5" />}
+            {hidden
+              ? t.interactiveHomework.showExercise
+              : t.interactiveHomework.hideExercise}
+          </button>
+        )}
       </div>
     </details>
   );
@@ -317,6 +422,7 @@ function AutoTextExercise({
         };
         if (next.status) updated[homeworkStatusKey(item.id)] = next.status;
         else delete updated[homeworkStatusKey(item.id)];
+        if (!session.teacher) delete updated[homeworkSubmittedAtKey()];
         return updated;
       });
       setDrafts((current) => ({
@@ -406,6 +512,7 @@ function DragExercise({
         };
         if (next.status) updated[homeworkStatusKey(item.id)] = next.status;
         else delete updated[homeworkStatusKey(item.id)];
+        if (!session.teacher) delete updated[homeworkSubmittedAtKey()];
         return updated;
       });
       setSelected(null);
@@ -453,6 +560,9 @@ function DragExercise({
         {exercise.items.map((item, index) => {
           const status = homeworkStatus(state, item.id);
           const value = state[homeworkValueKey(item.id)] ?? "";
+          const blankAt = item.prompt.indexOf("___");
+          const before = blankAt >= 0 ? item.prompt.slice(0, blankAt) : item.prompt;
+          const after = blankAt >= 0 ? item.prompt.slice(blankAt + 3) : "";
           return (
             <HomeworkItemShell
               key={item.id}
@@ -464,7 +574,7 @@ function DragExercise({
               showAnswers={showAnswers}
             >
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm font-semibold leading-relaxed text-content">
-                <span>{item.prompt}</span>
+                {before && <span>{before}</span>}
                 <span className="inline-flex max-w-full items-center gap-1.5 align-middle">
                   <button
                     type="button"
@@ -489,7 +599,13 @@ function DragExercise({
                   </button>
                   <AttemptDots item={item} state={state} />
                 </span>
+                {after && <span>{after}</span>}
               </div>
+              {item.hint && (
+                <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                  {item.hint}
+                </span>
+              )}
             </HomeworkItemShell>
           );
         })}
@@ -530,7 +646,11 @@ function ManualExercise({
         setError(result.error);
         return;
       }
-      setState((current) => ({ ...current, [homeworkValueKey(item.id)]: value.trim() }));
+      setState((current) => {
+        const updated = { ...current, [homeworkValueKey(item.id)]: value.trim() };
+        if (!session.teacher) delete updated[homeworkSubmittedAtKey()];
+        return updated;
+      });
     });
   };
 
@@ -569,11 +689,13 @@ function ManualExercise({
           >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                {item.word && (
+                {item.word && exercise.kind !== "translate" && (
                   <p className="mb-1 text-sm font-black text-accent">{item.word}</p>
                 )}
-                <p className="text-sm font-semibold leading-relaxed text-content">{item.prompt}</p>
-                {item.hint && (
+                {exercise.kind !== "describe" && (
+                  <p className="text-sm font-semibold leading-relaxed text-content">{item.prompt}</p>
+                )}
+                {item.hint && exercise.kind !== "translate" && (
                   <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
                     {item.hint}
                   </span>

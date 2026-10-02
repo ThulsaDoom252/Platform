@@ -4,18 +4,21 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { lessonAssignments, lessonUnits } from "@/lib/db/schema";
+import { lessonAssignments, lessonUnits, notifications } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import {
   findHomeworkItem,
   homeworkAnswerMatches,
   homeworkAttempts,
   homeworkAttemptsKey,
+  homeworkExerciseHiddenKey,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
   homeworkProgress,
   homeworkStatus,
   homeworkStatusKey,
+  homeworkSubmittedAt,
+  homeworkSubmittedAtKey,
   homeworkValueKey,
   interactiveHomeworkFromEntries,
   isHomeworkAutoKind,
@@ -34,6 +37,7 @@ async function assignmentWithPlan(id: string) {
     .select({
       assignment: lessonAssignments,
       authorId: lessonUnits.authorId,
+      title: lessonUnits.title,
       homework: lessonUnits.homework,
     })
     .from(lessonAssignments)
@@ -96,12 +100,14 @@ export async function submitHomeworkAutoAnswerAction(
       state[homeworkStatusKey(found.item.id)] = "locked";
     }
   }
+  if (isStudent) delete state[homeworkSubmittedAtKey()];
 
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/student/homework`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return publicItemState(state, found.item.id);
 }
@@ -125,11 +131,13 @@ export async function resetHomeworkExerciseAnswersAction(
     delete state[homeworkStatusKey(item.id)];
     delete state[homeworkAttemptsKey(item.id)];
   }
+  if (isStudent) delete state[homeworkSubmittedAtKey()];
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/student/homework`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return {};
 }
@@ -167,13 +175,78 @@ export async function saveHomeworkResponseAction(
 
   const state = { ...(row.assignment.answers ?? {}) };
   state[homeworkValueKey(found.item.id)] = value;
+  if (isStudent) delete state[homeworkSubmittedAtKey()];
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/student/homework`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return {};
+}
+
+/** Учитель может убрать целое упражнение только у выбранного ученика. */
+export async function setHomeworkExerciseHiddenAction(
+  assignmentId: string,
+  exerciseId: string,
+  hidden: boolean,
+): Promise<{ error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const exercise = row.plan.exercises.find((item) => item.id === String(exerciseId ?? ""));
+  if (!exercise) return { error: "Упражнение не найдено" };
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  const key = homeworkExerciseHiddenKey(exercise.id);
+  if (hidden) state[key] = "1";
+  else delete state[key];
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/student/homework`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  return {};
+}
+
+/** Ученик отправляет интерактивную домашку учителю на проверку. */
+export async function submitInteractiveHomeworkForReviewAction(
+  assignmentId: string,
+): Promise<{ error?: string; submittedAt?: string }> {
+  const session = await requireUser();
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || session.role !== "STUDENT" || row.assignment.studentId !== session.userId) {
+    return { error: "Домашняя работа не найдена" };
+  }
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  const alreadySubmitted = homeworkSubmittedAt(state);
+  if (alreadySubmitted) return { submittedAt: alreadySubmitted };
+  const submittedAt = new Date().toISOString();
+  state[homeworkSubmittedAtKey()] = submittedAt;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(lessonAssignments)
+      .set({ answers: state, updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, row.assignment.id));
+    await tx.insert(notifications).values({
+      recipientId: row.authorId,
+      type: "HOMEWORK_SUBMITTED",
+      relatedStudentId: session.userId,
+      message: `${session.name} отправил(а) домашнюю работу на проверку: «${row.title}»`,
+    });
+  });
+
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/student/homework`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/teacher`);
+  return { submittedAt };
 }
 
 /** Заметка учителя к конкретному предложению и её видимость ученику. */

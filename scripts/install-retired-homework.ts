@@ -73,7 +73,7 @@ const vocabItem = (
     : kind === "definition"
       ? { prompt: word.description || `What word means “${word.word}”?`, answer: word.word }
       : {
-          prompt: "Explain this word or phrase in simple English. Add one short example if you can.",
+          prompt: word.word,
           word: word.word,
         }),
 });
@@ -91,8 +91,10 @@ const vocabExercise = (
   instruction,
   kind,
   optional,
-  // Банк намеренно не повторяет порядок предложений: нельзя решать по позиции.
-  wordBank: words.map((word) => word.word).sort((left, right) => left.localeCompare(right, "en")),
+  // В третьем задании само слово уже стоит над полем, отдельный список не нужен.
+  ...(kind === "describe"
+    ? {}
+    : { wordBank: words.map((word) => word.word).sort((left, right) => left.localeCompare(right, "en")) }),
   items: words.map((word) => vocabItem(id, word, kind)),
 });
 
@@ -141,8 +143,70 @@ const TRANSLATION_BONUS_TWO: HomeworkItem[] = [
   { id: "tr-b2-mistake-2", prompt: "Вони припустилися помилки, проігнорувавши загрозу.", answer: "They made the mistake of ignoring the threat.", word: "make the mistake of + -ing", hint: "конкретна помилкова дія" },
 ];
 
-const dragPrompt = (word: string, sense: string | null, pattern: string | null) =>
-  [sense, pattern ? `Форма: ${pattern}` : null].filter(Boolean).join(" · ") || `Choose ${word}`;
+const DRAG_EXERCISES: HomeworkExercise[] = [
+  {
+    id: "lexis-drag-1",
+    title: "Lexis — Drag & drop, part 1",
+    instruction: "Drag each card into the missing part of the English sentence.",
+    kind: "drag",
+    wordBank: [
+      "wouldn't open",
+      "gotta",
+      "would call",
+      "getting dark",
+      "have got to",
+      "'d help",
+      "got to the airport",
+      "would rain",
+      "got to meet",
+    ],
+    items: [
+      { id: "drag-1-have-got-to", prompt: "I ___ leave before the meeting starts.", answer: "have got to", hint: "use the full form" },
+      { id: "drag-1-gotta", prompt: "Sorry, I ___ go.", answer: "gotta", hint: "use contraction" },
+      { id: "drag-1-got-opportunity", prompt: "Last year, I ___ my favourite singer.", answer: "got to meet", hint: "past opportunity" },
+      { id: "drag-1-got-place", prompt: "We ___ at six.", answer: "got to the airport", hint: "past destination" },
+      { id: "drag-1-would-said", prompt: "He said he ___ me after the meeting.", answer: "would call", hint: "future in the past" },
+      { id: "drag-1-would-thought", prompt: "We thought it ___ all day.", answer: "would rain", hint: "future in the past" },
+      { id: "drag-1-would-short", prompt: "They said they ___ us.", answer: "'d help", hint: "use contraction" },
+      { id: "drag-1-wouldnt", prompt: "The door ___, so we used the window.", answer: "wouldn't open", hint: "negative form" },
+      { id: "drag-1-get-adjective", prompt: "It is ___ outside.", answer: "getting dark", hint: "change of state" },
+    ],
+  },
+  {
+    id: "lexis-drag-2",
+    title: "Lexis — Drag & drop, part 2",
+    instruction: "Drag each card into the missing part of the English sentence.",
+    kind: "drag",
+    wordBank: [
+      "as though he is tired",
+      "became a doctor",
+      "good, though",
+      "getting better",
+      "Even though he was wounded",
+      "became famous",
+      "made a mistake underestimating",
+      "Though it was late",
+    ],
+    items: [
+      { id: "drag-2-get-comparative", prompt: "Your English is ___.", answer: "getting better", hint: "use comparative" },
+      { id: "drag-2-become-adjective", prompt: "She ___ after the interview.", answer: "became famous", hint: "use become + adjective" },
+      { id: "drag-2-become-noun", prompt: "She ___ after her service.", answer: "became a doctor", hint: "use become + noun" },
+      { id: "drag-2-though-start", prompt: "___, we continued working.", answer: "Though it was late", hint: "put though at the beginning" },
+      { id: "drag-2-though-end", prompt: "The film was long. It was ___.", answer: "good, though", hint: "put though at the end" },
+      { id: "drag-2-even-though", prompt: "___, he continued the mission.", answer: "Even though he was wounded", hint: "use strong contrast" },
+      { id: "drag-2-as-though", prompt: "He looks ___.", answer: "as though he is tired", hint: "use as though" },
+      { id: "drag-2-mistake", prompt: "I ___ him.", answer: "made a mistake underestimating", hint: "use make a mistake + -ing" },
+    ],
+  },
+];
+
+const plainTranslations = (items: HomeworkItem[]): HomeworkItem[] =>
+  items.map(({ id, prompt, answer, accepted }) => ({
+    id,
+    prompt,
+    ...(answer ? { answer } : {}),
+    ...(accepted ? { accepted } : {}),
+  }));
 
 async function main() {
   const [unit] = await db
@@ -176,9 +240,6 @@ async function main() {
         ? [{ word: block.word, sense: block.sense, pattern: block.pattern }]
         : []);
     });
-  const lexisMiddle = Math.ceil(lexisEntries.length / 2);
-  const dragGroups = [lexisEntries.slice(0, lexisMiddle), lexisEntries.slice(lexisMiddle)];
-
   const exercises: HomeworkExercise[] = [
     vocabExercise("vocab-fill-main", "Vocabulary 1 — Fill in the gaps", "Complete each sentence with a word or phrase from the list.", "fill", groups[0]),
     vocabExercise("vocab-fill-bonus-1", "Vocabulary 1 — Bonus A", "Complete each sentence with a word or phrase from the list.", "fill", groups[1], true),
@@ -189,24 +250,13 @@ async function main() {
     vocabExercise("vocab-describe-main", "Vocabulary 3 — Explain it yourself", "Explain each word or phrase in simple English.", "describe", groups[2]),
     vocabExercise("vocab-describe-bonus-1", "Vocabulary 3 — Bonus A", "Explain each word or phrase in simple English.", "describe", groups[0], true),
     vocabExercise("vocab-describe-bonus-2", "Vocabulary 3 — Bonus B", "Explain each word or phrase in simple English.", "describe", groups[1], true),
-    ...dragGroups.map((entries, at): HomeworkExercise => ({
-      id: `lexis-drag-${at + 1}`,
-      title: `Lexis — Drag & drop, part ${at + 1}`,
-      instruction: "Match each phrase to its meaning.",
-      kind: "drag",
-      wordBank: [...entries.map((entry) => entry.word)].sort(() => 0.5 - Math.random()),
-      items: entries.map((entry) => ({
-        id: `drag-${at + 1}-${idPart(entry.word)}`,
-        prompt: dragPrompt(entry.word, entry.sense ?? null, entry.pattern ?? null),
-        answer: entry.word,
-      })),
-    })),
+    ...DRAG_EXERCISES,
     {
       id: "translation-main",
       title: "Translation — Main cases",
       instruction: "Translate each sentence into English using the construction shown.",
       kind: "translate",
-      items: TRANSLATION_MAIN,
+      items: plainTranslations(TRANSLATION_MAIN),
     },
     {
       id: "translation-bonus-1",
@@ -214,7 +264,7 @@ async function main() {
       instruction: "Translate each sentence into English using the construction shown.",
       kind: "translate",
       optional: true,
-      items: TRANSLATION_BONUS_ONE,
+      items: plainTranslations(TRANSLATION_BONUS_ONE),
     },
     {
       id: "translation-bonus-2",
@@ -222,7 +272,7 @@ async function main() {
       instruction: "Translate each sentence into English using the construction shown.",
       kind: "translate",
       optional: true,
-      items: TRANSLATION_BONUS_TWO,
+      items: plainTranslations(TRANSLATION_BONUS_TWO),
     },
     {
       id: "questions-written",

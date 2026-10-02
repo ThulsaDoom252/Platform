@@ -68,6 +68,7 @@ import {
   type RegularLessonSection,
 } from "@/lib/regular-lesson";
 import {
+  homeworkExerciseHidden,
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
   type InteractiveHomeworkPlan,
@@ -1638,6 +1639,14 @@ export async function assignedLessonAction(assignmentId: string): Promise<
 
   const lesson = await loadUnit(row.a.unitId, session.role === "TEACHER");
   if (!lesson) return null;
+  if (session.role === "STUDENT" && lesson.interactiveHomework) {
+    lesson.interactiveHomework = {
+      ...lesson.interactiveHomework,
+      exercises: lesson.interactiveHomework.exercises.filter(
+        (exercise) => !homeworkExerciseHidden(row.a.answers ?? {}, exercise.id),
+      ),
+    };
+  }
 
   const stored = row.a.openSections ?? [];
   return {

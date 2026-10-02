@@ -4,6 +4,8 @@ import {
   homeworkAnswerMatches,
   homeworkAttempts,
   homeworkAttemptsKey,
+  homeworkExerciseHidden,
+  homeworkExerciseHiddenKey,
   homeworkProgress,
   homeworkStatusKey,
   homeworkValueKey,
@@ -70,4 +72,11 @@ test("прогресс считает обязательные задания и
     [homeworkValueKey("bonus-one")]: "Optional answer",
   };
   assert.deepEqual(homeworkProgress(plan, state), { done: 2, total: 2 });
+});
+
+test("скрытое учителем упражнение не видно ученику и не входит в прогресс", () => {
+  const state = { [homeworkExerciseHiddenKey("free-main")]: "1" };
+  assert.equal(homeworkExerciseHidden(state, "free-main"), true);
+  assert.equal(homeworkExerciseHidden(state, "fill-main"), false);
+  assert.deepEqual(homeworkProgress(plan, state), { done: 0, total: 1 });
 });
