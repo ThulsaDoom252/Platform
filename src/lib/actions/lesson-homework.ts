@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { lessonAssignments, lessonUnits, notifications } from "@/lib/db/schema";
+import { lessonAssignments, lessonUnits, notifications, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import {
   findHomeworkItem,
@@ -352,6 +352,68 @@ export type HomeworkAssignmentCard = {
   bonusTotal: number;
   updatedAt: string;
 };
+
+export type TeacherHomeworkAssignmentCard = HomeworkAssignmentCard & {
+  studentId: string;
+  studentName: string;
+  studentAvatarUrl: string | null;
+  submittedAt: string | null;
+  started: boolean;
+};
+
+/** All homework handed out from this teacher's lesson templates. */
+export async function teacherHomeworkAssignmentsAction(): Promise<
+  TeacherHomeworkAssignmentCard[]
+> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return [];
+
+  const rows = await db
+    .select({
+      assignment: lessonAssignments,
+      title: lessonUnits.title,
+      homework: lessonUnits.homework,
+      studentId: users.id,
+      studentName: users.name,
+      studentAvatarUrl: users.avatarUrl,
+    })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .innerJoin(users, eq(users.id, lessonAssignments.studentId))
+    .where(eq(lessonUnits.authorId, session.userId))
+    .orderBy(desc(lessonAssignments.updatedAt));
+
+  return rows.flatMap((row): TeacherHomeworkAssignmentCard[] => {
+    const plan = interactiveHomeworkFromEntries(row.homework);
+    const legacy = legacyHomeworkFromEntries(row.homework);
+    if (!plan && legacy.length === 0) return [];
+
+    const state = row.assignment.answers ?? {};
+    const progress = plan ? homeworkProgress(plan, state) : { done: 0, total: 0 };
+    const exerciseProgress = plan
+      ? homeworkExerciseProgress(plan, state)
+      : { required: { done: 0, total: legacy.length }, bonuses: { done: 0, total: 0 } };
+    const submittedAt = homeworkSubmittedAt(state);
+    const started = Object.keys(state).some((key) => key.startsWith("hw:"));
+
+    return [{
+      id: row.assignment.id,
+      title: row.title,
+      homeworkTitle: plan?.title || legacy[0]?.title || "Homework",
+      ...progress,
+      requiredDone: exerciseProgress.required.done,
+      requiredTotal: exerciseProgress.required.total,
+      bonusDone: exerciseProgress.bonuses.done,
+      bonusTotal: exerciseProgress.bonuses.total,
+      updatedAt: row.assignment.updatedAt.toISOString(),
+      studentId: row.studentId,
+      studentName: row.studentName,
+      studentAvatarUrl: row.studentAvatarUrl,
+      submittedAt,
+      started,
+    }];
+  });
+}
 
 export async function myInteractiveHomeworkAction(): Promise<HomeworkAssignmentCard[]> {
   const session = await requireUser();

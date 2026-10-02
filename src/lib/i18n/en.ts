@@ -23,6 +23,7 @@ export const en = {
     // ученик
     myClass: "Class",
     homework: "Homework",
+    homeworks: "Homeworks",
     messages: "Message teacher",
     statistics: "Statistics",
     profile: "Profile",
@@ -31,6 +32,23 @@ export const en = {
     shortLessons: "Lessons",
     shortFiles: "Files",
     shortMore: "More",
+  },
+
+  teacherHomeworks: {
+    title: "Student homeworks",
+    hint: "Review every assigned homework directly, without opening the lesson.",
+    students: "Students",
+    assignments: "Assigned",
+    waiting: "Waiting for review",
+    required: "Exercises",
+    bonuses: "Bonuses",
+    notStarted: "Not started",
+    inProgress: "In progress",
+    submitted: "Ready for review",
+    check: "Check homework",
+    empty: "No homework has been assigned yet.",
+    back: "All homeworks",
+    updated: "Updated",
   },
 
   globalSearch: {

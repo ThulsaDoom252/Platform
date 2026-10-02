@@ -21,6 +21,7 @@ export const ru: Dict = {
     settings: "Настройки",
     myClass: "Класс",
     homework: "Домашка",
+    homeworks: "Домашки",
     messages: "Написать учителю",
     statistics: "Статистика",
     profile: "Профиль",
@@ -28,6 +29,23 @@ export const ru: Dict = {
     shortLessons: "Уроки",
     shortFiles: "Файлы",
     shortMore: "Ещё",
+  },
+
+  teacherHomeworks: {
+    title: "Домашки учеников",
+    hint: "Проверяйте все назначенные домашки напрямую, не открывая урок.",
+    students: "Ученики",
+    assignments: "Назначено",
+    waiting: "Ждут проверки",
+    required: "Упражнения",
+    bonuses: "Бонусы",
+    notStarted: "Не начато",
+    inProgress: "В процессе",
+    submitted: "Готово к проверке",
+    check: "Проверить домашку",
+    empty: "Назначенных домашних заданий пока нет.",
+    back: "Все домашки",
+    updated: "Обновлено",
   },
 
   globalSearch: {

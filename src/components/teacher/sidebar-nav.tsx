@@ -7,8 +7,8 @@ import { RAIL_ONLY_OPEN } from "@/components/sidebar-rail";
 import { useT } from "@/components/i18n-provider";
 import {
   IconCap,
+  IconCheckCircle,
   IconFile,
-  IconHome,
   IconUsers,
   IconCalendar,
   IconChart,
@@ -26,7 +26,7 @@ export function SidebarNav() {
 
   const items = [
     { href: "/teacher/class", label: t.nav.myClass, Icon: IconCap },
-    { href: "/teacher", label: t.nav.home, Icon: IconHome, exact: true },
+    { href: "/teacher/homeworks", label: t.nav.homeworks, Icon: IconCheckCircle },
     { href: "/teacher/students", label: t.nav.students, Icon: IconUsers },
     { href: "/teacher/students/new", label: t.nav.addStudent, Icon: IconPlus, exact: true },
     { href: "/teacher/schedule", label: t.nav.schedule, Icon: IconCalendar },
