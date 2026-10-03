@@ -24,6 +24,7 @@ import {
   homeworkNoteKey,
   homeworkNoteVisibleKey,
   homeworkProgress,
+  homeworkReaction,
   homeworkPlanForAssignment,
   homeworkPlanEditIssue,
   homeworkPlanOverrideKey,
@@ -41,9 +42,12 @@ import {
   legacyHomeworkFromEntries,
   isHomeworkAutoKind,
   normalizeInteractiveHomework,
+  setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
   type HomeworkHighlightColor,
+  type HomeworkReaction,
+  type HomeworkReactionTarget,
   type HomeworkTextHighlightSource,
   type InteractiveHomeworkPlan,
   type HomeworkExerciseKind,
@@ -151,6 +155,51 @@ export async function highlightHomeworkTextAction(
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");
   return {};
+}
+
+/** Учитель отправляет одну реакцию на всё упражнение или конкретное предложение. */
+export async function setHomeworkReactionAction(
+  assignmentId: string,
+  target: HomeworkReactionTarget,
+  targetId: string,
+  reaction: HomeworkReaction | null,
+): Promise<{ error?: string; reaction?: HomeworkReaction | null }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const id = String(targetId ?? "").trim();
+  const exists = target === "exercise"
+    ? row.plan.exercises.some((exercise) => exercise.id === id)
+    : target === "item"
+      ? Boolean(findHomeworkItem(row.plan, id))
+      : false;
+  if (!exists) return { error: "Элемент домашки не найден" };
+
+  const allowed: HomeworkReaction[] = [
+    "thumbs-up",
+    "happy",
+    "angry",
+    "check",
+    "warning",
+    "cross",
+  ];
+  if (reaction !== null && !allowed.includes(reaction)) return { error: "Неизвестная реакция" };
+
+  const current = row.assignment.answers ?? {};
+  const nextReaction = homeworkReaction(current, target, id) === reaction ? null : reaction;
+  const state = setHomeworkReaction(current, target, id, nextReaction);
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  return { reaction: nextReaction };
 }
 
 /** Учитель назначает выбранные упражнения; ответы, уже сделанные в классе, остаются. */

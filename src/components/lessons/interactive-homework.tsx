@@ -21,6 +21,7 @@ import {
   resetHomeworkExerciseAnswersAction,
   saveHomeworkResponseAction,
   saveHomeworkTeacherNoteAction,
+  setHomeworkReactionAction,
   setHomeworkExerciseHiddenAction,
   submitInteractiveHomeworkForReviewAction,
   submitHomeworkAutoAnswerAction,
@@ -39,6 +40,7 @@ import {
   homeworkItemFocusId,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
+  homeworkReaction,
   homeworkStatus,
   homeworkStatusKey,
   homeworkSubmittedAt,
@@ -49,8 +51,11 @@ import {
   homeworkTextTokens,
   homeworkValueKey,
   homeworkVoiceRecordingTarget,
+  setHomeworkReaction,
   toggleHomeworkTextHighlight,
   type HomeworkHighlightColor,
+  type HomeworkReaction,
+  type HomeworkReactionTarget,
   type HomeworkTextHighlightSource,
   type HomeworkExercise,
   type HomeworkItem,
@@ -720,6 +725,13 @@ function HomeworkExerciseView({
           <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
           {body}
         </details>
+        <HomeworkReactionControl
+          target="exercise"
+          targetId={exercise.id}
+          session={session}
+          state={state}
+          setState={setState}
+        />
         {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"
@@ -775,6 +787,13 @@ function HomeworkExerciseView({
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">{instruction}</p>
         </div>
+        <HomeworkReactionControl
+          target="exercise"
+          targetId={exercise.id}
+          session={session}
+          state={state}
+          setState={setState}
+        />
         {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"
@@ -1576,6 +1595,165 @@ function AttemptDots({ item, state }: { item: HomeworkItem; state: HomeworkStore
   );
 }
 
+const HOMEWORK_REACTIONS: HomeworkReaction[] = [
+  "thumbs-up",
+  "happy",
+  "angry",
+  "check",
+  "warning",
+  "cross",
+];
+
+function HomeworkReactionControl({
+  target,
+  targetId,
+  session,
+  state,
+  setState,
+}: {
+  target: HomeworkReactionTarget;
+  targetId: string;
+  session: InteractiveHomeworkSession;
+  state: HomeworkStoredState;
+  setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
+}) {
+  const { t } = useT();
+  const interaction = useContext(HomeworkInteractionContext);
+  const [open, setOpen] = useState(false);
+  const [busy, startBusy] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const current = homeworkReaction(state, target, targetId);
+  const editable = session.teacher && interaction.reviewTools;
+  const label = (reaction: HomeworkReaction) => {
+    if (reaction === "thumbs-up") return t.interactiveHomework.reactionThumbsUp;
+    if (reaction === "happy") return t.interactiveHomework.reactionHappy;
+    if (reaction === "angry") return t.interactiveHomework.reactionAngry;
+    if (reaction === "check") return t.interactiveHomework.reactionCheck;
+    if (reaction === "warning") return t.interactiveHomework.reactionWarning;
+    return t.interactiveHomework.reactionCross;
+  };
+
+  if (!editable && !current) return null;
+
+  return (
+    <div className="relative shrink-0">
+      {editable ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setOpen((value) => !value)}
+          title={current ? label(current) : t.interactiveHomework.addReaction}
+          aria-label={current ? label(current) : t.interactiveHomework.addReaction}
+          aria-expanded={open}
+          className={cn(
+            "flex h-8 min-w-8 items-center justify-center rounded-lg transition hover:bg-accent-soft disabled:opacity-50",
+            current ? "bg-surface-2 ring-1 ring-line" : "text-faint",
+          )}
+        >
+          {current
+            ? <HomeworkReactionBadge reaction={current} label={label(current)} compact />
+            : <span className="text-base leading-none">🙂</span>}
+        </button>
+      ) : (
+        <HomeworkReactionBadge reaction={current!} label={label(current!)} />
+      )}
+
+      {editable && open && (
+        <div className="absolute right-0 top-10 z-40 w-56 rounded-2xl bg-surface p-2 shadow-xl ring-1 ring-line">
+          <p className="px-2 pb-2 pt-1 text-[10px] font-black uppercase tracking-wide text-faint">
+            {t.interactiveHomework.chooseReaction}
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {HOMEWORK_REACTIONS.map((reaction) => (
+              <button
+                key={reaction}
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setError(null);
+                  startBusy(async () => {
+                    const result = await setHomeworkReactionAction(
+                      session.assignmentId,
+                      target,
+                      targetId,
+                      reaction,
+                    );
+                    if (result.error) {
+                      setError(result.error);
+                      return;
+                    }
+                    const nextReaction = result.reaction ?? null;
+                    setState((value) =>
+                      setHomeworkReaction(value, target, targetId, nextReaction));
+                    setOpen(false);
+                  });
+                }}
+                aria-label={label(reaction)}
+                aria-pressed={current === reaction}
+                title={current === reaction
+                  ? t.interactiveHomework.removeReaction
+                  : label(reaction)}
+                className={cn(
+                  "flex h-12 items-center justify-center rounded-xl transition hover:bg-surface-2 disabled:opacity-50",
+                  current === reaction && "bg-accent-soft ring-1 ring-accent/30",
+                )}
+              >
+                <HomeworkReactionBadge reaction={reaction} label={label(reaction)} />
+              </button>
+            ))}
+          </div>
+          {error && (
+            <p className="px-2 pt-2 text-[10px] font-bold text-rose-600">
+              {t.interactiveHomework.reactionFailed}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HomeworkReactionBadge({
+  reaction,
+  label,
+  compact = false,
+}: {
+  reaction: HomeworkReaction;
+  label: string;
+  compact?: boolean;
+}) {
+  const symbol = reaction === "thumbs-up"
+    ? "👍"
+    : reaction === "happy"
+      ? "😊"
+      : reaction === "angry"
+        ? "😠"
+        : reaction === "check"
+          ? "✓"
+          : reaction === "warning"
+            ? "!"
+            : "✕";
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "inline-flex items-center justify-center font-black leading-none",
+        compact ? "h-6 w-6 text-base" : "h-8 w-8 text-lg",
+        reaction === "thumbs-up" && "rounded-full bg-sky-100",
+        reaction === "happy" && "rounded-full bg-amber-100",
+        reaction === "angry" && "rounded-full bg-orange-100",
+        reaction === "check" && "rounded-full bg-emerald-500 text-white",
+        reaction === "warning" && "rounded-full bg-yellow-300 text-yellow-950",
+        reaction === "cross" && "rounded-full bg-rose-500 text-white",
+      )}
+    >
+      {symbol}
+    </span>
+  );
+}
+
 function HomeworkItemShell({
   item,
   index,
@@ -1626,6 +1804,13 @@ function HomeworkItemShell({
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">{children}</div>
+        <HomeworkReactionControl
+          target="item"
+          targetId={item.id}
+          session={session}
+          state={state}
+          setState={setState}
+        />
         {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"

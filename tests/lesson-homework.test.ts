@@ -17,6 +17,7 @@ import {
   homeworkHighlight,
   homeworkItemFocusId,
   homeworkProgress,
+  homeworkReaction,
   homeworkReviewedAt,
   homeworkReviewedAtKey,
   homeworkPlanForAssignment,
@@ -28,6 +29,7 @@ import {
   homeworkTextTokens,
   homeworkValueKey,
   normalizeInteractiveHomework,
+  setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
   type InteractiveHomeworkPlan,
@@ -181,6 +183,16 @@ test("reviewed хранится отдельно от отправки дома�
   const reviewedAt = "2026-10-03T12:00:00.000Z";
   assert.equal(homeworkReviewedAt({ [homeworkReviewedAtKey()]: reviewedAt }), reviewedAt);
   assert.equal(homeworkReviewedAt({}), null);
+});
+
+test("реакции учителя сохраняются отдельно для упражнения и предложения", () => {
+  let state = setHomeworkReaction({}, "exercise", "fill-main", "thumbs-up");
+  state = setHomeworkReaction(state, "item", "fill-one", "warning");
+  assert.equal(homeworkReaction(state, "exercise", "fill-main"), "thumbs-up");
+  assert.equal(homeworkReaction(state, "item", "fill-one"), "warning");
+  state = setHomeworkReaction(state, "item", "fill-one", null);
+  assert.equal(homeworkReaction(state, "item", "fill-one"), null);
+  assert.equal(homeworkReaction(state, "exercise", "fill-main"), "thumbs-up");
 });
 
 test("домашка не появляется у ученика до явного назначения", () => {

@@ -55,8 +55,17 @@ const EXERCISE_FOCUS = "homework:exercise:";
 const ITEM_FOCUS = "homework:item:";
 const HIGHLIGHT = "hw:highlight:";
 const TEXT_HIGHLIGHT = "hw:text-highlight:";
+const REACTION = "hw:reaction:";
 
 export type HomeworkHighlightColor = "yellow" | "green" | "red";
+export type HomeworkReaction =
+  | "thumbs-up"
+  | "happy"
+  | "angry"
+  | "check"
+  | "warning"
+  | "cross";
+export type HomeworkReactionTarget = "exercise" | "item";
 export type HomeworkTextHighlightSource =
   | "word"
   | "prompt"
@@ -68,6 +77,44 @@ export type HomeworkTextToken = {
   text: string;
   highlightable: boolean;
 };
+
+const HOMEWORK_REACTIONS = new Set<HomeworkReaction>([
+  "thumbs-up",
+  "happy",
+  "angry",
+  "check",
+  "warning",
+  "cross",
+]);
+
+const homeworkReactionKey = (
+  target: HomeworkReactionTarget,
+  id: string,
+) => `${REACTION}${target}:${id}`;
+
+export function homeworkReaction(
+  state: HomeworkStoredState,
+  target: HomeworkReactionTarget,
+  id: string,
+): HomeworkReaction | null {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,255}$/.test(id)) return null;
+  const value = state[homeworkReactionKey(target, id)] as HomeworkReaction | undefined;
+  return value && HOMEWORK_REACTIONS.has(value) ? value : null;
+}
+
+export function setHomeworkReaction(
+  state: HomeworkStoredState,
+  target: HomeworkReactionTarget,
+  id: string,
+  reaction: HomeworkReaction | null,
+): HomeworkStoredState {
+  const next = { ...state };
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,255}$/.test(id)) return next;
+  const key = homeworkReactionKey(target, id);
+  if (!reaction) delete next[key];
+  else if (HOMEWORK_REACTIONS.has(reaction)) next[key] = reaction;
+  return next;
+}
 
 export const homeworkExerciseFocusId = (exerciseId: string) =>
   `${EXERCISE_FOCUS}${exerciseId}`;
