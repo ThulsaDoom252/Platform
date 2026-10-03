@@ -845,6 +845,7 @@ export const uk: Dict = {
     pinTo: "Закріпити за учнем",
     pinned: "Закріплено",
     openForStudent: "Відкрити учню",
+    hideFromStudent: "Сховати від учня",
     focusSection: "Сфокусувати учня",
     focusElement: "Сфокусувати учня на цьому елементі",
     focusWordHint: "Натисни слово — учень одразу побачить фокус",

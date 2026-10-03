@@ -772,6 +772,7 @@ export const en = {
     pinTo: "Pin to a student",
     pinned: "Pinned",
     openForStudent: "Open for the student",
+    hideFromStudent: "Hide from the student",
     focusSection: "Focus student",
     focusElement: "Focus the student on this element",
     focusWordHint: "Click a word to focus the student on it",

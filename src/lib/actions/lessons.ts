@@ -2509,9 +2509,9 @@ export async function assignedLessonAction(
       lesson.kind === "REGULAR"
         ? [
             ...stored.filter((key) => !!regularLessonSection(key, lesson.regularSections)),
-            ...(homeworkAvailable ? ["homework"] : []),
+            ...(homeworkAvailable && context !== "class" ? ["homework"] : []),
           ]
-        : openSections(session.role === "STUDENT" && context === "class" ? stored : storedWithHomework),
+        : openSections(context === "class" ? stored : storedWithHomework),
     showBritish: stored.includes(BRITISH_OPTION),
     vocabularyReveal: lessonVocabularyReveal(stored),
   };

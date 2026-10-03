@@ -8,15 +8,11 @@ import { AssignedLesson } from "@/components/lessons/assigned-lesson";
 import {
   addLessonToClassAction,
   assignedLessonAction,
-  focusLessonSectionAction,
   listLessonsAction,
   openSectionAction,
   type LessonCard,
 } from "@/lib/actions/lessons";
-import { lessonSectionsForKind, type LessonSection } from "@/lib/lesson-unit";
-import { regularSectionKey } from "@/lib/regular-lesson";
-import { IconCheck, IconEye, IconEyeOff, IconPencil, IconPlus, IconX } from "@/components/icons";
-import { cn } from "@/lib/utils";
+import { IconPencil, IconPlus, IconX } from "@/components/icons";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTextSelection } from "./selection-translation-popover";
 
@@ -122,21 +118,6 @@ export function ClassLesson({
     });
   };
 
-  const LABEL: Record<LessonSection, string> = {
-    vocab: t.lessonUnits.secVocab,
-    lexis: t.lessonUnits.secLexis,
-    video: t.lessonUnits.secVideo,
-    transcript: t.lessonUnits.secTranscript,
-    questions: t.lessonUnits.secQuestions,
-    homework: t.lessonUnits.secHomework,
-  };
-  const controlledSections = data?.lesson.kind === "REGULAR"
-    ? data.lesson.regularSections
-        .filter((section) => !section.teacherOnly)
-        .map((section) => ({ key: regularSectionKey(section.id), label: section.title }))
-    : lessonSectionsForKind(data?.lesson.kind ?? "ACTIVITY")
-        .map((section) => ({ key: section, label: LABEL[section] }));
-
   const captureSelection = (
     event: MouseEvent<HTMLDivElement>,
     fallbackText = "",
@@ -235,71 +216,11 @@ export function ClassLesson({
       ) : (
         <>
           {teacher && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-[12px] font-semibold text-muted">
-                {t.lessonUnits.openForStudent}
-              </span>
-              {controlledSections.map(({ key: section, label }) => {
-                const always = data.lesson.kind !== "REGULAR" && section === "vocab";
-                const opened = always || data.open.includes(section);
-                return (
-                  <div
-                    key={section}
-                    className="flex overflow-hidden rounded-lg bg-surface-2 ring-1 ring-line"
-                  >
-                    <button
-                      type="button"
-                      disabled={busy || always}
-                      onClick={() =>
-                        startBusy(async () => {
-                          const result = await openSectionAction(
-                            data.assignment.id,
-                            section,
-                            !opened,
-                          );
-                          if (result.error) setError(result.error);
-                          await reload();
-                        })
-                      }
-                      title={opened ? undefined : t.lessonUnits.hiddenFromStudent}
-                      className={cn(
-                        "flex h-8 items-center gap-1 px-2.5 text-[11px] font-semibold transition",
-                        opened
-                          ? "bg-accent text-white"
-                          : "text-muted hover:text-content",
-                        always && "opacity-70",
-                      )}
-                    >
-                      {opened
-                        ? <IconCheck className="h-3 w-3" />
-                        : <IconEyeOff className="h-3 w-3" />}
-                      {label}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        startBusy(async () => {
-                          const result = await focusLessonSectionAction(
-                            data.assignment.id,
-                            section,
-                          );
-                          if (result.error) setError(result.error);
-                        })
-                      }
-                      title={`${t.lessonUnits.focusSection}: ${label}`}
-                      aria-label={`${t.lessonUnits.focusSection}: ${label}`}
-                      className="flex h-8 w-8 items-center justify-center border-l border-line text-accent transition hover:bg-accent-soft disabled:opacity-40"
-                    >
-                      <IconEye className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
+            <div className="flex justify-end">
               <button
                 type="button"
                 onClick={() => setChangingLesson(true)}
-                className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-accent-soft px-3 text-[11px] font-bold text-accent transition hover:brightness-95"
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-soft px-3 text-[11px] font-bold text-accent transition hover:brightness-95"
               >
                 <IconPencil className="h-3.5 w-3.5" />
                 {t.lessonUnits.changeClass}
@@ -327,6 +248,21 @@ export function ClassLesson({
                     }
                   : null
               }
+              sectionVisibilityBusy={busy}
+              onSectionVisibilityChange={teacher
+                ? (section, opened) => {
+                    setError(null);
+                    startBusy(async () => {
+                      const result = await openSectionAction(
+                        data.assignment.id,
+                        section,
+                        opened,
+                      );
+                      if (result.error) setError(result.error);
+                      await reload();
+                    });
+                  }
+                : undefined}
             />
           </div>
         </>

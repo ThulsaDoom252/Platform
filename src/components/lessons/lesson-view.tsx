@@ -4,9 +4,8 @@
  * Урок глазами ученика.
  *
  * Открыт всегда только словник — с него урок и начинается. В живом
- * классе остальные вкладки тоже видны, но закрытые отмечены глазом и
- * недоступны для самостоятельного выбора. Учитель всё равно может
- * разово привести ученика в любую из них.
+ * классе закрытые вкладки скрыты. Учитель всё равно может разово
+ * привести ученика в любую из них — команда фокуса сильнее доступа.
  *
  * Подсветки приходят из закрепления, а не из урока: у каждого ученика
  * подчёркнуто своё, и заготовка от этого не меняется.
@@ -67,6 +66,9 @@ export type LessonViewProps = {
   lockClosed?: boolean;
   /** Разовая команда учителя показать секцию, даже если она закрыта. */
   sectionFocus?: { section: LessonSection; elementId?: string | null; at: string } | null;
+  /** Управление постоянной видимостью прямо из вкладок учителя. */
+  sectionVisibilityBusy?: boolean;
+  onSectionVisibilityChange?: (section: string, open: boolean) => void;
   highlights: Record<string, string>;
   /** Куда смотреть прямо сейчас — ключ места из lesson-unit. */
   focus?: string | null;
@@ -109,6 +111,8 @@ export function LessonView({
   closed,
   lockClosed = false,
   sectionFocus,
+  sectionVisibilityBusy = false,
+  onSectionVisibilityChange,
   highlights,
   focus,
   onPick,
@@ -144,6 +148,9 @@ export function LessonView({
   const forcedSection = sectionFocusAt === dismissedSectionFocusAt
     ? null
     : navigation.forced;
+  const tabSections = teacher
+    ? open
+    : open.filter((section) => selectable.includes(section) || section === forcedSection);
   const visibleSlotCount = selectable.length + (
     forcedSection && !selectable.includes(forcedSection) ? 1 : 0
   );
@@ -322,19 +329,15 @@ export function LessonView({
           <div key={at} className="flex min-w-0 flex-col gap-2">
             {/* Свои вкладки у каждого окна: в нём выбирают, что показать. */}
             <div className="flex flex-wrap gap-1 rounded-2xl bg-surface p-1 ring-1 ring-line">
-              {open.map((key) => {
+              {tabSections.map((key) => {
                 const hidden = closed?.includes(key);
                 const unavailable = !!hidden && lockClosed;
+                const visibilityLocked = key === "vocab";
                 return (
-                  <button
+                  <div
                     key={key}
-                    type="button"
-                    disabled={unavailable}
-                    onClick={() => setSlot(at, key)}
-                    title={hidden ? t.lessonUnits.hiddenFromStudent : undefined}
-                    aria-disabled={unavailable}
                     className={cn(
-                      "flex min-h-8 items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px] font-semibold transition",
+                      "flex min-h-8 overflow-hidden rounded-xl transition",
                       section === key
                         ? "bg-accent text-white"
                         : "text-muted hover:bg-surface-2 hover:text-content",
@@ -342,20 +345,49 @@ export function LessonView({
                       unavailable && "cursor-not-allowed hover:bg-transparent hover:text-muted",
                     )}
                   >
-                    <span className="flex flex-col items-start leading-tight">
-                      <span>{LABEL[key]}</span>
-                      {key === "homework" && homeworkCounters && (
-                        <span className={cn(
-                          "text-[9px] font-bold",
-                          section === key ? "text-white/80" : "text-faint",
-                        )}>
-                          {t.interactiveHomework.exercisesProgress} {homeworkCounters.required.done}/{homeworkCounters.required.total}
-                          {" · "}{t.interactiveHomework.bonusesProgress} {homeworkCounters.bonuses.done}/{homeworkCounters.bonuses.total}
-                        </span>
-                      )}
-                    </span>
-                    {hidden && <IconEyeOff className="h-3 w-3" />}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={unavailable}
+                      onClick={() => setSlot(at, key)}
+                      title={hidden ? t.lessonUnits.hiddenFromStudent : undefined}
+                      aria-disabled={unavailable}
+                      className="flex min-w-0 items-center px-3 py-1.5 text-[13px] font-semibold"
+                    >
+                      <span className="flex flex-col items-start leading-tight">
+                        <span>{LABEL[key]}</span>
+                        {key === "homework" && homeworkCounters && (
+                          <span className={cn(
+                            "text-[9px] font-bold",
+                            section === key ? "text-white/80" : "text-faint",
+                          )}>
+                            {t.interactiveHomework.exercisesProgress} {homeworkCounters.required.done}/{homeworkCounters.required.total}
+                            {" · "}{t.interactiveHomework.bonusesProgress} {homeworkCounters.bonuses.done}/{homeworkCounters.bonuses.total}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    {teacher && onSectionVisibilityChange && (
+                      <button
+                        type="button"
+                        disabled={sectionVisibilityBusy || visibilityLocked}
+                        onClick={() => onSectionVisibilityChange(key, !!hidden)}
+                        title={hidden ? t.lessonUnits.openForStudent : t.lessonUnits.hideFromStudent}
+                        aria-label={`${hidden ? t.lessonUnits.openForStudent : t.lessonUnits.hideFromStudent}: ${LABEL[key]}`}
+                        aria-pressed={!hidden}
+                        className={cn(
+                          "flex w-9 shrink-0 items-center justify-center border-l transition disabled:cursor-default",
+                          section === key
+                            ? "border-white/20 text-white/90 hover:bg-white/10"
+                            : "border-line text-accent hover:bg-accent-soft",
+                          visibilityLocked && "opacity-60",
+                        )}
+                      >
+                        {hidden
+                          ? <IconEyeOff className="h-3.5 w-3.5" />
+                          : <IconEye className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>

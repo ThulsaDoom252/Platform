@@ -350,7 +350,7 @@ export function publicRegularLessonSections(
 
 export function defaultRegularOpenSections(value: unknown): string[] {
   return normalizeRegularLessonSections(value)
-    .filter((section) => section.defaultOpen && !section.teacherOnly)
+    .filter((section) => section.tone === "vocab" && !section.teacherOnly)
     .map((section) => regularSectionKey(section.id));
 }
 

@@ -45,6 +45,8 @@ export function AssignedLesson({
   teacher,
   classVideo,
   sectionFocus,
+  sectionVisibilityBusy = false,
+  onSectionVisibilityChange,
   liveClass = false,
   initialSection,
 }: {
@@ -61,6 +63,8 @@ export function AssignedLesson({
   classVideo?: ClassVideoState | null;
   /** Разовая команда учителя: показать секцию, не открывая её навсегда. */
   sectionFocus?: { section: string; elementId?: string | null; at: string } | null;
+  sectionVisibilityBusy?: boolean;
+  onSectionVisibilityChange?: (section: string, open: boolean) => void;
   liveClass?: boolean;
   initialSection?: (typeof LESSON_SECTIONS)[number];
 }) {
@@ -271,6 +275,8 @@ export function AssignedLesson({
           open={data.open}
           lockClosed={liveClass && !teacher}
           sectionFocus={liveClass && !teacher ? sectionFocus : null}
+          sectionVisibilityBusy={sectionVisibilityBusy}
+          onSectionVisibilityChange={onSectionVisibilityChange}
           onFocusElement={teacher && liveClass
             ? (section, elementId) => {
                 startBusy(() =>
@@ -362,6 +368,8 @@ export function AssignedLesson({
         }
         lockClosed={liveClass && !teacher}
         sectionFocus={liveClass && !teacher ? activitySectionFocus : null}
+        sectionVisibilityBusy={sectionVisibilityBusy}
+        onSectionVisibilityChange={onSectionVisibilityChange}
         highlights={dialogueMarks}
         focus={focus}
         showBritish={british}

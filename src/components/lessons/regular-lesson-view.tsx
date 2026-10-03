@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
-import { IconDots, IconEyeOff, IconPencil, IconPlus, IconTrash } from "@/components/icons";
+import { IconDots, IconEye, IconEyeOff, IconPencil, IconPlus, IconTrash } from "@/components/icons";
 import { LessonVocab } from "@/components/lessons/lesson-vocab";
 import { RegularVoiceRecorder } from "@/components/lessons/regular-voice-recorder";
 import {
@@ -282,6 +282,8 @@ export function RegularLessonView({
   open,
   lockClosed = false,
   sectionFocus,
+  sectionVisibilityBusy = false,
+  onSectionVisibilityChange,
   onFocusElement,
   assignmentId,
   responses = {},
@@ -307,6 +309,8 @@ export function RegularLessonView({
   open: string[];
   lockClosed?: boolean;
   sectionFocus?: { section: string; elementId?: string | null; at: string } | null;
+  sectionVisibilityBusy?: boolean;
+  onSectionVisibilityChange?: (section: string, open: boolean) => void;
   onFocusElement?: (section: string, elementId: string) => void;
   assignmentId?: string;
   responses?: Record<string, string>;
@@ -343,9 +347,8 @@ export function RegularLessonView({
     () => sections.filter((section) => teacher || !section.teacherOnly),
     [sections, teacher],
   );
-  const first =
-    available.find((section) => teacher || open.includes(regularSectionKey(section.id))) ??
-    available[0];
+  const first = available.find((section) => open.includes(regularSectionKey(section.id))) ??
+    (teacher || !lockClosed ? available[0] : undefined);
   const [activeId, setActiveId] = useState(first?.id ?? "");
   const [answersFor, setAnswersFor] = useState<string | null>(null);
   const [focused, setFocused] = useState<{ section: string; elementId: string } | null>(null);
@@ -373,6 +376,23 @@ export function RegularLessonView({
     : sectionFocus?.section
       ? available.find((section) => regularSectionKey(section.id) === sectionFocus.section)?.id
       : null;
+  const visibleSections = teacher
+    ? available
+    : available.filter((section) => {
+        const key = regularSectionKey(section.id);
+        return open.includes(key) || sectionFocus?.section === key;
+      });
+
+  useEffect(() => {
+    if (teacher || !lockClosed) return;
+    const forced = focusedSectionId;
+    const allowed = new Set(visibleSections.map((section) => section.id));
+    if (forced === "__homework") allowed.add("__homework");
+    if (allowed.has(activeId)) return;
+    const next = forced || visibleSections[0]?.id || "";
+    const frame = requestAnimationFrame(() => setActiveId(next));
+    return () => cancelAnimationFrame(frame);
+  }, [activeId, focusedSectionId, lockClosed, teacher, visibleSections]);
 
   useEffect(() => {
     saveResponseRef.current = onSaveResponse;
@@ -1046,44 +1066,91 @@ export function RegularLessonView({
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <nav className="flex gap-2 overflow-x-auto pb-1" aria-label={t.lessonUnits.lessonSections}>
-        {available.map((section) => {
+        {visibleSections.map((section) => {
           const key = regularSectionKey(section.id);
-          const opened = teacher || open.includes(key);
+          const opened = open.includes(key);
           const forced = sectionFocus?.section === key;
           const disabled = lockClosed && !opened && !forced;
           return (
-            <button
+            <div
               key={section.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => !disabled && setActiveId(section.id)}
               className={cn(
-                "flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-bold transition",
+                "flex h-10 shrink-0 overflow-hidden rounded-xl transition",
                 activeId === section.id
                   ? "bg-accent text-white shadow-sm"
                   : "bg-surface-2 text-muted hover:text-content",
                 disabled && "cursor-not-allowed opacity-55",
               )}
             >
-              {disabled && <IconEyeOff className="h-3.5 w-3.5" />}
-              {section.title}
-            </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => !disabled && setActiveId(section.id)}
+                className="flex min-w-0 items-center px-3 text-[12px] font-bold"
+              >
+                {section.title}
+              </button>
+              {teacher && onSectionVisibilityChange && (
+                <button
+                  type="button"
+                  disabled={sectionVisibilityBusy}
+                  onClick={() => onSectionVisibilityChange(key, !opened)}
+                  title={opened ? t.lessonUnits.hideFromStudent : t.lessonUnits.openForStudent}
+                  aria-label={`${opened ? t.lessonUnits.hideFromStudent : t.lessonUnits.openForStudent}: ${section.title}`}
+                  aria-pressed={opened}
+                  className={cn(
+                    "flex w-9 items-center justify-center border-l transition disabled:opacity-40",
+                    activeId === section.id
+                      ? "border-white/20 text-white/90 hover:bg-white/10"
+                      : "border-line text-accent hover:bg-accent-soft",
+                  )}
+                >
+                  {opened
+                    ? <IconEye className="h-3.5 w-3.5" />
+                    : <IconEyeOff className="h-3.5 w-3.5" />}
+                </button>
+              )}
+            </div>
           );
         })}
-        {homeworkAvailable && (homeworkOpen || sectionFocus?.section === "homework") && (
-          <button
-            type="button"
-            disabled={lockClosed && !homeworkOpen && sectionFocus?.section !== "homework"}
-            onClick={() => setActiveId("__homework")}
+        {homeworkAvailable && (teacher || homeworkOpen || sectionFocus?.section === "homework") && (
+          <div
             className={cn(
-              "flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-bold transition",
+              "flex h-10 shrink-0 overflow-hidden rounded-xl transition",
               activeId === "__homework"
                 ? "bg-accent text-white shadow-sm"
                 : "bg-surface-2 text-muted hover:text-content",
             )}
           >
-            {t.lessonUnits.secHomework}
-          </button>
+            <button
+              type="button"
+              disabled={lockClosed && !homeworkOpen && sectionFocus?.section !== "homework"}
+              onClick={() => setActiveId("__homework")}
+              className="px-3 text-[12px] font-bold"
+            >
+              {t.lessonUnits.secHomework}
+            </button>
+            {teacher && onSectionVisibilityChange && (
+              <button
+                type="button"
+                disabled={sectionVisibilityBusy}
+                onClick={() => onSectionVisibilityChange("homework", !open.includes("homework"))}
+                title={open.includes("homework") ? t.lessonUnits.hideFromStudent : t.lessonUnits.openForStudent}
+                aria-label={`${open.includes("homework") ? t.lessonUnits.hideFromStudent : t.lessonUnits.openForStudent}: ${t.lessonUnits.secHomework}`}
+                aria-pressed={open.includes("homework")}
+                className={cn(
+                  "flex w-9 items-center justify-center border-l transition disabled:opacity-40",
+                  activeId === "__homework"
+                    ? "border-white/20 text-white/90 hover:bg-white/10"
+                    : "border-line text-accent hover:bg-accent-soft",
+                )}
+              >
+                {open.includes("homework")
+                  ? <IconEye className="h-3.5 w-3.5" />
+                  : <IconEyeOff className="h-3.5 w-3.5" />}
+              </button>
+            )}
+          </div>
         )}
       </nav>
 

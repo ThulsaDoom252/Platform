@@ -58,8 +58,12 @@ test("student payload contains neither answers nor teacher-only notes", () => {
   assert.ok(sections.every((section) => section.teacherHtml === ""));
 });
 
-test("warm-up stays closed while normal sections open by default", () => {
+test("only vocabulary sections open by default", () => {
   assert.deepEqual(defaultRegularOpenSections(source), ["regular:02-vocabulary"]);
+  assert.deepEqual(
+    defaultRegularOpenSections(source.map((section) => ({ ...section, defaultOpen: true }))),
+    ["regular:02-vocabulary"],
+  );
   assert.equal(regularLessonSection("regular:01-warm-up", source)?.title, "☕ Warm-up");
   assert.equal(regularLessonSection("regular:missing", source), null);
 });
