@@ -813,6 +813,7 @@ export const en = {
     typeDescribe: "Describe a word",
     typeTranslate: "Translation",
     typeQuestions: "Questions",
+    typeVoiceQuestions: "Voice questions",
     exerciseTitle: "Exercise title",
     exerciseInstruction: "Instruction",
     fillEditorHint: "Write the complete sentence and wrap the missing word or phrase in **double asterisks**.",

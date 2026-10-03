@@ -16,7 +16,7 @@ import {
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
 
-type EditableKind = "fill" | "describe" | "translate" | "question-text";
+type EditableKind = "fill" | "describe" | "translate" | "question-text" | "question-audio";
 type EditorRow = { id: string; primary: string; answer: string };
 
 const newId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
@@ -25,7 +25,8 @@ function editableKind(exercise?: HomeworkExercise): EditableKind {
   if (!exercise) return "fill";
   if (exercise.kind === "describe") return "describe";
   if (exercise.kind === "translate") return "translate";
-  if (exercise.kind === "question-text" || exercise.kind === "question-audio") return "question-text";
+  if (exercise.kind === "question-audio") return "question-audio";
+  if (exercise.kind === "question-text") return "question-text";
   return "fill";
 }
 
@@ -204,6 +205,7 @@ export function StudentHomeworkExerciseEditor({
     { value: "describe", label: t.interactiveHomework.typeDescribe },
     { value: "translate", label: t.interactiveHomework.typeTranslate },
     { value: "question-text", label: t.interactiveHomework.typeQuestions },
+    { value: "question-audio", label: t.interactiveHomework.typeVoiceQuestions },
   ];
 
   return (
