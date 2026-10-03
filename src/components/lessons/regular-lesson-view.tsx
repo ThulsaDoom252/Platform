@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
-import { IconDots, IconEyeOff, IconPencil, IconPlus } from "@/components/icons";
+import { IconDots, IconEyeOff, IconPencil, IconPlus, IconTrash } from "@/components/icons";
 import { LessonVocab } from "@/components/lessons/lesson-vocab";
 import { RegularVoiceRecorder } from "@/components/lessons/regular-voice-recorder";
 import {
@@ -19,12 +19,15 @@ import {
 } from "@/components/lessons/interactive-homework";
 import { saveStudentHomeworkPlanAction } from "@/lib/actions/lesson-homework";
 import {
+  deleteRegularLessonExerciseAction,
   resetRegularLessonExerciseAction,
   saveRegularLessonExerciseAction,
 } from "@/lib/actions/lessons";
 import {
   regularAttempts,
+  regularExerciseDeleted,
   regularExerciseOverride,
+  regularHomeworkExerciseId,
   regularNoteKey,
   regularNoteVisibleKey,
   regularResponseKey,
@@ -91,9 +94,6 @@ function useStableRegularSection(section: RegularLessonSection | undefined) {
   return useMemo(() => section, [signature]);
 }
 
-const safeId = (value: string) =>
-  value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52);
-
 function headingBefore(list: Element) {
   let node: Element | null = list.previousElementSibling;
   while (node) {
@@ -133,6 +133,7 @@ function homeworkCandidates(
   const candidates: HomeworkCandidate[] = [];
 
   studentLists.forEach((list, listIndex) => {
+    if (regularExerciseDeleted(state, section.id, listIndex + 1)) return;
     const hasBlank = !!list.querySelector(".blank");
     const hasTrueFalse = !!list.querySelector(".tfbox");
     const heading = headingBefore(list);
@@ -168,7 +169,7 @@ function homeworkCandidates(
       ];
       const answers = answerNodes.map((node) => cleanText(node.textContent)).filter(Boolean);
       return {
-        id: `regular-${safeId(section.id)}-${listIndex + 1}-${itemIndex + 1}`,
+        id: `${regularHomeworkExerciseId(section.id, listIndex + 1)}-${itemIndex + 1}`,
         prompt,
         answer: answers.length === 1 ? answers[0] : undefined,
         answers,
@@ -194,7 +195,7 @@ function homeworkCandidates(
       kind,
       items: parsed.map((item) => ({ prompt: item.prompt, answers: item.answers })),
     };
-    const id = `regular-${safeId(section.id)}-${listIndex + 1}`;
+    const id = regularHomeworkExerciseId(section.id, listIndex + 1);
     const exerciseParsed = editor.items.map((item, itemIndex) => ({
       id: parsed[itemIndex]?.id ?? `${id}-${itemIndex + 1}`,
       prompt: item.prompt,
@@ -320,6 +321,7 @@ export function RegularLessonView({
   const [candidates, setCandidates] = useState<HomeworkCandidate[]>([]);
   const [candidateId, setCandidateId] = useState("");
   const [exerciseMenu, setExerciseMenu] = useState(false);
+  const [exerciseDeleteArmed, setExerciseDeleteArmed] = useState(false);
   const [editingExercise, setEditingExercise] = useState<{
     listIndex: number;
     value: RegularExerciseOverride;
@@ -401,6 +403,64 @@ export function RegularLessonView({
     return () => node.classList.remove("regular-lesson-focused");
   }, [activeKey, focused, teacher]);
 
+  /* A deleted exercise disappears only from this assignment; the unit HTML stays intact. */
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root || !active || activeId === "__homework" || nativeVocabulary || nativeVoice) return;
+    const lists = [...root.querySelectorAll<HTMLOListElement>("ol")].filter(
+      (list) => !list.closest(".key, .key-wrap, .teacher-note"),
+    );
+    const entries = lists.map((list, index) => ({
+      list,
+      deleted: regularExerciseDeleted(responseRef.current, active.id, index + 1),
+    }));
+    const restored: Array<{ node: HTMLElement; display: string; ariaHidden: string | null }> = [];
+    const hide = (node: HTMLElement | null) => {
+      if (!node || restored.some((entry) => entry.node === node)) return;
+      restored.push({ node, display: node.style.display, ariaHidden: node.getAttribute("aria-hidden") });
+      node.style.display = "none";
+      node.setAttribute("aria-hidden", "true");
+    };
+    const headingFor = (list: HTMLElement) => {
+      let node: Element | null = list.previousElementSibling;
+      while (node) {
+        if (node.tagName === "H3") return node as HTMLElement;
+        node = node.previousElementSibling;
+      }
+      return null;
+    };
+    const instructionFor = (list: HTMLElement) => {
+      let node: Element | null = list.previousElementSibling;
+      while (node) {
+        if (node.matches(".instr")) return node as HTMLElement;
+        if (node.tagName === "H3" || node.tagName === "OL") return null;
+        node = node.previousElementSibling;
+      }
+      return null;
+    };
+
+    entries.filter((entry) => entry.deleted).forEach((entry) => hide(entry.list));
+    const headingGroups = new Map<HTMLElement, typeof entries>();
+    const instructionGroups = new Map<HTMLElement, typeof entries>();
+    entries.forEach((entry) => {
+      const heading = headingFor(entry.list);
+      if (heading) headingGroups.set(heading, [...(headingGroups.get(heading) ?? []), entry]);
+      const instruction = instructionFor(entry.list);
+      if (instruction) {
+        instructionGroups.set(instruction, [...(instructionGroups.get(instruction) ?? []), entry]);
+      }
+    });
+    headingGroups.forEach((group, heading) => group.every((entry) => entry.deleted) && hide(heading));
+    instructionGroups.forEach((group, instruction) =>
+      group.every((entry) => entry.deleted) && hide(instruction));
+
+    return () => restored.forEach(({ node, display, ariaHidden }) => {
+      node.style.display = display;
+      if (ariaHidden === null) node.removeAttribute("aria-hidden");
+      else node.setAttribute("aria-hidden", ariaHidden);
+    });
+  }, [active, activeId, nativeVocabulary, nativeVoice, responseState, showingAnswers]);
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const next = !active || activeId === "__homework" || nativeVocabulary || nativeVoice
@@ -408,6 +468,7 @@ export function RegularLessonView({
         : homeworkCandidates(active, responseRef.current);
       setCandidates(next);
       setCandidateId(next[0]?.exercise.id ?? "");
+      setExerciseDeleteArmed(false);
     });
     return () => cancelAnimationFrame(frame);
   }, [active, activeId, nativeVocabulary, nativeVoice, responseState]);
@@ -555,6 +616,7 @@ export function RegularLessonView({
     };
 
     [...root.querySelectorAll<HTMLOListElement>("ol")].forEach((list, listIndex) => {
+      if (regularExerciseDeleted(responseRef.current, active.id, listIndex + 1)) return;
       let items = [...list.querySelectorAll<HTMLElement>(":scope > li")];
       const override = regularExerciseOverride(responseRef.current, active.id, listIndex + 1);
       if (override) {
@@ -866,6 +928,29 @@ export function RegularLessonView({
     });
   };
 
+  const deleteExercise = () => {
+    if (!assignmentId || !active || !selectedCandidate) return;
+    setExerciseError(null);
+    startBusy(async () => {
+      const result = await deleteRegularLessonExerciseAction(
+        assignmentId,
+        active.id,
+        selectedCandidate.listIndex,
+      );
+      if (result.error || !result.state) {
+        setExerciseError(result.error ?? "Не удалось удалить упражнение");
+        return;
+      }
+      responseRef.current = result.state;
+      setResponseState(result.state);
+      setLocalHomeworkPlan(result.homeworkPlan ?? null);
+      setExerciseDeleteArmed(false);
+      setExerciseMenu(false);
+      setHomeworkMessage(null);
+      router.refresh();
+    });
+  };
+
   const openExerciseEditor = () => {
     if (!selectedCandidate) return;
     setExerciseError(null);
@@ -1024,6 +1109,41 @@ export function RegularLessonView({
                           <span aria-hidden="true" className="text-base leading-none">↺</span>
                           Reset answers
                         </button>
+                        {!exerciseDeleteArmed ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setExerciseDeleteArmed(true)}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            <IconTrash className="h-4 w-4" />
+                            {t.lessonUnits.deleteStudentExercise}
+                          </button>
+                        ) : (
+                          <div className="m-1 rounded-xl bg-rose-50 p-2.5 text-rose-700">
+                            <p className="text-[11px] font-semibold leading-relaxed">
+                              {t.lessonUnits.deleteStudentExerciseHint}
+                            </p>
+                            <div className="mt-2 flex gap-1.5">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={deleteExercise}
+                                className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-black text-white disabled:opacity-50"
+                              >
+                                {t.lessonUnits.confirmDeleteStudentExercise}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setExerciseDeleteArmed(false)}
+                                className="rounded-lg bg-surface px-2.5 py-1.5 text-[11px] font-bold text-content ring-1 ring-line"
+                              >
+                                {t.interactiveHomework.cancel}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

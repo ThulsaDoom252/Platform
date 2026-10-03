@@ -32,6 +32,7 @@ import {
   setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
+  withoutHomeworkExerciseState,
   type InteractiveHomeworkPlan,
 } from "../src/lib/lesson-homework";
 
@@ -296,6 +297,34 @@ test("индивидуальную домашку можно создать дл
     homeworkPlanForAssignment(null, state)?.exercises.map((exercise) => exercise.id),
     ["fill-main"],
   );
+});
+
+test("последнее упражнение можно удалить только из индивидуальной домашки", () => {
+  const empty = normalizeInteractiveHomework(
+    { ...plan, exercises: [] },
+    { allowEmpty: true },
+  );
+  assert.ok(empty);
+  assert.deepEqual(empty.exercises, []);
+  assert.equal(normalizeInteractiveHomework({ ...plan, exercises: [] }), null);
+
+  const state = { [homeworkPlanOverrideKey()]: JSON.stringify(empty) };
+  assert.deepEqual(homeworkPlanForAssignment(plan, state)?.exercises, []);
+});
+
+test("удаление упражнения очищает только его ответы, заметки и оформление", () => {
+  const exercise = plan.exercises[0];
+  const state = {
+    [homeworkValueKey("fill-one")]: "got to",
+    [homeworkAttemptsKey("fill-one")]: JSON.stringify(["go"]),
+    [homeworkExerciseHiddenKey(exercise.id)]: "1",
+    untouched: "keep",
+  };
+  const next = withoutHomeworkExerciseState(state, exercise);
+  assert.equal(next[homeworkValueKey("fill-one")], undefined);
+  assert.equal(next[homeworkAttemptsKey("fill-one")], undefined);
+  assert.equal(next[homeworkExerciseHiddenKey(exercise.id)], undefined);
+  assert.equal(next.untouched, "keep");
 });
 
 test("правка вопросов не блокируется неполными переводами из старой домашки", () => {

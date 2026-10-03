@@ -68,8 +68,10 @@ import {
   regularAnswerMap,
   regularAttempts,
   regularAttemptsKey,
+  regularExerciseDeletedKey,
   regularExerciseOverride,
   regularExerciseOverrideKey,
+  regularHomeworkExerciseId,
   regularResponseKey,
   regularLessonSection,
   regularStatus,
@@ -83,13 +85,20 @@ import {
   assignedInteractiveHomework,
   findHomeworkItem,
   homeworkExerciseHidden,
+  homeworkAssignedAt,
+  homeworkAssignedExerciseIds,
+  homeworkAssignedExercisesKey,
   homeworkFocusTarget,
   homeworkPlanForAssignment,
+  homeworkPlanOverrideKey,
+  homeworkReviewedAtKey,
+  homeworkSubmittedAtKey,
   homeworkValueKey,
   homeworkVoiceRecordingItemId,
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
   normalizeHomeworkAnswer,
+  withoutHomeworkExerciseState,
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
 import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
@@ -2215,6 +2224,77 @@ export async function resetRegularLessonExerciseAction(
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return { state };
+}
+
+/** Delete one exercise only from this student's assigned lesson and homework copy. */
+export async function deleteRegularLessonExerciseAction(
+  assignmentId: string,
+  sectionId: string,
+  listIndex: number,
+): Promise<{
+  error?: string;
+  state?: Record<string, string>;
+  homeworkPlan?: InteractiveHomeworkPlan | null;
+}> {
+  const row = await regularAssignmentForUser(String(assignmentId ?? ""));
+  if (!row || row.session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const section = normalizeRegularLessonSections(row.sections)
+    .find((item) => item.id === String(sectionId ?? ""));
+  const at = Math.trunc(Number(listIndex));
+  if (!section || at < 1 || at > 100) return { error: "Упражнение не найдено" };
+
+  let state = { ...(row.assignment.answers ?? {}) };
+  const responsePrefix = regularResponseKey(section.id, `list-${at}-`);
+  const notePrefix = `regular-note:${section.id}:list-${at}-item-`;
+  const noteVisiblePrefix = `regular-note-visible:${section.id}:list-${at}-item-`;
+  for (const key of Object.keys(state)) {
+    if (
+      key.startsWith(responsePrefix) ||
+      key.startsWith(`regular-attempts:${responsePrefix}`) ||
+      key.startsWith(`regular-status:${responsePrefix}`) ||
+      key.startsWith(notePrefix) ||
+      key.startsWith(noteVisiblePrefix)
+    ) delete state[key];
+  }
+  delete state[regularExerciseOverrideKey(section.id, at)];
+  state[regularExerciseDeletedKey(section.id, at)] = "1";
+
+  const currentPlan = homeworkPlanForAssignment(
+    interactiveHomeworkFromEntries(row.homework),
+    state,
+  );
+  const homeworkExerciseId = regularHomeworkExerciseId(section.id, at);
+  const homeworkExercise = currentPlan?.exercises.find(
+    (exercise) => exercise.id === homeworkExerciseId,
+  );
+  let homeworkPlan = currentPlan;
+  if (currentPlan && homeworkExercise) {
+    state = withoutHomeworkExerciseState(state, homeworkExercise);
+    homeworkPlan = {
+      ...currentPlan,
+      exercises: currentPlan.exercises.filter((exercise) => exercise.id !== homeworkExerciseId),
+    };
+    state[homeworkPlanOverrideKey()] = JSON.stringify(homeworkPlan);
+    if (homeworkAssignedAt(state)) {
+      const selected = homeworkAssignedExerciseIds(currentPlan, state)
+        .filter((exerciseId) => exerciseId !== homeworkExerciseId);
+      state[homeworkAssignedExercisesKey()] = JSON.stringify(selected);
+    }
+    delete state[homeworkSubmittedAtKey()];
+    delete state[homeworkReviewedAtKey()];
+  }
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath("/teacher/homeworks");
+  return { state, homeworkPlan };
 }
 
 /** Save a personalized version of a regular-lesson exercise for this student. */

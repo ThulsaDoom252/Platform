@@ -7,6 +7,7 @@ const REGULAR_STATUS_PREFIX = "regular-status:";
 const REGULAR_NOTE_PREFIX = "regular-note:";
 const REGULAR_NOTE_VISIBLE_PREFIX = "regular-note-visible:";
 const REGULAR_EXERCISE_OVERRIDE_PREFIX = "regular-exercise-override:";
+const REGULAR_EXERCISE_DELETED_PREFIX = "regular-exercise-deleted:";
 const REGULAR_VOICE_PREFIX = "regular-voice:";
 
 export type RegularAnswerStatus = "correct" | "locked" | null;
@@ -90,6 +91,22 @@ export const regularNoteVisibleKey = (sectionId: string, itemId: string) =>
 
 export const regularExerciseOverrideKey = (sectionId: string, listIndex: number) =>
   `${REGULAR_EXERCISE_OVERRIDE_PREFIX}${sectionId}:${listIndex}`;
+
+export const regularExerciseDeletedKey = (sectionId: string, listIndex: number) =>
+  `${REGULAR_EXERCISE_DELETED_PREFIX}${sectionId}:${listIndex}`;
+
+export const regularExerciseDeleted = (
+  state: Record<string, string>,
+  sectionId: string,
+  listIndex: number,
+) => state[regularExerciseDeletedKey(sectionId, listIndex)] === "1";
+
+const regularExerciseSafeId = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52);
+
+/** Stable id shared by a regular lesson exercise and its homework copy. */
+export const regularHomeworkExerciseId = (sectionId: string, listIndex: number) =>
+  `regular-${regularExerciseSafeId(sectionId)}-${listIndex}`;
 
 export const regularVoiceRecordingKey = (sectionId: string) =>
   `${REGULAR_VOICE_PREFIX}${sectionId}`;
@@ -200,6 +217,7 @@ export function regularAnswerMap(
   const teacherLists = mainOrderedLists(section.teacherHtml);
 
   studentLists.forEach((studentList, listIndex) => {
+    if (regularExerciseDeleted(state, section.id, listIndex + 1)) return;
     const studentItems = listItems(studentList);
     const teacherItems = listItems(teacherLists[listIndex] ?? "");
     const override = regularExerciseOverride(state, section.id, listIndex + 1);

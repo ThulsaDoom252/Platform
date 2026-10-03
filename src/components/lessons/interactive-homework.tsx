@@ -19,6 +19,7 @@ import {
   removeHomeworkQuestionAction,
   reviewInteractiveHomeworkAction,
   resetHomeworkExerciseAnswersAction,
+  saveStudentHomeworkPlanAction,
   saveHomeworkResponseAction,
   saveHomeworkTeacherNoteAction,
   setHomeworkReactionAction,
@@ -126,6 +127,9 @@ export function InteractiveHomework({
   const [editedPlan, setEditedPlan] = useState<InteractiveHomeworkPlan | null>(null);
   const currentPlan = editedPlan ?? plan;
   const [editingExerciseId, setEditingExerciseId] = useState<string | null | undefined>(undefined);
+  const [deletingExerciseId, setDeletingExerciseId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteBusy, startDelete] = useTransition();
   const [showAnswers, setShowAnswers] = useState(false);
   const [reviewBusy, startReview] = useTransition();
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -391,6 +395,10 @@ export function InteractiveHomework({
           focusId={focusId}
           onFocus={interactWithElement}
           onEdit={session.canEdit ? () => setEditingExerciseId(exercise.id) : undefined}
+          onDelete={session.canEdit ? () => {
+            setDeleteError(null);
+            setDeletingExerciseId(exercise.id);
+          } : undefined}
         />
       ))}
 
@@ -440,6 +448,71 @@ export function InteractiveHomework({
             setState(nextState);
           }}
         />
+      )}
+      {session.teacher && session.canEdit && deletingExerciseId && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <section className="w-full max-w-md rounded-t-3xl bg-surface p-5 shadow-2xl ring-1 ring-line sm:rounded-3xl">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
+                <IconTrash className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-black text-content">
+                  {t.interactiveHomework.deleteExercise}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted">
+                  {t.interactiveHomework.confirmDeleteExercise}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeletingExerciseId(null)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-faint hover:bg-surface-2 hover:text-content"
+                aria-label={t.interactiveHomework.cancel}
+              >
+                <IconX className="h-5 w-5" />
+              </button>
+            </div>
+            {deleteError && (
+              <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-600">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeletingExerciseId(null)}
+                className="h-11 rounded-xl border border-line px-4 text-sm font-bold text-content disabled:opacity-50"
+              >
+                {t.interactiveHomework.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => startDelete(async () => {
+                  const result = await saveStudentHomeworkPlanAction(session.assignmentId, {
+                    ...currentPlan,
+                    exercises: currentPlan.exercises.filter(
+                      (exercise) => exercise.id !== deletingExerciseId,
+                    ),
+                  });
+                  if (result.error || !result.plan || !result.state) {
+                    setDeleteError(result.error ?? t.interactiveHomework.assignmentFailed);
+                    return;
+                  }
+                  setEditedPlan(result.plan);
+                  setState(result.state);
+                  setDeletingExerciseId(null);
+                })}
+                className="h-11 rounded-xl bg-rose-600 px-4 text-sm font-black text-white transition hover:bg-rose-700 disabled:opacity-50"
+              >
+                {t.interactiveHomework.confirmDelete}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
     </HomeworkInteractionContext.Provider>
@@ -621,6 +694,7 @@ function HomeworkExerciseView({
   focusId,
   onFocus,
   onEdit,
+  onDelete,
 }: {
   exercise: HomeworkExercise;
   number: number;
@@ -631,6 +705,7 @@ function HomeworkExerciseView({
   focusId?: string | null;
   onFocus?: (elementId: string) => void;
   onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const { t } = useT();
   const interaction = useContext(HomeworkInteractionContext);
@@ -762,6 +837,7 @@ function HomeworkExerciseView({
           hidden={hidden}
           onReset={reset}
           onToggleHidden={toggleHidden}
+          onDelete={onDelete}
         />
       </section>
     );
@@ -824,6 +900,7 @@ function HomeworkExerciseView({
           hidden={hidden}
           onReset={reset}
           onToggleHidden={toggleHidden}
+          onDelete={onDelete}
         />
       </div>
       {body}
@@ -855,12 +932,14 @@ function ExerciseOptionsMenu({
   hidden,
   onReset,
   onToggleHidden,
+  onDelete,
 }: {
   busy: boolean;
   teacher: boolean;
   hidden: boolean;
   onReset: () => void;
   onToggleHidden: () => void;
+  onDelete?: () => void;
 }) {
   const { t } = useT();
   return (
@@ -897,6 +976,20 @@ function ExerciseOptionsMenu({
             {hidden
               ? t.interactiveHomework.showExercise
               : t.interactiveHomework.hideExercise}
+          </button>
+        )}
+        {teacher && onDelete && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(event) => {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+              onDelete();
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+          >
+            <IconTrash className="h-3.5 w-3.5" />
+            {t.interactiveHomework.deleteExercise}
           </button>
         )}
       </div>

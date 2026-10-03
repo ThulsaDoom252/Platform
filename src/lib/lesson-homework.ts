@@ -228,7 +228,10 @@ export function homeworkAssignedAt(state: HomeworkStoredState) {
 /** Индивидуальная копия домашки, сохранённая внутри закрепления ученика. */
 export function homeworkPlanOverride(state: HomeworkStoredState) {
   try {
-    return normalizeInteractiveHomework(JSON.parse(state[PLAN_OVERRIDE] ?? "null"));
+    return normalizeInteractiveHomework(
+      JSON.parse(state[PLAN_OVERRIDE] ?? "null"),
+      { allowEmpty: true },
+    );
   } catch {
     return null;
   }
@@ -239,6 +242,34 @@ export function homeworkPlanForAssignment(
   state: HomeworkStoredState,
 ) {
   return homeworkPlanOverride(state) ?? template;
+}
+
+/** Remove every saved trace of one exercise without touching another student's copy. */
+export function withoutHomeworkExerciseState(
+  state: HomeworkStoredState,
+  exercise: HomeworkExercise,
+): HomeworkStoredState {
+  const next = { ...state };
+  const exerciseFocusId = homeworkExerciseFocusId(exercise.id);
+  delete next[homeworkExerciseHiddenKey(exercise.id)];
+  delete next[homeworkHighlightKey(exerciseFocusId)];
+  delete next[homeworkReactionKey("exercise", exercise.id)];
+
+  for (const item of exercise.items) {
+    const itemFocusId = homeworkItemFocusId(item.id);
+    delete next[homeworkValueKey(item.id)];
+    delete next[homeworkStatusKey(item.id)];
+    delete next[homeworkAttemptsKey(item.id)];
+    delete next[homeworkNoteKey(item.id)];
+    delete next[homeworkNoteVisibleKey(item.id)];
+    delete next[homeworkHighlightKey(itemFocusId)];
+    delete next[homeworkReactionKey("item", item.id)];
+    for (const key of Object.keys(next)) {
+      if (key.startsWith(`${TEXT_HIGHLIGHT}${item.id}:`)) delete next[key];
+    }
+  }
+
+  return next;
 }
 
 /** Старые блоки могут быть неполными; при персональной правке проверяем только изменённые. */
@@ -474,7 +505,10 @@ export function regularHomeworkShowsWordBank(
 }
 
 /** Treat stored json as untrusted: old and half-written plans must not break a lesson. */
-export function normalizeInteractiveHomework(value: unknown): InteractiveHomeworkPlan | null {
+export function normalizeInteractiveHomework(
+  value: unknown,
+  options: { allowEmpty?: boolean } = {},
+): InteractiveHomeworkPlan | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
   if (raw.kind !== "INTERACTIVE_HOMEWORK_V1" || !Array.isArray(raw.exercises)) return null;
@@ -525,7 +559,7 @@ export function normalizeInteractiveHomework(value: unknown): InteractiveHomewor
         .filter((candidate): candidate is HomeworkItem => Boolean(candidate)),
     }];
   });
-  if (exercises.length === 0) return null;
+  if (exercises.length === 0 && !options.allowEmpty) return null;
 
   return {
     kind: "INTERACTIVE_HOMEWORK_V1",

@@ -46,6 +46,7 @@ import {
   setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
+  withoutHomeworkExerciseState,
   type HomeworkHighlightColor,
   type HomeworkReaction,
   type HomeworkReactionTarget,
@@ -249,8 +250,8 @@ export async function saveStudentHomeworkPlanAction(
   const row = await assignmentWithOptionalPlan(String(assignmentId ?? ""));
   if (!row || row.authorId !== session.userId) return { error: "Урок ученика не найден" };
 
-  const plan = normalizeInteractiveHomework(candidate);
-  if (!plan) return { error: "Добавь хотя бы одно заполненное упражнение" };
+  const plan = normalizeInteractiveHomework(candidate, { allowEmpty: true });
+  if (!plan) return { error: "Не удалось прочитать домашку" };
   const previousPlan: InteractiveHomeworkPlan = row.plan ?? {
     kind: "INTERACTIVE_HOMEWORK_V1",
     title: plan.title || `${row.title} · Homework`,
@@ -267,7 +268,7 @@ export async function saveStudentHomeworkPlanAction(
     return { error: "Добавь правильный перевод к каждому изменённому предложению" };
   }
 
-  const state = { ...(row.assignment.answers ?? {}) };
+  let state = { ...(row.assignment.answers ?? {}) };
   const oldExercises = new Map(previousPlan.exercises.map((exercise) => [exercise.id, exercise]));
   const oldItems = new Map(
     previousPlan.exercises.flatMap((exercise) =>
@@ -288,6 +289,12 @@ export async function saveStudentHomeworkPlanAction(
     delete state[homeworkAttemptsKey(itemId)];
     delete state[homeworkNoteKey(itemId)];
     delete state[homeworkNoteVisibleKey(itemId)];
+  }
+
+  for (const exercise of previousPlan.exercises) {
+    if (!plan.exercises.some((candidateExercise) => candidateExercise.id === exercise.id)) {
+      state = withoutHomeworkExerciseState(state, exercise);
+    }
   }
 
   state[homeworkPlanOverrideKey()] = JSON.stringify(plan);

@@ -6,7 +6,10 @@ import {
   normalizeRegularLessonSections,
   publicRegularLessonSections,
   regularAnswerMap,
+  regularExerciseDeleted,
+  regularExerciseDeletedKey,
   regularExerciseOverrideKey,
+  regularHomeworkExerciseId,
   regularLessonSection,
   regularVoiceRecording,
   regularVoiceRecordingKey,
@@ -126,6 +129,23 @@ test("a personalized exercise override replaces the checked answer", () => {
   };
 
   assert.equal(regularAnswerMap(section, state).get("list-1-item-1-blank-1")?.answer, "like");
+});
+
+test("a deleted exercise is hidden only by assignment state", () => {
+  const section = normalizeRegularLessonSections([{
+    id: "practice section",
+    title: "Practice",
+    tone: "exercise",
+    defaultOpen: true,
+    studentHtml: '<ol><li>I <span class="blank"></span> fish.</li></ol>',
+    teacherHtml: '<ol><li>I <span class="ans">eat</span> fish.</li></ol>',
+  }])[0];
+  const state = { [regularExerciseDeletedKey(section.id, 1)]: "1" };
+
+  assert.equal(regularExerciseDeleted(state, section.id, 1), true);
+  assert.equal(regularAnswerMap(section, state).size, 0);
+  assert.equal(regularAnswerMap(section, {}).size, 1);
+  assert.equal(regularHomeworkExerciseId(section.id, 1), "regular-practice-section-1");
 });
 
 test("voice sections and their published recording survive normalization", () => {
