@@ -1,51 +1,81 @@
 import Link from "next/link";
 import { Avatar } from "@/components/avatar";
 import {
+  HomeworkBackgroundToggle,
+  HomeworkStatusSurface,
+} from "@/components/teacher/homework-status-surface";
+import {
+  IconCalendar,
   IconCheckCircle,
   IconChevronRight,
   IconClock,
   IconUsers,
 } from "@/components/icons";
-import {
-  teacherHomeworkAssignmentsAction,
-  type TeacherHomeworkAssignmentCard,
-} from "@/lib/actions/lesson-homework";
+import { teacherHomeworkAssignmentsAction } from "@/lib/actions/lesson-homework";
 import { getDict } from "@/lib/i18n/server";
+import { SCHOOL_TIME_ZONE, SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
+import {
+  sortTeacherHomeworks,
+  teacherHomeworkOverviewState,
+  type TeacherHomeworkOverviewState,
+  type TeacherHomeworkSortKey,
+} from "@/lib/teacher-homework-order";
 import { cn } from "@/lib/utils";
 
-type StudentGroup = {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-  items: TeacherHomeworkAssignmentCard[];
-};
-
-export default async function TeacherHomeworksPage() {
+export default async function TeacherHomeworksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string; dir?: string }>;
+}) {
+  const params = await searchParams;
+  const sort: TeacherHomeworkSortKey =
+    params.sort === "lesson" || params.sort === "status" || params.sort === "assigned"
+      ? params.sort
+      : "name";
+  const desc = params.dir === "desc";
   const [items, { t, locale }] = await Promise.all([
     teacherHomeworkAssignmentsAction(),
     getDict(),
   ]);
-  const groups = [...items.reduce((map, item) => {
-    const group = map.get(item.studentId) ?? {
-      id: item.studentId,
-      name: item.studentName,
-      avatarUrl: item.studentAvatarUrl,
-      items: [],
-    };
-    group.items.push(item);
-    map.set(item.studentId, group);
-    return map;
-  }, new Map<string, StudentGroup>()).values()].sort((a, b) =>
-    a.name.localeCompare(b.name, locale),
-  );
-  const waiting = items.filter((item) => item.submittedAt && !item.reviewedAt).length;
   const localeName = locale === "ru" ? "ru-RU" : locale === "uk" ? "uk-UA" : "en-US";
-  const formatDate = (value: string) => new Intl.DateTimeFormat(localeName, {
+  const sorted = sortTeacherHomeworks(items, sort, desc, localeName);
+  const students = new Set(items.map((item) => item.studentId)).size;
+  const waiting = items.filter((item) => item.submittedAt && !item.reviewedAt).length;
+  const dateOptions: Intl.DateTimeFormatOptions = {
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  };
+  const assignedDateFormat = new Intl.DateTimeFormat(localeName, {
+    ...dateOptions,
+    timeZone: SCHOOL_TIME_ZONE,
+  });
+  const lessonDateFormat = new Intl.DateTimeFormat(localeName, {
+    ...dateOptions,
+    timeZone: SCHEDULE_FORMAT_TIME_ZONE,
+  });
+  const sortHref = (key: TeacherHomeworkSortKey) =>
+    `/teacher/homeworks?sort=${key}&dir=${sort === key && !desc ? "desc" : "asc"}`;
+  const sortButton = (key: TeacherHomeworkSortKey, label: string) => {
+    const active = sort === key;
+    return (
+      <Link
+        href={sortHref(key)}
+        className={cn(
+          "flex h-8 items-center gap-1 rounded-lg px-3 text-[12px] font-semibold transition",
+          active
+            ? "bg-accent-soft text-accent"
+            : "text-muted hover:bg-surface-2 hover:text-content",
+        )}
+      >
+        {label}
+        <span aria-hidden className={active ? "" : "opacity-35"}>
+          {active && desc ? "↓" : "↑"}
+        </span>
+      </Link>
+    );
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -55,87 +85,100 @@ export default async function TeacherHomeworksPage() {
           <p className="mt-1 text-sm text-muted">{t.teacherHomeworks.hint}</p>
         </div>
         <div className="grid grid-cols-3 gap-2">
-          <Summary value={groups.length} label={t.teacherHomeworks.students} Icon={IconUsers} />
+          <Summary value={students} label={t.teacherHomeworks.students} Icon={IconUsers} />
           <Summary value={items.length} label={t.teacherHomeworks.assignments} Icon={IconCheckCircle} />
           <Summary value={waiting} label={t.teacherHomeworks.waiting} Icon={IconClock} accent />
         </div>
       </header>
 
-      {groups.length === 0 ? (
+      {items.length === 0 ? (
         <section className="rounded-2xl bg-surface p-10 text-center ring-1 ring-line">
           <IconCheckCircle className="mx-auto h-11 w-11 text-accent/60" />
           <p className="mt-3 text-sm font-bold text-content">{t.teacherHomeworks.empty}</p>
         </section>
       ) : (
-        <div className="flex flex-col gap-4">
-          {groups.map((group) => (
-            <section key={group.id} className="overflow-hidden rounded-2xl bg-surface shadow-sm ring-1 ring-line">
-              <div className="flex items-center gap-3 border-b border-line bg-surface-2/70 px-4 py-3 sm:px-5">
-                <Avatar name={group.name} src={group.avatarUrl} className="h-10 w-10 text-sm" />
-                <div className="min-w-0">
-                  <h2 className="truncate text-base font-black text-content">{group.name}</h2>
-                  <p className="text-xs text-faint">
-                    {group.items.length} {t.teacherHomeworks.assignments.toLocaleLowerCase(localeName)}
-                  </p>
-                </div>
-                <span className="ml-auto rounded-full bg-accent-soft px-2.5 py-1 text-xs font-black text-accent">
-                  {group.items.filter((item) => item.submittedAt && !item.reviewedAt).length}/{group.items.length}
-                </span>
-              </div>
+        <>
+          <section className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-line sm:px-4">
+            <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
+              {t.teacherHomeworks.sortBy}
+            </span>
+            {sortButton("name", t.teacherHomeworks.sortName)}
+            {sortButton("lesson", t.teacherHomeworks.sortLesson)}
+            {sortButton("status", t.teacherHomeworks.sortStatus)}
+            {sortButton("assigned", t.teacherHomeworks.sortAssigned)}
+            <HomeworkBackgroundToggle
+              showLabel={t.teacherHomeworks.showColors}
+              hideLabel={t.teacherHomeworks.hideColors}
+            />
+          </section>
 
-              <div className="divide-y divide-line">
-                {group.items.map((item) => {
-                  const state = item.reviewedAt
-                    ? "reviewed"
-                    : item.submittedAt
-                      ? "submitted"
-                    : item.started
-                      ? "inProgress"
-                      : "notStarted";
-                  return (
-                    <Link
-                      key={item.id}
-                      href={`/teacher/homeworks/${item.id}`}
-                      className="group flex flex-col gap-3 px-4 py-4 transition hover:bg-accent-soft/35 sm:flex-row sm:items-center sm:px-5"
-                    >
+          <div className="flex flex-col gap-3">
+            {sorted.map((item) => {
+              const state = teacherHomeworkOverviewState(item);
+              return (
+                <HomeworkStatusSurface key={item.id} state={state}>
+                  <Link
+                    href={`/teacher/homeworks/${item.id}`}
+                    className="group flex flex-col gap-4 px-4 py-4 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <Avatar
+                        name={item.studentName}
+                        src={item.studentAvatarUrl}
+                        className="h-11 w-11 shrink-0 text-sm"
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate text-sm font-black text-content">{item.title}</h3>
+                          <h2 className="truncate text-sm font-black text-content">
+                            {item.studentName}
+                          </h2>
                           <Status state={state} labels={t.teacherHomeworks} />
                         </div>
-                        <p className="mt-0.5 truncate text-xs font-semibold text-muted">
+                        <h3 className="mt-1 truncate text-sm font-bold text-content">
+                          {item.title}
+                        </h3>
+                        <p className="truncate text-xs font-semibold text-muted">
                           {item.homeworkTitle}
                         </p>
-                        <p className="mt-1 text-[11px] text-faint">
-                          {t.teacherHomeworks.updated}: {formatDate(item.updatedAt)}
-                        </p>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-faint">
+                          <span className="inline-flex items-center gap-1">
+                            <IconCalendar className="h-3.5 w-3.5" />
+                            {t.teacherHomeworks.assigned}: {assignedDateFormat.format(new Date(item.assignedAt))}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <IconClock className="h-3.5 w-3.5" />
+                            {t.teacherHomeworks.nextLesson}: {item.nextLessonAt
+                              ? lessonDateFormat.format(new Date(item.nextLessonAt))
+                              : t.teacherHomeworks.noNextLesson}
+                          </span>
+                        </div>
                       </div>
+                    </div>
 
-                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <ProgressPill
+                        label={t.teacherHomeworks.required}
+                        done={item.requiredDone}
+                        total={item.requiredTotal}
+                      />
+                      {item.bonusTotal > 0 && (
                         <ProgressPill
-                          label={t.teacherHomeworks.required}
-                          done={item.requiredDone}
-                          total={item.requiredTotal}
+                          label={t.teacherHomeworks.bonuses}
+                          done={item.bonusDone}
+                          total={item.bonusTotal}
                         />
-                        {item.bonusTotal > 0 && (
-                          <ProgressPill
-                            label={t.teacherHomeworks.bonuses}
-                            done={item.bonusDone}
-                            total={item.bonusTotal}
-                          />
-                        )}
-                        <span className="ml-auto flex h-9 items-center gap-1 rounded-xl bg-accent px-3 text-xs font-black text-white shadow-sm transition group-hover:brightness-95 sm:ml-2">
-                          {t.teacherHomeworks.check}
-                          <IconChevronRight className="h-4 w-4" />
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
+                      )}
+                      <span className="ml-auto flex h-9 items-center gap-1 rounded-xl bg-accent px-3 text-xs font-black text-white shadow-sm transition group-hover:brightness-95 sm:ml-2">
+                        {t.teacherHomeworks.check}
+                        <IconChevronRight className="h-4 w-4" />
+                      </span>
+                    </div>
+                  </Link>
+                </HomeworkStatusSurface>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
@@ -161,14 +204,16 @@ function Summary({
         <Icon className={cn("h-4 w-4", accent ? "text-accent" : "text-faint")} />
         <span className="text-lg font-black leading-none text-content">{value}</span>
       </div>
-      <p className="mt-1 hidden text-[10px] font-bold uppercase tracking-wide text-faint sm:block">{label}</p>
+      <p className="mt-1 hidden text-[10px] font-bold uppercase tracking-wide text-faint sm:block">
+        {label}
+      </p>
     </div>
   );
 }
 
 function ProgressPill({ label, done, total }: { label: string; done: number; total: number }) {
   return (
-    <span className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11px] font-bold text-muted ring-1 ring-line">
+    <span className="rounded-lg bg-surface/75 px-2.5 py-1.5 text-[11px] font-bold text-muted ring-1 ring-line backdrop-blur-sm">
       {label} <span className="text-content">{done}/{total}</span>
     </span>
   );
@@ -178,7 +223,7 @@ function Status({
   state,
   labels,
 }: {
-  state: "reviewed" | "submitted" | "inProgress" | "notStarted";
+  state: TeacherHomeworkOverviewState;
   labels: {
     reviewed: string;
     submitted: string;
@@ -190,12 +235,12 @@ function Status({
     <span className={cn(
       "rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
       state === "reviewed"
-        ? "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+        ? "bg-emerald-700 text-white dark:bg-emerald-500 dark:text-emerald-950"
         : state === "submitted"
-          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
-        : state === "inProgress"
-          ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
-          : "bg-surface-2 text-faint",
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300"
+          : state === "inProgress"
+            ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+            : "bg-surface-2 text-faint",
     )}>
       {labels[state]}
     </span>

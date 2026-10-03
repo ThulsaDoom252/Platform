@@ -2,10 +2,11 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { lessonAssignments, lessonUnits, notifications, users } from "@/lib/db/schema";
+import { lessonAssignments, lessons, lessonUnits, notifications, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { scheduleNow } from "@/lib/schedule-time";
 import { translateShortTexts, type MaterialTranslationLang } from "@/lib/material-translation";
 import {
   findHomeworkItem,
@@ -709,6 +710,8 @@ export type TeacherHomeworkAssignmentCard = HomeworkAssignmentCard & {
   submittedAt: string | null;
   reviewedAt: string | null;
   started: boolean;
+  assignedAt: string;
+  nextLessonAt: string | null;
 };
 
 /** All homework handed out from this teacher's lesson templates. */
@@ -732,6 +735,25 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
     .innerJoin(users, eq(users.id, lessonAssignments.studentId))
     .where(eq(lessonUnits.authorId, session.userId))
     .orderBy(desc(lessonAssignments.updatedAt));
+
+  const studentIds = [...new Set(rows.map((row) => row.studentId))];
+  const upcomingLessons = studentIds.length > 0
+    ? await db
+      .select({ studentId: lessons.studentId, startTime: lessons.startTime })
+      .from(lessons)
+      .where(and(
+        inArray(lessons.studentId, studentIds),
+        eq(lessons.status, "SCHEDULED"),
+        gte(lessons.startTime, scheduleNow()),
+      ))
+      .orderBy(asc(lessons.startTime))
+    : [];
+  const nextLessonByStudent = new Map<string, string>();
+  for (const lesson of upcomingLessons) {
+    if (!nextLessonByStudent.has(lesson.studentId)) {
+      nextLessonByStudent.set(lesson.studentId, lesson.startTime.toISOString());
+    }
+  }
 
   return rows.flatMap((row): TeacherHomeworkAssignmentCard[] => {
     const state = row.assignment.answers ?? {};
@@ -764,6 +786,8 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
       submittedAt,
       reviewedAt,
       started,
+      assignedAt: homeworkAssignedAt(state) ?? row.assignment.createdAt.toISOString(),
+      nextLessonAt: nextLessonByStudent.get(row.studentId) ?? null,
     }];
   });
 }
