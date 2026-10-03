@@ -65,7 +65,6 @@ import {
   type HomeworkStoredState,
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
-import { focusHomeworkElementAction } from "@/lib/actions/lessons";
 import {
   IconCheck,
   IconChevronDown,
@@ -148,15 +147,9 @@ export function InteractiveHomework({
     (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
   );
 
-  const interactWithElement = teacherReviewTools
-    ? (elementId: string) => {
-        setInteractionError(null);
-        startInteraction(async () => {
-          const result = await focusHomeworkElementAction(session.assignmentId, elementId);
-          if (result.error) setInteractionError(result.error);
-        });
-      }
-    : onFocus;
+  // Homework review has one explicit interaction tool: text highlighting.
+  // Live lessons may still provide their own focus callback outside review.
+  const interactWithElement = teacherReviewTools ? undefined : onFocus;
 
   const highlightText = teacherReviewTools && highlightMode
     ? (item: HomeworkItem, source: HomeworkTextHighlightSource, tokenIndex: number) => {
@@ -309,43 +302,32 @@ export function InteractiveHomework({
           <span className="mr-auto text-[12px] font-semibold text-muted">
             {highlightMode
               ? t.interactiveHomework.reviewHighlightHint
-              : t.interactiveHomework.reviewFocusHint}
+              : t.interactiveHomework.reviewHighlightOffHint}
           </span>
-          <div className="flex items-center rounded-lg bg-surface p-1 ring-1 ring-line">
-            <button
-              type="button"
-              onClick={() => setHighlightMode(false)}
-              aria-pressed={!highlightMode}
-              className={cn(
-                "flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold transition",
-                !highlightMode ? "bg-accent text-white shadow-sm" : "text-muted hover:text-content",
-              )}
-            >
-              <IconEye className="h-3.5 w-3.5" />
-              {t.interactiveHomework.focusMode}
-            </button>
-            <button
-              type="button"
-              onClick={() => setHighlightMode(true)}
-              aria-pressed={highlightMode}
-              className={cn(
-                "flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold transition",
-                highlightMode ? "bg-yellow-300 text-slate-950 shadow-sm" : "text-muted hover:text-content",
-              )}
-            >
-              <span aria-hidden>🖍️</span>
-              {t.lessonUnits.highlightMode}
-            </button>
-          </div>
-          <div className="flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line">
+          <button
+            type="button"
+            onClick={() => setHighlightMode((enabled) => !enabled)}
+            aria-pressed={highlightMode}
+            className={cn(
+              "flex h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold ring-1 transition",
+              highlightMode
+                ? "bg-yellow-300 text-slate-950 ring-yellow-500 shadow-sm"
+                : "bg-surface text-muted ring-line hover:text-content hover:ring-accent/50",
+            )}
+          >
+            <span aria-hidden>🖍️</span>
+            {t.lessonUnits.highlightMode}
+          </button>
+          <div className={cn(
+            "flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line transition",
+            !highlightMode && "opacity-45",
+          )}>
             {(["yellow", "green", "red"] as const).map((color) => (
               <button
                 key={color}
                 type="button"
-                onClick={() => {
-                  setHighlightColor(color);
-                  setHighlightMode(true);
-                }}
+                disabled={!highlightMode}
+                onClick={() => setHighlightColor(color)}
                 aria-pressed={highlightMode && highlightColor === color}
                 aria-label={color === "yellow"
                   ? t.lessonUnits.highlightYellow
@@ -358,7 +340,7 @@ export function InteractiveHomework({
                     ? t.lessonUnits.highlightGreen
                     : t.interactiveHomework.highlightRed}
                 className={cn(
-                  "h-5 w-5 rounded-full transition hover:scale-110",
+                  "h-5 w-5 rounded-full transition enabled:hover:scale-110 disabled:cursor-default",
                   color === "yellow"
                     ? "bg-yellow-300"
                     : color === "green"
