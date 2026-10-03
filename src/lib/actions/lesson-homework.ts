@@ -19,6 +19,7 @@ import {
   homeworkAttemptsKey,
   homeworkExerciseHiddenKey,
   homeworkExerciseProgress,
+  homeworkFocusTarget,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
   homeworkProgress,
@@ -35,6 +36,8 @@ import {
   legacyHomeworkFromEntries,
   isHomeworkAutoKind,
   normalizeInteractiveHomework,
+  toggleHomeworkHighlight,
+  type HomeworkHighlightColor,
   type InteractiveHomeworkPlan,
   type HomeworkExerciseKind,
   type HomeworkStoredState,
@@ -72,6 +75,34 @@ function publicItemState(state: HomeworkStoredState, itemId: string) {
     status: homeworkStatus(state, itemId),
     attempts: homeworkAttempts(state, itemId),
   };
+}
+
+/** Persist a teacher's coloured mark on one exercise or homework sentence. */
+export async function highlightHomeworkElementAction(
+  assignmentId: string,
+  elementId: string,
+  color: HomeworkHighlightColor,
+): Promise<{ error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  if (color !== "yellow" && color !== "green") return { error: "Неизвестный цвет" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const focusId = String(elementId ?? "").trim();
+  if (!homeworkFocusTarget(row.plan, focusId)) return { error: "Элемент домашки не найден" };
+
+  const state = toggleHomeworkHighlight(row.assignment.answers ?? {}, focusId, color);
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath("/student/class");
+  return {};
 }
 
 /** Учитель назначает выбранные упражнения; ответы, уже сделанные в классе, остаются. */

@@ -47,6 +47,7 @@ export default async function TeacherHomeworkReviewPage({
       {assignedPlan ? (
         <InteractiveHomework
           plan={assignedPlan}
+          teacherReviewTools
           session={{
             assignmentId: data.assignment.id,
             unitId: data.assignment.unitId,

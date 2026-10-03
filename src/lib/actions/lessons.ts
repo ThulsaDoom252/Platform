@@ -1474,6 +1474,7 @@ export async function focusHomeworkElementAction(
         studentId: lessonAssignments.studentId,
         classFocus: users.classFocus,
         homework: lessonUnits.homework,
+        answers: lessonAssignments.answers,
       })
       .from(lessonAssignments)
       .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -1491,7 +1492,10 @@ export async function focusHomeworkElementAction(
   if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
     return { error: "Этот ученик сейчас не в классе" };
   }
-  const homework = interactiveHomeworkFromEntries(target.homework);
+  const homework = homeworkPlanForAssignment(
+    interactiveHomeworkFromEntries(target.homework),
+    target.answers ?? {},
+  );
   if (!homework || !homeworkFocusTarget(homework, focusId)) {
     return { error: "Элемент домашки не найден" };
   }

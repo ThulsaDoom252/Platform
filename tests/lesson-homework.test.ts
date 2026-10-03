@@ -14,6 +14,7 @@ import {
   homeworkFillEditorLine,
   homeworkFillItemFromEditorLine,
   homeworkFocusTarget,
+  homeworkHighlight,
   homeworkItemFocusId,
   homeworkProgress,
   homeworkPlanForAssignment,
@@ -23,6 +24,7 @@ import {
   homeworkStatusKey,
   homeworkValueKey,
   normalizeInteractiveHomework,
+  toggleHomeworkHighlight,
   type InteractiveHomeworkPlan,
 } from "../src/lib/lesson-homework";
 
@@ -135,6 +137,18 @@ test("фокус домашки отбрасывает чужие и повре�
   assert.equal(homeworkFocusTarget(plan, homeworkExerciseFocusId("missing")), null);
   assert.equal(homeworkFocusTarget(plan, homeworkItemFocusId("missing")), null);
   assert.equal(homeworkFocusTarget(plan, "word:fill-one"), null);
+});
+
+test("цветные выделения домашки сохраняются независимо от фокуса", () => {
+  const exercise = homeworkExerciseFocusId("fill-main");
+  const item = homeworkItemFocusId("free-one");
+  let state = toggleHomeworkHighlight({}, exercise, "yellow");
+  state = toggleHomeworkHighlight(state, item, "green");
+  assert.equal(homeworkHighlight(state, exercise), "yellow");
+  assert.equal(homeworkHighlight(state, item), "green");
+  state = toggleHomeworkHighlight(state, exercise, "yellow");
+  assert.equal(homeworkHighlight(state, exercise), null);
+  assert.equal(homeworkHighlight(state, item), "green");
 });
 
 test("домашка не появляется у ученика до явного назначения", () => {

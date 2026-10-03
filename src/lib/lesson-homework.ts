@@ -53,12 +53,46 @@ export type HomeworkAutoStatus = "correct" | "locked" | null;
 
 const EXERCISE_FOCUS = "homework:exercise:";
 const ITEM_FOCUS = "homework:item:";
+const HIGHLIGHT = "hw:highlight:";
+
+export type HomeworkHighlightColor = "yellow" | "green";
 
 export const homeworkExerciseFocusId = (exerciseId: string) =>
   `${EXERCISE_FOCUS}${exerciseId}`;
 
 export const homeworkItemFocusId = (itemId: string) =>
   `${ITEM_FOCUS}${itemId}`;
+
+const validHighlightTarget = (value: unknown) => {
+  const target = String(value ?? "");
+  return target.length <= 256 && (
+    target.startsWith(EXERCISE_FOCUS) || target.startsWith(ITEM_FOCUS)
+  );
+};
+
+const homeworkHighlightKey = (focusId: string) => `${HIGHLIGHT}${focusId}`;
+
+export function homeworkHighlight(
+  state: HomeworkStoredState,
+  focusId: string,
+): HomeworkHighlightColor | null {
+  if (!validHighlightTarget(focusId)) return null;
+  const value = state[homeworkHighlightKey(focusId)];
+  return value === "yellow" || value === "green" ? value : null;
+}
+
+export function toggleHomeworkHighlight(
+  state: HomeworkStoredState,
+  focusId: string,
+  color: HomeworkHighlightColor,
+): HomeworkStoredState {
+  const next = { ...state };
+  if (!validHighlightTarget(focusId) || (color !== "yellow" && color !== "green")) return next;
+  const key = homeworkHighlightKey(focusId);
+  if (next[key] === color) delete next[key];
+  else next[key] = color;
+  return next;
+}
 
 /** Resolve a teacher focus target only when it belongs to this homework. */
 export function homeworkFocusTarget(
