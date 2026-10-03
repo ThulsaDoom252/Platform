@@ -1079,6 +1079,54 @@ body {
 .regular-lesson-body .regular-answer-wrong-flash {
   animation: regular-answer-wrong-flash .55s ease-out;
 }
+.regular-lesson-body .sentence-check > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .42rem;
+  margin-bottom: .65rem;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: .9rem;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  padding: .7rem .8rem;
+}
+.regular-lesson-body .sentence-check .regular-answer-control {
+  min-width: 7.5rem;
+}
+.regular-lesson-body .translation-check .regular-answer-control {
+  flex: 1 1 20rem;
+  min-width: min(20rem, 72vw);
+}
+.regular-lesson-body .regular-sentence-check {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: .7rem;
+  background: var(--surface-2);
+  padding: .25rem .68rem;
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+.regular-lesson-body .regular-sentence-check:hover:not(:disabled) { transform: translateY(-1px); }
+.regular-lesson-body .regular-sentence-check-correct,
+.regular-lesson-body .regular-sentence-check-correct:disabled {
+  border-color: #34d399;
+  background: #d1fae5;
+  color: #047857;
+}
+.regular-lesson-body .regular-sentence-check-wrong,
+.regular-lesson-body .regular-sentence-check-wrong:disabled {
+  border-color: #fb7185;
+  background: #ffe4e6;
+  color: #be123c;
+}
+.regular-lesson-body .regular-sentence-check:disabled { cursor: default; opacity: 1; }
 .regular-lesson-body .regular-attempt-wrap {
   position: relative;
   display: inline-flex;

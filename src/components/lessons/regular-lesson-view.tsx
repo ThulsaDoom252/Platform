@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
 import { IconDots, IconEyeOff, IconPencil, IconPlus } from "@/components/icons";
 import { LessonVocab } from "@/components/lessons/lesson-vocab";
+import { RegularVoiceRecorder } from "@/components/lessons/regular-voice-recorder";
 import {
   InteractiveHomework,
   type InteractiveHomeworkSession,
@@ -313,6 +314,7 @@ export function RegularLessonView({
   const activeKey = active ? regularSectionKey(active.id) : "";
   const showingAnswers = !!active && teacher && answersFor === active.id;
   const nativeVocabulary = !!active && active.tone === "vocab" && words.length > 0;
+  const nativeVoice = active?.voiceExercise ?? null;
 
   useEffect(() => {
     const root = contentRef.current;
@@ -330,14 +332,14 @@ export function RegularLessonView({
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      const next = !active || activeId === "__homework" || nativeVocabulary
+      const next = !active || activeId === "__homework" || nativeVocabulary || nativeVoice
         ? []
         : homeworkCandidates(active, responseRef.current);
       setCandidates(next);
       setCandidateId(next[0]?.exercise.id ?? "");
     });
     return () => cancelAnimationFrame(frame);
-  }, [active, activeId, nativeVocabulary, responseState]);
+  }, [active, activeId, nativeVocabulary, nativeVoice, responseState]);
 
   /* Add checked controls, attempts and teacher notes to the imported lesson body. */
   useEffect(() => {
@@ -348,6 +350,7 @@ export function RegularLessonView({
       !onSaveResponse ||
       showingAnswers ||
       nativeVocabulary ||
+      nativeVoice ||
       activeId === "__homework"
     ) return;
     const cleanups: (() => void)[] = [];
@@ -536,6 +539,13 @@ export function RegularLessonView({
         items = [...list.querySelectorAll<HTMLElement>(":scope > li")];
       }
       items.forEach((item, itemIndex) => {
+        const sentenceCheck = list.classList.contains("sentence-check");
+        const blankEntries: {
+          control: HTMLElement;
+          id: string;
+          responseKey: string;
+          status: "correct" | "locked" | null;
+        }[] = [];
         [...item.querySelectorAll<HTMLElement>(".blank")].forEach((control, controlIndex) => {
           const id = `list-${listIndex + 1}-item-${itemIndex + 1}-blank-${controlIndex + 1}`;
           const responseKey = regularResponseKey(active.id, id);
@@ -546,6 +556,8 @@ export function RegularLessonView({
           control.setAttribute("aria-label", `Answer ${itemIndex + 1}`);
           control.classList.add("regular-answer-control");
           addAttempts(control, responseKey);
+          blankEntries.push({ control, id, responseKey, status });
+          if (sentenceCheck) return;
           const blur = async () => {
             const value = cleanText(control.textContent);
             if (!value || status || control.dataset.busy === "1") return;
@@ -576,6 +588,89 @@ export function RegularLessonView({
             control.removeEventListener("keydown", keydown);
           });
         });
+
+        if (sentenceCheck && blankEntries.length > 0) {
+          const statuses = blankEntries.map((entry) => entry.status);
+          const correct = statuses.every((status) => status === "correct");
+          const locked = statuses.some((status) => status === "locked");
+          const wrongAttempts = Math.max(
+            0,
+            ...blankEntries.map((entry) => regularAttempts(responseRef.current, entry.responseKey).length),
+          );
+          const check = document.createElement("button");
+          check.type = "button";
+          check.disabled = correct || locked;
+          check.className = cn(
+            "regular-sentence-check",
+            correct && "regular-sentence-check-correct",
+            (locked || wrongAttempts > 0) && "regular-sentence-check-wrong",
+          );
+          check.textContent = correct
+            ? "✓ Correct"
+            : locked
+              ? "✕ No attempts left"
+              : wrongAttempts > 0
+                ? `✓ Check · ${3 - wrongAttempts} left`
+                : "✓ Check";
+
+          const submit = async () => {
+            if (check.disabled || check.dataset.busy === "1") return;
+            const missing = blankEntries.find((entry) => !cleanText(entry.control.textContent));
+            if (missing) {
+              missing.control.focus();
+              missing.control.classList.add("regular-answer-wrong-flash");
+              window.setTimeout(() => missing.control.classList.remove("regular-answer-wrong-flash"), 600);
+              return;
+            }
+            check.dataset.busy = "1";
+            check.disabled = true;
+            let anyWrong = false;
+            for (const entry of blankEntries) {
+              const value = cleanText(entry.control.textContent);
+              const result = onSubmitAnswer
+                ? await onSubmitAnswer(active.id, entry.id, value)
+                : await onSaveResponse(entry.responseKey, value).then((saved) => ({
+                    ...saved,
+                    value,
+                    status: null as "correct" | "locked" | null,
+                    attempts: [] as string[],
+                  }));
+              if (result.value !== undefined && !result.error) {
+                applyResult(entry.responseKey, result);
+                anyWrong ||= result.status !== "correct";
+              } else {
+                anyWrong = true;
+              }
+            }
+            delete check.dataset.busy;
+            if (anyWrong) {
+              check.classList.add("regular-sentence-check-wrong", "regular-answer-wrong-flash");
+              check.disabled = false;
+            }
+          };
+          const click = (event: Event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void submit();
+          };
+          check.addEventListener("click", click);
+          item.append(check);
+          blankEntries.forEach(({ control }) => {
+            const keydown = (event: KeyboardEvent) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              void submit();
+            };
+            control.addEventListener("keydown", keydown);
+            cleanups.push(() => {
+              control.removeEventListener("keydown", keydown);
+            });
+          });
+          cleanups.push(() => {
+            check.removeEventListener("click", click);
+            check.remove();
+          });
+        }
 
         [...item.querySelectorAll<HTMLElement>(".tfbox")].forEach((control, controlIndex) => {
           const id = `list-${listIndex + 1}-item-${itemIndex + 1}-tf-${controlIndex + 1}`;
@@ -650,7 +745,7 @@ export function RegularLessonView({
       }
     });
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [active, activeId, nativeVocabulary, onSaveResponse, onSubmitAnswer, responseState, showingAnswers, teacher]);
+  }, [active, activeId, nativeVocabulary, nativeVoice, onSaveResponse, onSubmitAnswer, responseState, showingAnswers, teacher]);
 
   if (!active && activeId !== "__homework") return null;
 
@@ -881,7 +976,7 @@ export function RegularLessonView({
                   </div>
                 </div>
               )}
-              {teacher && active.teacherHtml !== active.studentHtml && !active.teacherOnly && !nativeVocabulary && (
+              {teacher && active.teacherHtml !== active.studentHtml && !active.teacherOnly && !nativeVocabulary && !nativeVoice && (
                 <button
                   type="button"
                   onClick={() => setAnswersFor(showingAnswers ? null : active.id)}
@@ -923,6 +1018,19 @@ export function RegularLessonView({
                 defaultStudentId={defaultStudentId}
               />
             </div>
+          ) : nativeVoice && assignmentId ? (
+            <RegularVoiceRecorder
+              assignmentId={assignmentId}
+              sectionId={active.id}
+              exercise={nativeVoice}
+              teacher={teacher}
+              state={responseState}
+              onStateChange={(next) => {
+                responseRef.current = next;
+                setResponseState(next);
+              }}
+              onSaveResponse={onSaveResponse}
+            />
           ) : (
             <div
               className="regular-lesson-body"

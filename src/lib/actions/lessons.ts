@@ -74,6 +74,8 @@ import {
   regularLessonSection,
   regularStatus,
   regularStatusKey,
+  regularVoiceRecording,
+  regularVoiceRecordingKey,
   type RegularExerciseOverride,
   type RegularLessonSection,
 } from "@/lib/regular-lesson";
@@ -92,6 +94,7 @@ import {
   translateVocabulary,
   type MaterialTranslationLang,
 } from "@/lib/material-translation";
+import { managedUploadPath, removePublicFile } from "@/lib/public-file-store";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -2091,6 +2094,61 @@ export async function submitRegularLessonAnswerAction(
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return { value, status, attempts };
+}
+
+/** Save one native microphone recording for a voice section of a regular lesson. */
+export async function saveRegularVoiceRecordingAction(
+  assignmentId: string,
+  sectionId: string,
+  urlValue: string,
+  durationValue: number,
+  mimeValue: string,
+): Promise<{ error?: string; state?: Record<string, string> }> {
+  const row = await regularAssignmentForUser(String(assignmentId ?? ""));
+  if (!row) return { error: "Урок не найден" };
+  const section = normalizeRegularLessonSections(row.sections)
+    .find((item) => item.id === String(sectionId ?? ""));
+  if (!section?.voiceExercise) return { error: "Голосовое упражнение не найдено" };
+
+  const url = String(urlValue ?? "").trim();
+  const pathname = managedUploadPath(url);
+  if (!pathname?.startsWith(`uploads/lesson-audio/${row.assignment.id}-`)) {
+    return { error: "Некорректная ссылка на запись" };
+  }
+  const durationSeconds = Math.round(Number(durationValue));
+  if (
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds < 1 ||
+    durationSeconds > section.voiceExercise.maxSeconds + 5
+  ) {
+    return { error: "Некорректная длительность записи" };
+  }
+  const mimeType = String(mimeValue ?? "audio/webm").trim().slice(0, 80);
+  if (!/^audio\/(?:webm|ogg|mp4|mpeg|wav|x-m4a)(?:;|$)/i.test(mimeType)) {
+    return { error: "Неподдерживаемый формат записи" };
+  }
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  const previous = regularVoiceRecording(state, section.id);
+  state[regularVoiceRecordingKey(section.id)] = JSON.stringify({
+    url,
+    durationSeconds,
+    mimeType,
+    publishedAt: new Date().toISOString(),
+  });
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  if (previous?.url && previous.url !== url) {
+    await removePublicFile(previous.url, "lesson-audio").catch(() => undefined);
+  }
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { state };
 }
 
 /** Reset attempts and answers for one exercise while preserving teacher notes. */

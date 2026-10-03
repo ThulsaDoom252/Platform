@@ -8,6 +8,8 @@ import {
   regularAnswerMap,
   regularExerciseOverrideKey,
   regularLessonSection,
+  regularVoiceRecording,
+  regularVoiceRecordingKey,
 } from "../src/lib/regular-lesson";
 import { cleanScriptHtml } from "../src/lib/script-html";
 
@@ -124,4 +126,40 @@ test("a personalized exercise override replaces the checked answer", () => {
   };
 
   assert.equal(regularAnswerMap(section, state).get("list-1-item-1-blank-1")?.answer, "like");
+});
+
+test("voice sections and their published recording survive normalization", () => {
+  const [section] = normalizeRegularLessonSections([{
+    id: "speaking",
+    title: "Speaking",
+    tone: "dialogue",
+    studentHtml: "",
+    teacherHtml: "",
+    defaultOpen: false,
+    voiceExercise: {
+      instruction: "Answer in one recording.",
+      prompts: ["What happened?", "What will you do next?"],
+      maxSeconds: 180,
+    },
+  }]);
+  assert.deepEqual(section.voiceExercise, {
+    instruction: "Answer in one recording.",
+    prompts: ["What happened?", "What will you do next?"],
+    maxSeconds: 180,
+  });
+
+  const state = {
+    [regularVoiceRecordingKey(section.id)]: JSON.stringify({
+      url: "https://store.public.blob.vercel-storage.com/uploads/lesson-audio/a.webm",
+      durationSeconds: 42,
+      mimeType: "audio/webm;codecs=opus",
+      publishedAt: "2026-10-03T12:00:00.000Z",
+    }),
+  };
+  assert.deepEqual(regularVoiceRecording(state, section.id), {
+    url: "https://store.public.blob.vercel-storage.com/uploads/lesson-audio/a.webm",
+    durationSeconds: 42,
+    mimeType: "audio/webm;codecs=opus",
+    publishedAt: "2026-10-03T12:00:00.000Z",
+  });
 });

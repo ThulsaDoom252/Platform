@@ -7,6 +7,7 @@ const REGULAR_STATUS_PREFIX = "regular-status:";
 const REGULAR_NOTE_PREFIX = "regular-note:";
 const REGULAR_NOTE_VISIBLE_PREFIX = "regular-note-visible:";
 const REGULAR_EXERCISE_OVERRIDE_PREFIX = "regular-exercise-override:";
+const REGULAR_VOICE_PREFIX = "regular-voice:";
 
 export type RegularAnswerStatus = "correct" | "locked" | null;
 
@@ -32,6 +33,19 @@ export type RegularLessonTone =
   | "dialogue"
   | "teacher";
 
+export type RegularVoiceExercise = {
+  instruction: string;
+  prompts: string[];
+  maxSeconds: number;
+};
+
+export type RegularVoiceRecording = {
+  url: string;
+  durationSeconds: number;
+  mimeType: string;
+  publishedAt: string;
+};
+
 export type RegularLessonSection = {
   id: string;
   title: string;
@@ -40,6 +54,7 @@ export type RegularLessonSection = {
   teacherHtml: string;
   defaultOpen: boolean;
   teacherOnly?: boolean;
+  voiceExercise?: RegularVoiceExercise;
 };
 
 const TONES = new Set<RegularLessonTone>([
@@ -75,6 +90,29 @@ export const regularNoteVisibleKey = (sectionId: string, itemId: string) =>
 
 export const regularExerciseOverrideKey = (sectionId: string, listIndex: number) =>
   `${REGULAR_EXERCISE_OVERRIDE_PREFIX}${sectionId}:${listIndex}`;
+
+export const regularVoiceRecordingKey = (sectionId: string) =>
+  `${REGULAR_VOICE_PREFIX}${sectionId}`;
+
+export function regularVoiceRecording(
+  state: Record<string, string>,
+  sectionId: string,
+): RegularVoiceRecording | null {
+  try {
+    const value = JSON.parse(state[regularVoiceRecordingKey(sectionId)] ?? "null") as
+      | Partial<RegularVoiceRecording>
+      | null;
+    if (!value || typeof value !== "object") return null;
+    const url = String(value.url ?? "").trim();
+    const mimeType = String(value.mimeType ?? "audio/webm").trim().slice(0, 80);
+    const publishedAt = String(value.publishedAt ?? "").trim();
+    const durationSeconds = Math.max(0, Math.min(3_600, Number(value.durationSeconds) || 0));
+    if (!url || (!url.startsWith("/uploads/") && !/^https:\/\//i.test(url))) return null;
+    return { url, durationSeconds, mimeType, publishedAt };
+  } catch {
+    return null;
+  }
+}
 
 export function regularAttempts(state: Record<string, string>, responseKey: string) {
   try {
@@ -227,6 +265,27 @@ export function normalizeRegularLessonSections(value: unknown): RegularLessonSec
     const tone = TONES.has(item.tone as RegularLessonTone)
       ? (item.tone as RegularLessonTone)
       : "exercise";
+    const rawVoice = item.voiceExercise;
+    const voiceExercise = rawVoice && typeof rawVoice === "object"
+      ? (() => {
+          const voice = rawVoice as Record<string, unknown>;
+          const prompts = Array.isArray(voice.prompts)
+            ? voice.prompts
+                .map(String)
+                .map((prompt) => prompt.trim().slice(0, 500))
+                .filter(Boolean)
+                .slice(0, 20)
+            : [];
+          if (prompts.length === 0) return undefined;
+          return {
+            instruction: String(voice.instruction ?? "")
+              .trim()
+              .slice(0, 1_000),
+            prompts,
+            maxSeconds: Math.max(30, Math.min(1_200, Number(voice.maxSeconds) || 600)),
+          } satisfies RegularVoiceExercise;
+        })()
+      : undefined;
     sections.push({
       id,
       title,
@@ -235,6 +294,7 @@ export function normalizeRegularLessonSections(value: unknown): RegularLessonSec
       teacherHtml: cleanScriptHtml(String(item.teacherHtml ?? item.studentHtml ?? "")),
       defaultOpen: item.defaultOpen === true,
       ...(item.teacherOnly === true ? { teacherOnly: true } : {}),
+      ...(voiceExercise ? { voiceExercise } : {}),
     });
   }
 
