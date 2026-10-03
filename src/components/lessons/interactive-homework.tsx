@@ -316,7 +316,7 @@ export function InteractiveHomework({
             )}
           >
             <span aria-hidden>🖍️</span>
-            {t.lessonUnits.highlightMode}
+            {t.interactiveHomework.highlightToggle}
           </button>
           <div className={cn(
             "flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line transition",
