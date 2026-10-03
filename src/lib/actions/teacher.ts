@@ -31,6 +31,7 @@ import {
 import {
   SCHEDULE_FORMAT_TIME_ZONE,
   parseScheduleInput,
+  scheduleDateFromISO,
   scheduleStartOfWeek,
 } from "@/lib/schedule-time";
 import { removePublicFile } from "@/lib/public-file-store";
@@ -747,6 +748,118 @@ export async function deleteLessonAction(formData: FormData) {
 
   revalidatePath("/teacher/script");
   revalidateSchedule(lesson.lesson.studentId);
+}
+
+export type ClearScheduleWeekState = {
+  ok?: boolean;
+  count?: number;
+  error?: string;
+};
+
+/**
+ * Полностью очищает открытую в графике неделю.
+ *
+ * Удаление не должно расходовать баланс: ранее списанные занятия
+ * возвращаются ученикам. Скрипты сохраняются в истории так же, как при
+ * обычном удалении одного урока из его окна.
+ */
+export async function clearScheduleWeekAction(
+  _previous: ClearScheduleWeekState,
+  formData: FormData,
+): Promise<ClearScheduleWeekState> {
+  const session = await requireTeacher();
+  const rawWeekStart = String(formData.get("weekStart") || "");
+  const parsed = scheduleDateFromISO(rawWeekStart);
+  if (!parsed) return { error: "Некорректная неделя" };
+
+  const weekStart = scheduleStartOfWeek(parsed);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+
+  const affectedStudents = new Set<string>();
+  const deletedCount = await db.transaction(async (tx) => {
+    const weekLessons = await tx
+      .select({
+        lesson: lessons,
+        studentName: users.name,
+        script: lessonScripts,
+      })
+      .from(lessons)
+      .innerJoin(users, eq(users.id, lessons.studentId))
+      .leftJoin(lessonScripts, eq(lessonScripts.lessonId, lessons.id))
+      .where(and(gte(lessons.startTime, weekStart), lt(lessons.startTime, weekEnd)));
+
+    if (weekLessons.length === 0) return 0;
+
+    const deletedAt = new Date();
+
+    for (const entry of weekLessons) {
+      const lesson = entry.lesson;
+      affectedStudents.add(lesson.studentId);
+
+      if (lesson.balanceCharged) {
+        const [claimed] = await tx
+          .update(lessons)
+          .set({ balanceCharged: false })
+          .where(and(eq(lessons.id, lesson.id), eq(lessons.balanceCharged, true)))
+          .returning({ id: lessons.id });
+        if (claimed) {
+          await adjustStudentLessonsInTransaction(tx, lesson.studentId, 1);
+        }
+      }
+
+      if (entry.script) {
+        await tx
+          .insert(archivedLessonScripts)
+          .values({
+            originalLessonId: lesson.id,
+            studentId: lesson.studentId,
+            studentName: entry.studentName,
+            startTime: lesson.startTime,
+            durationMinutes: lesson.durationMinutes,
+            html: entry.script.html,
+            style: entry.script.style,
+            cancelReason: lesson.cancelReason,
+            deletedAt,
+            createdAt: entry.script.createdAt,
+            updatedAt: deletedAt,
+          })
+          .onConflictDoUpdate({
+            target: archivedLessonScripts.originalLessonId,
+            set: {
+              html: entry.script.html,
+              style: entry.script.style,
+              cancelReason: lesson.cancelReason,
+              deletedAt,
+              updatedAt: deletedAt,
+            },
+          });
+      }
+
+      await tx.insert(notifications).values({
+        recipientId: lesson.studentId,
+        type: "LESSON_CANCELLED",
+        relatedStudentId: lesson.studentId,
+        relatedLessonId: lesson.id,
+        message: `${session.name} удалил урок ${dtFmt.format(lesson.startTime)} при очистке недели. Урок не списан с баланса.`,
+      });
+    }
+
+    await tx.delete(lessons).where(
+      inArray(
+        lessons.id,
+        weekLessons.map((entry) => entry.lesson.id),
+      ),
+    );
+    return weekLessons.length;
+  });
+
+  revalidatePath("/teacher/script");
+  revalidateSchedule();
+  for (const studentId of affectedStudents) {
+    revalidatePath(`/teacher/students/${studentId}`);
+  }
+  return { ok: true, count: deletedCount };
 }
 
 /** Перенос урока на новую дату и время. */

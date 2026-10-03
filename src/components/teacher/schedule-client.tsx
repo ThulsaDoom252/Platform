@@ -16,10 +16,12 @@ import {
 } from "@/lib/schedule-time";
 import {
   cancelLessonByTeacherAction,
+  clearScheduleWeekAction,
   deleteLessonAction,
   rescheduleLessonAction,
   assignLessonAction,
   type AssignState,
+  type ClearScheduleWeekState,
   type RescheduleState,
 } from "@/lib/actions/teacher";
 import { enterClassFromScheduleAction } from "@/lib/actions/class";
@@ -191,12 +193,17 @@ export function ScheduleClient({
   const [comment, setComment] = useState("");
   const [newStart, setNewStart] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [clearWeekOpen, setClearWeekOpen] = useState(false);
   const { t } = useT();
 
   const [assignState, assignFormAction, assignPending] = useActionState<
     AssignState,
     FormData
   >(assignLessonAction, {});
+  const [clearWeekState, clearWeekFormAction, clearWeekPending] = useActionState<
+    ClearScheduleWeekState,
+    FormData
+  >(clearScheduleWeekAction, {});
 
   /*
    * Ниже — приём React «поправить состояние при смене входных данных»:
@@ -219,6 +226,19 @@ export function ScheduleClient({
     if (assignState.ok && assignState.message) {
       setToast(assignState.message);
       setAssignSlot(null);
+    }
+  }
+
+  const [seenClearWeek, setSeenClearWeek] = useState(clearWeekState);
+  if (seenClearWeek !== clearWeekState) {
+    setSeenClearWeek(clearWeekState);
+    if (clearWeekState.ok) {
+      setClearWeekOpen(false);
+      setToast(
+        fmt(t.schedule.weekCleared, {
+          n: clearWeekState.count ?? 0,
+        }),
+      );
     }
   }
 
@@ -319,7 +339,7 @@ export function ScheduleClient({
               <button
                 type="button"
                 onClick={() => setRevealed([])}
-                className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-surface px-2.5 text-[12px] font-semibold text-muted ring-1 ring-line transition hover:text-content"
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-surface px-2.5 text-[12px] font-semibold text-muted ring-1 ring-line transition hover:text-content"
               >
                 <span aria-hidden>🔒</span>
                 {t.schedule.hideAll}
@@ -330,6 +350,15 @@ export function ScheduleClient({
             )}
           </>
         )}
+        <button
+          type="button"
+          onClick={() => setClearWeekOpen(true)}
+          disabled={lessons.length === 0}
+          className="ml-auto flex h-8 items-center gap-1.5 rounded-lg bg-rose-500/10 px-2.5 text-[12px] font-semibold text-rose-600 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <IconTrash className="h-3.5 w-3.5" />
+          {t.schedule.clearWeek}
+        </button>
       </div>
 
       {/* ---------- Недельная сетка ---------- */}
@@ -596,6 +625,47 @@ export function ScheduleClient({
         )}
       </Modal>
 
+      {/* ---------- Очистка показанной недели ---------- */}
+      <Modal open={clearWeekOpen} onClose={() => setClearWeekOpen(false)}>
+        <form action={clearWeekFormAction} className="p-5 sm:p-6">
+          <input type="hidden" name="weekStart" value={toISODate(days[0])} />
+          <div className="flex items-start gap-3">
+            <span className="tint-rose flex h-11 w-11 shrink-0 items-center justify-center rounded-xl">
+              <IconTrash className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-bold text-content">{t.schedule.clearWeek}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted">
+                {fmt(t.schedule.clearWeekConfirm, { n: lessons.length })}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl bg-surface-2 px-3.5 py-3 text-xs text-muted">
+            {t.schedule.clearWeekHint}
+          </div>
+          {clearWeekState.error && (
+            <p className="mt-3 text-sm text-rose-600">{clearWeekState.error}</p>
+          )}
+          <div className="mt-5 flex gap-2.5">
+            <button
+              type="button"
+              onClick={() => setClearWeekOpen(false)}
+              className="h-11 flex-1 rounded-xl border border-line text-sm font-semibold text-content transition hover:border-accent"
+            >
+              {t.common.cancel}
+            </button>
+            <button
+              type="submit"
+              disabled={clearWeekPending}
+              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:opacity-60"
+            >
+              <IconTrash className="h-4 w-4" />
+              {clearWeekPending ? t.schedule.clearingWeek : t.schedule.clearWeekAction}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Сообщение о результате */}
       {toast && (
         <div className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 lg:bottom-6">
@@ -802,57 +872,56 @@ function EditLessonBody({
           {isPast && (
             <p className="mt-2 text-center text-[11px] text-faint">{t.schedule.pastHint}</p>
           )}
-          {isCancelled && (
-            <form action={deleteLessonAction} className="mt-3">
-              <input type="hidden" name="lessonId" value={lesson.id} />
-              <input type="hidden" name="comment" value={comment} />
-              <label className="mb-3 flex items-start gap-2 rounded-xl bg-orange-500/10 px-3.5 py-3 text-xs text-content">
-                <input type="checkbox" name="deleteScript" className="mt-0.5" />
-                <span>
-                  <span className="block font-semibold">Удалить и скрипт</span>
-                  <span className="mt-0.5 block text-muted">
-                    Если не отмечать, скрипт останется в истории.
-                  </span>
-                </span>
-              </label>
-              <button
-                type="submit"
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 text-sm font-semibold text-white transition hover:bg-rose-500"
-              >
-                <IconTrash className="h-4 w-4" /> {t.schedule.deleteLesson}
-              </button>
-            </form>
-          )}
         </>
-      ) : (
-        <div className="mt-5">
-          <form action={deleteLessonAction}>
-            <input type="hidden" name="lessonId" value={lesson.id} />
-            <input type="hidden" name="comment" value={comment} />
-            <label className="mb-3 flex items-start gap-2 rounded-xl bg-orange-500/10 px-3.5 py-3 text-xs text-content">
-              <input type="checkbox" name="deleteScript" className="mt-0.5" />
-              <span>
-                <span className="block font-semibold">Удалить и скрипт</span>
-                <span className="mt-0.5 block text-muted">
-                  Если не отмечать, урок исчезнет, а скрипт останется в истории оранжевым.
-                </span>
-              </span>
-            </label>
-            <button
-              type="submit"
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 text-sm font-semibold text-white transition hover:bg-rose-500"
-            >
-              <IconTrash className="h-4 w-4" /> {t.schedule.deleteLesson}
-            </button>
-          </form>
-          {lesson.status === "COMPLETED" && (
-            <p className="mt-2 text-center text-[11px] text-faint">
-              {t.schedule.deleteHint}
-            </p>
-          )}
-        </div>
+      ) : null}
+
+      <DeleteLessonForm lessonId={lesson.id} comment={comment} />
+      {lesson.status === "COMPLETED" && (
+        <p className="mt-2 text-center text-[11px] text-faint">
+          {t.schedule.deleteHint}
+        </p>
       )}
     </div>
+  );
+}
+
+function DeleteLessonForm({
+  lessonId,
+  comment,
+}: {
+  lessonId: string;
+  comment: string;
+}) {
+  const { t } = useT();
+
+  return (
+    <form
+      action={deleteLessonAction}
+      className="mt-5 border-t border-line pt-4"
+      onSubmit={(event) => {
+        if (!window.confirm(t.schedule.deleteLessonConfirm)) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <input type="hidden" name="lessonId" value={lessonId} />
+      <input type="hidden" name="comment" value={comment} />
+      <label className="mb-3 flex items-start gap-2 rounded-xl bg-orange-500/10 px-3.5 py-3 text-xs text-content">
+        <input type="checkbox" name="deleteScript" className="mt-0.5" />
+        <span>
+          <span className="block font-semibold">{t.schedule.deleteScript}</span>
+          <span className="mt-0.5 block text-muted">
+            {t.schedule.keepScriptHint}
+          </span>
+        </span>
+      </label>
+      <button
+        type="submit"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 text-sm font-semibold text-white transition hover:bg-rose-500"
+      >
+        <IconTrash className="h-4 w-4" /> {t.schedule.deleteLesson}
+      </button>
+    </form>
   );
 }
 
