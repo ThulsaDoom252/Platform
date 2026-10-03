@@ -18,6 +18,9 @@ export const LESSON_SECTIONS = [
 
 export type LessonSection = (typeof LESSON_SECTIONS)[number];
 
+/** Explicit override for the vocabulary section, which is open by default. */
+export const HIDDEN_VOCAB_OPTION = "lesson:hidden:vocab";
+
 /**
  * Shorts are deliberately compact: vocabulary and lexis lead into one
  * video/transcript flow, followed by discussion questions and homework.
@@ -36,10 +39,11 @@ export function lessonSectionsForKind(kind: string): LessonSection[] {
 }
 
 /**
- * Словник открыт всегда.
+ * Словник открыт по умолчанию.
  *
  * С него урок начинается: пока ученик не разобрал слова, видео и
- * расшифровка для него — шум. Остальное учитель открывает по ходу.
+ * расшифровка для него — шум. Учитель может скрыть и его, а остальное
+ * открывает по ходу.
  */
 export const ALWAYS_OPEN: LessonSection = "vocab";
 
@@ -181,8 +185,11 @@ export function isSection(value: unknown): value is LessonSection {
 
 /** Что ученику сейчас видно. */
 export function openSections(stored: string[] | null | undefined): LessonSection[] {
-  const set = new Set<LessonSection>([ALWAYS_OPEN]);
-  for (const key of stored ?? []) if (isSection(key)) set.add(key);
+  const values = stored ?? [];
+  const set = new Set<LessonSection>(
+    values.includes(HIDDEN_VOCAB_OPTION) ? [] : [ALWAYS_OPEN],
+  );
+  for (const key of values) if (isSection(key)) set.add(key);
   return LESSON_SECTIONS.filter((s) => set.has(s));
 }
 
@@ -190,7 +197,9 @@ export function canSee(
   stored: string[] | null | undefined,
   section: LessonSection,
 ): boolean {
-  return section === ALWAYS_OPEN || (stored ?? []).includes(section);
+  return section === ALWAYS_OPEN
+    ? !(stored ?? []).includes(HIDDEN_VOCAB_OPTION)
+    : (stored ?? []).includes(section);
 }
 
 /**

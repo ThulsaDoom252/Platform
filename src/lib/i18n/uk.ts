@@ -862,6 +862,7 @@ export const uk: Dict = {
     createClassLesson: "Спочатку створи урок у розділі «Уроки»",
     noClassLesson: "У класі поки немає уроку",
     classLessonHint: "Учитель додасть сюди урок із розділу «Уроки».",
+    waitingForSection: "Учитель поки не відкрив жодної секції уроку.",
     classLessonFailed: "Не вдалося завантажити урок.",
   },
   interactiveHomework: {

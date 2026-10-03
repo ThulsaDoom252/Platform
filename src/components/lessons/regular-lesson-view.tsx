@@ -370,7 +370,7 @@ export function RegularLessonView({
   const [localHomeworkPlan, setLocalHomeworkPlan] = useState(homeworkPlan ?? null);
   const contentRef = useRef<HTMLElement | null>(null);
   const homeworkAvailable = !!localHomeworkPlan && !!homeworkSession;
-  const homeworkOpen = teacher || open.includes("homework");
+  const homeworkOpen = open.includes("homework");
   const focusedSectionId = sectionFocus?.section === "homework"
     ? "__homework"
     : sectionFocus?.section
@@ -438,7 +438,12 @@ export function RegularLessonView({
     return () => cancelAnimationFrame(frame);
   }, [focusedSectionId, sectionFocus?.at, sectionFocus?.elementId, sectionFocus?.section]);
 
-  const activeCandidate = available.find((section) => section.id === activeId) ?? first;
+  const activeCandidate = available.find((section) =>
+    section.id === activeId && (
+      teacher ||
+      !lockClosed ||
+      visibleSections.some((visible) => visible.id === section.id)
+    )) ?? first;
   const active = useStableRegularSection(activeCandidate);
   const activeKey = active ? regularSectionKey(active.id) : "";
   const showingAnswers = !!active && teacher && answersFor === active.id;
@@ -1154,7 +1159,9 @@ export function RegularLessonView({
         )}
       </nav>
 
-      {activeId === "__homework" && localHomeworkPlan && homeworkSession ? (
+      {activeId === "__homework" &&
+      (teacher || !lockClosed || homeworkOpen || sectionFocus?.section === "homework") &&
+      localHomeworkPlan && homeworkSession ? (
         <div data-lesson-highlight-scope="regular-homework">
           <InteractiveHomework
             plan={localHomeworkPlan}
@@ -1369,7 +1376,11 @@ export function RegularLessonView({
             />
           )}
         </article>
-      ) : null}
+      ) : (
+        <div className="rounded-2xl border border-dashed border-line bg-surface-2 px-5 py-10 text-center text-sm font-semibold text-muted">
+          {t.lessonUnits.waitingForSection}
+        </div>
+      )}
 
       {editingExercise && (
         <div

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   alphaKey,
   BRITISH_OPTION,
+  HIDDEN_VOCAB_OPTION,
   canSee,
   lessonSectionNavigation,
   categoryKey,
@@ -42,14 +43,19 @@ import {
 
 // ---------- что ученику видно ----------
 
-test("словник открыт всегда, даже если его не открывали", () => {
+test("словник открыт по умолчанию, даже если его не открывали", () => {
   /*
-   * С него урок и начинается. Забытая галочка не должна оставлять
-   * ученика перед пустым экраном.
+   * С него урок и начинается. Отдельное явное скрытие проверяется ниже.
    */
   assert.deepEqual(openSections(null), ["vocab"]);
   assert.deepEqual(openSections([]), ["vocab"]);
   assert.equal(canSee([], "vocab"), true);
+});
+
+test("учитель может явно скрыть словник, не меняя его состояние по умолчанию", () => {
+  assert.deepEqual(openSections([HIDDEN_VOCAB_OPTION]), []);
+  assert.equal(canSee([HIDDEN_VOCAB_OPTION], "vocab"), false);
+  assert.deepEqual(openSections([]), ["vocab"]);
 });
 
 test("остальные секции закрыты, пока их не открыли", () => {

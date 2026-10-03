@@ -203,7 +203,10 @@ export function LessonView({
   const slots: LessonSection[] = [];
   for (let i = 0; i < shown; i++) {
     const wanted = picked[i];
-    const fallback = selectable.filter((s) => !slots.includes(s))[0] ?? selectable[0] ?? open[0];
+    const fallback = selectable.filter((s) => !slots.includes(s))[0] ??
+      selectable[0] ??
+      forcedSection ??
+      open[0];
     const allowed = !!wanted && (
       selectable.includes(wanted) || wanted === forcedSection
     );
@@ -288,6 +291,11 @@ export function LessonView({
 
   return (
     <div className="flex flex-col gap-3">
+      {visibleSlotCount === 0 && (
+        <div className="rounded-2xl border border-dashed border-line bg-surface-2 px-5 py-10 text-center text-sm font-semibold text-muted">
+          {t.lessonUnits.waitingForSection}
+        </div>
+      )}
       {/* Сколько окон. Показываем, только когда есть что раскладывать. */}
       {visibleSlotCount > 1 && (
         <div className="hidden items-center gap-1.5 lg:flex">
@@ -325,14 +333,13 @@ export function LessonView({
           shown === 4 && "lg:grid-cols-2 xl:grid-cols-4",
         )}
       >
-        {slots.map((section, at) => (
+        {visibleSlotCount > 0 && slots.map((section, at) => (
           <div key={at} className="flex min-w-0 flex-col gap-2">
             {/* Свои вкладки у каждого окна: в нём выбирают, что показать. */}
             <div className="flex flex-wrap gap-1 rounded-2xl bg-surface p-1 ring-1 ring-line">
               {tabSections.map((key) => {
                 const hidden = closed?.includes(key);
                 const unavailable = !!hidden && lockClosed;
-                const visibilityLocked = key === "vocab";
                 return (
                   <div
                     key={key}
@@ -369,7 +376,7 @@ export function LessonView({
                     {teacher && onSectionVisibilityChange && (
                       <button
                         type="button"
-                        disabled={sectionVisibilityBusy || visibilityLocked}
+                        disabled={sectionVisibilityBusy}
                         onClick={() => onSectionVisibilityChange(key, !!hidden)}
                         title={hidden ? t.lessonUnits.openForStudent : t.lessonUnits.hideFromStudent}
                         aria-label={`${hidden ? t.lessonUnits.openForStudent : t.lessonUnits.hideFromStudent}: ${LABEL[key]}`}
@@ -379,7 +386,6 @@ export function LessonView({
                           section === key
                             ? "border-white/20 text-white/90 hover:bg-white/10"
                             : "border-line text-accent hover:bg-accent-soft",
-                          visibilityLocked && "opacity-60",
                         )}
                       >
                         {hidden

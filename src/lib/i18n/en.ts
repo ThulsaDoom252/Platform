@@ -789,6 +789,7 @@ export const en = {
     createClassLesson: "Create a lesson in Lessons first",
     noClassLesson: "No lesson in class yet",
     classLessonHint: "The teacher will add a lesson here from Lessons.",
+    waitingForSection: "The teacher has not opened a lesson section yet.",
     classLessonFailed: "Could not load the lesson.",
   },
   interactiveHomework: {

@@ -33,6 +33,7 @@ import { sanitizeBlocks, type RuleBlock } from "@/lib/rule-blocks";
 import {
   BRITISH_OPTION,
   FOCUS_SLOT,
+  HIDDEN_VOCAB_OPTION,
   isLessonVocabularyRevealOption,
   isLessonHighlightKey,
   isWordFocusKey,
@@ -1309,7 +1310,7 @@ export async function myLessonsAction(): Promise<LessonAssignmentCard[]> {
   return session.role === "STUDENT" ? cardsFor(session.userId) : [];
 }
 
-/** Открыть или закрыть секцию ученику. Словник закрыть нельзя. */
+/** Открыть или закрыть секцию ученику. Словник открыт по умолчанию. */
 export async function openSectionAction(
   assignmentId: string,
   section: string,
@@ -1338,11 +1339,14 @@ export async function openSectionAction(
     if (!lessonSectionsForKind(row.kind).includes(section)) {
       return { error: "Этой секции нет в формате урока" };
     }
-    if (section === "vocab") return { error: "Словник открыт всегда" };
   }
 
   const current = new Set(row.openSections ?? []);
-  if (open) current.add(section);
+  if (row.kind !== "REGULAR" && section === "vocab") {
+    current.delete("vocab");
+    if (open) current.delete(HIDDEN_VOCAB_OPTION);
+    else current.add(HIDDEN_VOCAB_OPTION);
+  } else if (open) current.add(section);
   else current.delete(section);
 
   await db
