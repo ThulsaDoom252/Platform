@@ -92,6 +92,7 @@ import {
   homeworkFocusTarget,
   homeworkPlanForAssignment,
   homeworkPlanOverrideKey,
+  homeworkRemovedAt,
   homeworkReviewedAtKey,
   homeworkSubmittedAtKey,
   homeworkValueKey,
@@ -2467,7 +2468,13 @@ export async function assignedLessonAction(
     lesson.interactiveHomework,
     row.a.answers ?? {},
   );
-  if (session.role === "STUDENT" && lesson.interactiveHomework) {
+  const homeworkWasRemoved = session.role === "STUDENT" &&
+    context !== "class" &&
+    Boolean(homeworkRemovedAt(row.a.answers ?? {}));
+  if (homeworkWasRemoved) {
+    lesson.interactiveHomework = null;
+    lesson.homework = [];
+  } else if (session.role === "STUDENT" && lesson.interactiveHomework) {
     const visiblePlan = {
       ...lesson.interactiveHomework,
       exercises: lesson.interactiveHomework.exercises.filter(

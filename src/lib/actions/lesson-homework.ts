@@ -8,6 +8,8 @@ import { lessonAssignments, lessons, lessonUnits, notifications, users } from "@
 import { getSession } from "@/lib/session";
 import { scheduleNow } from "@/lib/schedule-time";
 import { translateShortTexts, type MaterialTranslationLang } from "@/lib/material-translation";
+import { removePublicFile } from "@/lib/public-file-store";
+import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-lesson";
 import {
   findHomeworkItem,
   assignedInteractiveHomework,
@@ -26,6 +28,8 @@ import {
   homeworkNoteVisibleKey,
   homeworkProgress,
   homeworkReaction,
+  homeworkRemovedAt,
+  homeworkRemovedAtKey,
   homeworkPlanForAssignment,
   homeworkPlanEditIssue,
   homeworkPlanOverrideKey,
@@ -38,6 +42,7 @@ import {
   homeworkTextSourceValue,
   homeworkTextTokens,
   homeworkTranslationLanguage,
+  homeworkVoiceRecordingTarget,
   homeworkStarted,
   homeworkValueKey,
   interactiveHomeworkFromEntries,
@@ -47,6 +52,7 @@ import {
   setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
+  withoutAssignedHomeworkState,
   withoutHomeworkExerciseState,
   type HomeworkHighlightColor,
   type HomeworkReaction,
@@ -226,6 +232,7 @@ export async function assignInteractiveHomeworkAction(
   state[homeworkPlanOverrideKey()] = JSON.stringify(row.plan);
   state[homeworkAssignedAtKey()] = assignedAt;
   state[homeworkAssignedExercisesKey()] = JSON.stringify(selected);
+  delete state[homeworkRemovedAtKey()];
   delete state[homeworkSubmittedAtKey()];
   delete state[homeworkReviewedAtKey()];
 
@@ -239,6 +246,50 @@ export async function assignInteractiveHomeworkAction(
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   revalidatePath("/teacher/homeworks");
   return { assignedAt, exerciseIds: selected };
+}
+
+/** Remove one student's assigned homework without touching the lesson template. */
+export async function deleteStudentHomeworkAssignmentAction(
+  assignmentId: string,
+): Promise<{ error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithOptionalPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const current = row.assignment.answers ?? {};
+  const recordingUrls: string[] = [];
+  const recordingKeys: string[] = [];
+  for (const exercise of row.plan?.exercises ?? []) {
+    if (exercise.kind !== "question-audio") continue;
+    for (const item of exercise.items) {
+      const target = homeworkVoiceRecordingTarget(item.id);
+      const recording = regularVoiceRecording(current, target);
+      if (recording?.url) recordingUrls.push(recording.url);
+      recordingKeys.push(regularVoiceRecordingKey(target));
+    }
+  }
+
+  const state = withoutAssignedHomeworkState(current);
+  for (const key of recordingKeys) delete state[key];
+  state[homeworkRemovedAtKey()] = new Date().toISOString();
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  await Promise.all(
+    recordingUrls.map((url) => removePublicFile(url, "lesson-audio").catch(() => undefined)),
+  );
+  revalidatePath("/teacher/homeworks");
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return {};
 }
 
 /** Сохранить отдельную версию домашки только для этого закрепления ученика. */
@@ -859,6 +910,7 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
 
   return rows.flatMap((row): TeacherHomeworkAssignmentCard[] => {
     const state = row.assignment.answers ?? {};
+    if (homeworkRemovedAt(state)) return [];
     const plan = homeworkPlanForAssignment(interactiveHomeworkFromEntries(row.homework), state);
     const legacy = legacyHomeworkFromEntries(row.homework);
     if (!plan && legacy.length === 0) return [];
@@ -910,6 +962,7 @@ export async function myInteractiveHomeworkAction(): Promise<HomeworkAssignmentC
 
   return rows.flatMap((row): HomeworkAssignmentCard[] => {
     const state = row.assignment.answers ?? {};
+    if (homeworkRemovedAt(state)) return [];
     const plan = homeworkPlanForAssignment(interactiveHomeworkFromEntries(row.homework), state);
     const legacy = legacyHomeworkFromEntries(row.homework);
     if (!plan && legacy.length === 0) return [];

@@ -4,6 +4,7 @@ import {
   HomeworkBackgroundToggle,
   HomeworkStatusSurface,
 } from "@/components/teacher/homework-status-surface";
+import { DeleteStudentHomeworkButton } from "@/components/teacher/delete-student-homework-button";
 import {
   IconCalendar,
   IconCap,
@@ -383,6 +384,11 @@ function HomeworkCard({
     submitted: string;
     inProgress: string;
     notStarted: string;
+    deleteHomework: string;
+    deleteHomeworkConfirm: string;
+    deletingHomework: string;
+    deleteHomeworkError: string;
+    cancelDelete: string;
   };
   assignedDateFormat: Intl.DateTimeFormat;
   lessonDateFormat: Intl.DateTimeFormat;
@@ -390,48 +396,53 @@ function HomeworkCard({
   const state = teacherHomeworkOverviewState(item);
   return (
     <HomeworkStatusSurface state={state}>
-      <Link
-        href={`/teacher/homeworks/${item.id}`}
-        className="group flex flex-col gap-4 px-4 py-4 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <Avatar
-            name={item.studentName}
-            src={item.studentAvatarUrl}
-            className="h-11 w-11 shrink-0 text-sm"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-sm font-black text-content">{item.title}</h2>
-              <Status state={state} labels={labels} />
-            </div>
-            <p className="truncate text-xs font-semibold text-muted">{item.homeworkTitle}</p>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-faint">
-              <span className="inline-flex items-center gap-1">
-                <IconCalendar className="h-3.5 w-3.5" />
-                {labels.assigned}: {assignedDateFormat.format(new Date(item.assignedAt))}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <IconClock className="h-3.5 w-3.5" />
-                {labels.nextLesson}: {item.nextLessonAt
-                  ? lessonDateFormat.format(new Date(item.nextLessonAt))
-                  : labels.noNextLesson}
-              </span>
+      <div className="relative">
+        <Link
+          href={`/teacher/homeworks/${item.id}`}
+          className="group flex flex-col gap-4 px-4 py-4 pr-16 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-16"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <Avatar
+              name={item.studentName}
+              src={item.studentAvatarUrl}
+              className="h-11 w-11 shrink-0 text-sm"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-sm font-black text-content">{item.title}</h2>
+                <Status state={state} labels={labels} />
+              </div>
+              <p className="truncate text-xs font-semibold text-muted">{item.homeworkTitle}</p>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-faint">
+                <span className="inline-flex items-center gap-1">
+                  <IconCalendar className="h-3.5 w-3.5" />
+                  {labels.assigned}: {assignedDateFormat.format(new Date(item.assignedAt))}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <IconClock className="h-3.5 w-3.5" />
+                  {labels.nextLesson}: {item.nextLessonAt
+                    ? lessonDateFormat.format(new Date(item.nextLessonAt))
+                    : labels.noNextLesson}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <ProgressPill label={labels.required} done={item.requiredDone} total={item.requiredTotal} />
-          {item.bonusTotal > 0 && (
-            <ProgressPill label={labels.bonuses} done={item.bonusDone} total={item.bonusTotal} />
-          )}
-          <span className="ml-auto flex h-9 items-center gap-1 rounded-xl bg-accent px-3 text-xs font-black text-white shadow-sm transition group-hover:brightness-95 sm:ml-2">
-            {labels.check}
-            <IconChevronRight className="h-4 w-4" />
-          </span>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <ProgressPill label={labels.required} done={item.requiredDone} total={item.requiredTotal} />
+            {item.bonusTotal > 0 && (
+              <ProgressPill label={labels.bonuses} done={item.bonusDone} total={item.bonusTotal} />
+            )}
+            <span className="ml-auto flex h-9 items-center gap-1 rounded-xl bg-accent px-3 text-xs font-black text-white shadow-sm transition group-hover:brightness-95 sm:ml-2">
+              {labels.check}
+              <IconChevronRight className="h-4 w-4" />
+            </span>
+          </div>
+        </Link>
+        <div className="absolute right-3 top-3 z-10">
+          <DeleteStudentHomeworkButton assignmentId={item.id} labels={labels} />
         </div>
-      </Link>
+      </div>
     </HomeworkStatusSurface>
   );
 }

@@ -18,6 +18,8 @@ import {
   homeworkItemFocusId,
   homeworkProgress,
   homeworkReaction,
+  homeworkRemovedAt,
+  homeworkRemovedAtKey,
   homeworkReviewedAt,
   homeworkReviewedAtKey,
   homeworkPlanForAssignment,
@@ -33,6 +35,7 @@ import {
   setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
+  withoutAssignedHomeworkState,
   withoutHomeworkExerciseState,
   type InteractiveHomeworkPlan,
 } from "../src/lib/lesson-homework";
@@ -352,6 +355,23 @@ test("удаление упражнения очищает только его �
   assert.equal(next[homeworkAttemptsKey("fill-one")], undefined);
   assert.equal(next[homeworkExerciseHiddenKey(exercise.id)], undefined);
   assert.equal(next.untouched, "keep");
+});
+
+test("удаление выданной домашки очищает hw-данные, но сохраняет ответы урока", () => {
+  const removedAt = "2026-10-04T12:00:00.000Z";
+  const next = withoutAssignedHomeworkState({
+    [homeworkAssignedAtKey()]: "2026-10-03T12:00:00.000Z",
+    [homeworkPlanOverrideKey()]: JSON.stringify(plan),
+    [homeworkValueKey("fill-one")]: "got to",
+    "regular-answer:practice:item-1": "kept lesson answer",
+  });
+  next[homeworkRemovedAtKey()] = removedAt;
+
+  assert.equal(next[homeworkAssignedAtKey()], undefined);
+  assert.equal(next[homeworkPlanOverrideKey()], undefined);
+  assert.equal(next[homeworkValueKey("fill-one")], undefined);
+  assert.equal(next["regular-answer:practice:item-1"], "kept lesson answer");
+  assert.equal(homeworkRemovedAt(next), removedAt);
 });
 
 test("правка вопросов не блокируется неполными переводами из старой домашки", () => {

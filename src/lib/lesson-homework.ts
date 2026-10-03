@@ -191,6 +191,7 @@ const REVIEWED_AT = "hw:reviewed-at";
 const ASSIGNED_AT = "hw:assigned-at";
 const ASSIGNED_EXERCISES = "hw:assigned-exercises";
 const PLAN_OVERRIDE = "hw:plan-override";
+const REMOVED_AT = "hw:removed-at";
 const HOMEWORK_VOICE_TARGET_PREFIX = "homework:";
 
 export const homeworkValueKey = (id: string) => `${VALUE}${id}`;
@@ -204,6 +205,7 @@ export const homeworkReviewedAtKey = () => REVIEWED_AT;
 export const homeworkAssignedAtKey = () => ASSIGNED_AT;
 export const homeworkAssignedExercisesKey = () => ASSIGNED_EXERCISES;
 export const homeworkPlanOverrideKey = () => PLAN_OVERRIDE;
+export const homeworkRemovedAtKey = () => REMOVED_AT;
 export const homeworkVoiceRecordingTarget = (itemId: string) =>
   `${HOMEWORK_VOICE_TARGET_PREFIX}${itemId}`;
 
@@ -227,6 +229,21 @@ export function homeworkReviewedAt(state: HomeworkStoredState) {
 
 export function homeworkAssignedAt(state: HomeworkStoredState) {
   return state[ASSIGNED_AT] || null;
+}
+
+export function homeworkRemovedAt(state: HomeworkStoredState) {
+  return state[REMOVED_AT] || null;
+}
+
+/** Clear only homework data while preserving answers from the lesson itself. */
+export function withoutAssignedHomeworkState(
+  state: HomeworkStoredState,
+): HomeworkStoredState {
+  const next = { ...state };
+  for (const key of Object.keys(next)) {
+    if (key.startsWith("hw:")) delete next[key];
+  }
+  return next;
 }
 
 /** Индивидуальная копия домашки, сохранённая внутри закрепления ученика. */
