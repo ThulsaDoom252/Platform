@@ -52,6 +52,41 @@ const cleanText = (value: string | null | undefined) =>
     .replace(/\s+([,.!?;:])/g, "$1")
     .trim();
 
+const sameResponseState = (
+  left: Record<string, string>,
+  right: Record<string, string>,
+) => {
+  if (left === right) return true;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every(
+    (key) => left[key] === right[key],
+  );
+};
+
+const regularSectionSignature = (section: RegularLessonSection | undefined) =>
+  section
+    ? JSON.stringify([
+        section.id,
+        section.title,
+        section.tone,
+        section.studentHtml,
+        section.teacherHtml,
+        section.defaultOpen,
+        section.teacherOnly ?? false,
+        section.voiceExercise ?? null,
+      ])
+    : "";
+
+/** Keep polling from replacing an unchanged section object and rewiring its live inputs. */
+function useStableRegularSection(section: RegularLessonSection | undefined) {
+  const signature = regularSectionSignature(section);
+  // The class polls the same JSON payload. Depend on its content signature so
+  // an equal refetch does not replace the object that owns the live controls.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => section, [signature]);
+}
+
 const safeId = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52);
 
@@ -265,6 +300,9 @@ export function RegularLessonView({
   const [focused, setFocused] = useState<{ section: string; elementId: string } | null>(null);
   const [responseState, setResponseState] = useState(responses);
   const responseRef = useRef(responses);
+  const receivedResponsesRef = useRef(responses);
+  const saveResponseRef = useRef(onSaveResponse);
+  const submitAnswerRef = useRef(onSubmitAnswer);
   const [candidates, setCandidates] = useState<HomeworkCandidate[]>([]);
   const [candidateId, setCandidateId] = useState("");
   const [exerciseMenu, setExerciseMenu] = useState(false);
@@ -285,9 +323,27 @@ export function RegularLessonView({
       : null;
 
   useEffect(() => {
+    saveResponseRef.current = onSaveResponse;
+    submitAnswerRef.current = onSubmitAnswer;
+  }, [onSaveResponse, onSubmitAnswer]);
+
+  useEffect(() => {
+    if (sameResponseState(receivedResponsesRef.current, responses)) return;
+    receivedResponsesRef.current = responses;
     const frame = requestAnimationFrame(() => {
-      responseRef.current = responses;
-      setResponseState(responses);
+      const focusedControl = document.activeElement instanceof HTMLElement &&
+        contentRef.current?.contains(document.activeElement)
+        ? document.activeElement
+        : null;
+      const focusedKey = focusedControl?.dataset.responseKey;
+      const next = { ...responses };
+      // A class poll may bring a real change for another answer while this one
+      // is still being typed. Keep the unfinished local draft in that case.
+      if (focusedKey && responseRef.current[focusedKey] !== undefined) {
+        next[focusedKey] = responseRef.current[focusedKey];
+      }
+      responseRef.current = next;
+      setResponseState(next);
     });
     return () => cancelAnimationFrame(frame);
   }, [responses]);
@@ -310,7 +366,8 @@ export function RegularLessonView({
     return () => cancelAnimationFrame(frame);
   }, [focusedSectionId, sectionFocus?.at, sectionFocus?.elementId, sectionFocus?.section]);
 
-  const active = available.find((section) => section.id === activeId) ?? first;
+  const activeCandidate = available.find((section) => section.id === activeId) ?? first;
+  const active = useStableRegularSection(activeCandidate);
   const activeKey = active ? regularSectionKey(active.id) : "";
   const showingAnswers = !!active && teacher && answersFor === active.id;
   const nativeVocabulary = !!active && active.tone === "vocab" && words.length > 0;
@@ -347,7 +404,7 @@ export function RegularLessonView({
     if (
       !root ||
       !active ||
-      !onSaveResponse ||
+      !saveResponseRef.current ||
       showingAnswers ||
       nativeVocabulary ||
       nativeVoice ||
@@ -357,7 +414,7 @@ export function RegularLessonView({
     const save = async (key: string, value: string) => {
       responseRef.current = { ...responseRef.current, [key]: value };
       setResponseState(responseRef.current);
-      return onSaveResponse?.(key, value);
+      return saveResponseRef.current?.(key, value);
     };
     const read = (responseId: string) => {
       const key = regularResponseKey(active.id, responseId);
@@ -550,21 +607,33 @@ export function RegularLessonView({
           const id = `list-${listIndex + 1}-item-${itemIndex + 1}-blank-${controlIndex + 1}`;
           const responseKey = regularResponseKey(active.id, id);
           const status = regularStatus(responseRef.current, responseKey);
-          control.textContent = read(id);
+          const storedValue = read(id);
+          if (control.textContent !== storedValue) control.textContent = storedValue;
           control.contentEditable = status ? "false" : "true";
           control.setAttribute("role", "textbox");
           control.setAttribute("aria-label", `Answer ${itemIndex + 1}`);
+          control.dataset.responseKey = responseKey;
           control.classList.add("regular-answer-control");
           addAttempts(control, responseKey);
           blankEntries.push({ control, id, responseKey, status });
-          if (sentenceCheck) return;
+          const input = () => {
+            responseRef.current = {
+              ...responseRef.current,
+              [responseKey]: control.textContent ?? "",
+            };
+          };
+          control.addEventListener("input", input);
+          if (sentenceCheck) {
+            cleanups.push(() => control.removeEventListener("input", input));
+            return;
+          }
           const blur = async () => {
             const value = cleanText(control.textContent);
             if (!value || status || control.dataset.busy === "1") return;
             control.dataset.busy = "1";
-            const result = onSubmitAnswer
-              ? await onSubmitAnswer(active.id, id, value)
-              : await onSaveResponse(responseKey, value).then((saved) => ({
+            const result = submitAnswerRef.current
+              ? await submitAnswerRef.current(active.id, id, value)
+              : await saveResponseRef.current!(responseKey, value).then((saved) => ({
                   ...saved,
                   value,
                   status: null as "correct" | "locked" | null,
@@ -584,6 +653,7 @@ export function RegularLessonView({
           control.addEventListener("blur", blur);
           control.addEventListener("keydown", keydown);
           cleanups.push(() => {
+            control.removeEventListener("input", input);
             control.removeEventListener("blur", blur);
             control.removeEventListener("keydown", keydown);
           });
@@ -627,9 +697,9 @@ export function RegularLessonView({
             let anyWrong = false;
             for (const entry of blankEntries) {
               const value = cleanText(entry.control.textContent);
-              const result = onSubmitAnswer
-                ? await onSubmitAnswer(active.id, entry.id, value)
-                : await onSaveResponse(entry.responseKey, value).then((saved) => ({
+              const result = submitAnswerRef.current
+                ? await submitAnswerRef.current(active.id, entry.id, value)
+                : await saveResponseRef.current!(entry.responseKey, value).then((saved) => ({
                     ...saved,
                     value,
                     status: null as "correct" | "locked" | null,
@@ -695,9 +765,9 @@ export function RegularLessonView({
           const choose = async (value: string) => {
             if (status || control.dataset.busy === "1") return;
             control.dataset.busy = "1";
-            const result = onSubmitAnswer
-              ? await onSubmitAnswer(active.id, id, value)
-              : await onSaveResponse(responseKey, value).then((saved) => ({
+            const result = submitAnswerRef.current
+              ? await submitAnswerRef.current(active.id, id, value)
+              : await saveResponseRef.current!(responseKey, value).then((saved) => ({
                   ...saved,
                   value,
                   status: null as "correct" | "locked" | null,
@@ -745,7 +815,7 @@ export function RegularLessonView({
       }
     });
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [active, activeId, nativeVocabulary, nativeVoice, onSaveResponse, onSubmitAnswer, responseState, showingAnswers, teacher]);
+  }, [active, activeId, nativeVocabulary, nativeVoice, responseState, showingAnswers, teacher]);
 
   if (!active && activeId !== "__homework") return null;
 
