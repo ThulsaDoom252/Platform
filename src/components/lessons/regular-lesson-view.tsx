@@ -294,6 +294,7 @@ export function RegularLessonView({
   vocabularyHighlights = {},
   vocabularyFocus,
   onPickVocabulary,
+  showBritish = false,
   canRevealVocabulary = true,
   vocabularyReveal,
   onVocabularyRevealChange,
@@ -327,6 +328,7 @@ export function RegularLessonView({
   vocabularyHighlights?: Record<string, string>;
   vocabularyFocus?: string | null;
   onPickVocabulary?: (key: string) => void;
+  showBritish?: boolean;
   canRevealVocabulary?: boolean;
   vocabularyReveal?: LessonVocabularyReveal;
   onVocabularyRevealChange?: (next: LessonVocabularyReveal) => void;
@@ -1086,15 +1088,18 @@ export function RegularLessonView({
       </nav>
 
       {activeId === "__homework" && localHomeworkPlan && homeworkSession ? (
-        <InteractiveHomework
-          plan={localHomeworkPlan}
-          session={homeworkSession}
-          focusId={sectionFocus?.section === "homework" ? sectionFocus.elementId : null}
-          onFocus={onFocusHomework}
-        />
+        <div data-lesson-highlight-scope="regular-homework">
+          <InteractiveHomework
+            plan={localHomeworkPlan}
+            session={homeworkSession}
+            focusId={sectionFocus?.section === "homework" ? sectionFocus.elementId : null}
+            onFocus={onFocusHomework}
+          />
+        </div>
       ) : active ? (
         <article
           ref={contentRef}
+          data-lesson-highlight-scope={`regular-${active.id}`}
           className={cn(
             "regular-lesson-content",
             `regular-tone-${active.tone}`,
@@ -1109,7 +1114,7 @@ export function RegularLessonView({
             >
               {active.title}
             </h2>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2" data-no-lesson-highlight>
               {teacher && candidates.length > 0 && assignmentId && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   {candidates.length > 1 && (
@@ -1262,6 +1267,7 @@ export function RegularLessonView({
                 highlights={vocabularyHighlights}
                 focus={vocabularyFocus}
                 onPick={onPickVocabulary}
+                showBritish={showBritish}
                 canReveal={canRevealVocabulary}
                 revealState={vocabularyReveal}
                 onRevealStateChange={onVocabularyRevealChange}

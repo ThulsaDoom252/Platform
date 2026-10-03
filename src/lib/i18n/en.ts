@@ -776,7 +776,7 @@ export const en = {
     focusElement: "Focus the student on this element",
     focusWordHint: "Click a word to focus the student on it",
     highlightMode: "Highlight mode",
-    highlightModeHint: "Click words or mark whole lines — highlights are saved",
+    highlightModeHint: "Click any word in any lesson section — highlights are saved",
     highlightYellow: "Yellow highlight",
     highlightGreen: "Green highlight",
     highlightPhrase: "Line",

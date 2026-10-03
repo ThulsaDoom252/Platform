@@ -25,6 +25,7 @@ import {
   speakerTint,
   speakersOf,
   GREEN_HIGHLIGHT,
+  RED_HIGHLIGHT,
   type HighlightColor,
   type LessonSection,
   type LessonVocabularyReveal,
@@ -359,7 +360,10 @@ export function LessonView({
               })}
             </div>
 
-            <div className="min-h-0">
+            <div
+              className="min-h-0"
+              data-lesson-highlight-scope={`section-${section}`}
+            >
               {section === "vocab" && (
                 <LessonVocab
                   words={lesson.words}
@@ -627,6 +631,8 @@ function Transcript({
               highlightMode && "pr-24",
               phraseMarked === GREEN_HIGHLIGHT
                 ? "bg-emerald-300 ring-emerald-500/70"
+                : phraseMarked === RED_HIGHLIGHT
+                  ? "bg-rose-300 ring-rose-500/70"
                 : phraseMarked && "bg-yellow-300 ring-yellow-500/70",
             )}
           >
@@ -667,10 +673,14 @@ function Transcript({
                       highlightMode
                         ? highlightColor === GREEN_HIGHLIGHT
                           ? "hover:bg-emerald-200"
-                          : "hover:bg-yellow-200"
+                          : highlightColor === RED_HIGHLIGHT
+                            ? "hover:bg-rose-200"
+                            : "hover:bg-yellow-200"
                         : onPick && "hover:bg-accent-soft",
                       wMark === GREEN_HIGHLIGHT
                         ? "bg-emerald-300 text-slate-950 ring-1 ring-emerald-500/70"
+                        : wMark === RED_HIGHLIGHT
+                          ? "bg-rose-300 text-slate-950 ring-1 ring-rose-500/70"
                         : wMark && "bg-yellow-300 text-slate-950 ring-1 ring-yellow-500/70",
                       focus === wKey && "ring-2 ring-accent",
                       part.bold && "font-extrabold",
@@ -691,10 +701,14 @@ function Transcript({
                   "absolute right-2 top-2 flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-bold ring-1 transition",
                   phraseMarked === GREEN_HIGHLIGHT
                     ? "bg-emerald-400 text-slate-950 ring-emerald-600"
+                    : phraseMarked === RED_HIGHLIGHT
+                      ? "bg-rose-400 text-slate-950 ring-rose-600"
                     : phraseMarked
                       ? "bg-yellow-400 text-slate-950 ring-yellow-600"
-                      : highlightColor === GREEN_HIGHLIGHT
-                        ? "bg-surface-2 text-muted ring-line hover:bg-emerald-200 hover:text-slate-950"
+                    : highlightColor === GREEN_HIGHLIGHT
+                      ? "bg-surface-2 text-muted ring-line hover:bg-emerald-200 hover:text-slate-950"
+                      : highlightColor === RED_HIGHLIGHT
+                        ? "bg-surface-2 text-muted ring-line hover:bg-rose-200 hover:text-slate-950"
                         : "bg-surface-2 text-muted ring-line hover:bg-yellow-200 hover:text-slate-950",
                 )}
               >

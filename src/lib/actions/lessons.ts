@@ -34,7 +34,7 @@ import {
   BRITISH_OPTION,
   FOCUS_SLOT,
   isLessonVocabularyRevealOption,
-  isDialogueHighlightKey,
+  isLessonHighlightKey,
   isWordFocusKey,
   isSection,
   normalizeLessonHighlights,
@@ -46,7 +46,7 @@ import {
   parseKey,
   parseTranscript,
   selectLexisGroup,
-  toggleDialogueHighlight,
+  toggleLessonHighlight,
   isHighlightColor,
   type HighlightColor,
   type LessonSection,
@@ -1851,16 +1851,16 @@ export async function selectLessonLexisGroupAction(
   return {};
 }
 
-/** Добавить или снять одно из независимых жёлтых выделений диалога. */
-export async function highlightLessonDialogueAction(
+/** Добавить или снять цветное выделение любого слова в выданном уроке. */
+export async function highlightLessonTextAction(
   assignmentId: string,
   key: string,
   color: HighlightColor = "yellow",
 ): Promise<{ error?: string }> {
   const session = await requireTeacher();
   const highlightKey = String(key ?? "");
-  if (!isDialogueHighlightKey(highlightKey)) {
-    return { error: "Можно выделить только слово или реплику диалога" };
+  if (!isLessonHighlightKey(highlightKey)) {
+    return { error: "Неизвестное слово урока" };
   }
   if (!isHighlightColor(color)) return { error: "Неизвестный цвет выделения" };
 
@@ -1878,7 +1878,7 @@ export async function highlightLessonDialogueAction(
   await db
     .update(lessonAssignments)
     .set({
-      highlights: toggleDialogueHighlight(row.highlights, highlightKey, color),
+      highlights: toggleLessonHighlight(row.highlights, highlightKey, color),
       updatedAt: new Date(),
     })
     .where(eq(lessonAssignments.id, id));

@@ -849,7 +849,7 @@ export const uk: Dict = {
     focusElement: "Сфокусувати учня на цьому елементі",
     focusWordHint: "Натисни слово — учень одразу побачить фокус",
     highlightMode: "Режим виділення",
-    highlightModeHint: "Натискай слова або позначай репліки — виділення зберігаються",
+    highlightModeHint: "Натискай будь-яке слово в будь-якій секції уроку — виділення зберігаються",
     highlightYellow: "Жовте виділення",
     highlightGreen: "Зелене виділення",
     highlightPhrase: "Фраза",

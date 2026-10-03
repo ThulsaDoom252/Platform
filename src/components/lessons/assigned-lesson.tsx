@@ -13,7 +13,7 @@ import {
   focusHomeworkElementAction,
   focusLessonWordAction,
   focusRegularLessonElementAction,
-  highlightLessonDialogueAction,
+  highlightLessonTextAction,
   lessonVocabularyRevealAction,
   selectLessonLexisGroupAction,
   setLessonVocabularyRevealAction,
@@ -27,7 +27,7 @@ import {
   lessonFocus,
   selectLexisGroup,
   selectedLexisGroup,
-  toggleDialogueHighlight,
+  toggleLessonHighlight,
   toggleWordFocus,
   dialogueHighlights,
   type HighlightColor,
@@ -35,6 +35,7 @@ import {
 } from "@/lib/lesson-unit";
 import { LessonView } from "@/components/lessons/lesson-view";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
+import { LessonTextHighlighter } from "@/components/lessons/lesson-text-highlighter";
 import { IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
@@ -128,9 +129,9 @@ export function AssignedLesson({
   };
 
   const highlight = (key: string) => {
-    setMarks((prev) => toggleDialogueHighlight(prev, key, highlightColor));
+    setMarks((prev) => toggleLessonHighlight(prev, key, highlightColor));
     startBusy(() =>
-      highlightLessonDialogueAction(data.assignment.id, key, highlightColor).then(() => undefined),
+      highlightLessonTextAction(data.assignment.id, key, highlightColor).then(() => undefined),
     );
   };
 
@@ -160,7 +161,10 @@ export function AssignedLesson({
   const dialogueMarks = dialogueHighlights(marks);
   const lexisGroup = selectedLexisGroup(marks);
   const topic = (
-    <header className="overflow-hidden rounded-2xl border border-line bg-gradient-to-r from-accent-soft via-surface to-surface px-4 py-3 shadow-sm sm:px-5 sm:py-4">
+    <header
+      data-lesson-highlight-scope="lesson-topic"
+      className="overflow-hidden rounded-2xl border border-line bg-gradient-to-r from-accent-soft via-surface to-surface px-4 py-3 shadow-sm sm:px-5 sm:py-4"
+    >
       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">
         {t.lessonUnits.topic}
       </p>
@@ -169,12 +173,99 @@ export function AssignedLesson({
       </h1>
     </header>
   );
+  const highlightToolbar = teacher ? (
+    <div
+      data-no-lesson-highlight
+      className="sticky top-20 z-30 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/95 px-3 py-2 shadow-lg backdrop-blur-md"
+    >
+      <span className="mr-auto text-[12px] font-semibold text-muted">
+        {highlightMode
+          ? t.lessonUnits.highlightModeHint
+          : t.interactiveHomework.reviewHighlightOffHint}
+      </span>
+      <button
+        type="button"
+        onClick={() => setHighlightMode((value) => !value)}
+        aria-pressed={highlightMode}
+        className={cn(
+          "flex h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold ring-1 transition",
+          highlightMode
+            ? "bg-yellow-300 text-slate-950 ring-yellow-500 shadow-sm"
+            : "bg-surface text-muted ring-line hover:text-content hover:ring-accent/50",
+        )}
+      >
+        <span aria-hidden>🖍️</span>
+        {t.lessonUnits.highlightMode}
+      </button>
+      <div className={cn(
+        "flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line transition",
+        !highlightMode && "opacity-45",
+      )}>
+        {(["yellow", "green", "red"] as const).map((color) => (
+          <button
+            key={color}
+            type="button"
+            disabled={!highlightMode}
+            onClick={() => setHighlightColor(color)}
+            aria-pressed={highlightMode && highlightColor === color}
+            aria-label={
+              color === "yellow"
+                ? t.lessonUnits.highlightYellow
+                : color === "green"
+                  ? t.lessonUnits.highlightGreen
+                  : t.interactiveHomework.highlightRed
+            }
+            title={
+              color === "yellow"
+                ? t.lessonUnits.highlightYellow
+                : color === "green"
+                  ? t.lessonUnits.highlightGreen
+                  : t.interactiveHomework.highlightRed
+            }
+            className={cn(
+              "h-5 w-5 rounded-full transition enabled:hover:scale-110 disabled:cursor-default",
+              color === "yellow"
+                ? "bg-yellow-300"
+                : color === "green"
+                  ? "bg-emerald-400"
+                  : "bg-rose-500",
+              highlightMode && highlightColor === color
+                ? "ring-2 ring-accent ring-offset-2 ring-offset-surface"
+                : "ring-1 ring-black/10",
+            )}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={toggleBritish}
+        aria-pressed={british}
+        className={cn(
+          "flex h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-semibold transition disabled:opacity-50",
+          british
+            ? "bg-accent text-white"
+            : "bg-surface text-muted ring-1 ring-line hover:text-content",
+        )}
+      >
+        <IconVolume className="h-3.5 w-3.5" />
+        {t.lessonUnits.showBritish}
+      </button>
+    </div>
+  ) : null;
 
   if (data.lesson.kind === "REGULAR") {
     return (
-      <div className="flex flex-col gap-4">
-        {topic}
-        <RegularLessonView
+      <LessonTextHighlighter
+        marks={marks}
+        enabled={teacher && highlightMode}
+        color={highlightColor}
+        onHighlight={teacher ? highlight : undefined}
+      >
+        <div className="flex flex-col gap-4">
+          {topic}
+          {highlightToolbar}
+          <RegularLessonView
           sections={data.lesson.regularSections}
           teacher={teacher}
           open={data.open}
@@ -209,6 +300,7 @@ export function AssignedLesson({
           vocabularyHighlights={marks}
           vocabularyFocus={focus}
           onPickVocabulary={teacher ? pick : undefined}
+          showBritish={british}
           canRevealVocabulary={teacher || !liveClass}
           vocabularyReveal={liveClass ? vocabularyReveal : undefined}
           onVocabularyRevealChange={
@@ -230,8 +322,9 @@ export function AssignedLesson({
                 );
               }
             : undefined}
-        />
-      </div>
+          />
+        </div>
+      </LessonTextHighlighter>
     );
   }
   const activitySectionFocus =
@@ -241,76 +334,15 @@ export function AssignedLesson({
   const lessonSections = lessonSectionsForKind(data.lesson.kind);
 
   return (
-    <div className="flex flex-col gap-4">
-      {topic}
-      {teacher && (
-        <div className="sticky top-20 z-30 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/95 px-3 py-2 shadow-lg backdrop-blur-md">
-          <span className="mr-auto text-[12px] font-semibold text-muted">
-            {highlightMode
-              ? t.lessonUnits.highlightModeHint
-              : t.lessonUnits.focusWordHint}
-          </span>
-          <button
-            type="button"
-            onClick={() => setHighlightMode((value) => !value)}
-            aria-pressed={highlightMode}
-            className={cn(
-              "flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ring-1 transition",
-              highlightMode
-                ? "bg-yellow-300 text-slate-950 ring-yellow-500"
-                : "bg-surface text-muted ring-line hover:text-content",
-            )}
-          >
-            <span aria-hidden>🖍️</span>
-            {t.lessonUnits.highlightMode}
-          </button>
-          <div className="flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line">
-            {(["yellow", "green"] as const).map((color) => (
-              <button
-                key={color}
-                type="button"
-                onClick={() => {
-                  setHighlightColor(color);
-                  setHighlightMode(true);
-                }}
-                aria-pressed={highlightColor === color}
-                aria-label={
-                  color === "yellow"
-                    ? t.lessonUnits.highlightYellow
-                    : t.lessonUnits.highlightGreen
-                }
-                title={
-                  color === "yellow"
-                    ? t.lessonUnits.highlightYellow
-                    : t.lessonUnits.highlightGreen
-                }
-                className={cn(
-                  "h-5 w-5 rounded-full transition hover:scale-110",
-                  color === "yellow" ? "bg-yellow-300" : "bg-emerald-400",
-                  highlightColor === color
-                    ? "ring-2 ring-accent ring-offset-2 ring-offset-surface"
-                    : "ring-1 ring-black/10",
-                )}
-              />
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={toggleBritish}
-            aria-pressed={british}
-            className={cn(
-              "flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition disabled:opacity-50",
-              british
-                ? "bg-accent text-white"
-                : "bg-surface text-muted ring-1 ring-line hover:text-content",
-            )}
-          >
-            <IconVolume className="h-3.5 w-3.5" />
-            {t.lessonUnits.showBritish}
-          </button>
-        </div>
-      )}
+    <LessonTextHighlighter
+      marks={marks}
+      enabled={teacher && highlightMode}
+      color={highlightColor}
+      onHighlight={teacher ? highlight : undefined}
+    >
+      <div className="flex flex-col gap-4">
+        {topic}
+        {highlightToolbar}
 
       {/* В классе ученик видит все вкладки, но сам открывает только разрешённые. */}
       <LessonView
@@ -341,9 +373,7 @@ export function AssignedLesson({
         selectedLexisId={lexisGroup}
         onSelectLexis={teacher ? selectLexis : undefined}
         onPick={teacher ? pick : undefined}
-        highlightMode={teacher && highlightMode}
         highlightColor={highlightColor}
-        onHighlight={teacher ? highlight : undefined}
         onFocusHomework={teacher && liveClass
           ? (elementId) => {
               startBusy(() =>
@@ -368,7 +398,8 @@ export function AssignedLesson({
               }
             : undefined
         }
-      />
-    </div>
+        />
+      </div>
+    </LessonTextHighlighter>
   );
 }

@@ -1265,6 +1265,11 @@ body {
   box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent) !important;
 }
 
+/* ---------- Универсальная подсветка слов в уроке ---------- */
+.lesson-word-highlight-active [data-lesson-highlight-scope] {
+  cursor: text;
+}
+
 @media (max-width: 640px) {
   .regular-lesson-heading { align-items: flex-start; flex-direction: column; }
   .regular-lesson-body { font-size: 0.9rem; }

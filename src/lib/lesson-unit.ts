@@ -352,10 +352,18 @@ export const FOCUS_SLOT = "__focus";
 export const LEXIS_GROUP_SLOT = "__lexisGroup";
 export const YELLOW_HIGHLIGHT = "yellow";
 export const GREEN_HIGHLIGHT = "green";
-export type HighlightColor = typeof YELLOW_HIGHLIGHT | typeof GREEN_HIGHLIGHT;
+export const RED_HIGHLIGHT = "red";
+export type HighlightColor =
+  | typeof YELLOW_HIGHLIGHT
+  | typeof GREEN_HIGHLIGHT
+  | typeof RED_HIGHLIGHT;
 
 export function isHighlightColor(value: unknown): value is HighlightColor {
-  return value === YELLOW_HIGHLIGHT || value === GREEN_HIGHLIGHT;
+  return (
+    value === YELLOW_HIGHLIGHT ||
+    value === GREEN_HIGHLIGHT ||
+    value === RED_HIGHLIGHT
+  );
 }
 
 /** Фокусировать можно слово, часть лексики или отдельное слово расшифровки. */
@@ -372,6 +380,22 @@ export function isWordFocusKey(key: string): boolean {
 export function isDialogueHighlightKey(key: string): boolean {
   const parsed = parseKey(key);
   return parsed?.kind === "line" || parsed?.kind === "lineWord";
+}
+
+/**
+ * Stable keys produced by the DOM-wide lesson highlighter.
+ *
+ * The two hashes identify a visible lesson scope and a word in that scope;
+ * the final number separates repeated identical snippets. Keeping the format
+ * deliberately narrow prevents arbitrary JSON keys from reaching a lesson
+ * assignment through the public Server Action.
+ */
+export function isLessonTextHighlightKey(key: string): boolean {
+  return /^text:[a-f0-9]{8}:[a-f0-9]{8}:\d{1,4}$/.test(String(key ?? ""));
+}
+
+export function isLessonHighlightKey(key: string): boolean {
+  return isDialogueHighlightKey(key) || isLessonTextHighlightKey(key);
 }
 
 /**
@@ -393,7 +417,7 @@ export function normalizeLessonHighlights(
   }
 
   for (const [key, value] of Object.entries(source)) {
-    if (isHighlightColor(value) && isDialogueHighlightKey(key)) {
+    if (isHighlightColor(value) && isLessonHighlightKey(key)) {
       next[key] = value;
     }
   }
@@ -444,7 +468,7 @@ export function yellowHighlights(
   );
 }
 
-/** Все сохранённые цветные пометки диалога. */
+/** Все сохранённые цветные пометки урока. */
 export function dialogueHighlights(
   current: Record<string, string> | null | undefined,
 ): Record<string, HighlightColor> {
@@ -467,18 +491,21 @@ export function toggleWordFocus(
   return next;
 }
 
-/** Включить или снять независимое жёлтое выделение в диалоге. */
-export function toggleDialogueHighlight(
+/** Включить или снять независимое цветное выделение в уроке. */
+export function toggleLessonHighlight(
   current: Record<string, string> | null | undefined,
   key: string,
   color: HighlightColor = YELLOW_HIGHLIGHT,
 ): Record<string, string> {
   const next = normalizeLessonHighlights(current);
-  if (!isDialogueHighlightKey(key) || !isHighlightColor(color)) return next;
+  if (!isLessonHighlightKey(key) || !isHighlightColor(color)) return next;
   if (next[key] === color) delete next[key];
   else next[key] = color;
   return next;
 }
+
+/** Backwards-compatible name for older transcript-only callers. */
+export const toggleDialogueHighlight = toggleLessonHighlight;
 
 /** Разбить реплику на слова так, чтобы по ним можно было попадать. */
 export function lineWords(text: string): string[] {

@@ -26,7 +26,9 @@ import {
   lessonVocabularyReveal,
   lessonVocabularyRevealOptions,
   normalizeLessonHighlights,
+  isLessonTextHighlightKey,
   toggleDialogueHighlight,
+  toggleLessonHighlight,
   toggleWordFocus,
   toggleLessonVocabularyReveal,
   selectedLexisGroup,
@@ -254,6 +256,22 @@ test("жёлтые и зелёные выделения сохраняются �
   assert.equal(dialogueHighlights(marks)["line:0:2"], "green");
   marks = toggleDialogueHighlight(marks, lineWordKey(0, 2), "green");
   assert.deepEqual(dialogueHighlights(marks), { "line:1": "green" });
+});
+
+test("универсальные слова урока принимают жёлтый, зелёный и красный", () => {
+  const first = "text:1a2b3c4d:5e6f7a8b:0";
+  const second = "text:1a2b3c4d:5e6f7a8b:1";
+  assert.equal(isLessonTextHighlightKey(first), true);
+  assert.equal(isLessonTextHighlightKey("text:not-a-hash"), false);
+
+  let marks = toggleLessonHighlight({}, first, "red");
+  marks = toggleLessonHighlight(marks, second, "green");
+  assert.deepEqual(dialogueHighlights(marks), {
+    [first]: "red",
+    [second]: "green",
+  });
+  marks = toggleLessonHighlight(marks, first, "red");
+  assert.deepEqual(dialogueHighlights(marks), { [second]: "green" });
 });
 
 test("фокус и жёлтые выделения не стирают друг друга", () => {
