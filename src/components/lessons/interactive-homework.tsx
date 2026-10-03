@@ -638,7 +638,7 @@ function HomeworkExerciseView({
   const [busy, startAction] = useTransition();
   const hidden = homeworkExerciseHidden(state, exercise.id);
   const exerciseFocusId = homeworkExerciseFocusId(exercise.id);
-  const instruction =
+  const fallbackInstruction =
     exercise.kind === "fill"
       ? t.interactiveHomework.instructions.fill
       : exercise.kind === "definition"
@@ -654,6 +654,7 @@ function HomeworkExerciseView({
               : exercise.kind === "question-audio"
                 ? t.interactiveHomework.instructions.questionAudio
                 : t.interactiveHomework.instructions.questionText;
+  const instruction = exercise.instruction.trim() || fallbackInstruction;
   const body = (
     <div className="mt-4">
       {exercise.wordBank && exercise.wordBank.length > 0 && exercise.kind !== "drag" && exercise.kind !== "describe" && (

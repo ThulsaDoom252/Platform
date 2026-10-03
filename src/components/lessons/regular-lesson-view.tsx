@@ -35,7 +35,11 @@ import {
   type RegularExerciseOverride,
   type RegularLessonSection,
 } from "@/lib/regular-lesson";
-import type { HomeworkExercise, InteractiveHomeworkPlan } from "@/lib/lesson-homework";
+import {
+  regularHomeworkShowsWordBank,
+  type HomeworkExercise,
+  type InteractiveHomeworkPlan,
+} from "@/lib/lesson-homework";
 import type { LessonVocabularyReveal, LessonWord } from "@/lib/lesson-unit";
 import { cn } from "@/lib/utils";
 
@@ -109,6 +113,10 @@ function instructionBefore(list: Element) {
   return "";
 }
 
+function homeworkInstruction(value: string) {
+  return value.replace(/\s*Then press Check\.?\s*$/i, "").trim();
+}
+
 /** Extract a real exercise from the imported HTML, never a grammar explanation. */
 function homeworkCandidates(
   section: RegularLessonSection,
@@ -173,13 +181,13 @@ function homeworkCandidates(
     );
     const storedOverride = regularExerciseOverride(state, section.id, listIndex + 1);
     const title = storedOverride?.title || heading || section.title;
-    const instruction = storedOverride?.instruction || instructionBefore(list) || (
+    const instruction = homeworkInstruction(storedOverride?.instruction || instructionBefore(list) || (
       kind === "true-false"
         ? "Choose True or False for every sentence."
         : kind === "fill"
           ? "Complete each sentence with the correct answer."
           : "Write a clear answer for every item."
-    );
+    ));
     const editor: RegularExerciseOverride = storedOverride ?? {
       title,
       instruction,
@@ -199,9 +207,15 @@ function homeworkCandidates(
           title,
           instruction,
           kind: "fill",
-          wordBank: exerciseParsed.map((item) => item.answer!).filter(
-            (answer, index, answers) => answers.indexOf(answer) === index,
-          ),
+          wordBank: regularHomeworkShowsWordBank(
+            title,
+            instruction,
+            exerciseParsed.map((item) => item.prompt),
+          )
+            ? exerciseParsed.map((item) => item.answer!).filter(
+                (answer, index, answers) => answers.indexOf(answer) === index,
+              )
+            : undefined,
           items: exerciseParsed.map(({ id: itemId, prompt, answer }) => ({
             id: itemId,
             prompt,

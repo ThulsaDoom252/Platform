@@ -459,6 +459,20 @@ const KINDS = new Set<HomeworkExerciseKind>([
   "question-audio",
 ]);
 
+export function regularHomeworkShowsWordBank(
+  title: string,
+  instruction: string,
+  prompts: string[],
+) {
+  const exerciseText = `${title} ${instruction}`;
+  if (/open (?:the )?brackets|translate (?:each|the|these|into|from)|good\s+vs\s+well/i.test(exerciseText)) {
+    return false;
+  }
+  return !prompts.some((prompt) =>
+    /(?:→|->)/.test(prompt) || /\([^()]{1,80}\)\s*[.!?]?\s*$/.test(prompt),
+  );
+}
+
 /** Treat stored json as untrusted: old and half-written plans must not break a lesson. */
 export function normalizeInteractiveHomework(value: unknown): InteractiveHomeworkPlan | null {
   if (!value || typeof value !== "object") return null;
@@ -472,9 +486,21 @@ export function normalizeInteractiveHomework(value: unknown): InteractiveHomewor
     const kind = String(item.kind ?? "") as HomeworkExerciseKind;
     const title = typeof item.title === "string" ? item.title.trim().slice(0, 240) : "";
     const instruction = typeof item.instruction === "string"
-      ? item.instruction.trim().slice(0, 2_000)
+      ? (id?.startsWith("regular-")
+        ? item.instruction.replace(/\s*Then press Check\.?\s*$/i, "")
+        : item.instruction).trim().slice(0, 2_000)
       : "";
     if (!id || !KINDS.has(kind) || !title) return [];
+    const rawItems = Array.isArray(item.items) ? item.items : [];
+    const showWordBank = !id.startsWith("regular-") || regularHomeworkShowsWordBank(
+      title,
+      instruction,
+      rawItems.map((candidate) =>
+        candidate && typeof candidate === "object" && typeof (candidate as Record<string, unknown>).prompt === "string"
+          ? String((candidate as Record<string, unknown>).prompt)
+          : "",
+      ),
+    );
     return [{
       id,
       title,
@@ -487,11 +513,14 @@ export function normalizeInteractiveHomework(value: unknown): InteractiveHomewor
             ? "to-english"
             : undefined,
       optional: item.optional === true,
-      wordBank: Array.isArray(item.wordBank)
+      // Exercises imported from a regular lesson contain canonical answers for
+      // automatic checking. They are not a word bank and must never be exposed
+      // to the student as hints.
+      wordBank: showWordBank && Array.isArray(item.wordBank)
         ? [...new Set(item.wordBank.map(String).map((word) => word.trim()).filter(Boolean))]
             .slice(0, 300)
         : undefined,
-      items: (Array.isArray(item.items) ? item.items : [])
+      items: rawItems
         .map(cleanItem)
         .filter((candidate): candidate is HomeworkItem => Boolean(candidate)),
     }];

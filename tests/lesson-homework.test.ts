@@ -88,6 +88,44 @@ test("домашка сохраняет направление перевода 
   );
 });
 
+test("автоматические ответы обычного урока не превращаются в подсказки", () => {
+  const normalized = normalizeInteractiveHomework({
+    kind: "INTERACTIVE_HOMEWORK_V1",
+    title: "Grammar Check · Homework",
+    exercises: [{
+      id: "regular-02-present-1",
+      title: "Present Simple vs Present Continuous",
+      instruction: "Open the brackets. Then press Check.",
+      kind: "fill",
+      wordBank: ["sets", "are walking"],
+      items: [
+        { id: "regular-02-present-1-1", prompt: "She usually ___. (set)", answer: "sets" },
+      ],
+    }],
+  });
+  assert.equal(normalized?.exercises[0].instruction, "Open the brackets.");
+  assert.equal(normalized?.exercises[0].wordBank, undefined);
+  assert.equal(normalized?.exercises[0].items[0].answer, "sets");
+});
+
+test("обычная вставка слов сохраняет предназначенный для неё список", () => {
+  const normalized = normalizeInteractiveHomework({
+    kind: "INTERACTIVE_HOMEWORK_V1",
+    title: "Vocabulary homework",
+    exercises: [{
+      id: "regular-vocabulary-1",
+      title: "Fill in the gaps",
+      instruction: "Complete each sentence with a word from the list.",
+      kind: "fill",
+      wordBank: ["tiny", "huge"],
+      items: [
+        { id: "regular-vocabulary-1-1", prompt: "The room was ___.", answer: "tiny" },
+      ],
+    }],
+  });
+  assert.deepEqual(normalized?.exercises[0].wordBank, ["tiny", "huge"]);
+});
+
 test("проверка ответа принимает регистр, знаки и допустимый вариант", () => {
   const item = plan.exercises[0].items[0];
   assert.equal(homeworkAnswerMatches(item, "GOT TO!"), true);
