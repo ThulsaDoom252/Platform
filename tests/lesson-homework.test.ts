@@ -17,14 +17,19 @@ import {
   homeworkHighlight,
   homeworkItemFocusId,
   homeworkProgress,
+  homeworkReviewedAt,
+  homeworkReviewedAtKey,
   homeworkPlanForAssignment,
   homeworkPlanEditIssue,
   homeworkPlanOverrideKey,
   homeworkStarted,
   homeworkStatusKey,
+  homeworkTextHighlight,
+  homeworkTextTokens,
   homeworkValueKey,
   normalizeInteractiveHomework,
   toggleHomeworkHighlight,
+  toggleHomeworkTextHighlight,
   type InteractiveHomeworkPlan,
 } from "../src/lib/lesson-homework";
 
@@ -149,6 +154,33 @@ test("цветные выделения домашки сохраняются н
   state = toggleHomeworkHighlight(state, exercise, "yellow");
   assert.equal(homeworkHighlight(state, exercise), null);
   assert.equal(homeworkHighlight(state, item), "green");
+});
+
+test("в домашке выделяется конкретное слово, включая красный цвет", () => {
+  const item = plan.exercises[1].items[0];
+  const stateWithAnswer = {
+    [homeworkValueKey(item.id)]: "It is food which is cooked using smoke.",
+  };
+  const tokens = homeworkTextTokens(stateWithAnswer[homeworkValueKey(item.id)]);
+  const foodAt = tokens.findIndex((token) => token.text === "food");
+  const next = toggleHomeworkTextHighlight(stateWithAnswer, item, "answer", foodAt, "red");
+  assert.equal(homeworkTextHighlight(next, item.id, "answer", foodAt), "red");
+  assert.equal(homeworkTextHighlight(next, item.id, "answer", foodAt + 1), null);
+  assert.equal(
+    homeworkTextHighlight(
+      toggleHomeworkTextHighlight(next, item, "answer", foodAt, "red"),
+      item.id,
+      "answer",
+      foodAt,
+    ),
+    null,
+  );
+});
+
+test("reviewed хранится отдельно от отправки домашки", () => {
+  const reviewedAt = "2026-10-03T12:00:00.000Z";
+  assert.equal(homeworkReviewedAt({ [homeworkReviewedAtKey()]: reviewedAt }), reviewedAt);
+  assert.equal(homeworkReviewedAt({}), null);
 });
 
 test("домашка не появляется у ученика до явного назначения", () => {

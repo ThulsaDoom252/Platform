@@ -38,7 +38,7 @@ export default async function TeacherHomeworksPage() {
   }, new Map<string, StudentGroup>()).values()].sort((a, b) =>
     a.name.localeCompare(b.name, locale),
   );
-  const waiting = items.filter((item) => item.submittedAt).length;
+  const waiting = items.filter((item) => item.submittedAt && !item.reviewedAt).length;
   const localeName = locale === "ru" ? "ru-RU" : locale === "uk" ? "uk-UA" : "en-US";
   const formatDate = (value: string) => new Intl.DateTimeFormat(localeName, {
     day: "numeric",
@@ -79,14 +79,16 @@ export default async function TeacherHomeworksPage() {
                   </p>
                 </div>
                 <span className="ml-auto rounded-full bg-accent-soft px-2.5 py-1 text-xs font-black text-accent">
-                  {group.items.filter((item) => item.submittedAt).length}/{group.items.length}
+                  {group.items.filter((item) => item.submittedAt && !item.reviewedAt).length}/{group.items.length}
                 </span>
               </div>
 
               <div className="divide-y divide-line">
                 {group.items.map((item) => {
-                  const state = item.submittedAt
-                    ? "submitted"
+                  const state = item.reviewedAt
+                    ? "reviewed"
+                    : item.submittedAt
+                      ? "submitted"
                     : item.started
                       ? "inProgress"
                       : "notStarted";
@@ -176,8 +178,9 @@ function Status({
   state,
   labels,
 }: {
-  state: "submitted" | "inProgress" | "notStarted";
+  state: "reviewed" | "submitted" | "inProgress" | "notStarted";
   labels: {
+    reviewed: string;
     submitted: string;
     inProgress: string;
     notStarted: string;
@@ -186,8 +189,10 @@ function Status({
   return (
     <span className={cn(
       "rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
-      state === "submitted"
-        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+      state === "reviewed"
+        ? "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+        : state === "submitted"
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
         : state === "inProgress"
           ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
           : "bg-surface-2 text-faint",

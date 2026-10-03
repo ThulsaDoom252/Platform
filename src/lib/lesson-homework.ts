@@ -54,8 +54,20 @@ export type HomeworkAutoStatus = "correct" | "locked" | null;
 const EXERCISE_FOCUS = "homework:exercise:";
 const ITEM_FOCUS = "homework:item:";
 const HIGHLIGHT = "hw:highlight:";
+const TEXT_HIGHLIGHT = "hw:text-highlight:";
 
-export type HomeworkHighlightColor = "yellow" | "green";
+export type HomeworkHighlightColor = "yellow" | "green" | "red";
+export type HomeworkTextHighlightSource =
+  | "word"
+  | "prompt"
+  | "prompt-before"
+  | "prompt-after"
+  | "answer";
+
+export type HomeworkTextToken = {
+  text: string;
+  highlightable: boolean;
+};
 
 export const homeworkExerciseFocusId = (exerciseId: string) =>
   `${EXERCISE_FOCUS}${exerciseId}`;
@@ -78,7 +90,7 @@ export function homeworkHighlight(
 ): HomeworkHighlightColor | null {
   if (!validHighlightTarget(focusId)) return null;
   const value = state[homeworkHighlightKey(focusId)];
-  return value === "yellow" || value === "green" ? value : null;
+  return value === "yellow" || value === "green" || value === "red" ? value : null;
 }
 
 export function toggleHomeworkHighlight(
@@ -87,7 +99,10 @@ export function toggleHomeworkHighlight(
   color: HomeworkHighlightColor,
 ): HomeworkStoredState {
   const next = { ...state };
-  if (!validHighlightTarget(focusId) || (color !== "yellow" && color !== "green")) return next;
+  if (
+    !validHighlightTarget(focusId) ||
+    (color !== "yellow" && color !== "green" && color !== "red")
+  ) return next;
   const key = homeworkHighlightKey(focusId);
   if (next[key] === color) delete next[key];
   else next[key] = color;
@@ -121,6 +136,7 @@ const NOTE = "hw:note:";
 const NOTE_VISIBLE = "hw:note-visible:";
 const EXERCISE_HIDDEN = "hw:exercise-hidden:";
 const SUBMITTED_AT = "hw:submitted-at";
+const REVIEWED_AT = "hw:reviewed-at";
 const ASSIGNED_AT = "hw:assigned-at";
 const ASSIGNED_EXERCISES = "hw:assigned-exercises";
 const PLAN_OVERRIDE = "hw:plan-override";
@@ -133,6 +149,7 @@ export const homeworkNoteKey = (id: string) => `${NOTE}${id}`;
 export const homeworkNoteVisibleKey = (id: string) => `${NOTE_VISIBLE}${id}`;
 export const homeworkExerciseHiddenKey = (id: string) => `${EXERCISE_HIDDEN}${id}`;
 export const homeworkSubmittedAtKey = () => SUBMITTED_AT;
+export const homeworkReviewedAtKey = () => REVIEWED_AT;
 export const homeworkAssignedAtKey = () => ASSIGNED_AT;
 export const homeworkAssignedExercisesKey = () => ASSIGNED_EXERCISES;
 export const homeworkPlanOverrideKey = () => PLAN_OVERRIDE;
@@ -151,6 +168,10 @@ export function homeworkExerciseHidden(state: HomeworkStoredState, exerciseId: s
 
 export function homeworkSubmittedAt(state: HomeworkStoredState) {
   return state[SUBMITTED_AT] || null;
+}
+
+export function homeworkReviewedAt(state: HomeworkStoredState) {
+  return state[REVIEWED_AT] || null;
 }
 
 export function homeworkAssignedAt(state: HomeworkStoredState) {
@@ -263,6 +284,94 @@ const cleanId = (value: unknown) =>
   typeof value === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/i.test(value)
     ? value
     : null;
+
+const TEXT_HIGHLIGHT_SOURCES = new Set<HomeworkTextHighlightSource>([
+  "word",
+  "prompt",
+  "prompt-before",
+  "prompt-after",
+  "answer",
+]);
+
+export function homeworkTextTokens(value: string): HomeworkTextToken[] {
+  const parts = String(value ?? "").match(
+    /\p{L}[\p{L}\p{M}\p{N}'’ʼ-]*|\p{N}+(?:[.,]\p{N}+)?|\s+|[^\s]/gu,
+  ) ?? [];
+  return parts.map((text) => ({
+    text,
+    highlightable: /[\p{L}\p{N}]/u.test(text),
+  }));
+}
+
+export function homeworkTextSourceValue(
+  item: HomeworkItem,
+  state: HomeworkStoredState,
+  source: HomeworkTextHighlightSource,
+) {
+  if (source === "word") return item.word ?? "";
+  if (source === "answer") return state[homeworkValueKey(item.id)] ?? "";
+  if (source === "prompt") return item.prompt;
+  const blankAt = item.prompt.indexOf("___");
+  if (source === "prompt-before") {
+    return blankAt >= 0 ? item.prompt.slice(0, blankAt) : item.prompt;
+  }
+  return blankAt >= 0 ? item.prompt.slice(blankAt + 3) : "";
+}
+
+const homeworkTextHighlightKey = (
+  itemId: string,
+  source: HomeworkTextHighlightSource,
+  tokenIndex: number,
+) => `${TEXT_HIGHLIGHT}${itemId}:${source}:${tokenIndex}`;
+
+export function homeworkTextHighlight(
+  state: HomeworkStoredState,
+  itemId: string,
+  source: HomeworkTextHighlightSource,
+  tokenIndex: number,
+): HomeworkHighlightColor | null {
+  if (!cleanId(itemId) || !TEXT_HIGHLIGHT_SOURCES.has(source) || !Number.isInteger(tokenIndex)) {
+    return null;
+  }
+  const value = state[homeworkTextHighlightKey(itemId, source, tokenIndex)];
+  return value === "yellow" || value === "green" || value === "red" ? value : null;
+}
+
+export function toggleHomeworkTextHighlight(
+  state: HomeworkStoredState,
+  item: HomeworkItem,
+  source: HomeworkTextHighlightSource,
+  tokenIndex: number,
+  color: HomeworkHighlightColor,
+): HomeworkStoredState {
+  const next = { ...state };
+  if (
+    !TEXT_HIGHLIGHT_SOURCES.has(source) ||
+    !Number.isInteger(tokenIndex) ||
+    tokenIndex < 0 ||
+    tokenIndex > 4_000 ||
+    (color !== "yellow" && color !== "green" && color !== "red")
+  ) return next;
+  const token = homeworkTextTokens(homeworkTextSourceValue(item, state, source))[tokenIndex];
+  if (!token?.highlightable) return next;
+  const key = homeworkTextHighlightKey(item.id, source, tokenIndex);
+  if (next[key] === color) delete next[key];
+  else next[key] = color;
+  return next;
+}
+
+export function clearHomeworkTextHighlights(
+  state: HomeworkStoredState,
+  itemId: string,
+  source?: HomeworkTextHighlightSource,
+) {
+  const next = { ...state };
+  const prefix = `${TEXT_HIGHLIGHT}${itemId}:${source ? `${source}:` : ""}`;
+  for (const key of Object.keys(next)) {
+    if (key.startsWith(prefix)) delete next[key];
+  }
+  return next;
+}
 
 const cleanItem = (value: unknown): HomeworkItem | null => {
   if (!value || typeof value !== "object") return null;

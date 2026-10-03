@@ -15,8 +15,9 @@ import { useT } from "@/components/i18n-provider";
 import {
   addHomeworkQuestionAction,
   assignInteractiveHomeworkAction,
-  highlightHomeworkElementAction,
+  highlightHomeworkTextAction,
   removeHomeworkQuestionAction,
+  reviewInteractiveHomeworkAction,
   resetHomeworkExerciseAnswersAction,
   saveHomeworkResponseAction,
   saveHomeworkTeacherNoteAction,
@@ -35,7 +36,6 @@ import {
   homeworkExerciseProgress,
   homeworkExerciseHiddenKey,
   homeworkExerciseFocusId,
-  homeworkHighlight,
   homeworkItemFocusId,
   homeworkNoteKey,
   homeworkNoteVisibleKey,
@@ -43,10 +43,15 @@ import {
   homeworkStatusKey,
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
+  homeworkReviewedAt,
+  homeworkReviewedAtKey,
+  homeworkTextHighlight,
+  homeworkTextTokens,
   homeworkValueKey,
   homeworkVoiceRecordingTarget,
-  toggleHomeworkHighlight,
+  toggleHomeworkTextHighlight,
   type HomeworkHighlightColor,
+  type HomeworkTextHighlightSource,
   type HomeworkExercise,
   type HomeworkItem,
   type HomeworkStoredState,
@@ -82,6 +87,11 @@ type HomeworkInteractionContextValue = {
   highlightMode: boolean;
   highlightColor: HomeworkHighlightColor;
   busy: boolean;
+  onHighlightText?: (
+    item: HomeworkItem,
+    source: HomeworkTextHighlightSource,
+    tokenIndex: number,
+  ) => void;
 };
 
 const HomeworkInteractionContext = createContext<HomeworkInteractionContextValue>({
@@ -113,6 +123,7 @@ export function InteractiveHomework({
   const [editingExerciseId, setEditingExerciseId] = useState<string | null | undefined>(undefined);
   const [showAnswers, setShowAnswers] = useState(false);
   const [reviewBusy, startReview] = useTransition();
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [highlightMode, setHighlightMode] = useState(false);
   const [highlightColor, setHighlightColor] = useState<HomeworkHighlightColor>("yellow");
   const [interactionError, setInteractionError] = useState<string | null>(null);
@@ -120,6 +131,7 @@ export function InteractiveHomework({
   const rootRef = useRef<HTMLDivElement>(null);
   const progress = homeworkExerciseProgress(currentPlan, state);
   const submittedAt = homeworkSubmittedAt(state);
+  const reviewedAt = homeworkReviewedAt(state);
   const assignedAt = homeworkAssignedAt(state);
   const exercises = currentPlan.exercises.filter(
     (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
@@ -129,24 +141,32 @@ export function InteractiveHomework({
     ? (elementId: string) => {
         setInteractionError(null);
         startInteraction(async () => {
-          if (highlightMode) {
-            const result = await highlightHomeworkElementAction(
-              session.assignmentId,
-              elementId,
-              highlightColor,
-            );
-            if (result.error) {
-              setInteractionError(result.error);
-              return;
-            }
-            setState((current) => toggleHomeworkHighlight(current, elementId, highlightColor));
-            return;
-          }
           const result = await focusHomeworkElementAction(session.assignmentId, elementId);
           if (result.error) setInteractionError(result.error);
         });
       }
     : onFocus;
+
+  const highlightText = teacherReviewTools && highlightMode
+    ? (item: HomeworkItem, source: HomeworkTextHighlightSource, tokenIndex: number) => {
+        setInteractionError(null);
+        startInteraction(async () => {
+          const result = await highlightHomeworkTextAction(
+            session.assignmentId,
+            item.id,
+            source,
+            tokenIndex,
+            highlightColor,
+          );
+          if (result.error) {
+            setInteractionError(result.error);
+            return;
+          }
+          setState((current) =>
+            toggleHomeworkTextHighlight(current, item, source, tokenIndex, highlightColor));
+        });
+      }
+    : undefined;
 
   useEffect(() => {
     onStateChange?.(state);
@@ -171,6 +191,7 @@ export function InteractiveHomework({
       highlightMode,
       highlightColor,
       busy: interactionBusy,
+      onHighlightText: highlightText,
     }}>
     <div ref={rootRef} className="flex flex-col gap-4">
       <section className="overflow-hidden rounded-2xl border border-accent/25 bg-gradient-to-br from-accent-soft via-surface to-surface p-5 shadow-sm">
@@ -195,10 +216,40 @@ export function InteractiveHomework({
                   : t.interactiveHomework.showAnswers}
               </button>
             )}
-            {session.teacher && submittedAt && (
+            {reviewedAt ? (
               <span className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-200">
+                {t.interactiveHomework.reviewed}
+              </span>
+            ) : session.teacher && submittedAt ? (
+              <span className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 ring-1 ring-amber-200">
                 {t.interactiveHomework.sentForReview}
               </span>
+            ) : null}
+            {session.teacher && teacherReviewTools && submittedAt && (
+              <button
+                type="button"
+                disabled={reviewBusy || Boolean(reviewedAt)}
+                onClick={() => {
+                  setReviewError(null);
+                  startReview(async () => {
+                    const result = await reviewInteractiveHomeworkAction(session.assignmentId);
+                    if (result.error || !result.reviewedAt) {
+                      setReviewError(result.error ?? t.interactiveHomework.reviewFailed);
+                      return;
+                    }
+                    setState((current) => ({
+                      ...current,
+                      [homeworkReviewedAtKey()]: result.reviewedAt!,
+                    }));
+                  });
+                }}
+                className="flex h-10 items-center gap-2 rounded-xl bg-emerald-500 px-4 text-xs font-black text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-default disabled:opacity-60"
+              >
+                <IconCheck className="h-4 w-4" />
+                {reviewedAt
+                  ? t.interactiveHomework.reviewed
+                  : t.interactiveHomework.markReviewed}
+              </button>
             )}
             <div className="rounded-xl bg-surface px-3 py-2 text-right ring-1 ring-line">
               <p className="text-[10px] font-bold uppercase tracking-wide text-faint">
@@ -224,6 +275,9 @@ export function InteractiveHomework({
             style={{ width: `${progress.required.total ? (progress.required.done / progress.required.total) * 100 : 0}%` }}
           />
         </div>
+        {reviewError && (
+          <p className="mt-3 text-xs font-bold text-rose-600">{reviewError}</p>
+        )}
       </section>
 
       {session.teacher && teacherReviewTools && (
@@ -260,7 +314,7 @@ export function InteractiveHomework({
             </button>
           </div>
           <div className="flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line">
-            {(["yellow", "green"] as const).map((color) => (
+            {(["yellow", "green", "red"] as const).map((color) => (
               <button
                 key={color}
                 type="button"
@@ -271,13 +325,21 @@ export function InteractiveHomework({
                 aria-pressed={highlightMode && highlightColor === color}
                 aria-label={color === "yellow"
                   ? t.lessonUnits.highlightYellow
-                  : t.lessonUnits.highlightGreen}
+                  : color === "green"
+                    ? t.lessonUnits.highlightGreen
+                    : t.interactiveHomework.highlightRed}
                 title={color === "yellow"
                   ? t.lessonUnits.highlightYellow
-                  : t.lessonUnits.highlightGreen}
+                  : color === "green"
+                    ? t.lessonUnits.highlightGreen
+                    : t.interactiveHomework.highlightRed}
                 className={cn(
                   "h-5 w-5 rounded-full transition hover:scale-110",
-                  color === "yellow" ? "bg-yellow-300" : "bg-emerald-400",
+                  color === "yellow"
+                    ? "bg-yellow-300"
+                    : color === "green"
+                      ? "bg-emerald-400"
+                      : "bg-rose-500",
                   highlightMode && highlightColor === color
                     ? "ring-2 ring-accent ring-offset-2 ring-offset-surface"
                     : "ring-1 ring-black/10",
@@ -305,6 +367,7 @@ export function InteractiveHomework({
                 [homeworkAssignedExercisesKey()]: JSON.stringify(exerciseIds),
               };
               delete next[homeworkSubmittedAtKey()];
+              delete next[homeworkReviewedAtKey()];
               return next;
             });
           }}
@@ -353,7 +416,9 @@ export function InteractiveHomework({
             className="min-h-12 rounded-2xl bg-accent px-5 text-sm font-black text-white shadow-lg transition hover:-translate-y-0.5 hover:brightness-95 disabled:translate-y-0 disabled:opacity-60"
           >
             {submittedAt
-              ? t.interactiveHomework.sentForReview
+              ? reviewedAt
+                ? t.interactiveHomework.reviewed
+                : t.interactiveHomework.sentForReview
               : t.interactiveHomework.sendForReview}
           </button>
         </div>
@@ -568,7 +633,6 @@ function HomeworkExerciseView({
   const [busy, startAction] = useTransition();
   const hidden = homeworkExerciseHidden(state, exercise.id);
   const exerciseFocusId = homeworkExerciseFocusId(exercise.id);
-  const exerciseHighlight = homeworkHighlight(state, exerciseFocusId);
   const instruction =
     exercise.kind === "fill"
       ? t.interactiveHomework.instructions.fill
@@ -638,8 +702,6 @@ function HomeworkExerciseView({
       <section className={cn(
         "flex items-start gap-2 rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm",
         hidden && "border-faint/40 opacity-70",
-        exerciseHighlight === "yellow" && "border-yellow-400 bg-yellow-50/80",
-        exerciseHighlight === "green" && "border-emerald-400 bg-emerald-50/80",
         focusId === exerciseFocusId && "border-accent ring-2 ring-accent/40",
       )}>
         <details data-homework-focus={exerciseFocusId} className="group min-w-0 flex-1">
@@ -658,29 +720,16 @@ function HomeworkExerciseView({
           <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
           {body}
         </details>
-        {session.teacher && onFocus && (
+        {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"
             disabled={interaction.busy}
             onClick={() => onFocus(exerciseFocusId)}
-            title={interaction.highlightMode
-              ? t.interactiveHomework.highlightElement
-              : t.lessonUnits.focusElement}
-            aria-label={interaction.highlightMode
-              ? t.interactiveHomework.highlightElement
-              : t.lessonUnits.focusElement}
-            className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft disabled:opacity-45",
-              interaction.highlightMode && interaction.highlightColor === "yellow" && "bg-yellow-100",
-              interaction.highlightMode && interaction.highlightColor === "green" && "bg-emerald-100",
-            )}
+            title={t.lessonUnits.focusElement}
+            aria-label={t.lessonUnits.focusElement}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft disabled:opacity-45"
           >
-            {interaction.highlightMode
-              ? <span className={cn(
-                  "h-3.5 w-3.5 rounded-full ring-1 ring-black/10",
-                  interaction.highlightColor === "yellow" ? "bg-yellow-300" : "bg-emerald-400",
-                )} />
-              : <IconEye className="h-4 w-4" />}
+            <IconEye className="h-4 w-4" />
           </button>
         )}
         {onEdit && (
@@ -709,8 +758,6 @@ function HomeworkExerciseView({
     <section className={cn(
       "rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5",
       hidden && "opacity-70 ring-faint/40",
-      exerciseHighlight === "yellow" && "bg-yellow-50/80 ring-yellow-300",
-      exerciseHighlight === "green" && "bg-emerald-50/80 ring-emerald-300",
       focusId === exerciseFocusId && "ring-2 ring-accent",
     )}>
       <div data-homework-focus={exerciseFocusId} className="flex items-start gap-3">
@@ -728,29 +775,16 @@ function HomeworkExerciseView({
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">{instruction}</p>
         </div>
-        {session.teacher && onFocus && (
+        {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"
             disabled={interaction.busy}
             onClick={() => onFocus(exerciseFocusId)}
-            title={interaction.highlightMode
-              ? t.interactiveHomework.highlightElement
-              : t.lessonUnits.focusElement}
-            aria-label={interaction.highlightMode
-              ? t.interactiveHomework.highlightElement
-              : t.lessonUnits.focusElement}
-            className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft disabled:opacity-45",
-              interaction.highlightMode && interaction.highlightColor === "yellow" && "bg-yellow-100",
-              interaction.highlightMode && interaction.highlightColor === "green" && "bg-emerald-100",
-            )}
+            title={t.lessonUnits.focusElement}
+            aria-label={t.lessonUnits.focusElement}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft disabled:opacity-45"
           >
-            {interaction.highlightMode
-              ? <span className={cn(
-                  "h-3.5 w-3.5 rounded-full ring-1 ring-black/10",
-                  interaction.highlightColor === "yellow" ? "bg-yellow-300" : "bg-emerald-400",
-                )} />
-              : <IconEye className="h-4 w-4" />}
+            <IconEye className="h-4 w-4" />
           </button>
         )}
         {onEdit && (
@@ -788,7 +822,10 @@ function clearExerciseAnswers(
     delete updated[homeworkStatusKey(item.id)];
     delete updated[homeworkAttemptsKey(item.id)];
   }
-  if (markAsDraft) delete updated[homeworkSubmittedAtKey()];
+  if (markAsDraft) {
+    delete updated[homeworkSubmittedAtKey()];
+    delete updated[homeworkReviewedAtKey()];
+  }
   return updated;
 }
 
@@ -903,7 +940,10 @@ function AutoTextExercise({
         };
         if (next.status) updated[homeworkStatusKey(item.id)] = next.status;
         else delete updated[homeworkStatusKey(item.id)];
-        if (!session.teacher) delete updated[homeworkSubmittedAtKey()];
+        if (!session.teacher) {
+          delete updated[homeworkSubmittedAtKey()];
+          delete updated[homeworkReviewedAtKey()];
+        }
         return updated;
       });
       setDrafts((current) => ({
@@ -971,6 +1011,7 @@ function DragExercise({
   onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
+  const interaction = useContext(HomeworkInteractionContext);
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, "wrong" | "right" | undefined>>({});
   const [busy, startBusy] = useTransition();
@@ -999,7 +1040,10 @@ function DragExercise({
         };
         if (next.status) updated[homeworkStatusKey(item.id)] = next.status;
         else delete updated[homeworkStatusKey(item.id)];
-        if (!session.teacher) delete updated[homeworkSubmittedAtKey()];
+        if (!session.teacher) {
+          delete updated[homeworkSubmittedAtKey()];
+          delete updated[homeworkReviewedAtKey()];
+        }
         return updated;
       });
       setSelected(null);
@@ -1050,6 +1094,7 @@ function DragExercise({
           const blankAt = item.prompt.indexOf("___");
           const before = blankAt >= 0 ? item.prompt.slice(0, blankAt) : item.prompt;
           const after = blankAt >= 0 ? item.prompt.slice(blankAt + 3) : "";
+          const showAsText = interaction.reviewTools || Boolean(homeworkReviewedAt(state));
           return (
             <HomeworkItemShell
               key={item.id}
@@ -1063,32 +1108,66 @@ function DragExercise({
               onFocus={onFocus}
             >
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm font-semibold leading-relaxed text-content">
-                {before && <span>{before}</span>}
+                {before && (
+                  <HomeworkHighlightableText
+                    item={item}
+                    source="prompt-before"
+                    text={before}
+                    state={state}
+                  />
+                )}
                 <span className="inline-flex max-w-full items-center gap-1.5 align-middle">
-                  <button
-                    type="button"
-                    disabled={Boolean(status) || busy}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => onDrop(event, item)}
-                    onClick={() => drop(item, selected)}
-                    className={cn(
-                      "min-h-9 w-56 max-w-full rounded-lg border-2 border-dashed px-3 py-1.5 text-left text-sm font-bold transition",
-                      feedback[item.id] === "wrong" && "homework-error-flash",
-                      feedback[item.id] === "right" && "homework-correct-pop",
+                  {showAsText ? (
+                    <span className={cn(
+                      "min-h-9 w-56 max-w-full rounded-lg border-2 border-dashed px-3 py-1.5 text-left text-sm font-bold",
                       status === "correct"
                         ? "border-emerald-500 bg-emerald-50 text-emerald-800"
                         : status === "locked"
                           ? "border-rose-500 bg-rose-50 text-rose-800"
-                          : selected
-                            ? "border-accent bg-accent-soft text-accent"
-                            : "border-line bg-surface-2 text-faint",
-                    )}
-                  >
-                    {value || (selected ? `${t.interactiveHomework.place}: ${selected}` : t.interactiveHomework.dropHere)}
-                  </button>
+                          : "border-line bg-surface-2 text-faint",
+                    )}>
+                      {value ? (
+                        <HomeworkHighlightableText
+                          item={item}
+                          source="answer"
+                          text={value}
+                          state={state}
+                        />
+                      ) : t.interactiveHomework.noAnswer}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={Boolean(status) || busy}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => onDrop(event, item)}
+                      onClick={() => drop(item, selected)}
+                      className={cn(
+                        "min-h-9 w-56 max-w-full rounded-lg border-2 border-dashed px-3 py-1.5 text-left text-sm font-bold transition",
+                        feedback[item.id] === "wrong" && "homework-error-flash",
+                        feedback[item.id] === "right" && "homework-correct-pop",
+                        status === "correct"
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                          : status === "locked"
+                            ? "border-rose-500 bg-rose-50 text-rose-800"
+                            : selected
+                              ? "border-accent bg-accent-soft text-accent"
+                              : "border-line bg-surface-2 text-faint",
+                      )}
+                    >
+                      {value || (selected ? `${t.interactiveHomework.place}: ${selected}` : t.interactiveHomework.dropHere)}
+                    </button>
+                  )}
                   <AttemptDots item={item} state={state} />
                 </span>
-                {after && <span>{after}</span>}
+                {after && (
+                  <HomeworkHighlightableText
+                    item={item}
+                    source="prompt-after"
+                    text={after}
+                    state={state}
+                  />
+                )}
               </div>
               {item.hint && (
                 <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
@@ -1122,6 +1201,7 @@ function ManualExercise({
 }) {
   const { t } = useT();
   const router = useRouter();
+  const interaction = useContext(HomeworkInteractionContext);
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(exercise.items.map((item) => [item.id, state[homeworkValueKey(item.id)] ?? ""])),
   );
@@ -1141,7 +1221,10 @@ function ManualExercise({
       }
       setState((current) => {
         const updated = { ...current, [homeworkValueKey(item.id)]: value.trim() };
-        if (!session.teacher) delete updated[homeworkSubmittedAtKey()];
+        if (!session.teacher) {
+          delete updated[homeworkSubmittedAtKey()];
+          delete updated[homeworkReviewedAtKey()];
+        }
         return updated;
       });
     });
@@ -1185,10 +1268,24 @@ function ManualExercise({
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 {item.word && exercise.kind !== "translate" && (
-                  <p className="mb-1 text-sm font-black text-accent">{item.word}</p>
+                  <p className="mb-1 text-sm font-black text-accent">
+                    <HomeworkHighlightableText
+                      item={item}
+                      source="word"
+                      text={item.word}
+                      state={state}
+                    />
+                  </p>
                 )}
                 {exercise.kind !== "describe" && (
-                  <p className="text-sm font-semibold leading-relaxed text-content">{item.prompt}</p>
+                  <p className="text-sm font-semibold leading-relaxed text-content">
+                    <HomeworkHighlightableText
+                      item={item}
+                      source="prompt"
+                      text={item.prompt}
+                      state={state}
+                    />
+                  </p>
                 )}
                 {item.hint && exercise.kind !== "translate" && (
                   <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
@@ -1225,18 +1322,33 @@ function ManualExercise({
               />
             ) : (
               <div className="mt-2">
-                <textarea
-                  value={drafts[item.id] ?? ""}
-                  onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
-                  onBlur={() => save(item)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" || event.shiftKey) return;
-                    event.preventDefault();
-                    event.currentTarget.blur();
-                  }}
-                  placeholder={t.interactiveHomework.writeAnswer}
-                  className="min-h-24 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed text-content outline-none transition focus:border-accent"
-                />
+                {interaction.reviewTools || homeworkReviewedAt(state) ? (
+                  <div className="min-h-24 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed text-content">
+                    {(drafts[item.id] ?? "") ? (
+                      <HomeworkHighlightableText
+                        item={item}
+                        source="answer"
+                        text={drafts[item.id] ?? ""}
+                        state={state}
+                      />
+                    ) : (
+                      <span className="text-faint">{t.interactiveHomework.noAnswer}</span>
+                    )}
+                  </div>
+                ) : (
+                  <textarea
+                    value={drafts[item.id] ?? ""}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
+                    onBlur={() => save(item)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" || event.shiftKey) return;
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }}
+                    placeholder={t.interactiveHomework.writeAnswer}
+                    className="min-h-24 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed text-content outline-none transition focus:border-accent"
+                  />
+                )}
               </div>
             )}
           </HomeworkItemShell>
@@ -1267,6 +1379,62 @@ function ManualExercise({
   );
 }
 
+function HomeworkHighlightableText({
+  item,
+  source,
+  text,
+  state,
+  className,
+}: {
+  item: HomeworkItem;
+  source: HomeworkTextHighlightSource;
+  text: string;
+  state: HomeworkStoredState;
+  className?: string;
+}) {
+  const { t } = useT();
+  const interaction = useContext(HomeworkInteractionContext);
+  const tokens = homeworkTextTokens(text);
+  const canHighlight = interaction.reviewTools && interaction.highlightMode && interaction.onHighlightText;
+
+  return (
+    <span className={cn("whitespace-pre-wrap", className)}>
+      {tokens.map((token, tokenIndex) => {
+        const color = homeworkTextHighlight(state, item.id, source, tokenIndex);
+        const colorClass = color === "yellow"
+          ? "bg-yellow-300 text-slate-950"
+          : color === "green"
+            ? "bg-emerald-300 text-emerald-950"
+            : color === "red"
+              ? "bg-rose-400 text-white"
+              : "";
+        if (!token.highlightable || !canHighlight) {
+          return (
+            <span key={`${source}-${tokenIndex}`} className={cn("rounded-sm", colorClass)}>
+              {token.text}
+            </span>
+          );
+        }
+        return (
+          <button
+            key={`${source}-${tokenIndex}`}
+            type="button"
+            disabled={interaction.busy}
+            onClick={() => interaction.onHighlightText?.(item, source, tokenIndex)}
+            title={t.interactiveHomework.highlightWord}
+            className={cn(
+              "rounded-sm px-0.5 font-[inherit] transition hover:bg-accent-soft disabled:opacity-60",
+              colorClass,
+            )}
+          >
+            {token.text}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
 function InlineHomeworkAnswer({
   item,
   value,
@@ -1286,40 +1454,79 @@ function InlineHomeworkAnswer({
   onChange: (value: string) => void;
   onCommit: () => void;
 }) {
+  const interaction = useContext(HomeworkInteractionContext);
   const status = homeworkStatus(state, item.id);
+  const reviewed = Boolean(homeworkReviewedAt(state));
+  const showAsText = interaction.reviewTools || reviewed;
   const blankAt = item.prompt.indexOf("___");
   const before = blankAt >= 0 ? item.prompt.slice(0, blankAt) : item.prompt;
   const after = blankAt >= 0 ? item.prompt.slice(blankAt + 3) : "";
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm font-semibold leading-relaxed text-content">
-      {before && <span>{before}</span>}
+      {before && (
+        <HomeworkHighlightableText
+          item={item}
+          source="prompt-before"
+          text={before}
+          state={state}
+        />
+      )}
       <span className="inline-flex max-w-full items-center gap-1.5 align-middle">
-        <input
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={onCommit}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            event.currentTarget.blur();
-          }}
-          placeholder={placeholder}
-          className={cn(
-            "h-9 w-56 max-w-full rounded-lg border bg-surface-2 px-3 text-sm font-bold text-content outline-none transition focus:border-accent disabled:cursor-default",
-            feedback === "wrong" && "homework-error-flash",
-            feedback === "right" && "homework-correct-pop",
+        {showAsText ? (
+          <span className={cn(
+            "min-h-9 w-56 max-w-full rounded-lg border bg-surface-2 px-3 py-2 text-sm font-bold",
             status === "correct"
               ? "border-emerald-500 bg-emerald-50 text-emerald-800"
               : status === "locked"
                 ? "border-rose-500 bg-rose-50 text-rose-800"
-                : "border-line",
-          )}
-        />
+                : "border-line text-content",
+          )}>
+            {value ? (
+              <HomeworkHighlightableText
+                item={item}
+                source="answer"
+                text={value}
+                state={state}
+              />
+            ) : (
+              <span className="text-faint">{placeholder}</span>
+            )}
+          </span>
+        ) : (
+          <input
+            value={value}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+            onBlur={onCommit}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              event.currentTarget.blur();
+            }}
+            placeholder={placeholder}
+            className={cn(
+              "h-9 w-56 max-w-full rounded-lg border bg-surface-2 px-3 text-sm font-bold text-content outline-none transition focus:border-accent disabled:cursor-default",
+              feedback === "wrong" && "homework-error-flash",
+              feedback === "right" && "homework-correct-pop",
+              status === "correct"
+                ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                : status === "locked"
+                  ? "border-rose-500 bg-rose-50 text-rose-800"
+                  : "border-line",
+            )}
+          />
+        )}
         <AttemptDots item={item} state={state} />
       </span>
-      {after && <span>{after}</span>}
+      {after && (
+        <HomeworkHighlightableText
+          item={item}
+          source="prompt-after"
+          text={after}
+          state={state}
+        />
+      )}
     </div>
   );
 }
@@ -1400,7 +1607,6 @@ function HomeworkItemShell({
   const note = state[homeworkNoteKey(item.id)] ?? "";
   const noteVisible = state[homeworkNoteVisibleKey(item.id)] === "1";
   const itemFocusId = homeworkItemFocusId(item.id);
-  const itemHighlight = homeworkHighlight(state, itemFocusId);
 
   return (
     <article
@@ -1412,8 +1618,6 @@ function HomeworkItemShell({
           : status === "locked"
             ? "border-rose-500"
             : "border-line",
-        itemHighlight === "yellow" && "border-yellow-400 bg-yellow-50/80",
-        itemHighlight === "green" && "border-emerald-400 bg-emerald-50/80",
         focusId === itemFocusId && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
       )}
     >
@@ -1422,29 +1626,16 @@ function HomeworkItemShell({
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">{children}</div>
-        {session.teacher && onFocus && (
+        {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"
             disabled={interaction.busy}
             onClick={() => onFocus(itemFocusId)}
-            title={interaction.highlightMode
-              ? t.interactiveHomework.highlightElement
-              : t.lessonUnits.focusElement}
-            aria-label={interaction.highlightMode
-              ? t.interactiveHomework.highlightElement
-              : t.lessonUnits.focusElement}
-            className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft disabled:opacity-45",
-              interaction.highlightMode && interaction.highlightColor === "yellow" && "bg-yellow-100",
-              interaction.highlightMode && interaction.highlightColor === "green" && "bg-emerald-100",
-            )}
+            title={t.lessonUnits.focusElement}
+            aria-label={t.lessonUnits.focusElement}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-accent-soft disabled:opacity-45"
           >
-            {interaction.highlightMode
-              ? <span className={cn(
-                  "h-3.5 w-3.5 rounded-full ring-1 ring-black/10",
-                  interaction.highlightColor === "yellow" ? "bg-yellow-300" : "bg-emerald-400",
-                )} />
-              : <IconEye className="h-4 w-4" />}
+            <IconEye className="h-4 w-4" />
           </button>
         )}
       </div>

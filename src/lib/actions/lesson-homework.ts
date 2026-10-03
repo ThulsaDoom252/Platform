@@ -10,6 +10,7 @@ import { translateShortTexts, type MaterialTranslationLang } from "@/lib/materia
 import {
   findHomeworkItem,
   assignedInteractiveHomework,
+  clearHomeworkTextHighlights,
   homeworkAnswerMatches,
   homeworkAssignedAt,
   homeworkAssignedAtKey,
@@ -26,10 +27,14 @@ import {
   homeworkPlanForAssignment,
   homeworkPlanEditIssue,
   homeworkPlanOverrideKey,
+  homeworkReviewedAt,
+  homeworkReviewedAtKey,
   homeworkStatus,
   homeworkStatusKey,
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
+  homeworkTextSourceValue,
+  homeworkTextTokens,
   homeworkStarted,
   homeworkValueKey,
   interactiveHomeworkFromEntries,
@@ -37,7 +42,9 @@ import {
   isHomeworkAutoKind,
   normalizeInteractiveHomework,
   toggleHomeworkHighlight,
+  toggleHomeworkTextHighlight,
   type HomeworkHighlightColor,
+  type HomeworkTextHighlightSource,
   type InteractiveHomeworkPlan,
   type HomeworkExerciseKind,
   type HomeworkStoredState,
@@ -90,7 +97,9 @@ export async function highlightHomeworkElementAction(
 ): Promise<{ error?: string }> {
   const session = await requireUser();
   if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
-  if (color !== "yellow" && color !== "green") return { error: "Неизвестный цвет" };
+  if (color !== "yellow" && color !== "green" && color !== "red") {
+    return { error: "Неизвестный цвет" };
+  }
   const row = await assignmentWithPlan(String(assignmentId ?? ""));
   if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
   const focusId = String(elementId ?? "").trim();
@@ -107,6 +116,40 @@ export async function highlightHomeworkElementAction(
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");
   revalidatePath("/student/class");
+  return {};
+}
+
+/** Учитель отмечает конкретное слово в условии или ответе, а не всю карточку. */
+export async function highlightHomeworkTextAction(
+  assignmentId: string,
+  itemId: string,
+  source: HomeworkTextHighlightSource,
+  tokenIndex: number,
+  color: HomeworkHighlightColor,
+): Promise<{ error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  if (color !== "yellow" && color !== "green" && color !== "red") {
+    return { error: "Неизвестный цвет" };
+  }
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const found = findHomeworkItem(row.plan, String(itemId ?? ""));
+  if (!found) return { error: "Предложение не найдено" };
+  const state = row.assignment.answers ?? {};
+  const token = homeworkTextTokens(homeworkTextSourceValue(found.item, state, source))[tokenIndex];
+  if (!token?.highlightable) return { error: "Выбери слово в предложении" };
+
+  const next = toggleHomeworkTextHighlight(state, found.item, source, tokenIndex, color);
+  await db
+    .update(lessonAssignments)
+    .set({ answers: next, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
   return {};
 }
 
@@ -132,6 +175,7 @@ export async function assignInteractiveHomeworkAction(
   state[homeworkAssignedAtKey()] = assignedAt;
   state[homeworkAssignedExercisesKey()] = JSON.stringify(selected);
   delete state[homeworkSubmittedAtKey()];
+  delete state[homeworkReviewedAtKey()];
 
   await db
     .update(lessonAssignments)
@@ -205,6 +249,7 @@ export async function saveStudentHomeworkPlanAction(
     state[homeworkAssignedExercisesKey()] = JSON.stringify(selected);
   }
   delete state[homeworkSubmittedAtKey()];
+  delete state[homeworkReviewedAtKey()];
 
   await db
     .update(lessonAssignments)
@@ -295,7 +340,7 @@ export async function submitHomeworkAutoAnswerAction(
     return { error: "Задание не найдено" };
   }
 
-  const state = { ...(row.assignment.answers ?? {}) };
+  let state = { ...(row.assignment.answers ?? {}) };
   if (homeworkStatus(state, found.item.id)) {
     return publicItemState(state, found.item.id);
   }
@@ -319,7 +364,11 @@ export async function submitHomeworkAutoAnswerAction(
       state[homeworkStatusKey(found.item.id)] = "locked";
     }
   }
-  if (isStudent) delete state[homeworkSubmittedAtKey()];
+  if (isStudent) {
+    state = clearHomeworkTextHighlights(state, found.item.id, "answer");
+    delete state[homeworkSubmittedAtKey()];
+    delete state[homeworkReviewedAtKey()];
+  }
 
   await db
     .update(lessonAssignments)
@@ -344,13 +393,17 @@ export async function resetHomeworkExerciseAnswersAction(
   const exercise = row.plan.exercises.find((item) => item.id === String(exerciseId ?? ""));
   if (!exercise) return { error: "Упражнение не найдено" };
 
-  const state = { ...(row.assignment.answers ?? {}) };
+  let state = { ...(row.assignment.answers ?? {}) };
   for (const item of exercise.items) {
+    state = clearHomeworkTextHighlights(state, item.id, "answer");
     delete state[homeworkValueKey(item.id)];
     delete state[homeworkStatusKey(item.id)];
     delete state[homeworkAttemptsKey(item.id)];
   }
-  if (isStudent) delete state[homeworkSubmittedAtKey()];
+  if (isStudent) {
+    delete state[homeworkSubmittedAtKey()];
+    delete state[homeworkReviewedAtKey()];
+  }
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
@@ -380,9 +433,13 @@ export async function saveHomeworkResponseAction(
   }
 
   const value = String(supplied ?? "").trim().slice(0, 8_000);
-  const state = { ...(row.assignment.answers ?? {}) };
+  let state = { ...(row.assignment.answers ?? {}) };
   state[homeworkValueKey(found.item.id)] = value;
-  if (isStudent) delete state[homeworkSubmittedAtKey()];
+  if (isStudent) {
+    state = clearHomeworkTextHighlights(state, found.item.id, "answer");
+    delete state[homeworkSubmittedAtKey()];
+    delete state[homeworkReviewedAtKey()];
+  }
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
@@ -455,6 +512,43 @@ export async function submitInteractiveHomeworkForReviewAction(
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   revalidatePath(`/teacher`);
   return { submittedAt };
+}
+
+/** Учитель завершает проверку; ученик сразу получает уведомление. */
+export async function reviewInteractiveHomeworkAction(
+  assignmentId: string,
+): Promise<{ error?: string; reviewedAt?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  if (!homeworkSubmittedAt(state)) return { error: "Ученик ещё не отправил домашнюю работу" };
+  const alreadyReviewed = homeworkReviewedAt(state);
+  if (alreadyReviewed) return { reviewedAt: alreadyReviewed };
+  const reviewedAt = new Date().toISOString();
+  state[homeworkReviewedAtKey()] = reviewedAt;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(lessonAssignments)
+      .set({ answers: state, updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, row.assignment.id));
+    await tx.insert(notifications).values({
+      recipientId: row.assignment.studentId,
+      type: "HOMEWORK_SUBMITTED",
+      relatedStudentId: row.assignment.studentId,
+      message: `Домашняя работа «${row.title}» проверена учителем.`,
+    });
+  });
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath("/student");
+  return { reviewedAt };
 }
 
 /** Заметка учителя к конкретному предложению и её видимость ученику. */
@@ -564,6 +658,7 @@ export type TeacherHomeworkAssignmentCard = HomeworkAssignmentCard & {
   studentName: string;
   studentAvatarUrl: string | null;
   submittedAt: string | null;
+  reviewedAt: string | null;
   started: boolean;
 };
 
@@ -601,6 +696,7 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
       ? homeworkExerciseProgress(assignedPlan, state)
       : { required: { done: 0, total: legacy.length }, bonuses: { done: 0, total: 0 } };
     const submittedAt = homeworkSubmittedAt(state);
+    const reviewedAt = homeworkReviewedAt(state);
     const started = homeworkStarted(state);
 
     return [{
@@ -617,6 +713,7 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
       studentName: row.studentName,
       studentAvatarUrl: row.studentAvatarUrl,
       submittedAt,
+      reviewedAt,
       started,
     }];
   });
