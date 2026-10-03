@@ -34,6 +34,13 @@ export const uk: Dict = {
   teacherHomeworks: {
     title: "Домашки учнів",
     hint: "Перевіряйте всі призначені домашки напряму, не відкриваючи урок.",
+    folders: "Папки учнів",
+    folderHint: "Відкрийте папку, щоб побачити й відсортувати домашки одного учня.",
+    homeworksCount: "Домашок",
+    doneCount: "Виконано",
+    openFolder: "Відкрити папку",
+    backToFolders: "Усі папки учнів",
+    sortFolderBy: "Сортування домашніх завдань",
     students: "Учні",
     assignments: "Призначено",
     waiting: "Чекають на перевірку",

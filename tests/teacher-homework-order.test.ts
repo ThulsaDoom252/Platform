@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  groupTeacherHomeworksByStudent,
   sortTeacherHomeworks,
   teacherHomeworkOverviewState,
   type TeacherHomeworkOrderable,
 } from "../src/lib/teacher-homework-order";
+
+type GroupableHomework = TeacherHomeworkOrderable & {
+  studentId: string;
+  studentAvatarUrl: string | null;
+};
 
 const item = (
   id: string,
@@ -64,5 +70,32 @@ test("статусы сортируются в порядке reviewed, review, 
     "review",
     "doing",
     "new",
+  ]);
+});
+
+test("домашки собираются в папки учеников со счётчиками статусов", () => {
+  const groupable = (
+    homework: TeacherHomeworkOrderable,
+    studentId: string,
+  ): GroupableHomework => ({ ...homework, studentId, studentAvatarUrl: null });
+  const groups = groupTeacherHomeworksByStudent([
+    groupable(item("alla-new", "Alla"), "alla"),
+    groupable(item("bogdan-review", "Bogdan", { submittedAt: "2026-10-02" }), "bogdan"),
+    groupable(item("alla-doing", "Alla", { started: true }), "alla"),
+    groupable(item("alla-done", "Alla", { reviewedAt: "2026-10-03" }), "alla"),
+  ]);
+
+  assert.deepEqual(groups.map((group) => group.studentId), ["alla", "bogdan"]);
+  assert.deepEqual(groups[0].counts, {
+    total: 3,
+    notStarted: 1,
+    inProgress: 1,
+    submitted: 0,
+    reviewed: 1,
+  });
+  assert.deepEqual(groups[0].items.map((homework) => homework.id), [
+    "alla-new",
+    "alla-doing",
+    "alla-done",
   ]);
 });

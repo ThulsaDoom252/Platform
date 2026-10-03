@@ -16,6 +16,14 @@ export type TeacherHomeworkOrderable = {
   started: boolean;
 };
 
+export type TeacherHomeworkStudentGroup<T> = {
+  studentId: string;
+  studentName: string;
+  studentAvatarUrl: string | null;
+  items: T[];
+  counts: Record<TeacherHomeworkOverviewState, number> & { total: number };
+};
+
 const STATUS_ORDER: Record<TeacherHomeworkOverviewState, number> = {
   reviewed: 0,
   submitted: 1,
@@ -30,6 +38,38 @@ export function teacherHomeworkOverviewState(
   if (item.submittedAt) return "submitted";
   if (item.started) return "inProgress";
   return "notStarted";
+}
+
+/** Build one alphabetized folder per student with live homework counters. */
+export function groupTeacherHomeworksByStudent<
+  T extends TeacherHomeworkOrderable & {
+    studentId: string;
+    studentAvatarUrl: string | null;
+  },
+>(items: T[], locale?: string): TeacherHomeworkStudentGroup<T>[] {
+  const groups = new Map<string, TeacherHomeworkStudentGroup<T>>();
+  for (const item of items) {
+    let group = groups.get(item.studentId);
+    if (!group) {
+      group = {
+        studentId: item.studentId,
+        studentName: item.studentName,
+        studentAvatarUrl: item.studentAvatarUrl,
+        items: [],
+        counts: { total: 0, notStarted: 0, inProgress: 0, submitted: 0, reviewed: 0 },
+      };
+      groups.set(item.studentId, group);
+    }
+    group.items.push(item);
+    group.counts.total += 1;
+    group.counts[teacherHomeworkOverviewState(item)] += 1;
+  }
+
+  const collator = new Intl.Collator(locale, { sensitivity: "base" });
+  return [...groups.values()].sort((left, right) =>
+    collator.compare(left.studentName, right.studentName) ||
+    left.studentId.localeCompare(right.studentId),
+  );
 }
 
 /** Sort a flat homework list without changing the server result. */

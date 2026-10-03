@@ -37,6 +37,13 @@ export const en = {
   teacherHomeworks: {
     title: "Student homeworks",
     hint: "Review every assigned homework directly, without opening the lesson.",
+    folders: "Student folders",
+    folderHint: "Open a folder to see and sort one student's homework.",
+    homeworksCount: "Homeworks",
+    doneCount: "Done",
+    openFolder: "Open folder",
+    backToFolders: "All student folders",
+    sortFolderBy: "Sort homeworks by",
     students: "Students",
     assignments: "Assigned",
     waiting: "Waiting for review",
