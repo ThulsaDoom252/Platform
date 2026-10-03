@@ -4,6 +4,7 @@ import {
   expectedClassVideoTime,
   normalizeClassVideoState,
   parseLessonVideoSource,
+  withYouTubeClip,
 } from "../src/lib/class-video";
 
 test("normalizes and clamps shared video state", () => {
@@ -98,4 +99,22 @@ test("recognizes YouTube links and local lesson files", () => {
     "file",
   );
   assert.equal(parseLessonVideoSource("https://example.com/watch")?.kind, "link");
+});
+
+test("reads and writes a bounded YouTube lesson clip", () => {
+  const source = parseLessonVideoSource(
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1m5s&end=102",
+  );
+  assert.equal(source?.kind, "youtube");
+  if (source?.kind !== "youtube") return;
+  assert.equal(source.startAt, 65);
+  assert.equal(source.endAt, 102);
+
+  const clipped = withYouTubeClip(source.src, 12.9, 48.8);
+  const reparsed = parseLessonVideoSource(clipped);
+  assert.equal(reparsed?.kind, "youtube");
+  if (reparsed?.kind !== "youtube") return;
+  assert.equal(reparsed.startAt, 12);
+  assert.equal(reparsed.endAt, 48);
+  assert.equal(new URL(clipped).searchParams.has("t"), false);
 });

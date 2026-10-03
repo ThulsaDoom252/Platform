@@ -547,7 +547,7 @@ function Video({
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-slate-900/20 shadow-[0_18px_50px_rgba(2,6,23,.18)]">
+    <section className="mx-auto w-full max-w-3xl overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-slate-900/20 shadow-[0_18px_50px_rgba(2,6,23,.18)]">
       <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-4 py-2.5">
         <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/15 text-blue-300 ring-1 ring-blue-400/20">
           ▶

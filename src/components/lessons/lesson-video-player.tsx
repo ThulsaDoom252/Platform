@@ -19,6 +19,7 @@ import {
 import {
   expectedClassVideoTime,
   parseLessonVideoSource,
+  withYouTubeClip,
   type ClassVideoState,
 } from "@/lib/class-video";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,25 @@ export type LessonVideoSession = {
   state: ClassVideoState | null;
 };
 
-type YouTubeTrack = { languageCode?: string; languageName?: string; displayName?: string };
+type YouTubeTrack = {
+  languageCode?: string;
+  languageName?: string;
+  displayName?: string;
+  name?: string | { simpleText?: string };
+  kind?: string;
+  vssId?: string;
+  vss_id?: string;
+  isDefault?: boolean;
+  is_default?: boolean;
+  [key: string]: unknown;
+};
+
+type CaptionOption = {
+  code: string;
+  name: string;
+  automatic: boolean;
+  track: YouTubeTrack;
+};
 
 type YouTubePlayer = {
   destroy(): void;
@@ -111,6 +130,47 @@ const formatTime = (seconds: number) => {
   return `${minutes}:${String(rest).padStart(2, "0")}`;
 };
 
+const formatEditorTime = (seconds: number | null) => {
+  if (seconds === null) return "";
+  const safe = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const rest = safe % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
+    : `${minutes}:${String(rest).padStart(2, "0")}`;
+};
+
+const parseEditorTime = (value: string): number | null => {
+  const raw = value.trim();
+  if (!raw) return null;
+  if (/^\d+(?:\.\d+)?$/.test(raw)) return Math.floor(Number(raw));
+  const parts = raw.split(":");
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => !/^\d+$/.test(part))) return null;
+  const numbers = parts.map(Number);
+  if (numbers.some((part) => part < 0 || part >= 60)) return null;
+  return numbers.length === 2
+    ? numbers[0] * 60 + numbers[1]
+    : numbers[0] * 3600 + numbers[1] * 60 + numbers[2];
+};
+
+const trackName = (track: YouTubeTrack, fallback: string) => {
+  if (typeof track.languageName === "string" && track.languageName.trim()) return track.languageName.trim();
+  if (typeof track.displayName === "string" && track.displayName.trim()) return track.displayName.trim();
+  if (typeof track.name === "string" && track.name.trim()) return track.name.trim();
+  if (track.name && typeof track.name === "object" && typeof track.name.simpleText === "string") {
+    return track.name.simpleText.trim() || fallback;
+  }
+  return fallback;
+};
+
+const isAutomaticTrack = (track: YouTubeTrack) => {
+  const kind = String(track.kind ?? "").toLowerCase();
+  const vssId = String(track.vssId ?? track.vss_id ?? "").toLowerCase();
+  const name = trackName(track, "").toLowerCase();
+  return kind === "asr" || vssId.startsWith("a.") || /auto(?:matic)?(?:ally)? generated/.test(name);
+};
+
 const QUALITY_LABELS: Record<string, string> = {
   auto: "Auto",
   highres: "4K+",
@@ -127,6 +187,7 @@ const QUALITY_LABELS: Record<string, string> = {
 type PlayerControlsProps = {
   teacher: boolean;
   playing: boolean;
+  startTime?: number;
   currentTime: number;
   duration: number;
   muted: boolean;
@@ -166,15 +227,22 @@ function PlayerControls(props: PlayerControlsProps) {
     <div className="border-t border-white/10 bg-slate-950/95 px-3 pb-3 pt-2 text-white">
       <input
         type="range"
-        min={0}
-        max={Math.max(1, props.duration)}
+        min={props.startTime ?? 0}
+        max={Math.max((props.startTime ?? 0) + 1, props.duration)}
         step={0.05}
-        value={Math.min(props.currentTime, Math.max(1, props.duration))}
+        value={Math.max(
+          props.startTime ?? 0,
+          Math.min(props.currentTime, Math.max((props.startTime ?? 0) + 1, props.duration)),
+        )}
         disabled={locked}
         onChange={(event) => props.onSeek(Number(event.target.value))}
         aria-label="Video position"
         className="lesson-video-range w-full"
-        style={{ "--video-progress": `${props.duration > 0 ? (props.currentTime / props.duration) * 100 : 0}%` } as React.CSSProperties}
+        style={{
+          "--video-progress": `${props.duration > (props.startTime ?? 0)
+            ? ((props.currentTime - (props.startTime ?? 0)) / (props.duration - (props.startTime ?? 0))) * 100
+            : 0}%`,
+        } as React.CSSProperties}
       />
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <button
@@ -512,10 +580,14 @@ function LocalVideoPlayer({
 
 function YouTubeVideoPlayer({
   videoId,
+  startAt,
+  endAt,
   teacher,
   session,
 }: {
   videoId: string;
+  startAt: number;
+  endAt: number | null;
   teacher: boolean;
   session?: LessonVideoSession;
 }) {
@@ -535,6 +607,8 @@ function YouTubeVideoPlayer({
   const [languages, setLanguages] = useState<{ code: string; name: string }[]>([
     { code: "en", name: "English" },
   ]);
+  const captionOptions = useRef<CaptionOption[]>([]);
+  const appliedCaptionKey = useRef("");
   const [hasCaptionTracks, setHasCaptionTracks] = useState(true);
   const [qualityLevels, setQualityLevels] = useState<string[]>([]);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -566,23 +640,75 @@ function YouTubeVideoPlayer({
     });
   }, [assignmentId, canSync]);
 
+  const applyCaptions = useCallback((enabled: boolean, language: string) => {
+    const element = player.current;
+    if (!element) return;
+    try {
+      if (!enabled) {
+        appliedCaptionKey.current = "off";
+        element.unloadModule("captions");
+        return;
+      }
+      const candidates = captionOptions.current.filter((item) => item.code === language);
+      const selected = candidates.find((item) => !item.automatic) ?? candidates[0];
+      const trackId = String(selected?.track.vssId ?? selected?.track.vss_id ?? "");
+      const nextKey = selected
+        ? `${language || "en"}:${selected.automatic ? "auto" : "manual"}:${trackId}`
+        : `${language || "en"}:fallback`;
+      if (appliedCaptionKey.current === nextKey) return;
+      element.loadModule("captions");
+      element.setOption(
+        "captions",
+        "track",
+        selected?.track ?? { languageCode: language || "en" },
+      );
+      appliedCaptionKey.current = nextKey;
+    } catch {
+      /* A video without captions simply leaves CC unavailable. */
+    }
+  }, []);
+
   const refreshOptions = useCallback((element: YouTubePlayer) => {
     try {
       const raw = element.getOption("captions", "tracklist");
       if (Array.isArray(raw)) {
-        const next = raw.flatMap((item: YouTubeTrack) => {
+        const candidates = raw.flatMap((item: YouTubeTrack): CaptionOption[] => {
           const code = String(item?.languageCode ?? "").trim();
           if (!code) return [];
-          return [{ code, name: String(item.languageName ?? item.displayName ?? code) }];
+          const automatic = isAutomaticTrack(item);
+          const baseName = trackName(item, code);
+          return [{
+            code,
+            name: automatic && !/auto/i.test(baseName) ? `${baseName} (auto)` : baseName,
+            automatic,
+            track: item,
+          }];
         });
+        const preferredByLanguage = new Map<string, CaptionOption>();
+        for (const candidate of candidates) {
+          const key = candidate.code.toLowerCase();
+          const current = preferredByLanguage.get(key);
+          if (!current || (current.automatic && !candidate.automatic)) {
+            preferredByLanguage.set(key, candidate);
+          }
+        }
+        const next = [...preferredByLanguage.values()];
         if (next.length > 0) {
+          captionOptions.current = next;
           setHasCaptionTracks(true);
-          setLanguages(next);
-          setCaptionLanguage((current) =>
-            next.some((item) => item.code === current)
-              ? current
-              : next.find((item) => item.code.toLowerCase().startsWith("en"))?.code ?? next[0].code,
-          );
+          setLanguages(next.map(({ code, name }) => ({ code, name })));
+          const current = settings.current.captionLanguage;
+          const wantsEnglish = current.toLowerCase().startsWith("en");
+          const selected = next.find((item) => item.code === current && !item.automatic)
+            ?? (wantsEnglish
+              ? next.find((item) => item.code.toLowerCase().startsWith("en") && !item.automatic)
+              : undefined)
+            ?? next.find((item) => item.code === current)
+            ?? next.find((item) => item.code.toLowerCase().startsWith("en"))
+            ?? next[0];
+          settings.current.captionLanguage = selected.code;
+          setCaptionLanguage(selected.code);
+          if (settings.current.captions) applyCaptions(true, selected.code);
         } else if (settings.current.captions) setHasCaptionTracks(false);
       }
     } catch {
@@ -594,28 +720,15 @@ function YouTubeVideoPlayer({
     } catch {
       /* Quality is allowed to remain automatic. */
     }
-  }, []);
-
-  const applyCaptions = useCallback((enabled: boolean, language: string) => {
-    const element = player.current;
-    if (!element) return;
-    try {
-      if (!enabled) {
-        element.unloadModule("captions");
-        return;
-      }
-      element.loadModule("captions");
-      element.setOption("captions", "track", { languageCode: language || "en" });
-    } catch {
-      /* A video without captions simply leaves CC unavailable. */
-    }
-  }, []);
+  }, [applyCaptions]);
 
   useEffect(() => {
     const target = mount.current;
     if (!target) return;
     let alive = true;
     let instance: YouTubePlayer | null = null;
+    captionOptions.current = [];
+    appliedCaptionKey.current = "";
     setReady(false);
     setPlayerError(null);
     loadYouTubeApi()
@@ -635,6 +748,8 @@ function YouTubeVideoPlayer({
             cc_lang_pref: "en",
             hl: "en",
             origin: window.location.origin,
+            ...(startAt > 0 ? { start: Math.floor(startAt) } : {}),
+            ...(endAt !== null ? { end: Math.floor(endAt) } : {}),
           },
           events: {
             onReady: ({ target: loaded }) => {
@@ -646,6 +761,13 @@ function YouTubeVideoPlayer({
               setVolume(loaded.getVolume() / 100);
               setMuted(loaded.isMuted());
               setPlaybackRate(loaded.getPlaybackRate() || 1);
+              const initialTime = loaded.getCurrentTime() || 0;
+              if (initialTime < startAt - 0.5 || (endAt !== null && initialTime >= endAt)) {
+                loaded.seekTo(startAt, true);
+                setCurrentTime(startAt);
+              } else {
+                setCurrentTime(initialTime);
+              }
               applyCaptions(settings.current.captions, settings.current.captionLanguage || "en");
               refreshOptions(loaded);
             },
@@ -670,19 +792,28 @@ function YouTubeVideoPlayer({
       player.current = null;
       instance?.destroy();
     };
-  }, [applyCaptions, publish, refreshOptions, teacher, videoId]);
+  }, [applyCaptions, endAt, publish, refreshOptions, startAt, teacher, videoId]);
 
   useEffect(() => {
     if (!ready) return;
     const timer = window.setInterval(() => {
       const element = player.current;
       if (!element) return;
-      setCurrentTime(element.getCurrentTime() || 0);
+      const time = element.getCurrentTime() || 0;
+      if (endAt !== null && time >= endAt - 0.08) {
+        element.pauseVideo();
+        element.seekTo(endAt, true);
+        setCurrentTime(endAt);
+        setPlaying(false);
+        if (teacher) publish({ currentTime: endAt, playing: false });
+      } else {
+        setCurrentTime(Math.max(startAt, time));
+      }
       setDuration(element.getDuration() || 0);
       refreshOptions(element);
     }, 300);
     return () => window.clearInterval(timer);
-  }, [ready, refreshOptions]);
+  }, [endAt, publish, ready, refreshOptions, startAt, teacher]);
 
   useEffect(() => {
     if (!ready || !session || session.teacher || !session.state || !player.current) return;
@@ -700,16 +831,24 @@ function YouTubeVideoPlayer({
     element.setPlaybackRate(state.playbackRate);
     element.setPlaybackQuality(state.quality === "auto" ? "default" : state.quality);
     applyCaptions(state.captions, state.captionLanguage || "en");
-    const expected = Math.min(expectedClassVideoTime(state), element.getDuration() || Infinity);
+    const clipEnd = endAt ?? (element.getDuration() || Infinity);
+    const expected = Math.max(startAt, Math.min(expectedClassVideoTime(state), clipEnd));
     if (Math.abs(element.getCurrentTime() - expected) > 0.9) element.seekTo(expected, true);
     if (state.playing) element.playVideo();
     else element.pauseVideo();
-  }, [applyCaptions, ready, session]);
+  }, [applyCaptions, endAt, ready, session, startAt]);
 
   const togglePlay = () => {
     if (!teacher || !player.current) return;
     if (player.current.getPlayerState() === 1) player.current.pauseVideo();
-    else player.current.playVideo();
+    else {
+      const time = player.current.getCurrentTime() || 0;
+      if (time < startAt || (endAt !== null && time >= endAt - 0.15)) {
+        player.current.seekTo(startAt, true);
+        setCurrentTime(startAt);
+      }
+      player.current.playVideo();
+    }
   };
 
   const captionsAvailable = hasCaptionTracks;
@@ -743,8 +882,9 @@ function YouTubeVideoPlayer({
       <PlayerControls
         teacher={teacher}
         playing={playing}
+        startTime={startAt}
         currentTime={currentTime}
-        duration={duration}
+        duration={endAt ?? duration}
         muted={muted}
         volume={volume}
         playbackRate={playbackRate}
@@ -809,10 +949,10 @@ function YouTubeVideoPlayer({
   );
 }
 
-async function resetSharedVideo(session?: LessonVideoSession) {
+async function resetSharedVideo(session?: LessonVideoSession, currentTime = 0) {
   if (!session?.teacher) return;
   await syncLessonVideoAction(session.assignmentId, {
-    currentTime: 0,
+    currentTime,
     playing: false,
     captions: true,
     muted: false,
@@ -844,6 +984,12 @@ function LessonVideoPlayerState({
     parsed?.kind === "youtube" ? "youtube" : "local",
   );
   const [youtubeUrl, setYoutubeUrl] = useState(parsed?.kind === "youtube" ? activeUrl : "");
+  const [clipFrom, setClipFrom] = useState(
+    parsed?.kind === "youtube" ? formatEditorTime(parsed.startAt) : "0:00",
+  );
+  const [clipTo, setClipTo] = useState(
+    parsed?.kind === "youtube" ? formatEditorTime(parsed.endAt) : "",
+  );
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -869,8 +1015,39 @@ function LessonVideoPlayerState({
       }
       setActiveUrl(youtubeUrl.trim());
       setActiveTitle(nextTitle);
+      setClipFrom(formatEditorTime(next.startAt));
+      setClipTo(formatEditorTime(next.endAt));
       setSaved(true);
-      await resetSharedVideo(session);
+      await resetSharedVideo(session, next.startAt);
+    });
+  };
+
+  const saveClip = () => {
+    if (parsed?.kind !== "youtube") return;
+    const startAt = clipFrom.trim() ? parseEditorTime(clipFrom) : 0;
+    const endAt = parseEditorTime(clipTo);
+    if (startAt === null || (clipTo.trim() && endAt === null) || (endAt !== null && endAt <= startAt)) {
+      setError(t.lessonUnits.videoClipInvalid);
+      return;
+    }
+    const clippedUrl = withYouTubeClip(activeUrl, startAt, endAt);
+    setError(null);
+    setSaved(false);
+    startTransition(async () => {
+      const result = await saveLessonAction(lessonId, {
+        videoUrl: clippedUrl,
+        videoTitle: activeTitle || "YouTube video",
+      });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setActiveUrl(clippedUrl);
+      setYoutubeUrl(clippedUrl);
+      setClipFrom(formatEditorTime(startAt));
+      setClipTo(formatEditorTime(endAt));
+      setSaved(true);
+      await resetSharedVideo(session, startAt);
     });
   };
 
@@ -998,6 +1175,44 @@ function LessonVideoPlayerState({
               </span>
             )}
           </div>
+          {mode === "youtube" && parsed?.kind === "youtube" && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/8 pt-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-white/45">
+                {t.lessonUnits.videoClip}
+              </span>
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-white/55">
+                {t.lessonUnits.videoClipFrom}
+                <input
+                  value={clipFrom}
+                  inputMode="numeric"
+                  onChange={(event) => setClipFrom(event.target.value)}
+                  onKeyDown={(event) => event.key === "Enter" && saveClip()}
+                  placeholder="0:00"
+                  className="h-8 w-[74px] rounded-lg border border-white/12 bg-white/7 px-2 text-center font-extrabold text-white outline-none placeholder:text-white/25 focus:border-sky-400"
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-white/55">
+                {t.lessonUnits.videoClipTo}
+                <input
+                  value={clipTo}
+                  inputMode="numeric"
+                  onChange={(event) => setClipTo(event.target.value)}
+                  onKeyDown={(event) => event.key === "Enter" && saveClip()}
+                  placeholder={t.lessonUnits.videoClipFull}
+                  className="h-8 w-[86px] rounded-lg border border-white/12 bg-white/7 px-2 text-center font-extrabold text-white outline-none placeholder:text-white/25 focus:border-sky-400"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={saveClip}
+                className="h-8 rounded-lg bg-sky-500 px-3 text-[10px] font-extrabold text-white transition hover:bg-sky-400 disabled:opacity-50"
+              >
+                {t.lessonUnits.videoClipApply}
+              </button>
+              <span className="text-[10px] font-semibold text-white/35">0:00 · 1:25 · 1:02:30</span>
+            </div>
+          )}
           {error && <p className="mt-2 text-[11px] font-semibold text-rose-300">{error}</p>}
         </div>
       )}
@@ -1012,7 +1227,13 @@ function LessonVideoPlayerState({
           </div>
         </div>
       ) : parsed.kind === "youtube" ? (
-        <YouTubeVideoPlayer videoId={parsed.videoId} teacher={teacher} session={session} />
+        <YouTubeVideoPlayer
+          videoId={parsed.videoId}
+          startAt={parsed.startAt}
+          endAt={parsed.endAt}
+          teacher={teacher}
+          session={session}
+        />
       ) : parsed.kind === "file" ? (
         <LocalVideoPlayer src={parsed.src} teacher={teacher} session={session} />
       ) : (
