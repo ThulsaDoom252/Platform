@@ -37,6 +37,7 @@ import {
   homeworkSubmittedAtKey,
   homeworkTextSourceValue,
   homeworkTextTokens,
+  homeworkTranslationLanguage,
   homeworkStarted,
   homeworkValueKey,
   interactiveHomeworkFromEntries,
@@ -406,18 +407,16 @@ export async function translateHomeworkExerciseLanguageAction(
   const direction = exercise.translationDirection === "from-english"
     ? "from-english"
     : "to-english";
-  const english = exercise.items.map((item) =>
-    direction === "from-english" ? item.prompt : item.answer ?? "",
-  );
-  if (english.length === 0 || english.some((sentence) => !sentence.trim())) {
-    return { error: "В каждом предложении должна быть заполнена английская сторона" };
+  const sourceTexts = exercise.items.map((item) => item.prompt);
+  if (sourceTexts.length === 0) {
+    return { error: "В упражнении нет предложений для перевода" };
   }
 
   try {
     const translated = await translateShortTexts(
-      english,
+      sourceTexts,
       language,
-      "EN",
+      direction === "from-english" ? "EN" : homeworkTranslationLanguage(exercise),
       "Simple real sentences for an English lesson translation exercise",
     );
     const nextExercise = {
@@ -425,8 +424,8 @@ export async function translateHomeworkExerciseLanguageAction(
       translationLanguage: language,
       items: exercise.items.map((item, index) => ({
         ...item,
-        prompt: direction === "to-english" ? translated[index] : english[index],
-        answer: direction === "to-english" ? english[index] : translated[index],
+        prompt: direction === "to-english" ? translated[index] : sourceTexts[index],
+        ...(direction === "from-english" ? { answer: translated[index] } : {}),
       })),
     };
     const plan: InteractiveHomeworkPlan = {
