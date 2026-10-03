@@ -49,7 +49,7 @@ async function requireUser() {
   return session;
 }
 
-async function assignmentWithPlan(id: string) {
+async function assignmentWithOptionalPlan(id: string) {
   const [row] = await db
     .select({
       assignment: lessonAssignments,
@@ -66,7 +66,12 @@ async function assignmentWithPlan(id: string) {
     interactiveHomeworkFromEntries(row.homework),
     row.assignment.answers ?? {},
   );
-  return plan ? { ...row, plan } : null;
+  return { ...row, plan };
+}
+
+async function assignmentWithPlan(id: string) {
+  const row = await assignmentWithOptionalPlan(id);
+  return row?.plan ? { ...row, plan: row.plan } : null;
 }
 
 function publicItemState(state: HomeworkStoredState, itemId: string) {
@@ -147,12 +152,17 @@ export async function saveStudentHomeworkPlanAction(
 ): Promise<{ error?: string; plan?: InteractiveHomeworkPlan; state?: HomeworkStoredState }> {
   const session = await requireUser();
   if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
-  const row = await assignmentWithPlan(String(assignmentId ?? ""));
-  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const row = await assignmentWithOptionalPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Урок ученика не найден" };
 
   const plan = normalizeInteractiveHomework(candidate);
   if (!plan) return { error: "Добавь хотя бы одно заполненное упражнение" };
-  const editIssue = homeworkPlanEditIssue(row.plan, plan);
+  const previousPlan: InteractiveHomeworkPlan = row.plan ?? {
+    kind: "INTERACTIVE_HOMEWORK_V1",
+    title: plan.title || `${row.title} · Homework`,
+    exercises: [],
+  };
+  const editIssue = homeworkPlanEditIssue(previousPlan, plan);
   if (editIssue === "empty-exercise") {
     return { error: "В изменённом упражнении должно быть хотя бы одно задание" };
   }
@@ -164,9 +174,9 @@ export async function saveStudentHomeworkPlanAction(
   }
 
   const state = { ...(row.assignment.answers ?? {}) };
-  const oldExercises = new Map(row.plan.exercises.map((exercise) => [exercise.id, exercise]));
+  const oldExercises = new Map(previousPlan.exercises.map((exercise) => [exercise.id, exercise]));
   const oldItems = new Map(
-    row.plan.exercises.flatMap((exercise) =>
+    previousPlan.exercises.flatMap((exercise) =>
       exercise.items.map((item) => [item.id, { exerciseKind: exercise.kind, item }] as const),
     ),
   );
@@ -188,7 +198,7 @@ export async function saveStudentHomeworkPlanAction(
 
   state[homeworkPlanOverrideKey()] = JSON.stringify(plan);
   if (homeworkAssignedAt(state)) {
-    const previouslySelected = new Set(homeworkAssignedExerciseIds(row.plan, state));
+    const previouslySelected = new Set(homeworkAssignedExerciseIds(previousPlan, state));
     const selected = plan.exercises
       .filter((exercise) => previouslySelected.has(exercise.id) || !oldExercises.has(exercise.id))
       .map((exercise) => exercise.id);

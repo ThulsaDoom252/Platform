@@ -801,18 +801,23 @@ export function RegularLessonView({
   };
 
   const addToHomework = () => {
-    if (!assignmentId || !localHomeworkPlan) return;
+    if (!assignmentId) return;
     const candidate = candidates.find((item) => item.exercise.id === candidateId);
     if (!candidate) return;
-    if (localHomeworkPlan.exercises.some((exercise) => exercise.id === candidate.exercise.id)) {
+    const currentPlan: InteractiveHomeworkPlan = localHomeworkPlan ?? {
+      kind: "INTERACTIVE_HOMEWORK_V1",
+      title: lessonTitle?.trim() ? `${lessonTitle.trim()} · Homework` : "Homework",
+      exercises: [],
+    };
+    if (currentPlan.exercises.some((exercise) => exercise.id === candidate.exercise.id)) {
       setHomeworkMessage("Это упражнение уже добавлено в домашку.");
       return;
     }
     setHomeworkMessage(null);
     startBusy(async () => {
       const result = await saveStudentHomeworkPlanAction(assignmentId, {
-        ...localHomeworkPlan,
-        exercises: [...localHomeworkPlan.exercises, candidate.exercise],
+        ...currentPlan,
+        exercises: [...currentPlan.exercises, candidate.exercise],
       });
       if (result.error || !result.plan) {
         setHomeworkMessage(result.error ?? "Не удалось добавить упражнение");
@@ -967,17 +972,15 @@ export function RegularLessonView({
                       ))}
                     </select>
                   )}
-                  {localHomeworkPlan && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={addToHomework}
-                      className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
-                    >
-                      <IconPlus className="h-3.5 w-3.5" />
-                      Add to homework
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={addToHomework}
+                    className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-bold text-white transition hover:brightness-95 disabled:opacity-50"
+                  >
+                    <IconPlus className="h-3.5 w-3.5" />
+                    Add to homework
+                  </button>
                   <div className="relative">
                     <button
                       type="button"

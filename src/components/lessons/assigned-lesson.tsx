@@ -215,14 +215,14 @@ export function AssignedLesson({
             liveClass && teacher ? changeVocabularyReveal : undefined
           }
           homeworkPlan={data.lesson.interactiveHomework}
-          homeworkSession={data.lesson.interactiveHomework ? {
+          homeworkSession={{
             assignmentId: data.assignment.id,
             unitId: data.assignment.unitId,
             teacher,
             state: data.answers,
             canAssign: teacher,
             canEdit: teacher,
-          } : undefined}
+          }}
           onFocusHomework={teacher && liveClass
             ? (elementId) => {
                 startBusy(() =>

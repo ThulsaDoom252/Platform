@@ -202,6 +202,20 @@ test("индивидуальная копия домашки сильнее ша
   assert.equal(homeworkPlanForAssignment(plan, {})?.title, "Homework");
 });
 
+test("индивидуальную домашку можно создать для урока без домашки в шаблоне", () => {
+  const individual: InteractiveHomeworkPlan = {
+    ...plan,
+    title: "Grammar Check · Homework",
+    exercises: [plan.exercises[0]],
+  };
+  const state = { [homeworkPlanOverrideKey()]: JSON.stringify(individual) };
+  assert.equal(homeworkPlanForAssignment(null, state)?.title, "Grammar Check · Homework");
+  assert.deepEqual(
+    homeworkPlanForAssignment(null, state)?.exercises.map((exercise) => exercise.id),
+    ["fill-main"],
+  );
+});
+
 test("правка вопросов не блокируется неполными переводами из старой домашки", () => {
   const legacy: InteractiveHomeworkPlan = {
     kind: "INTERACTIVE_HOMEWORK_V1",
