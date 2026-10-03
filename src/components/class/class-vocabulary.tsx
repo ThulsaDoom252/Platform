@@ -9,6 +9,7 @@ import {
   deleteClassVocabularyAction,
   listClassVocabularyAction,
   translateClassVocabularyAction,
+  translateClassVocabularyLanguageAction,
   updateClassVocabularyAction,
   type ClassVocabularyDraft,
   type ClassVocabularyWord,
@@ -44,8 +45,11 @@ export function ClassVocabulary({
   } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [languageBusy, setLanguageBusy] = useState(false);
   const [busy, startBusy] = useTransition();
   const translateRun = useRef(0);
+  const languageInitialized = useRef(false);
+  const languageSwitching = useRef(false);
 
   const load = useCallback(async () => {
     if (!ready) {
@@ -54,7 +58,12 @@ export function ClassVocabulary({
       return;
     }
     try {
-      setRows(await listClassVocabularyAction());
+      const words = await listClassVocabularyAction();
+      if (!languageSwitching.current) setRows(words);
+      if (!languageInitialized.current) {
+        languageInitialized.current = true;
+        if (words[0]) setLang(words[0].translationLang);
+      }
     } finally {
       setLoaded(true);
     }
@@ -88,10 +97,30 @@ export function ClassVocabulary({
     });
   }, [lang, t.classVocabulary.translateFailed]);
 
-  const switchLang = (next: ClassVocabularyLang) => {
+  const switchLang = async (next: ClassVocabularyLang) => {
+    if (next === lang || languageSwitching.current) return;
+    const previous = lang;
+    languageSwitching.current = true;
+    setLanguageBusy(true);
     setLang(next);
     setDraft(null);
-    if (query.trim()) translate(query, next);
+    setError(null);
+    try {
+      const result = await translateClassVocabularyLanguageAction(next);
+      if (!result.words) {
+        setLang(previous);
+        setError(result.error ?? t.classVocabulary.languageChangeFailed);
+        return;
+      }
+      setRows(result.words);
+      if (query.trim()) translate(query, next);
+    } catch {
+      setLang(previous);
+      setError(t.classVocabulary.languageChangeFailed);
+    } finally {
+      languageSwitching.current = false;
+      setLanguageBusy(false);
+    }
   };
 
   const ordered = useMemo(() => {
@@ -139,9 +168,10 @@ export function ClassVocabulary({
               <button
                 key={value}
                 type="button"
-                onClick={() => switchLang(value)}
+                disabled={busy || languageBusy}
+                onClick={() => void switchLang(value)}
                 className={cn(
-                  "h-8 rounded-lg px-3 text-xs font-black transition",
+                  "h-8 rounded-lg px-3 text-xs font-black transition disabled:cursor-wait disabled:opacity-55",
                   lang === value ? "bg-accent text-white" : "text-muted hover:text-content",
                 )}
               >
@@ -150,6 +180,12 @@ export function ClassVocabulary({
             ))}
           </div>
         </div>
+
+        {languageBusy && (
+          <p className="mt-2 text-right text-[11px] font-bold text-accent">
+            {t.classVocabulary.languageChanging}
+          </p>
+        )}
 
         <form
           className="mt-4 flex gap-2"

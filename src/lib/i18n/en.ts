@@ -532,6 +532,8 @@ export const en = {
     translate: "Translate",
     selectionHint: "Select text in the lesson to translate it by the cursor. It is added here only when you press Add.",
     translateFailed: "Could not translate this text.",
+    languageChanging: "Translating the whole vocabulary…",
+    languageChangeFailed: "Could not change the language of the whole vocabulary.",
     add: "Add to vocabulary",
     addFailed: "Could not add the word.",
     entries: "entries",

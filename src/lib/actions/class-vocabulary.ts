@@ -11,7 +11,7 @@ import {
   normalizeClassVocabularyLang,
   type ClassVocabularyLang,
 } from "@/lib/class-vocabulary";
-import { translateShortText } from "@/lib/material-translation";
+import { translateShortText, translateShortTexts } from "@/lib/material-translation";
 
 export type ClassVocabularyWord = {
   id: string;
@@ -98,6 +98,81 @@ export async function translateClassVocabularyAction(
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Не удалось получить перевод",
+    };
+  }
+}
+
+/**
+ * Меняет язык уже сохранённого классного словника целиком.
+ *
+ * Перевод всегда строится заново от английского оригинала. Так переключение
+ * RU ⇄ UK не накапливает ошибки машинного перевода и не меняет английские
+ * слова. До успешного ответа DeepL база не обновляется, поэтому при ошибке
+ * словник не остаётся наполовину на одном языке, наполовину на другом.
+ */
+export async function translateClassVocabularyLanguageAction(
+  rawLang: ClassVocabularyLang,
+): Promise<{ words?: ClassVocabularyWord[]; error?: string }> {
+  const current = await currentStudent();
+  if (!current) return { error: "Сначала выбери ученика" };
+  const translationLang = normalizeClassVocabularyLang(rawLang);
+  const rows = await db
+    .select()
+    .from(classVocabularyWords)
+    .where(eq(classVocabularyWords.studentId, current.studentId))
+    .orderBy(desc(classVocabularyWords.createdAt));
+
+  const pending = rows.filter((row) => row.translationLang !== translationLang);
+  if (pending.length === 0) return { words: rows.map(wordOf) };
+
+  try {
+    // Одинаковые английские слова переводим только один раз. Порции по 100
+    // соответствуют ограничению пакетного переводчика и позволяют словнику
+    // быть любого разумного размера.
+    const uniqueEnglish = [...new Set(pending.map((row) => row.english))];
+    const translatedByEnglish = new Map<string, string>();
+    for (let offset = 0; offset < uniqueEnglish.length; offset += 100) {
+      const batch = uniqueEnglish.slice(offset, offset + 100);
+      const translated = await translateShortTexts(
+        batch,
+        translationLang,
+        "EN",
+        "English lesson class vocabulary",
+      );
+      batch.forEach((english, index) => {
+        translatedByEnglish.set(english, translated[index]);
+      });
+    }
+
+    const updatedAt = new Date();
+    await db.transaction(async (tx) => {
+      for (const row of pending) {
+        const translation = translatedByEnglish.get(row.english);
+        if (!translation) throw new Error(`DeepL не вернул перевод для «${row.english}»`);
+        await tx
+          .update(classVocabularyWords)
+          .set({ translation, translationLang, updatedAt })
+          .where(
+            and(
+              eq(classVocabularyWords.id, row.id),
+              eq(classVocabularyWords.studentId, current.studentId),
+            ),
+          );
+      }
+    });
+
+    const translatedRows = rows.map((row) => {
+      const translation = translatedByEnglish.get(row.english);
+      return translation && row.translationLang !== translationLang
+        ? { ...row, translation, translationLang, updatedAt }
+        : row;
+    });
+    revalidatePath("/teacher/class");
+    revalidatePath("/student/class");
+    return { words: translatedRows.map(wordOf) };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Не удалось перевести словник",
     };
   }
 }
