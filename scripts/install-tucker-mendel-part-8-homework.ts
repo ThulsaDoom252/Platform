@@ -61,31 +61,6 @@ const fillItems: HomeworkItem[] = [
   { id: "tm8-fill-spark-noun", prompt: "Her idea was the ___ that started the project.", answer: "spark" },
 ];
 
-const definitionItems: HomeworkItem[] = [
-  { id: "tm8-definition-excuses", prompt: "to give reasons that defend someone or explain bad behaviour", answer: "to make excuses for smth", accepted: ["to make excuses for", "make excuses for"] },
-  { id: "tm8-definition-period", prompt: "a word used after a statement to show that the discussion is finished", answer: "period" },
-  { id: "tm8-definition-frank", prompt: "a phrase used before saying something honestly and directly", answer: "to be frank" },
-  { id: "tm8-definition-aid", prompt: "help, money, food, or other support given to people who need it", answer: "aid" },
-  { id: "tm8-definition-undermine", prompt: "to make something weaker or less effective over time", answer: "to undermine", accepted: ["undermine"] },
-  { id: "tm8-definition-beg", prompt: "to ask for something in a very serious or emotional way", answer: "to beg", accepted: ["beg"] },
-  { id: "tm8-definition-as-long-as", prompt: "only if a particular condition is true", answer: "as long as" },
-  { id: "tm8-definition-trap", prompt: "a situation or object used to catch or trick someone", answer: "a trap", accepted: ["trap"] },
-  { id: "tm8-definition-martial-law", prompt: "temporary control of a country or area by the military", answer: "martial law" },
-  { id: "tm8-definition-media", prompt: "a newspaper, television channel, or website that publishes news", answer: "a media outlet", accepted: ["media outlet"] },
-  { id: "tm8-definition-assault", prompt: "to attack someone physically", answer: "to assault", accepted: ["assault"] },
-  { id: "tm8-definition-rational", prompt: "based on clear thought and reason", answer: "rational" },
-  { id: "tm8-definition-fingers", prompt: "to blame other people for a problem", answer: "to point fingers", accepted: ["point fingers"] },
-  { id: "tm8-definition-insistent", prompt: "firmly saying that something must happen", answer: "insistent" },
-  { id: "tm8-definition-gdp", prompt: "the total value of goods and services produced by a country", answer: "GDP", accepted: ["gdp"] },
-  { id: "tm8-definition-supplier", prompt: "a person or company that provides goods to another business", answer: "a supplier", accepted: ["supplier"] },
-  { id: "tm8-definition-dealer", prompt: "a person who sells illegal drugs", answer: "a drug dealer", accepted: ["drug dealer"] },
-  { id: "tm8-definition-user", prompt: "a person who takes illegal drugs", answer: "a drug user", accepted: ["drug user"] },
-  { id: "tm8-definition-energized", prompt: "feeling active and full of energy", answer: "energized" },
-  { id: "tm8-definition-sniff", prompt: "to smell something with a short breath through the nose", answer: "to sniff", accepted: ["sniff"] },
-  { id: "tm8-definition-spark-verb", prompt: "to cause something to begin", answer: "to spark", accepted: ["spark"] },
-  { id: "tm8-definition-spark-noun", prompt: "a small event or idea that makes something bigger begin", answer: "spark", accepted: ["a spark"] },
-];
-
 const translationItems: HomeworkItem[] = [
   { id: "tm8-tr-excuses", prompt: "Перестань оправдывать его ошибку.", answer: "Stop making excuses for his mistake." },
   { id: "tm8-tr-period", prompt: "Я сказал нет, и точка.", answer: "I said no, period." },
@@ -148,20 +123,6 @@ const describeExercise = (
   })),
 });
 
-const definitionExercise = (
-  id: string,
-  title: string,
-  items: HomeworkItem[],
-  optional = false,
-): HomeworkExercise => ({
-  id,
-  title,
-  instruction: "Read each simple English description and write the exact word or phrase.",
-  kind: "definition",
-  optional,
-  items,
-});
-
 const translationExercise = (
   id: string,
   title: string,
@@ -183,10 +144,8 @@ const plan: InteractiveHomeworkPlan = {
   exercises: [
     fillExercise("tm8-fill-main", "Vocabulary 1 — Fill in the gaps", fillItems.slice(0, MAIN_SIZE)),
     fillExercise("tm8-fill-bonus", "Vocabulary 1 — Bonus A", fillItems.slice(MAIN_SIZE), true),
-    definitionExercise("tm8-definition-main", "Vocabulary 2 — Guess by description", definitionItems.slice(0, MAIN_SIZE)),
-    definitionExercise("tm8-definition-bonus", "Vocabulary 2 — Bonus A", definitionItems.slice(MAIN_SIZE), true),
-    describeExercise("tm8-describe-main", "Vocabulary 3 — Describe the words", mainWords),
-    describeExercise("tm8-describe-bonus", "Vocabulary 3 — Bonus A", bonusWords, true),
+    describeExercise("tm8-describe-main", "Vocabulary 2 — Describe the words", mainWords),
+    describeExercise("tm8-describe-bonus", "Vocabulary 2 — Bonus A", bonusWords, true),
     translationExercise("tm8-translation-main", "Translation — Into English", translationItems.slice(0, MAIN_SIZE)),
     translationExercise("tm8-translation-bonus", "Translation — Bonus A", translationItems.slice(MAIN_SIZE), true),
     {
@@ -201,21 +160,6 @@ const plan: InteractiveHomeworkPlan = {
       title: "Questions — Bonus A",
       instruction: "Write your answer below each question.",
       kind: "question-text",
-      optional: true,
-      items: [],
-    },
-    {
-      id: "tm8-voice-main",
-      title: "Questions — Voice answers",
-      instruction: "Record and publish a separate voice answer for every question.",
-      kind: "question-audio",
-      items: [],
-    },
-    {
-      id: "tm8-voice-bonus",
-      title: "Questions — Voice bonus",
-      instruction: "Record and publish a separate voice answer for every question.",
-      kind: "question-audio",
       optional: true,
       items: [],
     },
