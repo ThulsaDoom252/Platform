@@ -441,6 +441,7 @@ export function RegularLessonView({
       const status = regularStatus(responseRef.current, responseKey);
       control.classList.toggle("regular-answer-correct", status === "correct");
       control.classList.toggle("regular-answer-locked", status === "locked");
+      control.classList.toggle("regular-answer-wrong", attempts.length > 0 && !status);
       const wrap = document.createElement("span");
       wrap.className = "regular-attempt-wrap";
       const dots = document.createElement("button");
@@ -621,6 +622,7 @@ export function RegularLessonView({
               ...responseRef.current,
               [responseKey]: control.textContent ?? "",
             };
+            control.classList.remove("regular-answer-wrong", "regular-answer-wrong-flash");
           };
           control.addEventListener("input", input);
           if (sentenceCheck) {
@@ -660,42 +662,14 @@ export function RegularLessonView({
         });
 
         if (sentenceCheck && blankEntries.length > 0) {
-          const statuses = blankEntries.map((entry) => entry.status);
-          const correct = statuses.every((status) => status === "correct");
-          const locked = statuses.some((status) => status === "locked");
-          const wrongAttempts = Math.max(
-            0,
-            ...blankEntries.map((entry) => regularAttempts(responseRef.current, entry.responseKey).length),
-          );
-          const check = document.createElement("button");
-          check.type = "button";
-          check.disabled = correct || locked;
-          check.className = cn(
-            "regular-sentence-check",
-            correct && "regular-sentence-check-correct",
-            (locked || wrongAttempts > 0) && "regular-sentence-check-wrong",
-          );
-          check.textContent = correct
-            ? "✓ Correct"
-            : locked
-              ? "✕ No attempts left"
-              : wrongAttempts > 0
-                ? `✓ Check · ${3 - wrongAttempts} left`
-                : "✓ Check";
-
           const submit = async () => {
-            if (check.disabled || check.dataset.busy === "1") return;
+            if (item.dataset.busy === "1") return;
+            if (blankEntries.every((entry) => !!entry.status)) return;
             const missing = blankEntries.find((entry) => !cleanText(entry.control.textContent));
-            if (missing) {
-              missing.control.focus();
-              missing.control.classList.add("regular-answer-wrong-flash");
-              window.setTimeout(() => missing.control.classList.remove("regular-answer-wrong-flash"), 600);
-              return;
-            }
-            check.dataset.busy = "1";
-            check.disabled = true;
-            let anyWrong = false;
+            if (missing) return;
+            item.dataset.busy = "1";
             for (const entry of blankEntries) {
+              if (entry.status) continue;
               const value = cleanText(entry.control.textContent);
               const result = submitAnswerRef.current
                 ? await submitAnswerRef.current(active.id, entry.id, value)
@@ -707,38 +681,30 @@ export function RegularLessonView({
                   }));
               if (result.value !== undefined && !result.error) {
                 applyResult(entry.responseKey, result);
-                anyWrong ||= result.status !== "correct";
-              } else {
-                anyWrong = true;
+                if (result.status !== "correct") {
+                  entry.control.classList.add("regular-answer-wrong", "regular-answer-wrong-flash");
+                }
               }
             }
-            delete check.dataset.busy;
-            if (anyWrong) {
-              check.classList.add("regular-sentence-check-wrong", "regular-answer-wrong-flash");
-              check.disabled = false;
-            }
+            delete item.dataset.busy;
           };
-          const click = (event: Event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void submit();
-          };
-          check.addEventListener("click", click);
-          item.append(check);
           blankEntries.forEach(({ control }) => {
+            const blur = (event: FocusEvent) => {
+              const next = event.relatedTarget;
+              if (next instanceof Node && item.contains(next)) return;
+              void submit();
+            };
             const keydown = (event: KeyboardEvent) => {
               if (event.key !== "Enter") return;
               event.preventDefault();
-              void submit();
+              control.blur();
             };
+            control.addEventListener("blur", blur);
             control.addEventListener("keydown", keydown);
             cleanups.push(() => {
+              control.removeEventListener("blur", blur);
               control.removeEventListener("keydown", keydown);
             });
-          });
-          cleanups.push(() => {
-            check.removeEventListener("click", click);
-            check.remove();
           });
         }
 

@@ -135,7 +135,7 @@ function checkedSection(
   items: FillItem[],
   options: { instruction?: string; translation?: boolean } = {},
 ): RegularLessonSection {
-  const instruction = options.instruction ?? "Open the brackets. Then press Check.";
+  const instruction = options.instruction ?? "Open the brackets.";
   const listClass = options.translation ? "sentence-check translation-check" : "sentence-check";
   const studentItems = items.map(({ prompt }) =>
     `<li>${prompt.replace("___", '<span class="blank"></span>')}</li>`,
@@ -201,7 +201,7 @@ export const grammarCheckSections: RegularLessonSection[] = [
     { prompt: "That is a ___ plan. (well)", answer: "good" },
     { prompt: "She speaks English very ___. (good)", answer: "well" },
     { prompt: "The soup smells ___. (good)", answer: "good" },
-  ], { instruction: "Choose good or well. Then press Check." }),
+  ], { instruction: "Choose good or well." }),
   checkedSection("06-infinitive", "Infinitive vs No Infinitive", [
     { prompt: "I want ___ my pronunciation. (improve)", answer: "to improve" },
     { prompt: "We need ___ our priorities before Monday. (set)", answer: "to set" },
@@ -221,7 +221,7 @@ export const grammarCheckSections: RegularLessonSection[] = [
     { prompt: "Вона зазвичай одразу помічає маленькі помилки. → ___", answer: "She usually notices small mistakes immediately." },
     { prompt: "Вони планують відпочити кілька днів. → ___", answer: "They plan to rest for a couple of days." },
     { prompt: "Мабуть, ця блискуча ідея вже приносить плоди. → ___", answer: "Apparently, this brilliant idea is already bearing fruit." },
-  ], { instruction: "Translate each sentence into English. Then press Check.", translation: true }),
+  ], { instruction: "Translate each sentence into English.", translation: true }),
   {
     id: "08-speaking-one",
     title: "🎙️ Speaking 1 — My day and plans",

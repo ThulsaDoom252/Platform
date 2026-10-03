@@ -272,13 +272,13 @@ export const a1AppearanceSections: RegularLessonSection[] = [
   wordOrderGrammar,
   toBeGrammar,
   likeGrammar,
-  checkedSection("06-word-order-practice", "Practice 1 · Word order", "Put the words in the correct order. Then press Check.", [
+  checkedSection("06-word-order-practice", "Practice 1 · Word order", "Put the words in the correct order.", [
     { prompt: "is / tall / my brother → ___", answer: "My brother is tall." },
     { prompt: "a beard / has / my dad / and a moustache → ___", answer: "My dad has a beard and a moustache." },
     { prompt: "not / she / overweight / is → ___", answer: "She is not overweight. / She isn't overweight." },
     { prompt: "in / your sister / is / her teens / ? → ___", answer: "Is your sister in her teens?" },
   ]),
-  checkedSection("07-to-be-practice", "Practice 2 · am, is, are", "Complete each sentence with am, is or are. Then press Check.", [
+  checkedSection("07-to-be-practice", "Practice 2 · am, is, are", "Complete each sentence with am, is or are.", [
     { prompt: "I ___ 30 years old.", answer: "am" },
     { prompt: "My husband ___ tall and athletic.", answer: "is" },
     { prompt: "Her hair ___ long.", answer: "is" },
@@ -286,7 +286,7 @@ export const a1AppearanceSections: RegularLessonSection[] = [
     { prompt: "Your children ___ in their teens.", answer: "are" },
     { prompt: "I ___ not very sporty.", answer: "am" },
   ]),
-  checkedSection("08-question-practice", "Practice 3 · Make questions", "Rewrite each statement as a question. Then press Check.", [
+  checkedSection("08-question-practice", "Practice 3 · Make questions", "Rewrite each statement as a question.", [
     { prompt: "She is pretty. → ___", answer: "Is she pretty?" },
     { prompt: "They are in their 20s. → ___", answer: "Are they in their 20s?" },
     { prompt: "You are in good shape. → ___", answer: "Are you in good shape?" },
@@ -302,7 +302,7 @@ export const a1AppearanceSections: RegularLessonSection[] = [
     { prompt: "Is his beard long? (−) → ___", answer: "No, it isn't. / No, it is not." },
     { prompt: "Are we in good shape? (+) → ___", answer: "Yes, we are." },
   ]),
-  checkedSection("10-like-practice", "Practice 5 · like, be like, look like", "Complete each sentence or answer. Then press Check.", [
+  checkedSection("10-like-practice", "Practice 5 · like, be like, look like", "Complete each sentence or answer.", [
     { prompt: "What does your sister ___? — She is short and she has freckles.", answer: "look like" },
     { prompt: "What ___ your new neighbour like? — He is very friendly.", answer: "is" },
     { prompt: "What does Tom ___? — He likes football and mushrooms.", answer: "like" },

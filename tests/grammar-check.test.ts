@@ -13,6 +13,7 @@ test("Grammar Check contains every requested exercise and two native voice secti
   assert.equal(grammarCheckSections.filter((section) => section.voiceExercise).length, 2);
   assert.ok(grammarCheckVocabulary.length >= 70);
   assert.equal(new Set(grammarCheckVocabulary.map((entry) => entry.word.toLowerCase())).size, grammarCheckVocabulary.length);
+  assert.ok(checked.every((section) => !/press check/i.test(section.studentHtml)));
 });
 
 test("each tense exercise has exactly one unchanged bracket answer", () => {
