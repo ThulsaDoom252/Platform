@@ -44,6 +44,7 @@ export function RegularVoiceRecorder({
   state,
   onStateChange,
   onSaveResponse,
+  compact = false,
 }: {
   assignmentId: string;
   sectionId: string;
@@ -52,6 +53,7 @@ export function RegularVoiceRecorder({
   state: Record<string, string>;
   onStateChange: (state: Record<string, string>) => void;
   onSaveResponse?: (key: string, value: string) => Promise<{ error?: string }>;
+  compact?: boolean;
 }) {
   const published = regularVoiceRecording(state, sectionId);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -245,9 +247,9 @@ export function RegularVoiceRecorder({
   };
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]">
-        <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-sky-50 p-5 shadow-sm">
+    <div className={compact ? "mt-3" : "p-4 sm:p-6"}>
+      <div className={cn("grid gap-5", !compact && "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]")}>
+        {!compact && <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-sky-50 p-5 shadow-sm">
           <p className="text-[11px] font-black uppercase tracking-[0.16em] text-violet-600">
             Speaking prompts
           </p>
@@ -266,7 +268,7 @@ export function RegularVoiceRecorder({
               </li>
             ))}
           </ol>
-        </section>
+        </section>}
 
         <section className="rounded-2xl border border-line bg-slate-950 p-5 text-white shadow-xl">
           <div className="flex items-center justify-between gap-3">
@@ -342,7 +344,7 @@ export function RegularVoiceRecorder({
         </section>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-line bg-surface p-4">
+      {!compact && <div className="mt-4 rounded-2xl border border-line bg-surface p-4">
         {teacher ? (
           <>
             <button type="button" onClick={() => setNoteOpen((value) => !value)} className="text-xs font-black text-accent">
@@ -381,7 +383,7 @@ export function RegularVoiceRecorder({
         ) : (
           <p className="text-xs font-semibold text-muted">Your teacher can leave a note after listening.</p>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

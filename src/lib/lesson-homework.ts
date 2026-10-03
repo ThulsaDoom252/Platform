@@ -124,6 +124,7 @@ const SUBMITTED_AT = "hw:submitted-at";
 const ASSIGNED_AT = "hw:assigned-at";
 const ASSIGNED_EXERCISES = "hw:assigned-exercises";
 const PLAN_OVERRIDE = "hw:plan-override";
+const HOMEWORK_VOICE_TARGET_PREFIX = "homework:";
 
 export const homeworkValueKey = (id: string) => `${VALUE}${id}`;
 export const homeworkStatusKey = (id: string) => `${STATUS}${id}`;
@@ -135,6 +136,14 @@ export const homeworkSubmittedAtKey = () => SUBMITTED_AT;
 export const homeworkAssignedAtKey = () => ASSIGNED_AT;
 export const homeworkAssignedExercisesKey = () => ASSIGNED_EXERCISES;
 export const homeworkPlanOverrideKey = () => PLAN_OVERRIDE;
+export const homeworkVoiceRecordingTarget = (itemId: string) =>
+  `${HOMEWORK_VOICE_TARGET_PREFIX}${itemId}`;
+
+export function homeworkVoiceRecordingItemId(value: unknown): string | null {
+  const target = String(value ?? "");
+  if (!target.startsWith(HOMEWORK_VOICE_TARGET_PREFIX)) return null;
+  return cleanId(target.slice(HOMEWORK_VOICE_TARGET_PREFIX.length));
+}
 
 export function homeworkExerciseHidden(state: HomeworkStoredState, exerciseId: string) {
   return state[homeworkExerciseHiddenKey(exerciseId)] === "1";

@@ -44,6 +44,7 @@ import {
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
   homeworkValueKey,
+  homeworkVoiceRecordingTarget,
   toggleHomeworkHighlight,
   type HomeworkHighlightColor,
   type HomeworkExercise,
@@ -65,6 +66,7 @@ import {
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { StudentHomeworkExerciseEditor } from "@/components/lessons/student-homework-editor";
+import { RegularVoiceRecorder } from "@/components/lessons/regular-voice-recorder";
 
 export type InteractiveHomeworkSession = {
   assignmentId: string;
@@ -1211,32 +1213,16 @@ function ManualExercise({
               )}
             </div>
 
-            {exercise.kind === "question-audio" && (
-              <a
-                href="https://vocaroo.com"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex rounded-lg bg-accent-soft px-3 py-1.5 text-xs font-bold text-accent transition hover:brightness-95"
-              >
-                {t.interactiveHomework.recordOnVocaroo}
-              </a>
-            )}
-
             {exercise.kind === "question-audio" ? (
-              <div className="mt-2 flex gap-2">
-                <input
-                  value={drafts[item.id] ?? ""}
-                  onChange={(event) => setDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
-                  onBlur={() => save(item)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    event.currentTarget.blur();
-                  }}
-                  placeholder="https://voca.ro/..."
-                  className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 text-sm text-content outline-none focus:border-accent"
-                />
-              </div>
+              <RegularVoiceRecorder
+                assignmentId={session.assignmentId}
+                sectionId={homeworkVoiceRecordingTarget(item.id)}
+                exercise={{ instruction: "", prompts: [item.prompt], maxSeconds: 600 }}
+                teacher={session.teacher}
+                state={state}
+                onStateChange={setState}
+                compact
+              />
             ) : (
               <div className="mt-2">
                 <textarea

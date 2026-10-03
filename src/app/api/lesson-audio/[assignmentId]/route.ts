@@ -1,7 +1,13 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { lessonAssignments, lessonUnits } from "@/lib/db/schema";
+import {
+  findHomeworkItem,
+  homeworkPlanForAssignment,
+  homeworkVoiceRecordingItemId,
+  interactiveHomeworkFromEntries,
+} from "@/lib/lesson-homework";
 import { normalizeRegularLessonSections } from "@/lib/regular-lesson";
 import { managedUploadPath } from "@/lib/public-file-store";
 import { getSession } from "@/lib/session";
@@ -42,19 +48,31 @@ async function accessibleVoiceSection(assignmentId: string, sectionId: string) {
       authorId: lessonUnits.authorId,
       kind: lessonUnits.kind,
       sections: lessonUnits.sections,
+      homework: lessonUnits.homework,
+      answers: lessonAssignments.answers,
     })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
-    .where(and(eq(lessonAssignments.id, assignmentId), eq(lessonUnits.kind, "REGULAR")))
+    .where(eq(lessonAssignments.id, assignmentId))
     .limit(1);
   if (!row) return null;
   const allowed = session.role === "STUDENT"
     ? row.studentId === session.userId
     : session.role === "TEACHER" && row.authorId === session.userId;
   if (!allowed) return null;
-  const section = normalizeRegularLessonSections(row.sections)
-    .find((item) => item.id === sectionId && item.voiceExercise);
-  return section ? row : null;
+  const section = row.kind === "REGULAR"
+    ? normalizeRegularLessonSections(row.sections)
+        .find((item) => item.id === sectionId && item.voiceExercise)
+    : null;
+  if (section) return row;
+
+  const homeworkItemId = homeworkVoiceRecordingItemId(sectionId);
+  const plan = homeworkPlanForAssignment(
+    interactiveHomeworkFromEntries(row.homework),
+    row.answers ?? {},
+  );
+  const item = homeworkItemId && plan ? findHomeworkItem(plan, homeworkItemId) : null;
+  return item?.exercise.kind === "question-audio" ? row : null;
 }
 
 export async function POST(

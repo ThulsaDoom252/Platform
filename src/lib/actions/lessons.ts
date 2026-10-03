@@ -81,9 +81,12 @@ import {
 } from "@/lib/regular-lesson";
 import {
   assignedInteractiveHomework,
+  findHomeworkItem,
   homeworkExerciseHidden,
   homeworkFocusTarget,
   homeworkPlanForAssignment,
+  homeworkValueKey,
+  homeworkVoiceRecordingItemId,
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
   normalizeHomeworkAnswer,
@@ -91,6 +94,7 @@ import {
 } from "@/lib/lesson-homework";
 import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
 import { installGrammarCheckLesson } from "@/lib/bundled-lessons/grammar-check";
+import { installA1AppearanceLesson } from "@/lib/bundled-lessons/a1-appearance";
 import {
   translateVocabulary,
   type MaterialTranslationLang,
@@ -251,6 +255,13 @@ export async function installNewDerekLessonAction() {
 export async function installGrammarCheckLessonAction() {
   const session = await requireTeacher();
   const id = await installGrammarCheckLesson(session.userId);
+  return { id };
+}
+
+/** One-time, authenticated import that runs against the app's current database. */
+export async function installA1AppearanceLessonAction() {
+  const session = await requireTeacher();
+  const id = await installA1AppearanceLesson(session.userId);
   return { id };
 }
 
@@ -2018,6 +2029,7 @@ async function regularAssignmentForUser(id: string) {
       assignment: lessonAssignments,
       authorId: lessonUnits.authorId,
       sections: lessonUnits.sections,
+      homework: lessonUnits.homework,
     })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -2114,9 +2126,21 @@ export async function saveRegularVoiceRecordingAction(
 ): Promise<{ error?: string; state?: Record<string, string> }> {
   const row = await regularAssignmentForUser(String(assignmentId ?? ""));
   if (!row) return { error: "Урок не найден" };
+  const targetId = String(sectionId ?? "");
   const section = normalizeRegularLessonSections(row.sections)
     .find((item) => item.id === String(sectionId ?? ""));
-  if (!section?.voiceExercise) return { error: "Голосовое упражнение не найдено" };
+  const homeworkItemId = homeworkVoiceRecordingItemId(targetId);
+  const homeworkPlan = homeworkPlanForAssignment(
+    interactiveHomeworkFromEntries(row.homework),
+    row.assignment.answers ?? {},
+  );
+  const homeworkItem = homeworkItemId && homeworkPlan
+    ? findHomeworkItem(homeworkPlan, homeworkItemId)
+    : null;
+  const maxSeconds = section?.voiceExercise?.maxSeconds ?? (
+    homeworkItem?.exercise.kind === "question-audio" ? 600 : null
+  );
+  if (!maxSeconds) return { error: "Голосовое упражнение не найдено" };
 
   const url = String(urlValue ?? "").trim();
   const pathname = managedUploadPath(url);
@@ -2127,7 +2151,7 @@ export async function saveRegularVoiceRecordingAction(
   if (
     !Number.isFinite(durationSeconds) ||
     durationSeconds < 1 ||
-    durationSeconds > section.voiceExercise.maxSeconds + 5
+    durationSeconds > maxSeconds + 5
   ) {
     return { error: "Некорректная длительность записи" };
   }
@@ -2137,13 +2161,14 @@ export async function saveRegularVoiceRecordingAction(
   }
 
   const state = { ...(row.assignment.answers ?? {}) };
-  const previous = regularVoiceRecording(state, section.id);
-  state[regularVoiceRecordingKey(section.id)] = JSON.stringify({
+  const previous = regularVoiceRecording(state, targetId);
+  state[regularVoiceRecordingKey(targetId)] = JSON.stringify({
     url,
     durationSeconds,
     mimeType,
     publishedAt: new Date().toISOString(),
   });
+  if (homeworkItemId) state[homeworkValueKey(homeworkItemId)] = url;
   await db
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
@@ -2154,6 +2179,8 @@ export async function saveRegularVoiceRecordingAction(
   }
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
   return { state };

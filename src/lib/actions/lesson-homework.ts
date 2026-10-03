@@ -351,7 +351,7 @@ export async function resetHomeworkExerciseAnswersAction(
   return {};
 }
 
-/** Сохранить свободный ответ, перевод или ссылку на запись. */
+/** Сохранить свободный письменный ответ или перевод. */
 export async function saveHomeworkResponseAction(
   assignmentId: string,
   itemId: string,
@@ -370,18 +370,6 @@ export async function saveHomeworkResponseAction(
   }
 
   const value = String(supplied ?? "").trim().slice(0, 8_000);
-  if (found.exercise.kind === "question-audio" && value) {
-    try {
-      const url = new URL(value);
-      const host = url.hostname.toLocaleLowerCase();
-      if (url.protocol !== "https:" || (host !== "vocaroo.com" && host !== "www.vocaroo.com" && host !== "voca.ro")) {
-        return { error: "Нужна ссылка Vocaroo" };
-      }
-    } catch {
-      return { error: "Нужна корректная ссылка Vocaroo" };
-    }
-  }
-
   const state = { ...(row.assignment.answers ?? {}) };
   state[homeworkValueKey(found.item.id)] = value;
   if (isStudent) delete state[homeworkSubmittedAtKey()];
