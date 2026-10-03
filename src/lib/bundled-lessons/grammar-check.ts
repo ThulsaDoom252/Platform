@@ -1,4 +1,12 @@
-import { addRegularLessonFocusIds, type RegularLessonSection } from "@/lib/regular-lesson";
+import { randomUUID } from "node:crypto";
+import { and, eq, ilike } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { lessonAssignments, lessonUnits, lessonWords } from "@/lib/db/schema";
+import {
+  addRegularLessonFocusIds,
+  regularSectionKey,
+  type RegularLessonSection,
+} from "@/lib/regular-lesson";
 
 export type GrammarCheckWordSeed = {
   category: string;
@@ -253,3 +261,69 @@ export const grammarCheckSections: RegularLessonSection[] = [
     },
   },
 ];
+
+/** Installs the bundled Grammar Check lesson into the database used by the running app. */
+export async function installGrammarCheckLesson(authorId: string) {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({ id: lessonUnits.id })
+      .from(lessonUnits)
+      .where(and(eq(lessonUnits.authorId, authorId), ilike(lessonUnits.title, "Grammar Check")))
+      .limit(1);
+
+    const unitValues = {
+      kind: "REGULAR" as const,
+      title: "Grammar Check",
+      description:
+        "A2 grammar review · tenses, good vs well, infinitives, translation and native voice practice",
+      vocabNodeId: null,
+      lexis: null,
+      videoUrl: null,
+      videoTitle: null,
+      transcript: [],
+      questions: { afterVideo: [], afterReading: [] },
+      homework: [],
+      activityIds: [],
+      sections: grammarCheckSections,
+      updatedAt: new Date(),
+    };
+
+    const unitId = existing?.id
+      ? (await tx
+          .update(lessonUnits)
+          .set(unitValues)
+          .where(eq(lessonUnits.id, existing.id))
+          .returning({ id: lessonUnits.id }))[0]?.id
+      : (await tx
+          .insert(lessonUnits)
+          .values({ id: randomUUID(), authorId, ...unitValues })
+          .returning({ id: lessonUnits.id }))[0]?.id;
+    if (!unitId) throw new Error("Could not save Grammar Check lesson");
+
+    await tx.delete(lessonWords).where(eq(lessonWords.unitId, unitId));
+    await tx.insert(lessonWords).values(
+      grammarCheckVocabulary.map((entry, index) => ({
+        id: randomUUID(),
+        unitId,
+        ...entry,
+        imageUrl: null,
+        sortOrder: index + 1,
+      })),
+    );
+
+    const assignments = await tx
+      .select({ id: lessonAssignments.id, openSections: lessonAssignments.openSections })
+      .from(lessonAssignments)
+      .where(eq(lessonAssignments.unitId, unitId));
+    for (const assignment of assignments) {
+      const openSections = new Set(assignment.openSections ?? []);
+      openSections.add(regularSectionKey("01-vocabulary"));
+      await tx
+        .update(lessonAssignments)
+        .set({ openSections: [...openSections], updatedAt: new Date() })
+        .where(eq(lessonAssignments.id, assignment.id));
+    }
+
+    return unitId;
+  });
+}

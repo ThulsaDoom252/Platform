@@ -1,5 +1,6 @@
 import { getDict } from "@/lib/i18n/server";
 import {
+  installGrammarCheckLessonAction,
   installNewDerekLessonAction,
   listLessonsAction,
 } from "@/lib/actions/lessons";
@@ -19,6 +20,9 @@ export default async function TeacherLessonsPage({
   const params = await searchParams;
   if (params.install === "new-derek") {
     await installNewDerekLessonAction();
+  }
+  if (params.install === "grammar-check") {
+    await installGrammarCheckLessonAction();
   }
   const { t } = await getDict();
   const items = await listLessonsAction();

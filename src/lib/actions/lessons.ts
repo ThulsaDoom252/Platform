@@ -90,6 +90,7 @@ import {
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
 import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
+import { installGrammarCheckLesson } from "@/lib/bundled-lessons/grammar-check";
 import {
   translateVocabulary,
   type MaterialTranslationLang,
@@ -243,6 +244,13 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
 export async function installNewDerekLessonAction() {
   const session = await requireTeacher();
   const id = await installNewDerekLesson(session.userId);
+  return { id };
+}
+
+/** One-time, authenticated import that runs against the app's current database. */
+export async function installGrammarCheckLessonAction() {
+  const session = await requireTeacher();
+  const id = await installGrammarCheckLesson(session.userId);
   return { id };
 }
 
