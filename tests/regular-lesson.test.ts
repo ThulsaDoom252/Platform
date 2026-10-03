@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   addRegularLessonFocusIds,
   defaultRegularOpenSections,
+  isRegularTranslationExercise,
   normalizeRegularLessonSections,
   publicRegularLessonSections,
   regularAnswerMap,
@@ -108,6 +109,24 @@ test("checked regular exercises map blanks and true-false answers without exposi
     accepted: ["T"],
     kind: "true-false",
   });
+});
+
+test("translation exercise marker is detected without confusing ordinary gaps", () => {
+  const section = normalizeRegularLessonSections([{
+    id: "translation",
+    title: "Translate into English",
+    tone: "exercise",
+    defaultOpen: false,
+    studentHtml:
+      '<ol class="sentence-check"><li>I <span class="blank"></span>.</li></ol>' +
+      '<ol class="sentence-check translation-check"><li>Я тут. → <span class="blank"></span></li></ol>',
+    teacherHtml:
+      '<ol class="sentence-check"><li>I <span class="ans">am here</span>.</li></ol>' +
+      '<ol class="sentence-check translation-check"><li>Я тут. → <span class="ans">I am here.</span></li></ol>',
+  }])[0];
+
+  assert.equal(isRegularTranslationExercise(section, 1), false);
+  assert.equal(isRegularTranslationExercise(section, 2), true);
 });
 
 test("a personalized exercise override replaces the checked answer", () => {

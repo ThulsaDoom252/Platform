@@ -27,6 +27,7 @@ import {
   homeworkStatusKey,
   homeworkTextHighlight,
   homeworkTextTokens,
+  homeworkTranslationLanguage,
   homeworkValueKey,
   normalizeInteractiveHomework,
   setHomeworkReaction,
@@ -87,6 +88,32 @@ test("домашка сохраняет направление перевода 
     normalized?.exercises.find((exercise) => exercise.id === "bonus")?.translationDirection,
     "from-english",
   );
+});
+
+test("домашка сохраняет и определяет персональный язык упражнения на перевод", () => {
+  const normalized = normalizeInteractiveHomework({
+    ...plan,
+    exercises: plan.exercises.map((exercise) =>
+      exercise.id === "bonus"
+        ? {
+            ...exercise,
+            translationDirection: "to-english",
+            translationLanguage: "RU",
+            items: [{ id: "bonus-one", prompt: "Я случайно разбил чашку.", answer: "I accidentally broke my cup." }],
+          }
+        : exercise,
+    ),
+  });
+  const exercise = normalized?.exercises.find((item) => item.id === "bonus");
+  assert.ok(exercise);
+  assert.equal(exercise.translationLanguage, "RU");
+  assert.equal(homeworkTranslationLanguage(exercise), "RU");
+
+  assert.equal(homeworkTranslationLanguage({
+    ...exercise,
+    translationLanguage: undefined,
+    items: [{ id: "bonus-one", prompt: "Я випадково розбив чашку.", answer: "I accidentally broke my cup." }],
+  }), "UK");
 });
 
 test("автоматические ответы обычного урока не превращаются в подсказки", () => {

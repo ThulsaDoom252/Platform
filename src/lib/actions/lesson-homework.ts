@@ -378,6 +378,102 @@ export async function translateHomeworkRowsAction(
   }
 }
 
+/**
+ * Switch the non-English side of one student's translation exercise and save
+ * the result in that assignment's private homework copy. The lesson template
+ * and every other student's homework stay untouched.
+ */
+export async function translateHomeworkExerciseLanguageAction(
+  assignmentId: string,
+  exerciseId: string,
+  targetLanguage: MaterialTranslationLang,
+): Promise<{
+  plan?: InteractiveHomeworkPlan;
+  state?: HomeworkStoredState;
+  error?: string;
+}> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const id = String(exerciseId ?? "");
+  const exercise = row.plan.exercises.find((item) => item.id === id);
+  if (!exercise || exercise.kind !== "translate") {
+    return { error: "Упражнение на перевод не найдено" };
+  }
+  const language: MaterialTranslationLang = targetLanguage === "RU" ? "RU" : "UK";
+  const direction = exercise.translationDirection === "from-english"
+    ? "from-english"
+    : "to-english";
+  const english = exercise.items.map((item) =>
+    direction === "from-english" ? item.prompt : item.answer ?? "",
+  );
+  if (english.length === 0 || english.some((sentence) => !sentence.trim())) {
+    return { error: "В каждом предложении должна быть заполнена английская сторона" };
+  }
+
+  try {
+    const translated = await translateShortTexts(
+      english,
+      language,
+      "EN",
+      "Simple real sentences for an English lesson translation exercise",
+    );
+    const nextExercise = {
+      ...exercise,
+      translationLanguage: language,
+      items: exercise.items.map((item, index) => ({
+        ...item,
+        prompt: direction === "to-english" ? translated[index] : english[index],
+        answer: direction === "to-english" ? english[index] : translated[index],
+      })),
+    };
+    const plan: InteractiveHomeworkPlan = {
+      ...row.plan,
+      exercises: row.plan.exercises.map((item) => item.id === id ? nextExercise : item),
+    };
+    let state: HomeworkStoredState = {
+      ...(row.assignment.answers ?? {}),
+      [homeworkPlanOverrideKey()]: JSON.stringify(plan),
+    };
+
+    for (const item of exercise.items) {
+      // The displayed foreign sentence changed, so old token positions no
+      // longer describe the same words.
+      state = clearHomeworkTextHighlights(state, item.id, "prompt");
+      if (direction === "from-english") {
+        // Here the expected/student answer itself changes from RU to UK or
+        // back. Keep notes and reactions, but discard the now invalid answer.
+        state = clearHomeworkTextHighlights(state, item.id, "answer");
+        delete state[homeworkValueKey(item.id)];
+        delete state[homeworkStatusKey(item.id)];
+        delete state[homeworkAttemptsKey(item.id)];
+      }
+    }
+    delete state[homeworkSubmittedAtKey()];
+    delete state[homeworkReviewedAtKey()];
+
+    await db
+      .update(lessonAssignments)
+      .set({ answers: state, updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, row.assignment.id));
+
+    revalidatePath(`/student/lessons/${row.assignment.id}`);
+    revalidatePath("/student/homework");
+    revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+    revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+    revalidatePath("/teacher/homeworks");
+    revalidatePath("/teacher/class");
+    revalidatePath("/student/class");
+    return { plan, state };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "DeepL не смог перевести предложения",
+    };
+  }
+}
+
 /** Проверить один автоматически оцениваемый ответ и сохранить все попытки. */
 export async function submitHomeworkAutoAnswerAction(
   assignmentId: string,

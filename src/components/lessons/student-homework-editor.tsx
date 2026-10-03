@@ -10,6 +10,7 @@ import {
 import {
   homeworkFillEditorLine,
   homeworkFillItemFromEditorLine,
+  homeworkTranslationLanguage,
   type HomeworkExercise,
   type HomeworkItem,
   type HomeworkStoredState,
@@ -74,7 +75,7 @@ export function StudentHomeworkExerciseEditor({
     original?.translationDirection === "from-english" ? "from-english" : "to-english",
   );
   const [translationLanguage, setTranslationLanguage] = useState<"RU" | "UK">(
-    locale === "uk" ? "UK" : "RU",
+    original ? homeworkTranslationLanguage(original, locale === "uk" ? "UK" : "RU") : locale === "uk" ? "UK" : "RU",
   );
   const [rows, setRows] = useState<EditorRow[]>(() => rowsFromExercise(original, initialKind));
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -166,7 +167,9 @@ export function StudentHomeworkExerciseEditor({
       kind,
       optional,
       ...(kind === "fill" ? { wordBank: [...new Set(items.map((item) => item.answer!))] } : {}),
-      ...(kind === "translate" ? { translationDirection: direction } : {}),
+      ...(kind === "translate"
+        ? { translationDirection: direction, translationLanguage }
+        : {}),
       items,
     };
   };

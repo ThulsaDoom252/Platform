@@ -1,5 +1,7 @@
 /** Portable definition and state helpers for an interactive lesson homework. */
 
+import { detectTranslationLang, type TranslationLang } from "@/lib/translation-lang";
+
 export type HomeworkExerciseKind =
   | "fill"
   | "definition"
@@ -28,6 +30,8 @@ export type HomeworkExercise = {
   kind: HomeworkExerciseKind;
   /** Direction for translation tasks; old homework defaults to translating into English. */
   translationDirection?: "to-english" | "from-english";
+  /** Language of the non-English side of a translation task. */
+  translationLanguage?: TranslationLang;
   optional?: boolean;
   wordBank?: string[];
   items: HomeworkItem[];
@@ -242,6 +246,24 @@ export function homeworkPlanForAssignment(
   state: HomeworkStoredState,
 ) {
   return homeworkPlanOverride(state) ?? template;
+}
+
+/**
+ * Language of the non-English sentences. Old plans did not store the flag, so
+ * infer it from their actual text and use Ukrainian only when the text is
+ * ambiguous.
+ */
+export function homeworkTranslationLanguage(
+  exercise: HomeworkExercise,
+  fallback: TranslationLang = "UK",
+): TranslationLang {
+  if (exercise.translationLanguage === "RU" || exercise.translationLanguage === "UK") {
+    return exercise.translationLanguage;
+  }
+  const nonEnglish = exercise.items.map((item) =>
+    exercise.translationDirection === "from-english" ? item.answer : item.prompt,
+  );
+  return detectTranslationLang(nonEnglish) ?? fallback;
 }
 
 /** Remove every saved trace of one exercise without touching another student's copy. */
@@ -546,6 +568,10 @@ export function normalizeInteractiveHomework(
           : kind === "translate" && item.translationDirection === "to-english"
             ? "to-english"
             : undefined,
+      translationLanguage:
+        kind === "translate" && (item.translationLanguage === "RU" || item.translationLanguage === "UK")
+          ? item.translationLanguage
+          : undefined,
       optional: item.optional === true,
       // Exercises imported from a regular lesson contain canonical answers for
       // automatic checking. They are not a word bank and must never be exposed

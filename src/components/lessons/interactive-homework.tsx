@@ -26,6 +26,7 @@ import {
   setHomeworkExerciseHiddenAction,
   submitInteractiveHomeworkForReviewAction,
   submitHomeworkAutoAnswerAction,
+  translateHomeworkExerciseLanguageAction,
 } from "@/lib/actions/lesson-homework";
 import {
   homeworkAttempts,
@@ -50,6 +51,7 @@ import {
   homeworkReviewedAtKey,
   homeworkTextHighlight,
   homeworkTextTokens,
+  homeworkTranslationLanguage,
   homeworkValueKey,
   homeworkVoiceRecordingTarget,
   setHomeworkReaction,
@@ -176,6 +178,19 @@ export function InteractiveHomework({
         });
       }
     : undefined;
+
+  const translateExerciseLanguage = async (exerciseId: string, language: "RU" | "UK") => {
+    const result = await translateHomeworkExerciseLanguageAction(
+      session.assignmentId,
+      exerciseId,
+      language,
+    );
+    if (result.error || !result.plan || !result.state) {
+      return result.error ?? t.interactiveHomework.translationFailed;
+    }
+    setEditedPlan(result.plan);
+    setState(result.state);
+  };
 
   useEffect(() => {
     onStateChange?.(state);
@@ -399,6 +414,9 @@ export function InteractiveHomework({
             setDeleteError(null);
             setDeletingExerciseId(exercise.id);
           } : undefined}
+          onTranslateLanguage={session.teacher && exercise.kind === "translate"
+            ? (language) => translateExerciseLanguage(exercise.id, language)
+            : undefined}
         />
       ))}
 
@@ -695,6 +713,7 @@ function HomeworkExerciseView({
   onFocus,
   onEdit,
   onDelete,
+  onTranslateLanguage,
 }: {
   exercise: HomeworkExercise;
   number: number;
@@ -706,13 +725,27 @@ function HomeworkExerciseView({
   onFocus?: (elementId: string) => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onTranslateLanguage?: (language: "RU" | "UK") => Promise<string | undefined>;
 }) {
   const { t } = useT();
   const interaction = useContext(HomeworkInteractionContext);
   const [resetKey, setResetKey] = useState(0);
+  const [languageError, setLanguageError] = useState<string | null>(null);
   const [busy, startAction] = useTransition();
   const hidden = homeworkExerciseHidden(state, exercise.id);
   const exerciseFocusId = homeworkExerciseFocusId(exercise.id);
+  const translationLanguage = exercise.kind === "translate"
+    ? homeworkTranslationLanguage(exercise)
+    : null;
+  const switchLanguage = (language: "RU" | "UK") => {
+    if (!onTranslateLanguage || language === translationLanguage) return;
+    setLanguageError(null);
+    startAction(async () => {
+      const error = await onTranslateLanguage(language);
+      if (error) setLanguageError(error);
+      else setResetKey((key) => key + 1);
+    });
+  };
   const fallbackInstruction =
     exercise.kind === "fill"
       ? t.interactiveHomework.instructions.fill
@@ -732,6 +765,11 @@ function HomeworkExerciseView({
   const instruction = exercise.instruction.trim() || fallbackInstruction;
   const body = (
     <div className="mt-4">
+      {languageError && (
+        <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">
+          {languageError}
+        </p>
+      )}
       {exercise.wordBank && exercise.wordBank.length > 0 && exercise.kind !== "drag" && exercise.kind !== "describe" && (
         <div className="mb-4 rounded-xl bg-accent-soft/70 p-3 ring-1 ring-accent/15">
           <p className="text-[10px] font-black uppercase tracking-wide text-accent">
@@ -801,6 +839,13 @@ function HomeworkExerciseView({
           <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
           {body}
         </details>
+        {onTranslateLanguage && translationLanguage && (
+          <HomeworkTranslationLanguageToggle
+            language={translationLanguage}
+            busy={busy}
+            onChange={switchLanguage}
+          />
+        )}
         <HomeworkReactionControl
           target="exercise"
           targetId={exercise.id}
@@ -864,6 +909,13 @@ function HomeworkExerciseView({
           </div>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">{instruction}</p>
         </div>
+        {onTranslateLanguage && translationLanguage && (
+          <HomeworkTranslationLanguageToggle
+            language={translationLanguage}
+            busy={busy}
+            onChange={switchLanguage}
+          />
+        )}
         <HomeworkReactionControl
           target="exercise"
           targetId={exercise.id}
@@ -905,6 +957,45 @@ function HomeworkExerciseView({
       </div>
       {body}
     </section>
+  );
+}
+
+function HomeworkTranslationLanguageToggle({
+  language,
+  busy,
+  onChange,
+}: {
+  language: "RU" | "UK";
+  busy: boolean;
+  onChange: (language: "RU" | "UK") => void;
+}) {
+  const { t } = useT();
+  return (
+    <div
+      className="flex shrink-0 rounded-lg bg-surface-2 p-0.5 ring-1 ring-line"
+      title={`DeepL · ${t.interactiveHomework.translationLanguage}`}
+    >
+      {(["UK", "RU"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          disabled={busy || value === language}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onChange(value);
+          }}
+          className={cn(
+            "h-7 rounded-md px-2 text-[10px] font-black transition disabled:cursor-default",
+            value === language
+              ? "bg-accent text-white"
+              : "text-muted hover:text-accent disabled:opacity-55",
+          )}
+        >
+          {value === "UK" ? "UA" : "RU"}
+        </button>
+      ))}
+    </div>
   );
 }
 

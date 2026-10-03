@@ -22,6 +22,7 @@ import {
   deleteRegularLessonExerciseAction,
   resetRegularLessonExerciseAction,
   saveRegularLessonExerciseAction,
+  translateRegularLessonExerciseLanguageAction,
 } from "@/lib/actions/lessons";
 import {
   regularAttempts,
@@ -40,9 +41,11 @@ import {
 } from "@/lib/regular-lesson";
 import {
   regularHomeworkShowsWordBank,
+  homeworkTranslationLanguage,
   type HomeworkExercise,
   type InteractiveHomeworkPlan,
 } from "@/lib/lesson-homework";
+import { detectTranslationLang } from "@/lib/translation-lang";
 import type { LessonVocabularyReveal, LessonWord } from "@/lib/lesson-unit";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +54,7 @@ type HomeworkCandidate = {
   listIndex: number;
   exercise: HomeworkExercise;
   editor: RegularExerciseOverride;
+  translation: boolean;
 };
 
 const cleanText = (value: string | null | undefined) =>
@@ -136,6 +140,7 @@ function homeworkCandidates(
     if (regularExerciseDeleted(state, section.id, listIndex + 1)) return;
     const hasBlank = !!list.querySelector(".blank");
     const hasTrueFalse = !!list.querySelector(".tfbox");
+    const translation = list.classList.contains("translation-check");
     const heading = headingBefore(list);
     const isOpenQuestions = /questions|small talk|personal questions/i.test(
       `${heading} ${section.title}`,
@@ -189,12 +194,21 @@ function homeworkCandidates(
           ? "Complete each sentence with the correct answer."
           : "Write a clear answer for every item."
     ));
-    const editor: RegularExerciseOverride = storedOverride ?? {
+    const baseEditor: RegularExerciseOverride = storedOverride ?? {
       title,
       instruction,
       kind,
       items: parsed.map((item) => ({ prompt: item.prompt, answers: item.answers })),
     };
+    const editor: RegularExerciseOverride = translation
+      ? {
+          ...baseEditor,
+          translationLanguage:
+            baseEditor.translationLanguage ??
+            detectTranslationLang(baseEditor.items.map((item) => item.prompt)) ??
+            "UK",
+        }
+      : baseEditor;
     const id = regularHomeworkExerciseId(section.id, listIndex + 1);
     const exerciseParsed = editor.items.map((item, itemIndex) => ({
       id: parsed[itemIndex]?.id ?? `${id}-${itemIndex + 1}`,
@@ -202,8 +216,22 @@ function homeworkCandidates(
       answer: item.answers.length === 1 ? item.answers[0] : undefined,
       answers: item.answers,
     }));
-    const exercise: HomeworkExercise = auto && editor.kind !== "open"
+    const exercise: HomeworkExercise = translation
       ? {
+          id,
+          title,
+          instruction,
+          kind: "translate",
+          translationDirection: "to-english",
+          translationLanguage: editor.translationLanguage,
+          items: exerciseParsed.map(({ id: itemId, prompt, answer }) => ({
+            id: itemId,
+            prompt: prompt.replace(/\s*(?:→|->)\s*___\s*$/i, "").trim(),
+            answer,
+          })),
+        }
+      : auto && editor.kind !== "open"
+        ? {
           id,
           title,
           instruction,
@@ -222,15 +250,21 @@ function homeworkCandidates(
             prompt,
             answer,
           })),
-        }
-      : {
+          }
+        : {
           id,
           title,
           instruction,
           kind: "question-text",
           items: exerciseParsed.map(({ id: itemId, prompt }) => ({ id: itemId, prompt })),
-        };
-    candidates.push({ label: title, listIndex: listIndex + 1, exercise, editor });
+          };
+    candidates.push({
+      label: title,
+      listIndex: listIndex + 1,
+      exercise,
+      editor,
+      translation,
+    });
   });
 
   return candidates;
@@ -909,6 +943,26 @@ export function RegularLessonView({
     ?? candidates[0]
     ?? null;
 
+  const switchRegularTranslationLanguage = (language: "RU" | "UK") => {
+    if (!assignmentId || !active || !selectedCandidate?.translation) return;
+    if (homeworkTranslationLanguage(selectedCandidate.exercise) === language) return;
+    setExerciseError(null);
+    startBusy(async () => {
+      const result = await translateRegularLessonExerciseLanguageAction(
+        assignmentId,
+        active.id,
+        selectedCandidate.listIndex,
+        language,
+      );
+      if (result.error || !result.state) {
+        setExerciseError(result.error ?? t.interactiveHomework.translationFailed);
+        return;
+      }
+      responseRef.current = result.state;
+      setResponseState(result.state);
+    });
+  };
+
   const resetExercise = () => {
     if (!assignmentId || !active || !selectedCandidate) return;
     setExerciseError(null);
@@ -1080,6 +1134,32 @@ export function RegularLessonView({
                     <IconPlus className="h-3.5 w-3.5" />
                     Add to homework
                   </button>
+                  {selectedCandidate?.translation && (
+                    <div
+                      className="flex rounded-xl bg-surface p-1 ring-1 ring-line"
+                      title={`DeepL · ${t.interactiveHomework.translationLanguage}`}
+                    >
+                      {(["UK", "RU"] as const).map((language) => {
+                        const current = homeworkTranslationLanguage(selectedCandidate.exercise);
+                        return (
+                          <button
+                            key={language}
+                            type="button"
+                            disabled={busy || current === language}
+                            onClick={() => switchRegularTranslationLanguage(language)}
+                            className={cn(
+                              "h-7 rounded-lg px-2.5 text-[10px] font-black transition disabled:cursor-default",
+                              current === language
+                                ? "bg-accent text-white"
+                                : "text-muted hover:text-accent disabled:opacity-55",
+                            )}
+                          >
+                            {language === "UK" ? "UA" : "RU"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="relative">
                     <button
                       type="button"

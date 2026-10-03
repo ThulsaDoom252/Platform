@@ -62,6 +62,7 @@ import {
 } from "@/lib/class-video";
 import {
   defaultRegularOpenSections,
+  isRegularTranslationExercise,
   isRegularLessonFocusId,
   normalizeRegularLessonSections,
   publicRegularLessonSections,
@@ -105,6 +106,7 @@ import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
 import { installGrammarCheckLesson } from "@/lib/bundled-lessons/grammar-check";
 import { installA1AppearanceLesson } from "@/lib/bundled-lessons/a1-appearance";
 import {
+  translateShortTexts,
   translateVocabulary,
   type MaterialTranslationLang,
 } from "@/lib/material-translation";
@@ -2348,6 +2350,85 @@ export async function saveRegularLessonExerciseAction(
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   return { exercise: normalized, state };
+}
+
+/**
+ * Rebuild the foreign sentences of one regular-lesson translation exercise.
+ * The override lives in lesson_assignments.answers, so this changes only the
+ * selected student's assigned lesson and never mutates the reusable template.
+ */
+export async function translateRegularLessonExerciseLanguageAction(
+  assignmentId: string,
+  sectionId: string,
+  listIndex: number,
+  targetLanguage: MaterialTranslationLang,
+): Promise<{
+  error?: string;
+  state?: Record<string, string>;
+  language?: MaterialTranslationLang;
+}> {
+  const row = await regularAssignmentForUser(String(assignmentId ?? ""));
+  if (!row || row.session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const section = normalizeRegularLessonSections(row.sections)
+    .find((item) => item.id === String(sectionId ?? ""));
+  const at = Math.trunc(Number(listIndex));
+  if (!section || at < 1 || at > 100 || !isRegularTranslationExercise(section, at)) {
+    return { error: "Упражнение на перевод не найдено" };
+  }
+
+  const currentState = row.assignment.answers ?? {};
+  const grouped = new Map<number, string[]>();
+  for (const [responseId, spec] of regularAnswerMap(section, currentState)) {
+    const match = responseId.match(new RegExp(`^list-${at}-item-(\\d+)-blank-(\\d+)$`));
+    if (!match) continue;
+    const item = Number(match[1]);
+    grouped.set(item, [...(grouped.get(item) ?? []), spec.answer]);
+  }
+  const english = [...grouped.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, answers]) => answers.length === 1 ? answers[0] : "");
+  if (english.length === 0 || english.some((sentence) => !sentence.trim())) {
+    return { error: "Не удалось найти английский ответ для каждого предложения" };
+  }
+
+  const language: MaterialTranslationLang = targetLanguage === "RU" ? "RU" : "UK";
+  try {
+    const translated = await translateShortTexts(
+      english,
+      language,
+      "EN",
+      "Simple real sentences for an English lesson translation exercise",
+    );
+    const previous = regularExerciseOverride(currentState, section.id, at);
+    const exercise: RegularExerciseOverride = {
+      title: previous?.title || section.title,
+      instruction: previous?.instruction || "Translate each sentence into English.",
+      kind: "fill",
+      translationLanguage: language,
+      items: translated.map((prompt, index) => ({
+        prompt: `${prompt} → ___`,
+        answers: [english[index]],
+      })),
+    };
+    const state = {
+      ...currentState,
+      [regularExerciseOverrideKey(section.id, at)]: JSON.stringify(exercise),
+    };
+    await db
+      .update(lessonAssignments)
+      .set({ answers: state, updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, row.assignment.id));
+
+    revalidatePath(`/student/lessons/${row.assignment.id}`);
+    revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+    revalidatePath("/teacher/class");
+    revalidatePath("/student/class");
+    return { state, language };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "DeepL не смог перевести предложения",
+    };
+  }
 }
 
 /** Урок с состоянием конкретного ученика — и ему, и учителю. */

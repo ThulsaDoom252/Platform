@@ -1,4 +1,5 @@
 import { cleanScriptHtml } from "@/lib/script-html";
+import type { TranslationLang } from "@/lib/translation-lang";
 
 export const REGULAR_SECTION_PREFIX = "regular:";
 export const REGULAR_RESPONSE_PREFIX = "regular-answer:";
@@ -16,6 +17,8 @@ export type RegularExerciseOverride = {
   title: string;
   instruction: string;
   kind: "fill" | "true-false" | "open";
+  /** Present only for lists that translate sentences into English. */
+  translationLanguage?: TranslationLang;
   items: { prompt: string; answers: string[] }[];
 };
 
@@ -172,6 +175,9 @@ export function regularExerciseOverride(
       title: String(raw.title ?? "").trim().slice(0, 240),
       instruction: String(raw.instruction ?? "").trim().slice(0, 1_500),
       kind,
+      ...((raw.translationLanguage === "RU" || raw.translationLanguage === "UK")
+        ? { translationLanguage: raw.translationLanguage }
+        : {}),
       items,
     };
   } catch {
@@ -197,6 +203,21 @@ const mainOrderedLists = (html: string) => {
   );
   return [...withoutKeys.matchAll(/<ol\b[^>]*>([\s\S]*?)<\/ol>/gi)].map((match) => match[1]);
 };
+
+/** Whether this numbered list is explicitly marked as a translation task. */
+export function isRegularTranslationExercise(
+  section: RegularLessonSection,
+  listIndex: number,
+): boolean {
+  const withoutKeys = section.studentHtml.replace(
+    /<div\b[^>]*class=["'][^"']*(?:key|key-wrap|teacher-note)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
+    "",
+  );
+  const lists = [...withoutKeys.matchAll(/<ol\b([^>]*)>[\s\S]*?<\/ol>/gi)];
+  const attrs = lists[listIndex - 1]?.[1] ?? "";
+  const className = attrs.match(/class\s*=\s*["']([^"']*)["']/i)?.[1] ?? "";
+  return /(?:^|\s)translation-check(?:\s|$)/i.test(className);
+}
 
 const listItems = (html: string) =>
   [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)].map((match) => match[1]);
