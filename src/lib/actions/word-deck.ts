@@ -489,24 +489,41 @@ export async function wordDeckHomeworkAction(id: string): Promise<WordDeckHomewo
 function teacherOwnsWordDeckHomework(
   teacherId: string,
   row: { game: typeof activityGames.$inferSelect; templateAuthorId: string | null },
+  soleTeacherId: string | null,
 ) {
-  return row.game.wordDeck?.assignedByTeacherId === teacherId || row.templateAuthorId === teacherId;
+  const explicitOwner = row.game.wordDeck?.assignedByTeacherId;
+  return explicitOwner === teacherId || row.templateAuthorId === teacherId || (
+    !explicitOwner && !row.templateAuthorId && soleTeacherId === teacherId
+  );
+}
+
+/** Legacy note-based assignments predate assignedByTeacherId. In a single-teacher
+ * school they still unambiguously belong to that teacher; never guess if there
+ * is more than one teacher account. */
+async function soleTeacherId() {
+  const teachers = await db.select({ id: users.id }).from(users)
+    .where(eq(users.role, "TEACHER"))
+    .limit(2);
+  return teachers.length === 1 ? teachers[0].id : null;
 }
 
 /** Homework activities shown alongside ordinary lesson homework in teacher folders. */
 export async function teacherWordDeckHomeworkAssignmentsAction(): Promise<TeacherWordDeckHomeworkCard[]> {
   const session = await requireTeacher();
-  const rows = await db.select({
-    game: activityGames,
-    studentName: users.name,
-    studentAvatarUrl: users.avatarUrl,
-    templateAuthorId: wordDeckActivities.authorId,
-  }).from(activityGames)
-    .innerJoin(users, eq(users.id, activityGames.studentId))
-    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
-    .where(eq(activityGames.kind, "WORD_DECK_HOMEWORK"))
-    .orderBy(desc(activityGames.createdAt));
-  const mine = rows.filter((row) => teacherOwnsWordDeckHomework(session.userId, row));
+  const [rows, legacyOwnerId] = await Promise.all([
+    db.select({
+      game: activityGames,
+      studentName: users.name,
+      studentAvatarUrl: users.avatarUrl,
+      templateAuthorId: wordDeckActivities.authorId,
+    }).from(activityGames)
+      .innerJoin(users, eq(users.id, activityGames.studentId))
+      .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+      .where(eq(activityGames.kind, "WORD_DECK_HOMEWORK"))
+      .orderBy(desc(activityGames.createdAt)),
+    soleTeacherId(),
+  ]);
+  const mine = rows.filter((row) => teacherOwnsWordDeckHomework(session.userId, row, legacyOwnerId));
   const studentIds = [...new Set(mine.map((row) => row.game.studentId))];
   const upcomingLessons = studentIds.length > 0
     ? await db.select({ studentId: lessons.studentId, startTime: lessons.startTime })
@@ -550,20 +567,23 @@ export async function teacherWordDeckHomeworkAssignmentsAction(): Promise<Teache
 
 export async function teacherWordDeckHomeworkAction(id: string): Promise<TeacherWordDeckHomeworkDetail | null> {
   const session = await requireTeacher();
-  const [row] = await db.select({
-    game: activityGames,
-    studentName: users.name,
-    studentAvatarUrl: users.avatarUrl,
-    templateAuthorId: wordDeckActivities.authorId,
-  }).from(activityGames)
-    .innerJoin(users, eq(users.id, activityGames.studentId))
-    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
-    .where(and(
-      eq(activityGames.id, String(id ?? "")),
-      eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
-    ))
-    .limit(1);
-  if (!row || !teacherOwnsWordDeckHomework(session.userId, row)) return null;
+  const [[row], legacyOwnerId] = await Promise.all([
+    db.select({
+      game: activityGames,
+      studentName: users.name,
+      studentAvatarUrl: users.avatarUrl,
+      templateAuthorId: wordDeckActivities.authorId,
+    }).from(activityGames)
+      .innerJoin(users, eq(users.id, activityGames.studentId))
+      .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+      .where(and(
+        eq(activityGames.id, String(id ?? "")),
+        eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+      ))
+      .limit(1),
+    soleTeacherId(),
+  ]);
+  if (!row || !teacherOwnsWordDeckHomework(session.userId, row, legacyOwnerId)) return null;
   const item = homeworkWordDeckOf(row.game);
   return item ? {
     ...item,
@@ -575,17 +595,20 @@ export async function teacherWordDeckHomeworkAction(id: string): Promise<Teacher
 
 export async function deleteWordDeckHomeworkAction(id: string): Promise<{ error?: string }> {
   const session = await requireTeacher();
-  const [row] = await db.select({
-    game: activityGames,
-    templateAuthorId: wordDeckActivities.authorId,
-  }).from(activityGames)
-    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
-    .where(and(
-      eq(activityGames.id, String(id ?? "")),
-      eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
-    ))
-    .limit(1);
-  if (!row || !teacherOwnsWordDeckHomework(session.userId, row)) {
+  const [[row], legacyOwnerId] = await Promise.all([
+    db.select({
+      game: activityGames,
+      templateAuthorId: wordDeckActivities.authorId,
+    }).from(activityGames)
+      .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+      .where(and(
+        eq(activityGames.id, String(id ?? "")),
+        eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+      ))
+      .limit(1),
+    soleTeacherId(),
+  ]);
+  if (!row || !teacherOwnsWordDeckHomework(session.userId, row, legacyOwnerId)) {
     return { error: "Домашняя активность не найдена" };
   }
   await db.delete(activityGames).where(eq(activityGames.id, row.game.id));
