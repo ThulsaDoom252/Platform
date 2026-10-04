@@ -72,3 +72,20 @@ test("finished timer preserves a zero remainder", () => {
   assert.ok(state);
   assert.equal(state.remainingMs, 0);
 });
+
+test("timer keeps a valid teacher rating and rejects an unknown one", () => {
+  const rated = normalizeClassTimerState({
+    ...running,
+    status: "FINISHED",
+    remainingMs: 0,
+    rating: { grade: "GREAT", visible: false, at: "2026-10-05T10:00:00.000Z" },
+  });
+  assert.deepEqual(rated?.rating, {
+    grade: "GREAT",
+    visible: false,
+    at: "2026-10-05T10:00:00.000Z",
+  });
+
+  const invalid = normalizeClassTimerState({ ...running, rating: { grade: "WOW", at: "now" } });
+  assert.equal(invalid?.rating, null);
+});

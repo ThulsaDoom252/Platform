@@ -1,3 +1,5 @@
+import { CLASS_GAME_GRADES, type ClassGameGrade } from "@/lib/class-game-meta";
+
 export const CLASS_TIMER_THEMES = ["violet", "ocean", "mint", "sunset"] as const;
 export const CLASS_TIMER_TICK_SOUNDS = ["soft", "wood", "digital", "pulse"] as const;
 export const CLASS_TIMER_END_SOUNDS = ["bell", "success", "gong", "sparkle"] as const;
@@ -6,6 +8,12 @@ export type ClassTimerTheme = (typeof CLASS_TIMER_THEMES)[number];
 export type ClassTimerTickSound = (typeof CLASS_TIMER_TICK_SOUNDS)[number];
 export type ClassTimerEndSound = (typeof CLASS_TIMER_END_SOUNDS)[number];
 export type ClassTimerStatus = "READY" | "RUNNING" | "PAUSED" | "FINISHED";
+
+export type ClassTimerRating = {
+  grade: ClassGameGrade;
+  visible: boolean;
+  at: string;
+};
 
 export type ClassTimerPreset = {
   id: string;
@@ -29,6 +37,7 @@ export type ClassTimerState = Omit<ClassTimerPreset, "createdAt" | "updatedAt"> 
   endsAt: string | null;
   visible: boolean;
   startedSignalAt: string | null;
+  rating: ClassTimerRating | null;
   updatedAt: string;
 };
 
@@ -48,6 +57,18 @@ export function normalizeClassTimerState(value: unknown): ClassTimerState | null
     raw.status,
     "READY",
   );
+  const rawRating = raw.rating && typeof raw.rating === "object"
+    ? raw.rating as Record<string, unknown>
+    : null;
+  const rating = rawRating &&
+    CLASS_GAME_GRADES.includes(rawRating.grade as ClassGameGrade) &&
+    typeof rawRating.at === "string"
+    ? {
+        grade: rawRating.grade as ClassGameGrade,
+        visible: rawRating.visible === true,
+        at: rawRating.at,
+      }
+    : null;
   return {
     id: String(raw.id ?? "").slice(0, 80),
     name: String(raw.name ?? "Timer").slice(0, 120),
@@ -64,6 +85,7 @@ export function normalizeClassTimerState(value: unknown): ClassTimerState | null
     endsAt: typeof raw.endsAt === "string" ? raw.endsAt : null,
     visible: raw.visible === true,
     startedSignalAt: typeof raw.startedSignalAt === "string" ? raw.startedSignalAt : null,
+    rating,
     updatedAt:
       typeof raw.updatedAt === "string" ? raw.updatedAt : new Date(0).toISOString(),
   };

@@ -27,6 +27,7 @@ import {
   listClassTimerPresetsAction,
   prepareClassTimerAction,
   saveClassStudentTimerAction,
+  saveClassTimerRatingAction,
   saveClassTimerPresetAction,
   setClassTimerVisibleAction,
   updateActiveClassTimerAction,
@@ -44,6 +45,11 @@ import {
   type ClassTimerTheme,
   type ClassTimerTickSound,
 } from "@/lib/class-timer";
+import {
+  CLASS_GAME_GRADES,
+  classGameGradeStyle,
+  type ClassGameGrade,
+} from "@/lib/class-game-meta";
 import { cn } from "@/lib/utils";
 
 type AudioKind = "tick" | "end";
@@ -128,6 +134,16 @@ const THEME_STYLE: Record<ClassTimerTheme, { shell: string; clock: string; accen
     accent: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
   },
 };
+
+function timerGradeLabel(t: ReturnType<typeof useT>["t"], grade: ClassGameGrade) {
+  return grade === "GREAT"
+    ? t.classRoom.gradeGreat
+    : grade === "GOOD"
+      ? t.classRoom.gradeGood
+      : grade === "NOT_BAD"
+        ? t.classRoom.gradeNotBad
+        : t.classRoom.gradeRidiculous;
+}
 
 function useCountdown(state: ClassTimerState) {
   const [now, setNow] = useState(() => Date.now());
@@ -246,7 +262,80 @@ function TimerFace({ state, student }: { state: ClassTimerState; student: boolea
           </div>
         )}
       </div>
+      {state.rating && (!student || state.rating.visible) && (
+        <div className={cn(
+          "mt-4 flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-black shadow-sm",
+          classGameGradeStyle[state.rating.grade].panel,
+        )}>
+          <span className="text-2xl" aria-hidden>{classGameGradeStyle[state.rating.grade].emoji}</span>
+          <span>{timerGradeLabel(t, state.rating.grade)}</span>
+        </div>
+      )}
     </div>
+  );
+}
+
+function TimerRatingEditor({
+  state,
+  busy,
+  onSave,
+}: {
+  state: ClassTimerState;
+  busy: boolean;
+  onSave: (grade: ClassGameGrade, visible: boolean) => void;
+}) {
+  const { t } = useT();
+  const [grade, setGrade] = useState<ClassGameGrade | null>(state.rating?.grade ?? null);
+  const [visible, setVisible] = useState(state.rating?.visible ?? true);
+
+  return (
+    <section className="rounded-2xl bg-surface-2 p-4 ring-1 ring-line">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-black text-content">{t.classRoom.timerRate}</p>
+          <p className="mt-0.5 text-xs text-muted">{t.classRoom.timerRateHint}</p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface px-3 py-2 text-xs font-bold text-content ring-1 ring-line">
+          <input
+            type="checkbox"
+            checked={visible}
+            onChange={(event) => setVisible(event.target.checked)}
+            className="h-4 w-4 accent-[var(--accent)]"
+          />
+          {t.classRoom.studentSeesGrade}
+          <span aria-hidden>{visible ? "👀" : "🙈"}</span>
+        </label>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {CLASS_GAME_GRADES.map((value) => {
+          const visual = classGameGradeStyle[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setGrade(value)}
+              className={cn(
+                "flex min-h-11 items-center gap-2 rounded-xl border px-3 text-left text-xs font-black transition",
+                visual.button,
+                grade === value ? "ring-2 ring-current ring-offset-2 ring-offset-surface-2" : "opacity-70 hover:opacity-100",
+              )}
+            >
+              <span className="text-xl" aria-hidden>{visual.emoji}</span>
+              <span className="flex-1">{timerGradeLabel(t, value)}</span>
+              {grade === value && <Check className="h-4 w-4" />}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        disabled={busy || !grade}
+        onClick={() => grade && onSave(grade, visible)}
+        className="mt-3 h-11 w-full rounded-xl bg-accent text-sm font-black text-white shadow-sm transition hover:brightness-110 disabled:opacity-40"
+      >
+        {t.classRoom.saveGrade}
+      </button>
+    </section>
   );
 }
 
@@ -496,6 +585,14 @@ export function ClassTimerManager({
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col gap-4">
               <TimerFace state={state} student={false} />
+
+              {classTimerRemainingMs(state) === 0 && state.status !== "READY" && (
+                <TimerRatingEditor
+                  state={state}
+                  busy={busy}
+                  onSave={(grade, visible) => act(() => saveClassTimerRatingAction(grade, visible))}
+                />
+              )}
 
               <div className="rounded-2xl bg-surface-2 p-3 ring-1 ring-line">
                 <label className="text-[10px] font-black uppercase tracking-wide text-faint">

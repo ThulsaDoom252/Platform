@@ -488,6 +488,29 @@ export function dialogueHighlights(
   ) as Record<string, HighlightColor>;
 }
 
+/** Remove only coloured marks while keeping the current focus and lexis group. */
+export function clearLessonHighlights(
+  current: Record<string, string> | null | undefined,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(normalizeLessonHighlights(current)).filter(
+      ([key, value]) => !isLessonHighlightKey(key) || !isHighlightColor(value),
+    ),
+  );
+}
+
+/** Replace the coloured layer without disturbing live-class navigation state. */
+export function replaceLessonHighlights(
+  current: Record<string, string> | null | undefined,
+  highlights: Record<string, string> | null | undefined,
+): Record<string, string> {
+  const next = clearLessonHighlights(current);
+  for (const [key, value] of Object.entries(highlights ?? {})) {
+    if (isLessonHighlightKey(key) && isHighlightColor(value)) next[key] = value;
+  }
+  return next;
+}
+
 /** Нажатие на другое слово переносит фокус, повторное — снимает. */
 export function toggleWordFocus(
   current: Record<string, string> | null | undefined,

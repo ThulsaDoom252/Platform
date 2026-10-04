@@ -13,9 +13,9 @@ import {
   focusHomeworkElementAction,
   focusLessonWordAction,
   focusRegularLessonElementAction,
-  highlightLessonTextAction,
   lessonVocabularyRevealAction,
   selectLessonLexisGroupAction,
+  setLessonHighlightsAction,
   setLessonVocabularyRevealAction,
   showBritishAction,
   submitRegularLessonAnswerAction,
@@ -23,20 +23,22 @@ import {
 import type { LessonAssignmentCard, LessonView as Lesson } from "@/lib/actions/lessons";
 import {
   LESSON_SECTIONS,
+  clearLessonHighlights,
+  dialogueHighlights,
   lessonSectionsForKind,
   lessonFocus,
+  replaceLessonHighlights,
   selectLexisGroup,
   selectedLexisGroup,
   toggleLessonHighlight,
   toggleWordFocus,
-  dialogueHighlights,
   type HighlightColor,
   type LessonVocabularyReveal,
 } from "@/lib/lesson-unit";
 import { LessonView } from "@/components/lessons/lesson-view";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { LessonTextHighlighter } from "@/components/lessons/lesson-text-highlighter";
-import { IconVolume } from "@/components/icons";
+import { IconReset, IconTrash, IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
 
@@ -73,9 +75,13 @@ export function AssignedLesson({
   const [british, setBritish] = useState(data.showBritish);
   const [highlightMode, setHighlightMode] = useState(false);
   const [highlightColor, setHighlightColor] = useState<HighlightColor>("yellow");
+  const [highlightHistorySize, setHighlightHistorySize] = useState(0);
   const [vocabularyReveal, setVocabularyReveal] = useState(data.vocabularyReveal);
   const [busy, startBusy] = useTransition();
   const revealQueue = useRef(Promise.resolve());
+  const marksRef = useRef<Record<string, string>>(data.assignment.highlights);
+  const highlightHistory = useRef<Record<string, HighlightColor>[]>([]);
+  const highlightQueue = useRef(Promise.resolve());
 
   // В классе состояние приходит коротким опросом. Обновляем подсветки,
   // не перемонтируя весь урок: выбранная вкладка и режим выделения при
@@ -83,6 +89,7 @@ export function AssignedLesson({
   useEffect(() => {
     if (teacher) return;
     const frame = requestAnimationFrame(() => {
+      marksRef.current = data.assignment.highlights;
       setMarks(data.assignment.highlights);
       setBritish(data.showBritish);
       setVocabularyReveal(data.vocabularyReveal);
@@ -128,15 +135,48 @@ export function AssignedLesson({
    * посреди объяснения — это пауза на ровном месте.
    */
   const pick = (key: string) => {
-    setMarks((prev) => toggleWordFocus(prev, key));
+    const next = toggleWordFocus(marksRef.current, key);
+    marksRef.current = next;
+    setMarks(next);
     startBusy(() => focusLessonWordAction(data.assignment.id, key).then(() => undefined));
   };
 
+  const persistHighlights = (next: Record<string, string>) => {
+    const layer = dialogueHighlights(next);
+    highlightQueue.current = highlightQueue.current.then(async () => {
+      await setLessonHighlightsAction(data.assignment.id, layer);
+    });
+    startBusy(() => highlightQueue.current);
+  };
+
+  const commitHighlights = (next: Record<string, string>) => {
+    marksRef.current = next;
+    setMarks(next);
+    persistHighlights(next);
+  };
+
   const highlight = (key: string) => {
-    setMarks((prev) => toggleLessonHighlight(prev, key, highlightColor));
-    startBusy(() =>
-      highlightLessonTextAction(data.assignment.id, key, highlightColor).then(() => undefined),
-    );
+    const previousLayer = dialogueHighlights(marksRef.current);
+    const next = toggleLessonHighlight(marksRef.current, key, highlightColor);
+    if (JSON.stringify(previousLayer) === JSON.stringify(dialogueHighlights(next))) return;
+    highlightHistory.current.push(previousLayer);
+    setHighlightHistorySize(highlightHistory.current.length);
+    commitHighlights(next);
+  };
+
+  const undoHighlight = () => {
+    const previousLayer = highlightHistory.current.pop();
+    if (!previousLayer) return;
+    setHighlightHistorySize(highlightHistory.current.length);
+    commitHighlights(replaceLessonHighlights(marksRef.current, previousLayer));
+  };
+
+  const clearHighlights = () => {
+    const currentLayer = dialogueHighlights(marksRef.current);
+    if (Object.keys(currentLayer).length === 0) return;
+    highlightHistory.current.push(currentLayer);
+    setHighlightHistorySize(highlightHistory.current.length);
+    commitHighlights(clearLessonHighlights(marksRef.current));
   };
 
   const toggleBritish = () => {
@@ -149,7 +189,9 @@ export function AssignedLesson({
   };
 
   const selectLexis = (groupId: string) => {
-    setMarks((prev) => selectLexisGroup(prev, groupId));
+    const next = selectLexisGroup(marksRef.current, groupId);
+    marksRef.current = next;
+    setMarks(next);
     startBusy(() =>
       selectLessonLexisGroupAction(data.assignment.id, groupId).then(() => undefined),
     );
@@ -240,6 +282,26 @@ export function AssignedLesson({
           />
         ))}
       </div>
+      <button
+        type="button"
+        disabled={busy || highlightHistorySize === 0}
+        onClick={undoHighlight}
+        className="flex h-9 items-center gap-1.5 rounded-lg bg-surface px-3 text-[11px] font-bold text-muted ring-1 ring-line transition hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
+        title={t.lessonUnits.highlightUndoHint}
+      >
+        <IconReset className="h-3.5 w-3.5" />
+        {t.lessonUnits.highlightUndo}
+      </button>
+      <button
+        type="button"
+        disabled={busy || Object.keys(dialogueHighlights(marks)).length === 0}
+        onClick={clearHighlights}
+        className="flex h-9 items-center gap-1.5 rounded-lg bg-surface px-3 text-[11px] font-bold text-muted ring-1 ring-line transition hover:bg-rose-50 hover:text-rose-600 hover:ring-rose-200 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-rose-950/30"
+        title={t.lessonUnits.highlightClearHint}
+      >
+        <IconTrash className="h-3.5 w-3.5" />
+        {t.lessonUnits.highlightClear}
+      </button>
       <button
         type="button"
         disabled={busy}

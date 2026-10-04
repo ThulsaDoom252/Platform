@@ -26,6 +26,7 @@ import {
   type ClassTimerTickSound,
 } from "@/lib/class-timer";
 import { enrichSpellingMistake, type SpellingExample, type SpellingPartOfSpeech } from "@/lib/spelling-mistake";
+import { CLASS_GAME_GRADES, type ClassGameGrade } from "@/lib/class-game-meta";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -279,6 +280,7 @@ export async function prepareClassTimerAction(
     endsAt: null,
     visible: false,
     startedSignalAt: null,
+    rating: null,
     updatedAt: now,
   };
   await storeTimerState(studentId, state);
@@ -374,6 +376,7 @@ export async function controlClassTimerAction(
       remainingMs,
       endsAt: new Date(now + remainingMs).toISOString(),
       startedSignalAt: signal,
+      rating: current.status === "FINISHED" || current.remainingMs === 0 ? null : current.rating,
       updatedAt: signal,
     };
   } else if (command === "PAUSE") {
@@ -393,9 +396,40 @@ export async function controlClassTimerAction(
       remainingMs: current.durationSeconds * 1000,
       endsAt: null,
       startedSignalAt: null,
+      rating: null,
       updatedAt,
     };
   }
+  await storeTimerState(studentId, state);
+  return { state };
+}
+
+/** Save an overall rating for the completed timer run. */
+export async function saveClassTimerRatingAction(
+  grade: ClassGameGrade,
+  visible: boolean,
+): Promise<{ state?: ClassTimerState; error?: string }> {
+  const { studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+  if (!CLASS_GAME_GRADES.includes(grade)) return { error: "Choose a rating" };
+  const focus = await studentFocus(studentId);
+  const current = liveClassTimerState(focus?.timerState);
+  if (!current) return { error: "Open a timer first" };
+  if (current.status !== "FINISHED" && classTimerRemainingMs(current) > 0) {
+    return { error: "The timer has not finished yet" };
+  }
+  const state: ClassTimerState = {
+    ...current,
+    status: "FINISHED",
+    remainingMs: 0,
+    endsAt: null,
+    rating: {
+      grade,
+      visible: visible === true,
+      at: new Date().toISOString(),
+    },
+    updatedAt: new Date().toISOString(),
+  };
   await storeTimerState(studentId, state);
   return { state };
 }

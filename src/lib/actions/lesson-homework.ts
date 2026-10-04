@@ -259,6 +259,156 @@ export async function assignInteractiveHomeworkAction(
   return { assignedAt, exerciseIds: selected };
 }
 
+export type HomeworkLessonSource = {
+  id: string;
+  title: string;
+  homeworkTitle: string;
+  assignmentId: string | null;
+  exercises: Array<{
+    id: string;
+    title: string;
+    kind: HomeworkExerciseKind;
+    optional: boolean;
+    items: number;
+  }>;
+};
+
+/** Lesson templates that can provide selectable homework for one student. */
+export async function listHomeworkLessonSourcesAction(
+  studentId: string,
+): Promise<HomeworkLessonSource[]> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return [];
+  const target = String(studentId ?? "");
+  if (!target) return [];
+
+  const [units, assignments] = await Promise.all([
+    db
+      .select({ id: lessonUnits.id, title: lessonUnits.title, homework: lessonUnits.homework })
+      .from(lessonUnits)
+      .where(eq(lessonUnits.authorId, session.userId))
+      .orderBy(asc(lessonUnits.title)),
+    db
+      .select({
+        id: lessonAssignments.id,
+        unitId: lessonAssignments.unitId,
+        answers: lessonAssignments.answers,
+      })
+      .from(lessonAssignments)
+      .where(eq(lessonAssignments.studentId, target)),
+  ]);
+  const assignmentOf = new Map(assignments.map((assignment) => [assignment.unitId, assignment]));
+
+  return units.flatMap((unit): HomeworkLessonSource[] => {
+    const base = interactiveHomeworkFromEntries(unit.homework);
+    if (!base) return [];
+    const assignment = assignmentOf.get(unit.id);
+    const plan = assignment
+      ? homeworkPlanForAssignment(base, assignment.answers ?? {}) ?? base
+      : base;
+    if (plan.exercises.length === 0) return [];
+    return [{
+      id: unit.id,
+      title: unit.title,
+      homeworkTitle: plan.title,
+      assignmentId: assignment?.id ?? null,
+      exercises: plan.exercises.map((exercise) => ({
+        id: exercise.id,
+        title: exercise.title,
+        kind: exercise.kind,
+        optional: exercise.optional === true,
+        items: exercise.items.length,
+      })),
+    }];
+  });
+}
+
+/** Create/reuse a lesson assignment and hand out only the selected exercises. */
+export async function assignHomeworkFromLessonSourceAction(input: {
+  studentId: string;
+  lessonId: string;
+  exerciseIds: string[];
+}): Promise<{ assignmentId?: string; assignedAt?: string; error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const studentId = String(input?.studentId ?? "");
+  const lessonId = String(input?.lessonId ?? "");
+  const [[unit], [student]] = await Promise.all([
+    db
+      .select({ id: lessonUnits.id, title: lessonUnits.title, homework: lessonUnits.homework })
+      .from(lessonUnits)
+      .where(and(eq(lessonUnits.id, lessonId), eq(lessonUnits.authorId, session.userId)))
+      .limit(1),
+    db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
+      .limit(1),
+  ]);
+  if (!unit) return { error: "Урок не найден" };
+  if (!student) return { error: "Ученик не найден" };
+  const base = interactiveHomeworkFromEntries(unit.homework);
+  if (!base) return { error: "В этом уроке нет интерактивной домашки" };
+
+  const [existing] = await db
+    .select()
+    .from(lessonAssignments)
+    .where(and(
+      eq(lessonAssignments.unitId, lessonId),
+      eq(lessonAssignments.studentId, studentId),
+    ))
+    .limit(1);
+  const current = existing?.answers ?? {};
+  const plan = existing ? homeworkPlanForAssignment(base, current) ?? base : base;
+  const wanted = new Set((input.exerciseIds ?? []).map(String));
+  const selected = plan.exercises.map((exercise) => exercise.id).filter((id) => wanted.has(id));
+  if (selected.length === 0) return { error: "Выбери хотя бы одно упражнение" };
+
+  const updating = Boolean(homeworkAssignedAt(current));
+  const assignedAt = new Date().toISOString();
+  const state = { ...current };
+  state[homeworkPlanOverrideKey()] = JSON.stringify(plan);
+  state[homeworkAssignedAtKey()] = assignedAt;
+  state[homeworkAssignedExercisesKey()] = JSON.stringify(selected);
+  delete state[homeworkRemovedAtKey()];
+  delete state[homeworkSubmittedAtKey()];
+  delete state[homeworkReviewedAtKey()];
+
+  let assignmentId = existing?.id ?? null;
+  if (existing) {
+    const openSections = [...new Set([...(existing.openSections ?? []), "homework"])];
+    await db
+      .update(lessonAssignments)
+      .set({ answers: state, openSections, updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, existing.id));
+  } else {
+    const [created] = await db
+      .insert(lessonAssignments)
+      .values({
+        unitId: lessonId,
+        studentId,
+        openSections: ["homework"],
+        answers: state,
+      })
+      .returning({ id: lessonAssignments.id });
+    assignmentId = created?.id ?? null;
+  }
+  if (!assignmentId) return { error: "Не удалось назначить домашку" };
+
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId,
+    event: updating ? "homeworkUpdated" : "homeworkAssigned",
+    title: unit.title,
+    href: `/student/lessons/${assignmentId}?section=homework`,
+  });
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/homework");
+  revalidatePath(`/student/lessons/${assignmentId}`);
+  revalidatePath(`/teacher/lessons/given/${assignmentId}`);
+  return { assignmentId, assignedAt };
+}
+
 /** Remove one student's assigned homework without touching the lesson template. */
 export async function deleteStudentHomeworkAssignmentAction(
   assignmentId: string,

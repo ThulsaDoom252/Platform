@@ -26,6 +26,7 @@ import {
 } from "@/lib/db/schema";
 import { visibleNodeIds } from "@/lib/material-grants";
 import { getSession } from "@/lib/session";
+import { queueStudentNotification } from "@/lib/notifications";
 import {
   buildDeck,
   statsOf,
@@ -487,6 +488,13 @@ export async function assignGuessPicturePresetHomeworkAction(
     status: "LOBBY",
     cards: [], verdicts: [], timings: [], paused: true, pausedLeftMs: 0, deadline: null,
   }).returning({ id: activityGames.id });
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: targetStudent,
+    event: "activityAssigned",
+    title: preset.title,
+    href: `/student/homework/games/${created?.id ?? ""}`,
+  });
   revalidatePath("/student/homework");
   revalidatePath("/teacher/homeworks");
   return { id: created?.id };

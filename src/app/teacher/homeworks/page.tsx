@@ -7,6 +7,7 @@ import {
 } from "@/components/teacher/homework-status-surface";
 import { DeleteStudentHomeworkButton } from "@/components/teacher/delete-student-homework-button";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
+import { HomeworkSourceAssigner } from "@/components/teacher/homework-source-assigner";
 import {
   IconCalendar,
   IconCap,
@@ -171,13 +172,19 @@ export default async function TeacherHomeworksPage({
         </section>
       ) : selectedGroup ? (
         <>
-          <Link
-            href="/teacher/homeworks"
-            className="flex w-fit items-center gap-1.5 text-[13px] font-bold text-muted transition hover:text-accent"
-          >
-            <IconChevronLeft className="h-4 w-4" />
-            {t.teacherHomeworks.backToFolders}
-          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link
+              href="/teacher/homeworks"
+              className="flex w-fit items-center gap-1.5 text-[13px] font-bold text-muted transition hover:text-accent"
+            >
+              <IconChevronLeft className="h-4 w-4" />
+              {t.teacherHomeworks.backToFolders}
+            </Link>
+            <HomeworkSourceAssigner
+              studentId={selectedGroup.studentId}
+              studentName={selectedGroup.studentName}
+            />
+          </div>
 
           <StudentFolderHeader group={selectedGroup} labels={t.teacherHomeworks} />
 

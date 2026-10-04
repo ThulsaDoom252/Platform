@@ -5,6 +5,7 @@ import {
   BRITISH_OPTION,
   HIDDEN_VOCAB_OPTION,
   canSee,
+  clearLessonHighlights,
   lessonSectionNavigation,
   categoryKey,
   findWords,
@@ -34,6 +35,7 @@ import {
   toggleLessonVocabularyReveal,
   selectedLexisGroup,
   selectLexisGroup,
+  replaceLessonHighlights,
   yellowHighlights,
   dialogueHighlights,
   wordKey,
@@ -278,6 +280,26 @@ test("универсальные слова урока принимают жёл
   });
   marks = toggleLessonHighlight(marks, first, "red");
   assert.deepEqual(dialogueHighlights(marks), { [second]: "green" });
+});
+
+test("clear и undo-слой не трогают фокус и выбранную лексику", () => {
+  const first = "text:1a2b3c4d:5e6f7a8b:0";
+  const second = "text:1a2b3c4d:5e6f7a8b:1";
+  let marks = selectLexisGroup({}, "group-1");
+  marks = toggleWordFocus(marks, lineWordKey(1, 4));
+  marks = toggleLessonHighlight(marks, first, "yellow");
+  const previousLayer = dialogueHighlights(marks);
+  marks = toggleLessonHighlight(marks, second, "red");
+
+  const cleared = clearLessonHighlights(marks);
+  assert.deepEqual(dialogueHighlights(cleared), {});
+  assert.equal(lessonFocus(cleared), lineWordKey(1, 4));
+  assert.equal(selectedLexisGroup(cleared), "group-1");
+
+  const restored = replaceLessonHighlights(cleared, previousLayer);
+  assert.deepEqual(dialogueHighlights(restored), { [first]: "yellow" });
+  assert.equal(lessonFocus(restored), lineWordKey(1, 4));
+  assert.equal(selectedLexisGroup(restored), "group-1");
 });
 
 test("фокус и жёлтые выделения не стирают друг друга", () => {

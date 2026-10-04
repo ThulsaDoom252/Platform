@@ -47,6 +47,7 @@ import {
   lessonVocabularyRevealOptions,
   parseKey,
   parseTranscript,
+  replaceLessonHighlights,
   selectLexisGroup,
   toggleLessonHighlight,
   isHighlightColor,
@@ -2121,6 +2122,32 @@ export async function highlightLessonTextAction(
 
   revalidatePath("/student/class");
   return {};
+}
+
+/** Replace every coloured mark in one assignment, preserving focus controls. */
+export async function setLessonHighlightsAction(
+  assignmentId: string,
+  highlights: Record<string, string>,
+): Promise<{ highlights?: Record<string, string>; error?: string }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+  const [row] = await db
+    .select({ highlights: lessonAssignments.highlights })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)))
+    .limit(1);
+  if (!row) return { error: "Урок не закреплён" };
+
+  const next = replaceLessonHighlights(row.highlights, highlights);
+  await db
+    .update(lessonAssignments)
+    .set({ highlights: next, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, id));
+
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { highlights: next };
 }
 
 /** Показать или скрыть британский вариант в конкретной выдаче урока. */
