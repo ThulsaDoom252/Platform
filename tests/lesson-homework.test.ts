@@ -37,6 +37,7 @@ import {
   toggleHomeworkTextHighlight,
   withoutAssignedHomeworkState,
   withoutHomeworkExerciseState,
+  withoutHomeworkProgressState,
   type InteractiveHomeworkPlan,
 } from "../src/lib/lesson-homework";
 
@@ -402,6 +403,34 @@ test("удаление выданной домашки очищает hw-дан�
   assert.equal(next[homeworkValueKey("fill-one")], undefined);
   assert.equal(next["regular-answer:practice:item-1"], "kept lesson answer");
   assert.equal(homeworkRemovedAt(next), removedAt);
+});
+
+test("сброс домашки очищает прогресс, но сохраняет назначение и заметки учителя", () => {
+  const assignedAt = "2026-10-03T12:00:00.000Z";
+  const state = {
+    [homeworkAssignedAtKey()]: assignedAt,
+    [homeworkAssignedExercisesKey()]: JSON.stringify(["fill-main"]),
+    [homeworkPlanOverrideKey()]: JSON.stringify(plan),
+    [homeworkValueKey("fill-one")]: "got to",
+    [homeworkStatusKey("fill-one")]: "correct",
+    [homeworkAttemptsKey("fill-one")]: JSON.stringify(["go"]),
+    [homeworkReviewedAtKey()]: "2026-10-04T12:00:00.000Z",
+    "hw:submitted-at": "2026-10-04T11:00:00.000Z",
+    "hw:note:fill-one": "Teacher note",
+    "hw:text-highlight:fill-one:answer:0": "yellow",
+    "hw:text-highlight:fill-one:prompt:0": "green",
+  };
+  const next = withoutHomeworkProgressState(state, plan);
+
+  assert.equal(next[homeworkValueKey("fill-one")], undefined);
+  assert.equal(next[homeworkStatusKey("fill-one")], undefined);
+  assert.equal(next[homeworkAttemptsKey("fill-one")], undefined);
+  assert.equal(next[homeworkReviewedAtKey()], undefined);
+  assert.equal(next["hw:submitted-at"], undefined);
+  assert.equal(next["hw:text-highlight:fill-one:answer:0"], undefined);
+  assert.equal(next[homeworkAssignedAtKey()], assignedAt);
+  assert.equal(next["hw:note:fill-one"], "Teacher note");
+  assert.equal(next["hw:text-highlight:fill-one:prompt:0"], "green");
 });
 
 test("правка вопросов не блокируется неполными переводами из старой домашки", () => {

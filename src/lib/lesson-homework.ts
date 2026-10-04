@@ -399,6 +399,28 @@ export function homeworkStarted(state: HomeworkStoredState) {
   );
 }
 
+/**
+ * Return an assigned homework to a pristine student state without changing
+ * the teacher's personal copy, assigned exercises, notes or annotations.
+ */
+export function withoutHomeworkProgressState(
+  state: HomeworkStoredState,
+  plan: InteractiveHomeworkPlan,
+): HomeworkStoredState {
+  let next = { ...state };
+  for (const exercise of plan.exercises) {
+    for (const item of exercise.items) {
+      delete next[homeworkValueKey(item.id)];
+      delete next[homeworkStatusKey(item.id)];
+      delete next[homeworkAttemptsKey(item.id)];
+      next = clearHomeworkTextHighlights(next, item.id, "answer");
+    }
+  }
+  delete next[homeworkSubmittedAtKey()];
+  delete next[homeworkReviewedAtKey()];
+  return next;
+}
+
 const cleanId = (value: unknown) =>
   typeof value === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/i.test(value)
     ? value

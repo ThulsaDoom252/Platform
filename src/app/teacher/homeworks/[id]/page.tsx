@@ -9,6 +9,8 @@ import { assignedLessonAction } from "@/lib/actions/lessons";
 import { getDict } from "@/lib/i18n/server";
 import { assignedInteractiveHomework } from "@/lib/lesson-homework";
 import { StudentPresence } from "@/components/student-presence";
+import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
+import { teacherHomeworkOverviewState } from "@/lib/teacher-homework-order";
 
 export default async function TeacherHomeworkReviewPage({
   params,
@@ -26,16 +28,22 @@ export default async function TeacherHomeworkReviewPage({
   const assignedPlan = data.lesson.interactiveHomework
     ? assignedInteractiveHomework(data.lesson.interactiveHomework, data.answers)
     : null;
+  const state = teacherHomeworkOverviewState(item);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-      <Link
-        href="/teacher/homeworks"
-        className="flex w-fit items-center gap-1 text-[13px] font-bold text-muted transition hover:text-accent"
-      >
-        <IconChevronLeft className="h-4 w-4" />
-        {t.teacherHomeworks.back}
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/teacher/homeworks"
+          className="flex w-fit items-center gap-1 text-[13px] font-bold text-muted transition hover:text-accent"
+        >
+          <IconChevronLeft className="h-4 w-4" />
+          {t.teacherHomeworks.back}
+        </Link>
+        {state !== "notStarted" && (
+          <ResetStudentHomeworkButton assignmentId={item.id} labels={t.teacherHomeworks} showLabel />
+        )}
+      </div>
 
       <header className="rounded-2xl bg-surface px-4 py-4 shadow-sm ring-1 ring-line sm:px-5">
         <div className="flex flex-wrap items-center gap-2">

@@ -55,6 +55,7 @@ import {
   toggleHomeworkTextHighlight,
   withoutAssignedHomeworkState,
   withoutHomeworkExerciseState,
+  withoutHomeworkProgressState,
   type HomeworkHighlightColor,
   type HomeworkReaction,
   type HomeworkReactionTarget,
@@ -292,6 +293,59 @@ export async function deleteStudentHomeworkAssignmentAction(
   await Promise.all(
     recordingUrls.map((url) => removePublicFile(url, "lesson-audio").catch(() => undefined)),
   );
+  revalidatePath("/teacher/homeworks");
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return {};
+}
+
+/** Return one student's lesson homework to Not started without changing it. */
+export async function resetStudentHomeworkAssignmentAction(
+  assignmentId: string,
+): Promise<{ error?: string }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithOptionalPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId || !row.plan) {
+    return { error: "Домашняя работа не найдена" };
+  }
+
+  const current = row.assignment.answers ?? {};
+  const recordingUrls: string[] = [];
+  const recordingKeys: string[] = [];
+  for (const exercise of row.plan.exercises) {
+    if (exercise.kind !== "question-audio") continue;
+    for (const item of exercise.items) {
+      const target = homeworkVoiceRecordingTarget(item.id);
+      const recording = regularVoiceRecording(current, target);
+      if (recording?.url) recordingUrls.push(recording.url);
+      recordingKeys.push(regularVoiceRecordingKey(target));
+    }
+  }
+
+  const state = withoutHomeworkProgressState(current, row.plan);
+  for (const key of recordingKeys) delete state[key];
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  await Promise.all(
+    recordingUrls.map((url) => removePublicFile(url, "lesson-audio").catch(() => undefined)),
+  );
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: row.assignment.studentId,
+    event: "homeworkUpdated",
+    title: row.title,
+    href: `/student/lessons/${row.assignment.id}?section=homework`,
+  });
+
   revalidatePath("/teacher/homeworks");
   revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);

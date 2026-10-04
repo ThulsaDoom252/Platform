@@ -10,6 +10,7 @@ import {
   nextWordDeckHomeworkTracking,
   playableWordDeckCards,
   randomWordDeckPercentage,
+  resetWordDeckHomeworkTracking,
   shuffleWordDeckTail,
   suggestedWordDeckTitle,
 } from "../src/lib/word-deck";
@@ -253,4 +254,17 @@ test("после сброса следующая попытка домашней
     new Date("2026-10-04T10:03:45.000Z"),
   );
   assert.deepEqual(second.attempts?.map((attempt) => attempt.durationMs), [60_000, 45_000]);
+});
+
+test("учительский полный сброс игры удаляет прогресс, но сохраняет владельца", () => {
+  const reset = resetWordDeckHomeworkTracking({
+    assignedByTeacherId: "teacher",
+    attemptStartedAt: "2026-10-04T10:00:00.000Z",
+    lastCompletedAttemptStartedAt: "2026-10-04T10:00:00.000Z",
+    attempts: [{ finishedAt: "2026-10-04T10:01:00.000Z", durationMs: 60_000 }],
+  });
+  assert.equal(reset.assignedByTeacherId, "teacher");
+  assert.equal(reset.attemptStartedAt, undefined);
+  assert.equal(reset.lastCompletedAttemptStartedAt, undefined);
+  assert.deepEqual(reset.attempts, []);
 });

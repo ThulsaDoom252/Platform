@@ -336,3 +336,10 @@ export const IconLayers = (p: IconProps) => (
     <path d="m3 13 9 5 9-5" />
   </Svg>
 );
+
+export const IconReset = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 7v5h5" />
+    <path d="M5.7 16.5A8 8 0 1 0 6 7.2L4 9" />
+  </Svg>
+);

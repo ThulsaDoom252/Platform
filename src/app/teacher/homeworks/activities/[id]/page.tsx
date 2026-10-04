@@ -4,6 +4,7 @@ import { WordDeckBoard } from "@/components/game/word-deck-board";
 import { teacherWordDeckHomeworkAction } from "@/lib/actions/word-deck";
 import { getDict } from "@/lib/i18n/server";
 import { StudentPresence } from "@/components/student-presence";
+import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 
 export default async function TeacherActivityHomeworkPage({
   params,
@@ -26,7 +27,12 @@ export default async function TeacherActivityHomeworkPage({
         <Link href={`/teacher/homeworks?student=${encodeURIComponent(activity.studentId)}`} className="rounded-xl border border-line bg-surface px-4 py-2 text-sm font-black text-muted transition hover:border-accent hover:text-accent">
           ← {t.teacherHomeworks.backToFolders}
         </Link>
-        <span className="rounded-full bg-accent-soft px-3 py-1.5 text-xs font-black uppercase text-accent">{status}</span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {(activity.status !== "LOBBY" || activity.attempts.length > 0) && (
+            <ResetStudentHomeworkButton assignmentId={activity.id} kind="ACTIVITY" labels={t.teacherHomeworks} showLabel />
+          )}
+          <span className="rounded-full bg-accent-soft px-3 py-1.5 text-xs font-black uppercase text-accent">{status}</span>
+        </div>
       </div>
 
       <section className="rounded-2xl bg-surface p-4 ring-1 ring-line sm:p-5">

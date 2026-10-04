@@ -557,6 +557,50 @@ export async function deleteRevisionAction(id: string): Promise<RevisionState> {
   return { ok: true };
 }
 
+/** Remove all attempts so the assigned homework becomes Not started again. */
+export async function resetRevisionHomeworkAction(id: string): Promise<RevisionState> {
+  const session = await requireTeacher();
+  const revisionId = String(id ?? "");
+  if (!revisionId) return { error: "Не выбрано задание" };
+
+  const [revision] = await db
+    .select({
+      id: wordRevisions.id,
+      studentId: wordRevisions.studentId,
+      title: wordRevisions.title,
+    })
+    .from(wordRevisions)
+    .where(and(
+      eq(wordRevisions.id, revisionId),
+      eq(wordRevisions.placement, "HOMEWORK"),
+      or(
+        eq(wordRevisions.assignedByTeacherId, session.userId),
+        isNull(wordRevisions.assignedByTeacherId),
+      ),
+    ))
+    .limit(1);
+  if (!revision) return { error: "Домашняя практика не найдена" };
+
+  await db.transaction(async (tx) => {
+    await tx.delete(wordRevisionAttempts).where(eq(wordRevisionAttempts.revisionId, revision.id));
+    await tx.update(wordRevisions).set({ reopened: false }).where(eq(wordRevisions.id, revision.id));
+  });
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: revision.studentId,
+    event: "homeworkUpdated",
+    title: revision.title,
+    href: `/student/homework/revision/${revision.id}`,
+  });
+
+  revalidatePath("/teacher/materials");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath(`/teacher/homeworks/revisions/${revision.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath(`/student/homework/revision/${revision.id}`);
+  return { ok: true };
+}
+
 /** Открыть сданное задание заново — попытки при этом копятся. */
 export async function reopenRevisionAction(
   id: string,

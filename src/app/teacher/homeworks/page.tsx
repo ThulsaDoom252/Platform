@@ -6,6 +6,7 @@ import {
   HomeworkStatusSurface,
 } from "@/components/teacher/homework-status-surface";
 import { DeleteStudentHomeworkButton } from "@/components/teacher/delete-student-homework-button";
+import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import {
   IconCalendar,
   IconCap,
@@ -416,6 +417,11 @@ function RevisionHomeworkCard({
     deletingHomework: string;
     deleteHomeworkError: string;
     cancelDelete: string;
+    resetHomework: string;
+    resetHomeworkConfirm: string;
+    resettingHomework: string;
+    resetHomeworkError: string;
+    cancelReset: string;
   };
   revisionLabels: {
     activityEyebrow: string;
@@ -443,7 +449,7 @@ function RevisionHomeworkCard({
       <div className="relative">
         <Link
           href={`/teacher/homeworks/revisions/${item.id}`}
-          className="group flex flex-col gap-4 px-4 py-4 pr-16 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-16"
+          className="group flex flex-col gap-4 px-4 py-4 pr-28 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-28"
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <Avatar name={item.studentName} src={item.studentAvatarUrl} className="h-11 w-11 shrink-0 text-sm" />
@@ -485,7 +491,10 @@ function RevisionHomeworkCard({
             </span>
           </div>
         </Link>
-        <div className="absolute right-3 top-3 z-10">
+        <div className="absolute right-3 top-3 z-10 flex items-start gap-2">
+          {state !== "notStarted" && (
+            <ResetStudentHomeworkButton assignmentId={item.id} kind="REVISION" labels={labels} />
+          )}
           <DeleteStudentHomeworkButton assignmentId={item.id} kind="REVISION" labels={labels} />
         </div>
       </div>
@@ -517,6 +526,11 @@ function HomeworkCard({
     deletingHomework: string;
     deleteHomeworkError: string;
     cancelDelete: string;
+    resetHomework: string;
+    resetHomeworkConfirm: string;
+    resettingHomework: string;
+    resetHomeworkError: string;
+    cancelReset: string;
   };
   activityLabels: {
     homeworkActivities: string;
@@ -549,7 +563,7 @@ function HomeworkCard({
       <div className="relative">
         <Link
           href={href}
-          className="group flex flex-col gap-4 px-4 py-4 pr-16 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-16"
+          className="group flex flex-col gap-4 px-4 py-4 pr-28 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-28"
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <Avatar
@@ -603,7 +617,10 @@ function HomeworkCard({
             </span>
           </div>
         </Link>
-        <div className="absolute right-3 top-3 z-10">
+        <div className="absolute right-3 top-3 z-10 flex items-start gap-2">
+          {state !== "notStarted" && (
+            <ResetStudentHomeworkButton assignmentId={item.id} kind={item.kind} labels={labels} />
+          )}
           <DeleteStudentHomeworkButton assignmentId={item.id} kind={item.kind} labels={labels} />
         </div>
       </div>

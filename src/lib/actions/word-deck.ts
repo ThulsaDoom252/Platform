@@ -23,6 +23,7 @@ import {
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
   playableWordDeckCards,
+  resetWordDeckHomeworkTracking,
   type WordDeckLiveState,
   type WordDeckHomeworkAttempt,
   type WordDeckSettings,
@@ -630,6 +631,58 @@ export async function deleteWordDeckHomeworkAction(id: string): Promise<{ error?
   await db.delete(activityGames).where(eq(activityGames.id, row.game.id));
   revalidatePath("/teacher/homeworks");
   revalidatePath("/student/homework");
+  return {};
+}
+
+/** Clear a homework game's progress and completed attempts, keeping the assignment. */
+export async function resetWordDeckHomeworkAction(id: string): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const [[row], legacyOwnerId] = await Promise.all([
+    db.select({
+      game: activityGames,
+      templateAuthorId: wordDeckActivities.authorId,
+    }).from(activityGames)
+      .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+      .where(and(
+        eq(activityGames.id, String(id ?? "")),
+        eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+      ))
+      .limit(1),
+    soleTeacherId(),
+  ]);
+  if (!row || !row.game.wordDeck || !teacherOwnsWordDeckHomework(session.userId, row, legacyOwnerId)) {
+    return { error: "Домашняя активность не найдена" };
+  }
+
+  await db.update(activityGames).set({
+    wordDeck: {
+      ...row.game.wordDeck,
+      ...resetWordDeckHomeworkTracking(row.game.wordDeck),
+      liveState: undefined,
+    },
+    status: "LOBBY",
+    cards: [],
+    verdicts: [],
+    timings: [],
+    at: 0,
+    revealed: false,
+    paused: true,
+    pausedLeftMs: 0,
+    deadline: null,
+    updatedAt: new Date(),
+  }).where(eq(activityGames.id, row.game.id));
+
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: row.game.studentId,
+    event: "homeworkUpdated",
+    title: row.game.title || "Activity",
+    href: `/student/homework/games/${row.game.id}`,
+  });
+  revalidatePath("/teacher/homeworks");
+  revalidatePath(`/teacher/homeworks/activities/${row.game.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath(`/student/homework/games/${row.game.id}`);
   return {};
 }
 

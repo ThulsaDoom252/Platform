@@ -79,6 +79,18 @@ export type WordDeckHomeworkTracking = {
   attempts?: WordDeckHomeworkAttempt[];
 };
 
+/** Keep ownership while removing every trace of student progress. */
+export function resetWordDeckHomeworkTracking(
+  tracking: WordDeckHomeworkTracking,
+): WordDeckHomeworkTracking {
+  return {
+    ...tracking,
+    attemptStartedAt: undefined,
+    lastCompletedAttemptStartedAt: undefined,
+    attempts: [],
+  };
+}
+
 export function nextWordDeckHomeworkTracking(
   tracking: WordDeckHomeworkTracking,
   progress: { started: boolean; finished: boolean; wasFinished: boolean },
