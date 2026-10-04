@@ -1039,6 +1039,18 @@ export type LessonLexisGroupData = {
   sourceNodeId: string | null;
 };
 
+/** Teacher-owned, one-level folders used only to organize lesson templates. */
+export const lessonFolders = pgTable("lesson_folders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  authorId: uuid("author_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [index("lesson_folders_author_order_idx").on(table.authorId, table.sortOrder)]);
+
 /**
  * Урок как заготовка.
  *
@@ -1061,6 +1073,11 @@ export const lessonUnits = pgTable("lesson_units", {
   kind: text("kind").notNull().default("ACTIVITY"),
   title: text("title").notNull(),
   description: text("description"),
+  /** Library organization only; assignments keep pointing straight to this lesson. */
+  folderId: uuid("folder_id").references(() => lessonFolders.id, {
+    onDelete: "set null",
+  }),
+  sortOrder: integer("sort_order").notNull().default(0),
   /**
    * Словник, на котором держится секция Vocabulary.
    *

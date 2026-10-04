@@ -3,6 +3,7 @@ import {
   installA1AppearanceLessonAction,
   installGrammarCheckLessonAction,
   installNewDerekLessonAction,
+  listLessonFoldersAction,
   listLessonsAction,
 } from "@/lib/actions/lessons";
 import { LessonsList } from "@/components/lessons/lessons-list";
@@ -29,7 +30,10 @@ export default async function TeacherLessonsPage({
     await installA1AppearanceLessonAction();
   }
   const { t } = await getDict();
-  const items = await listLessonsAction();
+  const [items, folders] = await Promise.all([
+    listLessonsAction(),
+    listLessonFoldersAction(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -38,7 +42,7 @@ export default async function TeacherLessonsPage({
         <p className="mt-1 text-sm text-muted">{t.lessonUnits.subtitle}</p>
       </div>
 
-      <LessonsList items={items} />
+      <LessonsList items={items} folders={folders} />
     </div>
   );
 }

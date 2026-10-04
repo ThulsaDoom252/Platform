@@ -17,6 +17,7 @@ import { and, asc, desc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   lessonAssignments,
+  lessonFolders,
   lessonUnits,
   lessonWords,
   materialBlocks,
@@ -176,6 +177,8 @@ function lessonLexisGroups(value: unknown): LessonLexisGroup[] {
 
 export type LessonCard = {
   id: string;
+  folderId: string | null;
+  sortOrder: number;
   kind: LessonKind;
   title: string;
   description: string | null;
@@ -193,6 +196,28 @@ export type LessonCard = {
   createdAt: string;
 };
 
+export type LessonFolderCard = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+};
+
+export async function listLessonFoldersAction(): Promise<LessonFolderCard[]> {
+  const session = await requireTeacher();
+  const rows = await db
+    .select()
+    .from(lessonFolders)
+    .where(eq(lessonFolders.authorId, session.userId))
+    .orderBy(asc(lessonFolders.sortOrder), asc(lessonFolders.name));
+  return rows.map((folder) => ({
+    id: folder.id,
+    name: folder.name,
+    sortOrder: folder.sortOrder,
+    createdAt: folder.createdAt.toISOString(),
+  }));
+}
+
 /** Уроки учителя, новые сверху. */
 export async function listLessonsAction(): Promise<LessonCard[]> {
   const session = await requireTeacher();
@@ -202,7 +227,7 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
     .from(lessonUnits)
     .leftJoin(materialNodes, eq(materialNodes.id, lessonUnits.vocabNodeId))
     .where(eq(lessonUnits.authorId, session.userId))
-    .orderBy(desc(lessonUnits.createdAt));
+    .orderBy(asc(lessonUnits.sortOrder), asc(lessonUnits.title));
 
   if (rows.length === 0) return [];
 
@@ -237,6 +262,8 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
     const questions = unit.questions ?? { afterVideo: [], afterReading: [] };
     return {
       id: unit.id,
+      folderId: unit.folderId,
+      sortOrder: unit.sortOrder,
       kind: normalizeLessonKind(unit.kind),
       title: unit.title,
       description: unit.description,
@@ -281,10 +308,27 @@ export async function installA1AppearanceLessonAction() {
 export async function createLessonAction(
   title: string,
   kind: string,
+  folderId?: string | null,
 ): Promise<{ id?: string; error?: string }> {
   const session = await requireTeacher();
   const name = String(title ?? "").trim().slice(0, 160);
   if (!name) return { error: "Дай уроку название" };
+  const targetFolderId = folderId ? String(folderId) : null;
+  if (targetFolderId) {
+    const [folder] = await db
+      .select({ id: lessonFolders.id })
+      .from(lessonFolders)
+      .where(and(eq(lessonFolders.id, targetFolderId), eq(lessonFolders.authorId, session.userId)))
+      .limit(1);
+    if (!folder) return { error: "Папка не найдена" };
+  }
+  const [last] = await db
+    .select({ value: max(lessonUnits.sortOrder) })
+    .from(lessonUnits)
+    .where(and(
+      eq(lessonUnits.authorId, session.userId),
+      targetFolderId ? eq(lessonUnits.folderId, targetFolderId) : isNull(lessonUnits.folderId),
+    ));
 
   const [created] = await db
     .insert(lessonUnits)
@@ -292,11 +336,195 @@ export async function createLessonAction(
       authorId: session.userId,
       kind: normalizeLessonKind(kind),
       title: name,
+      folderId: targetFolderId,
+      sortOrder: (last?.value ?? 0) + 10,
     })
     .returning({ id: lessonUnits.id });
 
   revalidatePath("/teacher/lessons");
   return { id: created?.id };
+}
+
+export async function createLessonFolderAction(
+  rawName: string,
+): Promise<{ folder?: LessonFolderCard; error?: string }> {
+  const session = await requireTeacher();
+  const name = String(rawName ?? "").trim().slice(0, 100);
+  if (!name) return { error: "Дай папке название" };
+  const [last] = await db
+    .select({ value: max(lessonFolders.sortOrder) })
+    .from(lessonFolders)
+    .where(eq(lessonFolders.authorId, session.userId));
+  const [created] = await db
+    .insert(lessonFolders)
+    .values({ authorId: session.userId, name, sortOrder: (last?.value ?? 0) + 10 })
+    .returning();
+  revalidatePath("/teacher/lessons");
+  return created
+    ? { folder: { id: created.id, name: created.name, sortOrder: created.sortOrder, createdAt: created.createdAt.toISOString() } }
+    : { error: "Не удалось создать папку" };
+}
+
+export async function renameLessonFolderAction(
+  folderId: string,
+  rawName: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const name = String(rawName ?? "").trim().slice(0, 100);
+  if (!name) return { error: "Дай папке название" };
+  const updated = await db
+    .update(lessonFolders)
+    .set({ name, updatedAt: new Date() })
+    .where(and(eq(lessonFolders.id, String(folderId ?? "")), eq(lessonFolders.authorId, session.userId)))
+    .returning({ id: lessonFolders.id });
+  if (!updated[0]) return { error: "Папка не найдена" };
+  revalidatePath("/teacher/lessons");
+  return {};
+}
+
+export async function deleteLessonFolderAction(folderId: string): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(folderId ?? "");
+  const [folder] = await db
+    .select({ id: lessonFolders.id })
+    .from(lessonFolders)
+    .where(and(eq(lessonFolders.id, id), eq(lessonFolders.authorId, session.userId)))
+    .limit(1);
+  if (!folder) return { error: "Папка не найдена" };
+  await db.transaction(async (tx) => {
+    const [last] = await tx
+      .select({ value: max(lessonUnits.sortOrder) })
+      .from(lessonUnits)
+      .where(and(eq(lessonUnits.authorId, session.userId), isNull(lessonUnits.folderId)));
+    const moved = await tx
+      .select({ id: lessonUnits.id })
+      .from(lessonUnits)
+      .where(and(eq(lessonUnits.authorId, session.userId), eq(lessonUnits.folderId, id)))
+      .orderBy(asc(lessonUnits.sortOrder), asc(lessonUnits.title));
+    for (const [index, lesson] of moved.entries()) {
+      await tx.update(lessonUnits).set({
+        folderId: null,
+        sortOrder: (last?.value ?? 0) + (index + 1) * 10,
+        updatedAt: new Date(),
+      }).where(eq(lessonUnits.id, lesson.id));
+    }
+    await tx.delete(lessonFolders).where(eq(lessonFolders.id, id));
+  });
+  revalidatePath("/teacher/lessons");
+  return {};
+}
+
+export async function moveLessonInLibraryAction(input: {
+  lessonId: string;
+  folderId: string | null;
+  beforeLessonId?: string | null;
+}): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const lessonId = String(input?.lessonId ?? "");
+  const folderId = input?.folderId ? String(input.folderId) : null;
+  const beforeLessonId = input?.beforeLessonId ? String(input.beforeLessonId) : null;
+  const [lesson] = await db
+    .select({ id: lessonUnits.id })
+    .from(lessonUnits)
+    .where(and(eq(lessonUnits.id, lessonId), eq(lessonUnits.authorId, session.userId)))
+    .limit(1);
+  if (!lesson) return { error: "Урок не найден" };
+  if (folderId) {
+    const [folder] = await db
+      .select({ id: lessonFolders.id })
+      .from(lessonFolders)
+      .where(and(eq(lessonFolders.id, folderId), eq(lessonFolders.authorId, session.userId)))
+      .limit(1);
+    if (!folder) return { error: "Папка не найдена" };
+  }
+  const siblings = await db
+    .select({ id: lessonUnits.id })
+    .from(lessonUnits)
+    .where(and(
+      eq(lessonUnits.authorId, session.userId),
+      folderId ? eq(lessonUnits.folderId, folderId) : isNull(lessonUnits.folderId),
+    ))
+    .orderBy(asc(lessonUnits.sortOrder), asc(lessonUnits.title));
+  const ordered = siblings.map((row) => row.id).filter((id) => id !== lessonId);
+  const beforeIndex = beforeLessonId ? ordered.indexOf(beforeLessonId) : -1;
+  ordered.splice(beforeIndex >= 0 ? beforeIndex : ordered.length, 0, lessonId);
+  await db.transaction(async (tx) => {
+    for (const [index, id] of ordered.entries()) {
+      await tx.update(lessonUnits).set({
+        ...(id === lessonId ? { folderId } : {}),
+        sortOrder: (index + 1) * 10,
+        updatedAt: new Date(),
+      }).where(and(eq(lessonUnits.id, id), eq(lessonUnits.authorId, session.userId)));
+    }
+  });
+  revalidatePath("/teacher/lessons");
+  return {};
+}
+
+export async function reorderLessonFoldersAction(
+  folderId: string,
+  beforeFolderId?: string | null,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const id = String(folderId ?? "");
+  const rows = await db
+    .select({ id: lessonFolders.id })
+    .from(lessonFolders)
+    .where(eq(lessonFolders.authorId, session.userId))
+    .orderBy(asc(lessonFolders.sortOrder), asc(lessonFolders.name));
+  if (!rows.some((row) => row.id === id)) return { error: "Папка не найдена" };
+  const ordered = rows.map((row) => row.id).filter((value) => value !== id);
+  const before = beforeFolderId ? ordered.indexOf(String(beforeFolderId)) : -1;
+  ordered.splice(before >= 0 ? before : ordered.length, 0, id);
+  await db.transaction(async (tx) => {
+    for (const [index, value] of ordered.entries()) {
+      await tx.update(lessonFolders).set({ sortOrder: (index + 1) * 10, updatedAt: new Date() })
+        .where(and(eq(lessonFolders.id, value), eq(lessonFolders.authorId, session.userId)));
+    }
+  });
+  revalidatePath("/teacher/lessons");
+  return {};
+}
+
+export async function sortLessonFilesAlphabeticallyAction(
+  rawFolderId?: string | null,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const folderId = rawFolderId ? String(rawFolderId) : null;
+  if (folderId) {
+    const [folder] = await db.select({ id: lessonFolders.id }).from(lessonFolders)
+      .where(and(eq(lessonFolders.id, folderId), eq(lessonFolders.authorId, session.userId))).limit(1);
+    if (!folder) return { error: "Папка не найдена" };
+  }
+  const rows = await db.select({ id: lessonUnits.id }).from(lessonUnits)
+    .where(and(
+      eq(lessonUnits.authorId, session.userId),
+      folderId ? eq(lessonUnits.folderId, folderId) : isNull(lessonUnits.folderId),
+    ))
+    .orderBy(asc(lessonUnits.title), asc(lessonUnits.createdAt));
+  await db.transaction(async (tx) => {
+    for (const [index, row] of rows.entries()) {
+      await tx.update(lessonUnits).set({ sortOrder: (index + 1) * 10 })
+        .where(and(eq(lessonUnits.id, row.id), eq(lessonUnits.authorId, session.userId)));
+    }
+  });
+  revalidatePath("/teacher/lessons");
+  return {};
+}
+
+export async function sortLessonFoldersAlphabeticallyAction(): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const rows = await db.select({ id: lessonFolders.id }).from(lessonFolders)
+    .where(eq(lessonFolders.authorId, session.userId))
+    .orderBy(asc(lessonFolders.name), asc(lessonFolders.createdAt));
+  await db.transaction(async (tx) => {
+    for (const [index, row] of rows.entries()) {
+      await tx.update(lessonFolders).set({ sortOrder: (index + 1) * 10 })
+        .where(and(eq(lessonFolders.id, row.id), eq(lessonFolders.authorId, session.userId)));
+    }
+  });
+  revalidatePath("/teacher/lessons");
+  return {};
 }
 
 export async function deleteLessonAction(id: string): Promise<{ error?: string }> {
