@@ -22,6 +22,8 @@ import {
   createRevisionAction,
   revisionWordGroupsAction,
   saveRevisionPresetAction,
+  updateClassRevisionAction,
+  type RevisionPresetSetup,
   type RevisionWordGroup,
 } from "@/lib/actions/revision";
 import {
@@ -32,6 +34,7 @@ import {
   MIN_WORDS,
   REVISION_MODES,
   randomRevisionPercentage,
+  readShow,
   SHOW_KEYS,
   wordsFor,
   type RevisionMode,
@@ -60,12 +63,18 @@ export type RevisionVocabularySource = {
   path?: string;
 };
 
+export type RevisionSetupInitial = Pick<
+  RevisionPresetSetup,
+  "id" | "title" | "phraseIds" | "modes" | "modeWords" | "show" | "answerSeconds" | "totalSeconds"
+>;
+
 export function RevisionSetup({
   studentId,
   studentName,
   nodeId,
   nodeName,
   sources,
+  initial,
   onClose,
   onDone,
   purpose = "ASSIGN",
@@ -76,9 +85,10 @@ export function RevisionSetup({
   nodeName: string;
   /** Несколько словников смешиваются в одну практику. */
   sources?: RevisionVocabularySource[];
+  initial?: RevisionSetupInitial;
   onClose: () => void;
   onDone?: (id?: string) => void;
-  purpose?: "ASSIGN" | "PRESET";
+  purpose?: "ASSIGN" | "PRESET" | "CLASS_EDIT";
 }) {
   const { t } = useT();
   const sourceList = useMemo<RevisionVocabularySource[]>(
@@ -88,21 +98,30 @@ export function RevisionSetup({
   const sourceKey = sourceList.map((source) => source.id).join(":");
   const [wordGroups, setWordGroups] = useState<RevisionWordGroup[] | null>(null);
   /** Общий базовый выбор: режимы дальше могут дополнительно сузить его. */
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [modes, setModes] = useState<RevisionMode[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(initial?.phraseIds ?? []),
+  );
+  const [modes, setModes] = useState<RevisionMode[]>(
+    (initial?.modes ?? []).filter((mode): mode is RevisionMode =>
+      REVISION_MODES.includes(mode as RevisionMode)),
+  );
   /** Снятые галочки по режимам: пусто — взяты все подходящие слова. */
   const [dropped, setDropped] = useState<Partial<Record<RevisionMode, string[]>>>({});
   const [open, setOpen] = useState<RevisionMode | null>(null);
   /** Что показывать рядом с заданием: по умолчанию ничего. */
-  const [show, setShow] = useState<RevisionShow>(DEFAULT_SHOW);
+  const [show, setShow] = useState<RevisionShow>(
+    initial ? readShow(initial.show) : DEFAULT_SHOW,
+  );
   const [title, setTitle] = useState(
-    sourceList.length > 1
+    initial?.title ?? (sourceList.length > 1
       ? sourceList.map((source) => source.name).join(" + ")
-      : sourceList[0]?.name ?? nodeName,
+      : sourceList[0]?.name ?? nodeName),
   );
   const [due, setDue] = useState("");
-  const [perAnswer, setPerAnswer] = useState<number | null>(null);
-  const [wholeMinutes, setWholeMinutes] = useState("");
+  const [perAnswer, setPerAnswer] = useState<number | null>(initial?.answerSeconds ?? null);
+  const [wholeMinutes, setWholeMinutes] = useState(
+    initial?.totalSeconds ? String(initial.totalSeconds / 60) : "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
 
@@ -113,8 +132,29 @@ export function RevisionSetup({
       .then((groups) => {
         if (!alive) return;
         setWordGroups(groups);
-        setSelectedIds(new Set(groups.flatMap((group) => group.words.map((word) => word.phraseId))));
-        setDropped({});
+        const words = groups.flatMap((group) => group.words);
+        const available = new Set(words.map((word) => word.phraseId));
+        const selected = initial
+          ? new Set(initial.phraseIds.filter((id) => available.has(id)))
+          : new Set(words.map((word) => word.phraseId));
+        setSelectedIds(selected);
+        if (initial) {
+          const chosenWords = words.filter((word) => selected.has(word.phraseId));
+          const nextDropped: Partial<Record<RevisionMode, string[]>> = {};
+          for (const rawMode of initial.modes) {
+            if (!REVISION_MODES.includes(rawMode as RevisionMode)) continue;
+            const mode = rawMode as RevisionMode;
+            const own = initial.modeWords?.[mode];
+            if (!own?.length) continue;
+            const included = new Set(own);
+            nextDropped[mode] = wordsFor(chosenWords, mode)
+              .filter((word) => !included.has(word.phraseId))
+              .map((word) => word.phraseId);
+          }
+          setDropped(nextDropped);
+        } else {
+          setDropped({});
+        }
       })
       .catch(() => {
         if (!alive) return;
@@ -124,7 +164,7 @@ export function RevisionSetup({
     return () => {
       alive = false;
     };
-  }, [sourceKey]);
+  }, [sourceKey, initial]);
 
   const sourceOf = useMemo(
     () => new Map(sourceList.map((source) => [source.id, source])),
@@ -241,6 +281,7 @@ export function RevisionSetup({
 
       const minutes = Number(wholeMinutes) || 0;
       const common = {
+        id: initial?.id,
         nodeId: sourceList[0]?.id ?? nodeId,
         title: title.trim(),
         phraseIds: [...union],
@@ -252,6 +293,8 @@ export function RevisionSetup({
       };
       const result = purpose === "PRESET"
         ? await saveRevisionPresetAction(common)
+        : purpose === "CLASS_EDIT" && initial?.id
+          ? await updateClassRevisionAction(initial.id, common)
         : await createRevisionAction({
             ...common,
             studentId,
@@ -282,7 +325,9 @@ export function RevisionSetup({
       onClose={onClose}
       wide
       title={purpose === "PRESET"
-        ? t.revision.newPreset
+        ? (initial ? t.game.editPreset : t.revision.newPreset)
+        : purpose === "CLASS_EDIT"
+          ? t.wordDeck.edit
         : `${t.revision.assign} — ${studentName}`}
     >
       <div className="flex flex-col gap-4">

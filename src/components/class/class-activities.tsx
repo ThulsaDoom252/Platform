@@ -18,7 +18,9 @@ import {
   pauseGameAction,
   playGameAction,
   removeGameAction,
+  updateClassGuessPictureGameAction,
   type GameMode,
+  type GuessPicturePreset,
   type QueuedGame,
 } from "@/lib/actions/guess-picture";
 import {
@@ -26,23 +28,30 @@ import {
   type TwisterStudent,
 } from "@/lib/actions/tongue-twisters";
 import { GuessPlay } from "@/components/game/guess-play";
+import { GuessPicturePresetForm } from "@/components/game/guess-picture-studio";
 import { GameStatsCard } from "@/components/game/game-stats";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
+import { WordDeckForm } from "@/components/game/word-deck-studio";
 import { ClassActivityPicker } from "@/components/class/class-activity-picker";
 import {
   listClassWordDeckActivitiesAction,
   removeWordDeckFromClassAction,
+  updateClassWordDeckActivityAction,
+  uploadClassWordDeckBackgroundAction,
   type ClassWordDeckActivity,
+  type WordDeckActivity,
 } from "@/lib/actions/word-deck";
 import {
   deleteRevisionAction,
   listClassRevisionsAction,
   reopenRevisionAction,
+  revisionSourcesForPhrasesAction,
   showRevisionToStudentAction,
   type RevisionCard,
 } from "@/lib/actions/revision";
 import { RevisionAttempts } from "@/components/revision/revision-teacher-list";
-import { IconPlus, IconTrash, IconUser, IconX } from "@/components/icons";
+import { RevisionSetup, type RevisionVocabularySource } from "@/components/revision/revision-setup";
+import { IconPencil, IconPlus, IconTrash, IconUser, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 export function ClassActivities({ studentId }: { studentId: string }) {
@@ -53,6 +62,11 @@ export function ClassActivities({ studentId }: { studentId: string }) {
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [openDeck, setOpenDeck] = useState<ClassWordDeckActivity | null>(null);
+  const [editingDeck, setEditingDeck] = useState<ClassWordDeckActivity | null>(null);
+  const [editingGame, setEditingGame] = useState<QueuedGame | null>(null);
+  const [editingRevision, setEditingRevision] = useState<RevisionCard | null>(null);
+  const [revisionSources, setRevisionSources] = useState<RevisionVocabularySource[]>([]);
+  const [editError, setEditError] = useState<string | null>(null);
   const [focusedDeckId, setFocusedDeckId] = useState<string | null>(null);
   const [focusedRevisionId, setFocusedRevisionId] = useState<string | null>(null);
   const [openRevisionId, setOpenRevisionId] = useState<string | null>(null);
@@ -122,6 +136,108 @@ export function ClassActivities({ studentId }: { studentId: string }) {
         onCancel={() => setAdding(false)}
         onAdded={async () => {
           setAdding(false);
+          await reload();
+        }}
+      />
+    );
+  }
+
+  if (editingDeck) {
+    const editable: WordDeckActivity = {
+      id: editingDeck.id,
+      title: editingDeck.title,
+      nodeId: editingDeck.cards.find((card) => card.nodeId)?.nodeId ?? null,
+      cards: editingDeck.cards,
+      settings: editingDeck.settings,
+      backgroundImageUrl: editingDeck.backgroundImageUrl,
+      createdAt: editingDeck.createdAt,
+      updatedAt: editingDeck.createdAt,
+    };
+    return (
+      <WordDeckForm
+        activity={editable}
+        busy={busy}
+        externalError={editError}
+        heading={t.wordDeck.edit}
+        submitLabel={t.wordDeck.save}
+        footerHint={t.game.snapshotHint}
+        forcedGameType={editingDeck.settings.gameType === "SPELLING" ? "SPELLING" : undefined}
+        onCancel={() => { setEditingDeck(null); setEditError(null); }}
+        onSave={(payload, image) => startBusy(async () => {
+          setEditError(null);
+          const result = await updateClassWordDeckActivityAction(editingDeck.id, payload);
+          if (result.error) return setEditError(result.error);
+          if (image) {
+            const form = new FormData();
+            form.set("activityId", editingDeck.id);
+            form.set("image", image);
+            const uploaded = await uploadClassWordDeckBackgroundAction(form);
+            if (uploaded.error || uploaded.reason) {
+              return setEditError(uploaded.error ?? t.wordDeck.saveFailed);
+            }
+          }
+          setEditingDeck(null);
+          await reload();
+        })}
+      />
+    );
+  }
+
+  if (editingGame) {
+    const preset: GuessPicturePreset = {
+      id: editingGame.id,
+      title: editingGame.title ?? t.game.title,
+      cards: editingGame.cards,
+      mode: editingGame.mode,
+      shuffleWords: editingGame.shuffleWords,
+      shuffleDecks: editingGame.shuffleDecks,
+      seconds: editingGame.seconds,
+      createdAt: editingGame.createdAt,
+      updatedAt: editingGame.createdAt,
+    };
+    return (
+      <GuessPicturePresetForm
+        preset={preset}
+        busy={busy}
+        externalError={editError}
+        heading={t.wordDeck.edit}
+        submitLabel={t.wordDeck.save}
+        footerHint={t.game.snapshotHint}
+        onCancel={() => { setEditingGame(null); setEditError(null); }}
+        onSave={(payload) => startBusy(async () => {
+          setEditError(null);
+          const result = await updateClassGuessPictureGameAction(editingGame.id, payload);
+          if (result.error) return setEditError(result.error);
+          setEditingGame(null);
+          await reload();
+        })}
+      />
+    );
+  }
+
+  if (editingRevision && revisionSources.length > 0) {
+    return (
+      <RevisionSetup
+        purpose="CLASS_EDIT"
+        initial={{
+          id: editingRevision.id,
+          title: editingRevision.title,
+          phraseIds: editingRevision.phraseIds,
+          modes: editingRevision.modes,
+          modeWords: editingRevision.modeWords,
+          show: editingRevision.show,
+          answerSeconds: editingRevision.answerSeconds,
+          totalSeconds: editingRevision.totalSeconds,
+        }}
+        studentId={studentId}
+        studentName=""
+        nodeId={revisionSources[0].id}
+        nodeName={revisionSources[0].name}
+        sources={revisionSources}
+        onClose={() => { setEditingRevision(null); setRevisionSources([]); }}
+        onDone={async () => {
+          setEditingRevision(null);
+          setRevisionSources([]);
           await reload();
         }}
       />
@@ -256,6 +372,25 @@ export function ClassActivities({ studentId }: { studentId: string }) {
                 )}
                 <button
                   type="button"
+                  disabled={busy}
+                  onClick={() => startBusy(async () => {
+                    const found = await revisionSourcesForPhrasesAction(revision.phraseIds);
+                    const fallback = revision.nodeId
+                      ? [{ id: revision.nodeId, name: revision.nodeName ?? revision.title, path: revision.nodeName ?? revision.title }]
+                      : [];
+                    const nextSources = found.length > 0 ? found : fallback;
+                    if (nextSources.length === 0) return setShowError(t.wordDeck.saveFailed);
+                    setRevisionSources(nextSources);
+                    setEditingRevision(revision);
+                  })}
+                  title={t.wordDeck.edit}
+                  aria-label={t.wordDeck.edit}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint transition hover:border-emerald-500 hover:text-emerald-500 disabled:opacity-50"
+                >
+                  <IconPencil className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
                   disabled={busy || !revision.open}
                   onClick={() => startBusy(async () => {
                     const result = await showRevisionToStudentAction(revision.id);
@@ -310,6 +445,16 @@ export function ClassActivities({ studentId }: { studentId: string }) {
                   </span>
                 </button>
                 <button type="button" onClick={() => setOpenDeck(deck)} className="h-9 rounded-xl bg-accent-soft px-3 text-xs font-bold text-accent">{t.wordDeck.play}</button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { setEditError(null); setEditingDeck(deck); }}
+                  title={t.wordDeck.edit}
+                  aria-label={t.wordDeck.edit}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint transition hover:border-accent hover:text-accent disabled:opacity-50"
+                >
+                  <IconPencil className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   disabled={busy}
@@ -427,6 +572,17 @@ export function ClassActivities({ studentId }: { studentId: string }) {
                     {running && !game.paused ? "❚❚" : "▶"}
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { setEditError(null); setEditingGame(game); }}
+                  title={t.wordDeck.edit}
+                  aria-label={t.wordDeck.edit}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line text-faint transition hover:border-accent hover:text-accent disabled:opacity-50"
+                >
+                  <IconPencil className="h-4 w-4" />
+                </button>
 
                 <button
                   type="button"

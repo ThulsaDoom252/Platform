@@ -64,6 +64,10 @@ export type QueuedGame = {
   id: string;
   title: string | null;
   mode: GameMode;
+  cards: WordDeckSourceCard[];
+  seconds: number;
+  shuffleWords: boolean;
+  shuffleDecks: boolean;
   status: string;
   total: number;
   at: number;
@@ -361,6 +365,80 @@ export async function addGuessPicturePresetToClassAction(
   }).returning({ id: activityGames.id });
   revalidatePath("/teacher/class");
   return { id: created?.id };
+}
+
+/** Edit the student's queued copy without changing the source preset. */
+export async function updateClassGuessPictureGameAction(
+  gameId: string,
+  input: SaveGuessPicturePresetInput,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const [teacher] = await db.select({ classWithId: users.classWithId }).from(users)
+    .where(eq(users.id, session.userId)).limit(1);
+  if (!teacher?.classWithId) return { error: "Класс не начат" };
+
+  const targetId = String(gameId ?? "");
+  const title = String(input?.title ?? "").trim().slice(0, 120);
+  const nodeIds = [...new Set((input?.nodeIds ?? []).map(String).filter(Boolean))];
+  const mode: GameMode = input?.mode === "TRANSLATION" || input?.mode === "MIXED"
+    ? input.mode
+    : "PICTURE";
+  const seconds = Math.min(120, Math.max(3, Number(input?.seconds) || 10));
+  if (!title) return { error: "Назови игру" };
+  if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
+
+  const [game] = await db.select({ id: activityGames.id }).from(activityGames).where(and(
+    eq(activityGames.id, targetId),
+    eq(activityGames.studentId, teacher.classWithId),
+    eq(activityGames.kind, "GUESS_PICTURE"),
+  )).limit(1);
+  if (!game) return { error: "Игра в классе не найдена" };
+
+  const groups = await guessPresetGroups(session.userId, nodeIds);
+  if (groups.length !== nodeIds.length) return { error: "Один из словников больше недоступен" };
+  const chosen = new Set((input?.phraseIds ?? []).map(String));
+  const sourceCards = groups.flatMap((group) => group.words
+    .filter((word) => chosen.size === 0 || chosen.has(word.phraseId))
+    .filter((word) => mode === "TRANSLATION" ? Boolean(word.translation?.trim()) : Boolean(word.imageUrl))
+    .filter((word) => mode !== "MIXED" || Boolean(word.translation?.trim()))
+    .map((word): GameCard => ({
+      phraseId: word.phraseId,
+      nodeId: group.id,
+      word: word.word,
+      translation: word.translation,
+      imageUrl: word.imageUrl ?? "",
+      face: mode === "TRANSLATION" ? "TRANSLATION" : "PICTURE",
+    })));
+  if (sourceCards.length === 0) {
+    return { error: mode === "TRANSLATION" ? "У выбранных слов нет перевода" : "У выбранных слов нет картинок" };
+  }
+  const sources: DeckSource[] = nodeIds.map((nodeId) => ({
+    nodeId,
+    cards: sourceCards.filter((card) => card.nodeId === nodeId),
+  }));
+  const deck = buildDeck(sources, {
+    shuffleWords: input?.shuffleWords !== false,
+    shuffleDecks: input?.shuffleDecks === true,
+    mixFaces: mode === "MIXED",
+  });
+  await db.update(activityGames).set({
+    title,
+    mode,
+    seconds,
+    status: "LOBBY",
+    cards: deck,
+    verdicts: deck.map(() => null),
+    timings: deck.map(() => null),
+    at: 0,
+    revealed: false,
+    paused: true,
+    pausedLeftMs: seconds * 1000,
+    deadline: null,
+    updatedAt: new Date(),
+  }).where(eq(activityGames.id, targetId));
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { id: targetId };
 }
 
 /** Assign the saved picture game as a self-controlled homework snapshot. */
@@ -787,8 +865,9 @@ export async function listGamesAction(studentId: string): Promise<QueuedGame[]> 
   if (!student) return [];
 
   const rows = await db
-    .select()
+    .select({ game: activityGames, templateSettings: wordDeckActivities.settings })
     .from(activityGames)
+    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
     .where(
       and(
         eq(activityGames.studentId, student),
@@ -797,12 +876,29 @@ export async function listGamesAction(studentId: string): Promise<QueuedGame[]> 
     )
     .orderBy(asc(activityGames.createdAt));
 
-  return rows.map((row) => {
+  return rows.map(({ game: row, templateSettings }) => {
     const cards = row.cards ?? [];
+    const seen = new Set<string>();
+    const sourceCards = cards.flatMap((card): WordDeckSourceCard[] => {
+      if (seen.has(card.phraseId)) return [];
+      seen.add(card.phraseId);
+      return [{
+        phraseId: card.phraseId,
+        nodeId: card.nodeId,
+        word: card.word,
+        translation: card.translation,
+        imageUrl: card.imageUrl || null,
+      }];
+    });
+    const presetSettings = templateSettings ? normalizeWordDeckSettings(templateSettings) : null;
     return {
       id: row.id,
       title: row.title,
       mode: (row.mode as GameMode) ?? "PICTURE",
+      cards: sourceCards,
+      seconds: row.seconds,
+      shuffleWords: presetSettings?.gameType === "GUESS_PICTURE" ? presetSettings.shuffleWords : false,
+      shuffleDecks: presetSettings?.gameType === "GUESS_PICTURE" ? presetSettings.shuffleDecks : false,
       status: row.status,
       total: cards.length,
       at: row.at,

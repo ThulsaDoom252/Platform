@@ -963,11 +963,15 @@ export type SaveWordDeckInput = {
   settings?: Partial<WordDeckSettings>;
 };
 
-/** Создать или обновить шаблон. Слова снимаются копией и больше не зависят от материала. */
-export async function saveWordDeckActivityAction(
+async function prepareWordDeck(
+  teacherId: string,
   input: SaveWordDeckInput,
-): Promise<{ id?: string; error?: string }> {
-  const session = await requireTeacher();
+): Promise<{
+  title: string;
+  nodeIds: string[];
+  cards: WordDeckSourceCard[];
+  settings: WordDeckSettings;
+} | { error: string }> {
   const title = String(input?.title ?? "").trim().slice(0, 120);
   const nodeIds = [
     ...new Set(
@@ -988,7 +992,7 @@ export async function saveWordDeckActivityAction(
     return { error: "Укажи количество повторов от 1 до 20" };
   }
 
-  const sources = await wordDeckGroups(session.userId, nodeIds);
+  const sources = await wordDeckGroups(teacherId, nodeIds);
   if (sources.length !== nodeIds.length || sources.some((source) => source.words.length === 0)) {
     return { error: "Один из словников пуст или больше недоступен" };
   }
@@ -1021,11 +1025,22 @@ export async function saveWordDeckActivityAction(
       return { error: error instanceof Error ? error.message : "Не удалось подготовить слова" };
     }
   }
-  const playableCards = playableWordDeckCards([...selectedCards, ...manualCards], settings);
+  const cards = playableWordDeckCards([...selectedCards, ...manualCards], settings);
   const minimum = minimumWordDeckWords(settings);
-  if (playableCards.length < minimum) {
+  if (cards.length < minimum) {
     return { error: `Для этой игры нужно минимум ${minimum} ${minimum === 1 ? "слово" : "слова"}` };
   }
+  return { title, nodeIds, cards, settings };
+}
+
+/** Создать или обновить шаблон. Слова снимаются копией и больше не зависят от материала. */
+export async function saveWordDeckActivityAction(
+  input: SaveWordDeckInput,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const prepared = await prepareWordDeck(session.userId, input);
+  if ("error" in prepared) return prepared;
+  const { title, nodeIds, cards, settings } = prepared;
 
   const id = String(input?.id ?? "");
   if (id) {
@@ -1042,7 +1057,7 @@ export async function saveWordDeckActivityAction(
     if (!mine) return { error: "Игра не найдена" };
     await db
       .update(wordDeckActivities)
-      .set({ title, nodeId: nodeIds[0], cards: playableCards, settings, updatedAt: new Date() })
+      .set({ title, nodeId: nodeIds[0], cards, settings, updatedAt: new Date() })
       .where(eq(wordDeckActivities.id, id));
     revalidatePath("/teacher/activities");
     return { id };
@@ -1050,10 +1065,98 @@ export async function saveWordDeckActivityAction(
 
   const [created] = await db
     .insert(wordDeckActivities)
-    .values({ authorId: session.userId, title, nodeId: nodeIds[0], cards: playableCards, settings })
+    .values({ authorId: session.userId, title, nodeId: nodeIds[0], cards, settings })
     .returning({ id: wordDeckActivities.id });
   revalidatePath("/teacher/activities");
   return { id: created?.id };
+}
+
+/** Edit only the snapshot already placed in the current class. */
+export async function updateClassWordDeckActivityAction(
+  gameId: string,
+  input: SaveWordDeckInput,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const [teacher] = await db
+    .select({ classWithId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (!teacher?.classWithId) return { error: "Класс не начат" };
+
+  const [row] = await db
+    .select()
+    .from(activityGames)
+    .where(and(
+      eq(activityGames.id, String(gameId ?? "")),
+      eq(activityGames.studentId, teacher.classWithId),
+      eq(activityGames.kind, "WORD_DECK"),
+    ))
+    .limit(1);
+  if (!row?.wordDeck) return { error: "Игра в классе не найдена" };
+
+  const prepared = await prepareWordDeck(session.userId, input);
+  if ("error" in prepared) return prepared;
+  await db.update(activityGames).set({
+    title: prepared.title,
+    wordDeck: {
+      ...row.wordDeck,
+      settings: prepared.settings,
+      cards: prepared.cards,
+      liveState: undefined,
+    },
+    status: "LOBBY",
+    cards: [],
+    verdicts: [],
+    timings: [],
+    at: 0,
+    revealed: false,
+    paused: true,
+    pausedLeftMs: 0,
+    deadline: null,
+    updatedAt: new Date(),
+  }).where(eq(activityGames.id, row.id));
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { id: row.id };
+}
+
+/** A custom background uploaded here belongs to the class copy, not its preset. */
+export async function uploadClassWordDeckBackgroundAction(
+  formData: FormData,
+): Promise<{ url?: string; error?: string; reason?: StoreFailure }> {
+  const session = await requireTeacher();
+  const id = String(formData.get("activityId") ?? "");
+  const file = formData.get("image");
+  if (!(file instanceof File) || file.size === 0) return { reason: "failed" };
+  const [teacher] = await db
+    .select({ classWithId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (!teacher?.classWithId) return { error: "Класс не начат" };
+  const [row] = await db.select().from(activityGames).where(and(
+    eq(activityGames.id, id),
+    eq(activityGames.studentId, teacher.classWithId),
+    eq(activityGames.kind, "WORD_DECK"),
+  )).limit(1);
+  if (!row?.wordDeck) return { error: "Игра в классе не найдена" };
+
+  const stored = await storeUploadedImage(file, "activities");
+  if ("error" in stored) return { reason: stored.error };
+  await db.update(activityGames).set({
+    wordDeck: {
+      ...row.wordDeck,
+      backgroundImageUrl: stored.url,
+      settings: {
+        ...normalizeWordDeckSettings(row.wordDeck.settings),
+        background: "CUSTOM",
+      },
+    },
+    updatedAt: new Date(),
+  }).where(eq(activityGames.id, row.id));
+  revalidatePath("/teacher/class");
+  return { url: stored.url };
 }
 
 export async function uploadWordDeckBackgroundAction(

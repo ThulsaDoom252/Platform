@@ -9,6 +9,7 @@ import {
   deleteRevisionPresetAction,
   listRevisionPresetsAction,
   previewRevisionPresetAction,
+  revisionSourcesForPhrasesAction,
   type AttemptView,
   type RevisionPreset,
 } from "@/lib/actions/revision";
@@ -29,6 +30,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconFolder,
+  IconPencil,
   IconPlus,
   IconTrash,
   IconUsers,
@@ -36,7 +38,7 @@ import {
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
-type VocabularyChoice = { id: string; name: string; path: string };
+type VocabularyChoice = { id: string; name: string; path?: string };
 type VocabularyBranch = CopyNode & { children: VocabularyBranch[] };
 
 function vocabularyTree(nodes: CopyNode[]): VocabularyBranch[] {
@@ -92,6 +94,7 @@ export function RevisionActivityStudio({
   const [choosingSource, setChoosingSource] = useState(false);
   const [sources, setSources] = useState<VocabularyChoice[]>([]);
   const [assigning, setAssigning] = useState<RevisionPreset | null>(null);
+  const [editing, setEditing] = useState<RevisionPreset | null>(null);
   const [playing, setPlaying] = useState<RevisionPreset | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
@@ -201,6 +204,24 @@ export function RevisionActivityStudio({
                     <button
                       type="button"
                       disabled={busy}
+                      onClick={() => startBusy(async () => {
+                        const found = await revisionSourcesForPhrasesAction(preset.phraseIds);
+                        const fallback = preset.nodeId
+                          ? [{ id: preset.nodeId, name: preset.nodeName ?? preset.title, path: preset.nodeName ?? preset.title }]
+                          : [];
+                        setSources(found.length > 0 ? found : fallback);
+                        setEditing(preset);
+                        setNotice(null);
+                      })}
+                      title={t.wordDeck.edit}
+                      aria-label={t.wordDeck.edit}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint transition hover:border-emerald-500 hover:text-emerald-500 disabled:opacity-50"
+                    >
+                      <IconPencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
                       onClick={() => {
                         if (!confirm(t.revision.presetDeleteConfirm)) return;
                         startBusy(async () => {
@@ -235,14 +256,16 @@ export function RevisionActivityStudio({
       {sources.length > 0 && (
         <RevisionSetup
           purpose="PRESET"
+          initial={editing ?? undefined}
           studentId=""
           studentName=""
           nodeId={sources[0].id}
           nodeName={sources.length === 1 ? sources[0].name : fmt(t.revision.vocabulariesSelected, { n: sources.length })}
           sources={sources}
-          onClose={() => setSources([])}
+          onClose={() => { setSources([]); setEditing(null); }}
           onDone={async () => {
             setSources([]);
+            setEditing(null);
             setPresetsOpen(true);
             setNotice(t.revision.presetSaved);
             await reload();
@@ -295,6 +318,11 @@ function RevisionPresetPlayer({
     createdAt: preset.createdAt,
     dueAt: null,
     modes: preset.modes,
+    phraseIds: preset.phraseIds,
+    modeWords: preset.modeWords,
+    show: preset.show,
+    answerSeconds: preset.answerSeconds,
+    totalSeconds: preset.totalSeconds,
     words: preset.phraseIds.length,
     attempts: 0,
     lastFinishedAt: null,

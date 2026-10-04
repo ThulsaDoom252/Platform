@@ -191,7 +191,33 @@ export type RevisionPreset = {
   updatedAt: string;
 };
 
-type RevisionPresetSetup = Omit<RevisionSetup, "studentId" | "dueAt">;
+export type RevisionPresetSetup = Omit<RevisionSetup, "studentId" | "dueAt"> & { id?: string };
+
+export type RevisionSource = { id: string; name: string; path?: string };
+
+/** Resolve all vocabulary sources represented by a saved snapshot. */
+export async function revisionSourcesForPhrasesAction(
+  phraseIds: string[],
+): Promise<RevisionSource[]> {
+  await requireTeacher();
+  const ids = [...new Set((phraseIds ?? []).map(String).filter(Boolean))];
+  if (ids.length === 0) return [];
+  const rows = await db.select({
+    phraseId: materialPhrases.id,
+    nodeId: materialPhrases.nodeId,
+    name: materialNodes.name,
+  }).from(materialPhrases)
+    .innerJoin(materialNodes, eq(materialNodes.id, materialPhrases.nodeId))
+    .where(inArray(materialPhrases.id, ids));
+  const byPhrase = new Map(rows.map((row) => [row.phraseId, row]));
+  const seen = new Set<string>();
+  return ids.flatMap((phraseId) => {
+    const row = byPhrase.get(phraseId);
+    if (!row || seen.has(row.nodeId)) return [];
+    seen.add(row.nodeId);
+    return [{ id: row.nodeId, name: row.name, path: row.name }];
+  });
+}
 
 /** Сохранить отдельный пресет в Activities. */
 export async function saveRevisionPresetAction(
@@ -217,6 +243,31 @@ export async function saveRevisionPresetAction(
   if (!title) return { error: "Дай игре название" };
   if (phraseIds.length === 0) return { error: "Не выбрано ни одного слова" };
   if (modes.length === 0) return { error: "Не выбран ни один режим" };
+
+  const id = String(setup?.id ?? "");
+  if (id) {
+    const [mine] = await db.select({ id: wordRevisionPresets.id })
+      .from(wordRevisionPresets)
+      .where(and(
+        eq(wordRevisionPresets.id, id),
+        eq(wordRevisionPresets.authorId, session.userId),
+      ))
+      .limit(1);
+    if (!mine) return { error: "Пресет не найден" };
+    await db.update(wordRevisionPresets).set({
+      nodeId,
+      title,
+      phraseIds,
+      modes,
+      modeWords,
+      show: setup?.show ?? {},
+      answerSeconds: setup?.answerSeconds ?? null,
+      totalSeconds: setup?.totalSeconds ?? null,
+      updatedAt: new Date(),
+    }).where(eq(wordRevisionPresets.id, id));
+    revalidatePath("/teacher/activities");
+    return { ok: true, id };
+  }
 
   const [created] = await db
     .insert(wordRevisionPresets)
@@ -392,6 +443,11 @@ export type RevisionCard = {
   createdAt: string;
   dueAt: string | null;
   modes: string[];
+  phraseIds: string[];
+  modeWords: Record<string, string[]>;
+  show: Record<string, boolean>;
+  answerSeconds: number | null;
+  totalSeconds: number | null;
   words: number;
   /** Сколько раз пройдено и когда в последний. */
   attempts: number;
@@ -449,6 +505,11 @@ async function cardsFor(
       createdAt: revision.createdAt.toISOString(),
       dueAt: revision.dueAt?.toISOString() ?? null,
       modes: revision.modes ?? [],
+      phraseIds: revision.phraseIds ?? [],
+      modeWords: revision.modeWords ?? {},
+      show: revision.show ?? {},
+      answerSeconds: revision.answerSeconds,
+      totalSeconds: revision.totalSeconds,
       words: (revision.phraseIds ?? []).length,
       attempts: done.length,
       lastFinishedAt: last?.toISOString() ?? null,
@@ -485,6 +546,63 @@ export async function listClassRevisionsAction(studentId: string): Promise<Revis
   await requireTeacher();
   const id = String(studentId ?? "");
   return id ? cardsFor(id, "CLASS") : [];
+}
+
+/** Edit a class copy while preserving completed attempt history. */
+export async function updateClassRevisionAction(
+  revisionId: string,
+  setup: RevisionPresetSetup,
+): Promise<RevisionState> {
+  const session = await requireTeacher();
+  const [teacher] = await db.select({ classWithId: users.classWithId }).from(users)
+    .where(eq(users.id, session.userId)).limit(1);
+  if (!teacher?.classWithId) return { error: "Класс не начат" };
+
+  const id = String(revisionId ?? "");
+  const nodeId = String(setup?.nodeId ?? "");
+  const title = String(setup?.title ?? "").trim().slice(0, 120);
+  const phraseIds = [...new Set((setup?.phraseIds ?? []).map(String).filter(Boolean))];
+  const modes = (setup?.modes ?? []).filter((mode): mode is RevisionMode =>
+    REVISION_MODES.includes(mode as RevisionMode));
+  const inTask = new Set(phraseIds);
+  const modeWords: Record<string, string[]> = {};
+  for (const mode of modes) {
+    const own = (setup?.modeWords?.[mode] ?? []).map(String).filter((phraseId) => inTask.has(phraseId));
+    if (own.length > 0) modeWords[mode] = own;
+  }
+  if (!nodeId) return { error: "Не выбран словник" };
+  if (!title) return { error: "Дай игре название" };
+  if (phraseIds.length === 0) return { error: "Не выбрано ни одного слова" };
+  if (modes.length === 0) return { error: "Не выбран ни один режим" };
+
+  const [revision] = await db.select({ id: wordRevisions.id }).from(wordRevisions).where(and(
+    eq(wordRevisions.id, id),
+    eq(wordRevisions.studentId, teacher.classWithId),
+    eq(wordRevisions.placement, "CLASS"),
+    or(eq(wordRevisions.assignedByTeacherId, session.userId), isNull(wordRevisions.assignedByTeacherId)),
+  )).limit(1);
+  if (!revision) return { error: "Игра в классе не найдена" };
+
+  await db.transaction(async (tx) => {
+    await tx.delete(wordRevisionAttempts).where(and(
+      eq(wordRevisionAttempts.revisionId, id),
+      isNull(wordRevisionAttempts.finishedAt),
+    ));
+    await tx.update(wordRevisions).set({
+      nodeId,
+      title,
+      phraseIds,
+      modes,
+      modeWords,
+      show: setup?.show ?? {},
+      answerSeconds: setup?.answerSeconds ?? null,
+      totalSeconds: setup?.totalSeconds ?? null,
+      reopened: true,
+    }).where(eq(wordRevisions.id, id));
+  });
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { ok: true, id };
 }
 
 /** Одна классная практика для экрана ученика. */
