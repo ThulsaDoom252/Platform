@@ -1,11 +1,12 @@
 "use server";
 
-import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   classLessonNotes,
   classStudentTimers,
   classTimerPresets,
+  classVocabularyWords,
   lessons,
   users,
 } from "@/lib/db/schema";
@@ -24,6 +25,7 @@ import {
   type ClassTimerTheme,
   type ClassTimerTickSound,
 } from "@/lib/class-timer";
+import { enrichSpellingMistake, type SpellingExample, type SpellingPartOfSpeech } from "@/lib/spelling-mistake";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -400,7 +402,14 @@ export async function controlClassTimerAction(
 
 export type ClassLessonNote = {
   id: string;
+  kind: "NOTE" | "SPELLING";
   body: string;
+  translation: string | null;
+  translationLang: "RU" | "UK";
+  partOfSpeech: SpellingPartOfSpeech | null;
+  icon: string | null;
+  examples: SpellingExample[];
+  publishedAt: string | null;
   lessonId: string | null;
   lessonDay: string;
   createdAt: string;
@@ -409,7 +418,20 @@ export type ClassLessonNote = {
 
 const noteCard = (row: typeof classLessonNotes.$inferSelect): ClassLessonNote => ({
   id: row.id,
+  kind: row.kind === "SPELLING" ? "SPELLING" : "NOTE",
   body: row.body,
+  translation: row.translation,
+  translationLang: row.translationLang,
+  partOfSpeech:
+    row.partOfSpeech === "NOUN" ||
+    row.partOfSpeech === "ADJECTIVE" ||
+    row.partOfSpeech === "VERB" ||
+    row.partOfSpeech === "PHRASE"
+      ? row.partOfSpeech
+      : null,
+  icon: row.icon,
+  examples: (row.examples ?? []) as SpellingExample[],
+  publishedAt: row.publishedAt?.toISOString() ?? null,
   lessonId: row.lessonId,
   lessonDay: row.lessonDay.toISOString(),
   createdAt: row.createdAt.toISOString(),
@@ -454,19 +476,42 @@ async function currentLessonContext(studentId: string) {
 
 export async function createClassLessonNoteAction(
   text: string,
+  kind: "NOTE" | "SPELLING" = "NOTE",
 ): Promise<{ note?: ClassLessonNote; error?: string }> {
   const { session, studentId } = await teacherWithStudent();
   if (!studentId) return { error: "Pick a student first" };
   const body = String(text ?? "").trim().slice(0, 4_000);
   if (!body) return { error: "Write a note" };
   const context = await currentLessonContext(studentId);
+  let spelling: Awaited<ReturnType<typeof enrichSpellingMistake>> | null = null;
+  if (kind === "SPELLING") {
+    const [latestWord] = await db
+      .select({ translationLang: classVocabularyWords.translationLang })
+      .from(classVocabularyWords)
+      .where(eq(classVocabularyWords.studentId, studentId))
+      .orderBy(desc(classVocabularyWords.updatedAt))
+      .limit(1);
+    try {
+      spelling = await enrichSpellingMistake(body, latestWord?.translationLang ?? "RU");
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Could not prepare the spelling card",
+      };
+    }
+  }
   const [row] = await db
     .insert(classLessonNotes)
     .values({
       teacherId: session.userId,
       studentId,
       ...context,
-      body,
+      kind,
+      body: spelling?.english ?? body,
+      translation: spelling?.translation,
+      translationLang: spelling?.translationLang,
+      partOfSpeech: spelling?.partOfSpeech,
+      icon: spelling?.icon,
+      examples: spelling?.examples ?? [],
     })
     .returning();
   return { note: noteCard(row) };
@@ -480,9 +525,43 @@ export async function updateClassLessonNoteAction(
   if (!studentId) return { error: "Pick a student first" };
   const body = String(text ?? "").trim().slice(0, 4_000);
   if (!body) return { error: "Write a note" };
+  const [existing] = await db
+    .select()
+    .from(classLessonNotes)
+    .where(
+      and(
+        eq(classLessonNotes.id, String(noteId)),
+        eq(classLessonNotes.teacherId, session.userId),
+        eq(classLessonNotes.studentId, studentId),
+      ),
+    )
+    .limit(1);
+  if (!existing) return { error: "Note not found" };
+  let spelling: Awaited<ReturnType<typeof enrichSpellingMistake>> | null = null;
+  if (existing.kind === "SPELLING" && existing.body !== body) {
+    try {
+      spelling = await enrichSpellingMistake(body, existing.translationLang);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Could not prepare the spelling card",
+      };
+    }
+  }
   const [row] = await db
     .update(classLessonNotes)
-    .set({ body, updatedAt: new Date() })
+    .set({
+      body: spelling?.english ?? body,
+      ...(spelling
+        ? {
+            translation: spelling.translation,
+            translationLang: spelling.translationLang,
+            partOfSpeech: spelling.partOfSpeech,
+            icon: spelling.icon,
+            examples: spelling.examples,
+          }
+        : {}),
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(classLessonNotes.id, String(noteId)),
@@ -492,6 +571,49 @@ export async function updateClassLessonNoteAction(
     )
     .returning();
   return row ? { note: noteCard(row) } : { error: "Note not found" };
+}
+
+export async function publishClassLessonSpellingAction(
+  noteId: string,
+): Promise<{ published?: string; error?: string }> {
+  const { session, studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+  const [row] = await db
+    .update(classLessonNotes)
+    .set({ publishedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(classLessonNotes.id, String(noteId)),
+        eq(classLessonNotes.teacherId, session.userId),
+        eq(classLessonNotes.studentId, studentId),
+        eq(classLessonNotes.kind, "SPELLING"),
+      ),
+    )
+    .returning({ id: classLessonNotes.id });
+  return row ? { published: row.id } : { error: "Spelling entry not found" };
+}
+
+export async function publishClassLessonSpellingDayAction(
+  rawLessonDay: string,
+): Promise<{ count?: number; error?: string }> {
+  const { session, studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+  const lessonDay = new Date(rawLessonDay);
+  if (!Number.isFinite(lessonDay.getTime())) return { error: "Lesson not found" };
+  const rows = await db
+    .update(classLessonNotes)
+    .set({ publishedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(classLessonNotes.teacherId, session.userId),
+        eq(classLessonNotes.studentId, studentId),
+        eq(classLessonNotes.kind, "SPELLING"),
+        eq(classLessonNotes.lessonDay, lessonDay),
+        isNull(classLessonNotes.publishedAt),
+      ),
+    )
+    .returning({ id: classLessonNotes.id });
+  return { count: rows.length };
 }
 
 export async function focusClassLessonNoteAction(

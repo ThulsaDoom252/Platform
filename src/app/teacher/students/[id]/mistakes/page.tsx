@@ -8,6 +8,8 @@ import { getMistakesTree } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 import { Avatar } from "@/components/avatar";
 import { IconChevronLeft } from "@/components/icons";
+import { getPublishedSpellingMistakes } from "@/lib/spelling-mistakes-data";
+import { SpellingMistakesView } from "@/components/mistakes/spelling-mistakes-view";
 
 export default async function StudentMistakesForTeacherPage({
   params,
@@ -32,6 +34,7 @@ export default async function StudentMistakesForTeacherPage({
   if (!student || student.role !== "STUDENT") notFound();
 
   const tree = await getMistakesTree(student.id);
+  const spelling = await getPublishedSpellingMistakes(student.id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -53,13 +56,20 @@ export default async function StudentMistakesForTeacherPage({
         </div>
       </div>
 
-      <MaterialsExplorer
-        tree={tree}
-        editable
-        scope="MISTAKE"
-        ownerId={student.id}
-        emptyText={t.mistakes.empty}
-      />
+      <SpellingMistakesView items={spelling} />
+
+      {tree.length > 0 && (
+        <>
+          <h2 className="text-lg font-black text-content">{t.mistakes.other}</h2>
+          <MaterialsExplorer
+            tree={tree}
+            editable
+            scope="MISTAKE"
+            ownerId={student.id}
+            emptyText={t.mistakes.empty}
+          />
+        </>
+      )}
 
       <p className="text-[11px] text-faint">
         Это личное дерево ошибок — его видит только {student.name}.

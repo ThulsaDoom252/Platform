@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { RAIL_ONLY_OPEN } from "@/components/sidebar-rail";
 import { useT } from "@/components/i18n-provider";
+import { SpellCheck2 } from "lucide-react";
 import {
   IconCap,
   IconMaterials,
@@ -23,6 +24,7 @@ export function StudentSidebarNav() {
   const items = [
     { href: "/student/class", label: t.nav.myClass, Icon: IconCap },
     { href: "/student/materials", label: t.nav.materials, Icon: IconMaterials },
+    { href: "/student/mistakes", label: t.nav.mistakes, Icon: SpellCheck2 },
     { href: "/student/homework", label: t.nav.homework, Icon: IconCheckCircle },
     { href: "/student/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/student/messages", label: t.nav.messages, Icon: IconMessage },

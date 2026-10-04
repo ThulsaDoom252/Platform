@@ -687,7 +687,17 @@ export const classLessonNotes = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     lessonId: uuid("lesson_id").references(() => lessons.id, { onDelete: "set null" }),
     lessonDay: timestamp("lesson_day").notNull(),
+    /** NOTE — a private teacher note; SPELLING — a word or phrase noticed in class. */
+    kind: text("kind").notNull().default("NOTE"),
     body: text("body").notNull(),
+    /** Dictionary data prepared for spelling cards. */
+    translation: text("translation"),
+    translationLang: vocabLangEnum("translation_lang").notNull().default("RU"),
+    partOfSpeech: text("part_of_speech"),
+    icon: text("icon"),
+    examples: jsonb("examples").$type<PhraseExample[]>().default([]).notNull(),
+    /** Null keeps a spelling entry teacher-only; a date publishes it in Mistakes. */
+    publishedAt: timestamp("published_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

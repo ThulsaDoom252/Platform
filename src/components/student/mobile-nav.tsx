@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n-provider";
+import { SpellCheck2 } from "lucide-react";
 import {
   IconHome,
   IconMaterials,
@@ -20,6 +21,7 @@ export function StudentMobileNav() {
   const items = [
     { href: "/student", label: t.nav.home, Icon: IconHome, exact: true },
     { href: "/student/materials", label: t.nav.shortFiles, Icon: IconMaterials },
+    { href: "/student/mistakes", label: t.nav.mistakes, Icon: SpellCheck2 },
     { href: "/student/homework", label: t.nav.homework, Icon: IconCheckCircle },
     { href: "/student/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/student/settings", label: t.nav.shortMore, Icon: IconGrid },

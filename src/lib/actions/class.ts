@@ -707,7 +707,12 @@ export type ClassSync = {
   /** One-shot teacher note shown to the student. */
   noteFocus: {
     id: string;
+    kind: "NOTE" | "SPELLING";
     body: string;
+    translation: string | null;
+    partOfSpeech: string | null;
+    icon: string | null;
+    examples: { en: string; tr: string }[];
     lessonDay: string;
     at: string;
   } | null;
@@ -844,7 +849,12 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
       const [note] = await db
         .select({
           id: classLessonNotes.id,
+          kind: classLessonNotes.kind,
           body: classLessonNotes.body,
+          translation: classLessonNotes.translation,
+          partOfSpeech: classLessonNotes.partOfSpeech,
+          icon: classLessonNotes.icon,
+          examples: classLessonNotes.examples,
           lessonDay: classLessonNotes.lessonDay,
         })
         .from(classLessonNotes)
@@ -859,7 +869,12 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
       if (note) {
         noteFocus = {
           id: note.id,
+          kind: note.kind === "SPELLING" ? "SPELLING" : "NOTE",
           body: note.body,
+          translation: note.translation,
+          partOfSpeech: note.partOfSpeech,
+          icon: note.icon,
+          examples: note.examples ?? [],
           lessonDay: note.lessonDay.toISOString(),
           at: requestedNote.at,
         };
