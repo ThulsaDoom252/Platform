@@ -35,6 +35,7 @@ import {
   scheduleStartOfWeek,
 } from "@/lib/schedule-time";
 import { removePublicFile } from "@/lib/public-file-store";
+import { normalizeWordDeckSettings } from "@/lib/word-deck";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -471,7 +472,7 @@ export async function createHomeworkAction(formData: FormData) {
 
   const [ownedActivity] = requestedActivityId
     ? await db
-        .select({ id: wordDeckActivities.id })
+        .select({ id: wordDeckActivities.id, settings: wordDeckActivities.settings })
         .from(wordDeckActivities)
         .where(
           and(
@@ -486,7 +487,10 @@ export async function createHomeworkAction(formData: FormData) {
     studentId,
     title,
       description: description || null,
-      activityId: ownedActivity?.id ?? null,
+      activityId:
+        ownedActivity && normalizeWordDeckSettings(ownedActivity.settings).gameType !== "GUESS_PICTURE"
+          ? ownedActivity.id
+          : null,
     status: "NOT_DONE",
   });
 

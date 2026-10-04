@@ -10,6 +10,7 @@
  * переворачивается у них в разный момент.
  */
 import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   activityGames,
@@ -18,6 +19,7 @@ import {
   phraseImages,
   studentMaterials,
   users,
+  wordDeckActivities,
   type GameCard,
   type GameVerdict,
 } from "@/lib/db/schema";
@@ -29,6 +31,11 @@ import {
   type DeckSource,
   type GameStats,
 } from "@/lib/game-deck";
+import {
+  DEFAULT_WORD_DECK_SETTINGS,
+  normalizeWordDeckSettings,
+  type WordDeckSourceCard,
+} from "@/lib/word-deck";
 
 /** Чем спрашиваем. MIXED — обоими способами, по две карты на слово. */
 export type GameMode = "PICTURE" | "TRANSLATION" | "MIXED";
@@ -79,6 +86,296 @@ export type GameSetup = {
   shuffleDecks: boolean;
   seconds: number;
 };
+
+export type GuessPicturePreset = {
+  id: string;
+  title: string;
+  cards: WordDeckSourceCard[];
+  mode: GameMode;
+  shuffleWords: boolean;
+  shuffleDecks: boolean;
+  seconds: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GuessPicturePresetGroup = {
+  id: string;
+  name: string;
+  icon: string | null;
+  words: Array<{
+    phraseId: string;
+    word: string;
+    translation: string | null;
+    imageUrl: string | null;
+  }>;
+};
+
+const guessPresetOf = (
+  row: typeof wordDeckActivities.$inferSelect,
+): GuessPicturePreset | null => {
+  const settings = normalizeWordDeckSettings(row.settings);
+  if (settings.gameType !== "GUESS_PICTURE") return null;
+  return {
+    id: row.id,
+    title: row.title,
+    cards: row.cards ?? [],
+    mode: settings.guessMode,
+    shuffleWords: settings.shuffleWords,
+    shuffleDecks: settings.shuffleDecks,
+    seconds: settings.cardSeconds,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+};
+
+async function guessPresetGroups(
+  teacherId: string,
+  requestedIds: string[],
+): Promise<GuessPicturePresetGroup[]> {
+  const ids = [...new Set(requestedIds.map(String).filter(Boolean))];
+  if (ids.length === 0) return [];
+  const nodes = await db
+    .select({
+      id: materialNodes.id,
+      name: materialNodes.name,
+      icon: materialNodes.icon,
+    })
+    .from(materialNodes)
+    .where(and(
+      inArray(materialNodes.id, ids),
+      eq(materialNodes.pageKind, "VOCAB"),
+      or(
+        and(eq(materialNodes.scope, "MATERIAL"), isNull(materialNodes.ownerId)),
+        and(eq(materialNodes.scope, "PERSONAL"), eq(materialNodes.ownerId, teacherId)),
+        eq(materialNodes.scope, "STUDENT"),
+      ),
+    ));
+  if (nodes.length === 0) return [];
+
+  const phrases = await db
+    .select({
+      nodeId: materialPhrases.nodeId,
+      phraseId: materialPhrases.id,
+      word: materialPhrases.phrase,
+      translation: materialPhrases.translation,
+      kind: materialPhrases.kind,
+      imageUrl: phraseImages.url,
+    })
+    .from(materialPhrases)
+    .leftJoin(
+      phraseImages,
+      and(eq(phraseImages.phraseId, materialPhrases.id), eq(phraseImages.picked, true)),
+    )
+    .where(inArray(materialPhrases.nodeId, nodes.map((node) => node.id)))
+    .orderBy(asc(materialPhrases.sortOrder));
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const wordsByNode = new Map<string, GuessPicturePresetGroup["words"]>();
+  const seen = new Set<string>();
+  for (const phrase of phrases) {
+    if (phrase.kind === "NOTE" || !phrase.word.trim() || seen.has(phrase.phraseId)) continue;
+    seen.add(phrase.phraseId);
+    const words = wordsByNode.get(phrase.nodeId) ?? [];
+    words.push({
+      phraseId: phrase.phraseId,
+      word: phrase.word,
+      translation: phrase.translation,
+      imageUrl: phrase.imageUrl,
+    });
+    wordsByNode.set(phrase.nodeId, words);
+  }
+
+  return ids.flatMap((id) => {
+    const node = nodeById.get(id);
+    return node ? [{ id, name: node.name, icon: node.icon, words: wordsByNode.get(id) ?? [] }] : [];
+  });
+}
+
+export async function listGuessPicturePresetGroupsAction(
+  nodeIds: string[],
+): Promise<GuessPicturePresetGroup[]> {
+  const session = await requireTeacher();
+  return guessPresetGroups(session.userId, nodeIds);
+}
+
+export async function listGuessPicturePresetsAction(): Promise<GuessPicturePreset[]> {
+  const session = await requireTeacher();
+  const rows = await db
+    .select()
+    .from(wordDeckActivities)
+    .where(eq(wordDeckActivities.authorId, session.userId))
+    .orderBy(desc(wordDeckActivities.createdAt));
+  return rows.flatMap((row) => {
+    const preset = guessPresetOf(row);
+    return preset ? [preset] : [];
+  });
+}
+
+export type SaveGuessPicturePresetInput = {
+  id?: string;
+  title: string;
+  nodeIds: string[];
+  phraseIds?: string[];
+  mode: GameMode;
+  shuffleWords: boolean;
+  shuffleDecks: boolean;
+  seconds: number;
+};
+
+export async function saveGuessPicturePresetAction(
+  input: SaveGuessPicturePresetInput,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const title = String(input?.title ?? "").trim().slice(0, 120);
+  const nodeIds = [...new Set((input?.nodeIds ?? []).map(String).filter(Boolean))];
+  const mode: GameMode = input?.mode === "TRANSLATION" || input?.mode === "MIXED"
+    ? input.mode
+    : "PICTURE";
+  const seconds = Math.min(120, Math.max(3, Number(input?.seconds) || 10));
+  if (!title) return { error: "Назови пресет" };
+  if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
+
+  const groups = await guessPresetGroups(session.userId, nodeIds);
+  if (groups.length !== nodeIds.length) return { error: "Один из словников больше недоступен" };
+  const chosen = new Set((input?.phraseIds ?? []).map(String));
+  const cards = groups.flatMap((group) => group.words
+    .filter((word) => chosen.size === 0 || chosen.has(word.phraseId))
+    .filter((word) => mode === "TRANSLATION" ? Boolean(word.translation?.trim()) : Boolean(word.imageUrl))
+    .filter((word) => mode !== "MIXED" || Boolean(word.translation?.trim()))
+    .map((word): WordDeckSourceCard => ({
+      phraseId: word.phraseId,
+      word: word.word,
+      translation: word.translation,
+      imageUrl: word.imageUrl,
+      nodeId: group.id,
+      vocabName: group.name,
+      vocabIcon: group.icon,
+    })));
+  if (cards.length === 0) {
+    return { error: mode === "TRANSLATION" ? "У выбранных слов нет перевода" : "У выбранных слов нет картинок" };
+  }
+
+  const settings = normalizeWordDeckSettings({
+    ...DEFAULT_WORD_DECK_SETTINGS,
+    gameType: "GUESS_PICTURE",
+    guessMode: mode,
+    shuffleWords: input?.shuffleWords !== false,
+    shuffleDecks: input?.shuffleDecks === true,
+    timerMode: "CARD",
+    cardSeconds: seconds,
+  });
+  const id = String(input?.id ?? "");
+  if (id) {
+    const [row] = await db
+      .select()
+      .from(wordDeckActivities)
+      .where(and(eq(wordDeckActivities.id, id), eq(wordDeckActivities.authorId, session.userId)))
+      .limit(1);
+    if (!row || normalizeWordDeckSettings(row.settings).gameType !== "GUESS_PICTURE") {
+      return { error: "Пресет не найден" };
+    }
+    await db.update(wordDeckActivities).set({
+      title,
+      nodeId: nodeIds[0],
+      cards,
+      settings,
+      updatedAt: new Date(),
+    }).where(eq(wordDeckActivities.id, id));
+    revalidatePath("/teacher/activities");
+    return { id };
+  }
+
+  const [created] = await db.insert(wordDeckActivities).values({
+    authorId: session.userId,
+    title,
+    nodeId: nodeIds[0],
+    cards,
+    settings,
+  }).returning({ id: wordDeckActivities.id });
+  revalidatePath("/teacher/activities");
+  return { id: created?.id };
+}
+
+export async function addGuessPicturePresetToClassAction(
+  presetId: string,
+  studentId: string,
+): Promise<{ id?: string; error?: string; existed?: boolean }> {
+  const session = await requireTeacher();
+  const targetPreset = String(presetId ?? "");
+  const targetStudent = String(studentId ?? "");
+  const [[row], [student]] = await Promise.all([
+    db.select().from(wordDeckActivities).where(and(
+      eq(wordDeckActivities.id, targetPreset),
+      eq(wordDeckActivities.authorId, session.userId),
+    )).limit(1),
+    db.select({ id: users.id }).from(users).where(and(
+      eq(users.id, targetStudent),
+      eq(users.role, "STUDENT"),
+    )).limit(1),
+  ]);
+  const preset = row ? guessPresetOf(row) : null;
+  if (!preset) return { error: "Пресет не найден" };
+  if (!student) return { error: "Ученик не найден" };
+  const [existing] = await db.select({ id: activityGames.id }).from(activityGames).where(and(
+    eq(activityGames.studentId, targetStudent),
+    eq(activityGames.kind, "GUESS_PICTURE"),
+    eq(activityGames.templateId, targetPreset),
+  )).limit(1);
+  if (existing) return { id: existing.id, existed: true };
+
+  const nodeIds = [...new Set(preset.cards.map((card) => card.nodeId).filter((id): id is string => Boolean(id)))];
+  const sources: DeckSource[] = nodeIds.map((nodeId) => ({
+    nodeId,
+    cards: preset.cards.filter((card) => card.nodeId === nodeId).map((card): GameCard => ({
+      phraseId: card.phraseId,
+      nodeId,
+      word: card.word,
+      translation: card.translation ?? null,
+      imageUrl: card.imageUrl ?? "",
+      face: preset.mode === "TRANSLATION" ? "TRANSLATION" : "PICTURE",
+    })),
+  }));
+  const deck = buildDeck(sources, {
+    shuffleWords: preset.shuffleWords,
+    shuffleDecks: preset.shuffleDecks,
+    mixFaces: preset.mode === "MIXED",
+  });
+  const [created] = await db.insert(activityGames).values({
+    studentId: targetStudent,
+    kind: "GUESS_PICTURE",
+    templateId: targetPreset,
+    mode: preset.mode,
+    title: preset.title,
+    status: "LOBBY",
+    cards: deck,
+    verdicts: deck.map(() => null),
+    timings: deck.map(() => null),
+    at: 0,
+    revealed: false,
+    seconds: preset.seconds,
+    paused: true,
+    pausedLeftMs: preset.seconds * 1000,
+    deadline: null,
+  }).returning({ id: activityGames.id });
+  revalidatePath("/teacher/class");
+  return { id: created?.id };
+}
+
+export async function deleteGuessPicturePresetAction(id: string): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const target = String(id ?? "");
+  const [row] = await db.select().from(wordDeckActivities).where(and(
+    eq(wordDeckActivities.id, target),
+    eq(wordDeckActivities.authorId, session.userId),
+  )).limit(1);
+  if (!row || normalizeWordDeckSettings(row.settings).gameType !== "GUESS_PICTURE") {
+    return { error: "Пресет не найден" };
+  }
+  await db.delete(wordDeckActivities).where(eq(wordDeckActivities.id, target));
+  revalidatePath("/teacher/activities");
+  return {};
+}
 
 /** Моментально очистить всю секцию Activities выбранного ученика. */
 export async function clearClassActivitiesAction(

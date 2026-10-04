@@ -1,7 +1,8 @@
 /** Чистая логика активности «Колода слов». */
 
 export type WordDeckTimerMode = "NONE" | "GAME" | "CARD";
-export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION";
+export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE";
+export type GuessPictureMode = "PICTURE" | "TRANSLATION" | "MIXED";
 export type WordDeckOwner = "TEACHER" | "STUDENT" | null;
 export type WordDeckVerdict = "RIGHT" | "WRONG" | null;
 export type WordDeckFeedback = "RIGHT" | "WRONG" | "TIME_UP" | null;
@@ -21,6 +22,9 @@ export type WordDeckSourceCard = {
   nodeId?: string;
   vocabName?: string;
   vocabIcon?: string | null;
+  /** Used by saved Guess by picture presets. */
+  translation?: string | null;
+  imageUrl?: string | null;
 };
 
 export const MIN_WORD_DECK_WORDS = 4;
@@ -71,6 +75,10 @@ export type WordDeckSettings = {
   descriptionIcons: boolean;
   answerIcons: boolean;
   background: WordDeckBackground;
+  /** Guess by picture presets share the snapshot table, not the runtime UI. */
+  guessMode: GuessPictureMode;
+  shuffleWords: boolean;
+  shuffleDecks: boolean;
 };
 
 export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
@@ -86,6 +94,9 @@ export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
   descriptionIcons: false,
   answerIcons: true,
   background: "MIDNIGHT",
+  guessMode: "PICTURE",
+  shuffleWords: true,
+  shuffleDecks: false,
 };
 
 const clamp = (value: unknown, min: number, max: number, fallback: number) => {
@@ -108,7 +119,10 @@ export function normalizeWordDeckSettings(
     "CUSTOM",
   ];
   return {
-    gameType: value?.gameType === "GUESS_DESCRIPTION" ? "GUESS_DESCRIPTION" : "WORDS",
+    gameType:
+      value?.gameType === "GUESS_DESCRIPTION" || value?.gameType === "GUESS_PICTURE"
+        ? value.gameType
+        : "WORDS",
     timerMode,
     gameSeconds: clamp(value?.gameSeconds, 10, 3600, 120),
     cardSeconds: clamp(value?.cardSeconds, 3, 300, 10),
@@ -122,6 +136,12 @@ export function normalizeWordDeckSettings(
     background: backgrounds.includes(value?.background as WordDeckBackground)
       ? (value!.background as WordDeckBackground)
       : "MIDNIGHT",
+    guessMode:
+      value?.guessMode === "TRANSLATION" || value?.guessMode === "MIXED"
+        ? value.guessMode
+        : "PICTURE",
+    shuffleWords: value?.shuffleWords !== false,
+    shuffleDecks: value?.shuffleDecks === true,
   };
 }
 

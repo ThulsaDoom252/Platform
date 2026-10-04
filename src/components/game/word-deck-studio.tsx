@@ -65,8 +65,13 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
     () => initialActivities.find((activity) => activity.id === initialActivityId) ?? null,
   );
   const [assigning, setAssigning] = useState<WordDeckActivity | null>(null);
+  const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
+  const sortedActivities = useMemo(() => [...activities].sort((left, right) =>
+    sort === "TITLE"
+      ? left.title.localeCompare(right.title, undefined, { sensitivity: "base" })
+      : new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()), [activities, sort]);
 
   const reload = async (openId?: string) => {
     const rows = await listWordDeckActivitiesAction();
@@ -124,13 +129,25 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
         </div>
       )}
 
+      {activities.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-3 ring-1 ring-line shadow-sm">
+          <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-black text-content">
+            <IconFolder className="h-4 w-4 text-accent" /> {t.wordDeck.presets}
+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{activities.length}</span>
+          </span>
+          <span className="text-[11px] font-bold uppercase tracking-wide text-faint">{t.wordDeck.sortBy}</span>
+          <button type="button" onClick={() => setSort("TITLE")} className={cn("h-8 rounded-lg px-3 text-xs font-bold", sort === "TITLE" ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{t.wordDeck.sortTitle}</button>
+          <button type="button" onClick={() => setSort("NEWEST")} className={cn("h-8 rounded-lg px-3 text-xs font-bold", sort === "NEWEST" ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{t.wordDeck.sortNewest}</button>
+        </div>
+      )}
+
       {activities.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line bg-surface p-10 text-center text-sm text-faint">
           {t.wordDeck.empty}
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {activities.map((activity) => (
+          {sortedActivities.map((activity) => (
             <article key={activity.id} className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm">
               <button type="button" onClick={() => setPreview(activity)} className="group flex w-full items-center gap-3 text-left">
                 <span className="flex h-14 w-11 shrink-0 -rotate-3 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet-600 text-2xl text-white shadow-lg transition group-hover:rotate-0">♠</span>
@@ -168,6 +185,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
                   <IconTrash className="h-4 w-4" />
                 </button>
               </div>
+              <p className="mt-2 text-[10px] font-semibold text-faint">{t.wordDeck.classCopiesStay}</p>
             </article>
           ))}
         </div>

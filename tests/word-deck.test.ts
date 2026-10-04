@@ -46,6 +46,9 @@ test("таймеры по умолчанию выключены, значени�
     descriptionIcons: false,
     answerIcons: true,
     background: "MIDNIGHT",
+    guessMode: "PICTURE",
+    shuffleWords: true,
+    shuffleDecks: false,
   });
 });
 
@@ -54,6 +57,19 @@ test("у Guess by description свои безопасные настройки �
   assert.equal(settings.gameType, "GUESS_DESCRIPTION");
   assert.equal(settings.descriptionIcons, false);
   assert.equal(settings.answerIcons, true);
+});
+
+test("пресет Guess by picture сохраняет режим и порядок колод", () => {
+  const settings = normalizeWordDeckSettings({
+    gameType: "GUESS_PICTURE",
+    guessMode: "MIXED",
+    shuffleWords: false,
+    shuffleDecks: true,
+  });
+  assert.equal(settings.gameType, "GUESS_PICTURE");
+  assert.equal(settings.guessMode, "MIXED");
+  assert.equal(settings.shuffleWords, false);
+  assert.equal(settings.shuffleDecks, true);
 });
 
 test("Guess by description берёт только слова с непустым описанием", () => {

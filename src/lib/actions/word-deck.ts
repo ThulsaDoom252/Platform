@@ -209,7 +209,9 @@ export async function listWordDeckActivitiesAction(): Promise<WordDeckActivity[]
     .from(wordDeckActivities)
     .where(eq(wordDeckActivities.authorId, session.userId))
     .orderBy(desc(wordDeckActivities.updatedAt));
-  return rows.map(activityOf);
+  return rows
+    .map(activityOf)
+    .filter((activity) => activity.settings.gameType !== "GUESS_PICTURE");
 }
 
 export async function wordDeckActivityAction(id: string): Promise<WordDeckActivity | null> {
@@ -224,7 +226,9 @@ export async function wordDeckActivityAction(id: string): Promise<WordDeckActivi
       ),
     )
     .limit(1);
-  return row ? activityOf(row) : null;
+  if (!row) return null;
+  const activity = activityOf(row);
+  return activity.settings.gameType === "GUESS_PICTURE" ? null : activity;
 }
 
 export type WordDeckStudent = { id: string; name: string };
@@ -301,6 +305,9 @@ export async function addWordDeckToClassAction(
       .limit(1),
   ]);
   if (!activity) return { error: "Колода не найдена" };
+  if (normalizeWordDeckSettings(activity.settings).gameType === "GUESS_PICTURE") {
+    return { error: "Это пресет другой игры" };
+  }
   if (!student) return { error: "Ученик не найден" };
   if (!hasEnoughWordDeckWords(activity.cards.length)) {
     return { error: `Для колоды нужно минимум ${MIN_WORD_DECK_WORDS} слова` };
@@ -522,7 +529,10 @@ export async function saveWordDeckActivityAction(
     ? new Set(input.phraseIds.map(String))
     : null;
   const cards = picked ? words.filter((word) => picked.has(word.phraseId)) : words;
-  const settings = normalizeWordDeckSettings(input?.settings ?? DEFAULT_WORD_DECK_SETTINGS);
+  const normalized = normalizeWordDeckSettings(input?.settings ?? DEFAULT_WORD_DECK_SETTINGS);
+  const settings = normalized.gameType === "GUESS_PICTURE"
+    ? { ...normalized, gameType: "WORDS" as const }
+    : normalized;
   const playableCards = playableWordDeckCards(cards, settings);
   if (!hasEnoughWordDeckWords(playableCards.length)) {
     return { error: `Для колоды нужно минимум ${MIN_WORD_DECK_WORDS} слова` };

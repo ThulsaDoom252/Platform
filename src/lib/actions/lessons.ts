@@ -623,7 +623,7 @@ export async function saveLessonAction(
       patch.activityIds = [];
     } else {
       const owned = await db
-        .select({ id: wordDeckActivities.id })
+        .select({ id: wordDeckActivities.id, settings: wordDeckActivities.settings })
         .from(wordDeckActivities)
         .where(
           and(
@@ -631,7 +631,8 @@ export async function saveLessonAction(
             inArray(wordDeckActivities.id, requested),
           ),
         );
-      patch.activityIds = requested.filter((id) => owned.some((row) => row.id === id));
+      patch.activityIds = requested.filter((id) => owned.some((row) =>
+        row.id === id && normalizeWordDeckSettings(row.settings).gameType !== "GUESS_PICTURE"));
     }
   }
 
@@ -1075,7 +1076,9 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
         .from(wordDeckActivities)
         .where(inArray(wordDeckActivities.id, activityIds))
     : [];
-  const activityOf = new Map(activityRows.map((activity) => [activity.id, activity]));
+  const activityOf = new Map(activityRows
+    .filter((activity) => normalizeWordDeckSettings(activity.settings).gameType !== "GUESS_PICTURE")
+    .map((activity) => [activity.id, activity]));
 
   return {
     id: unit.id,
