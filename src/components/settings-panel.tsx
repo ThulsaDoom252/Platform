@@ -3,9 +3,10 @@ import { locales } from "@/lib/i18n";
 import { updateLocaleAction } from "@/lib/actions/profile";
 import { ThemeSettings } from "@/components/theme-settings";
 import { IconCheck } from "@/components/icons";
+import type { ReactNode } from "react";
 
 /** Оформление + язык. Общая панель для учителя и ученика. */
-export async function SettingsPanel() {
+export async function SettingsPanel({ security }: { security?: ReactNode } = {}) {
   const { t, locale } = await getDict();
 
   return (
@@ -16,6 +17,8 @@ export async function SettingsPanel() {
       </div>
 
       <ThemeSettings />
+
+      {security}
 
       <section className="rounded-2xl bg-surface p-5 ring-1 ring-line shadow-sm sm:p-6">
         <p className="font-semibold text-content">{t.settings.language}</p>
