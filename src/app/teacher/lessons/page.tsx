@@ -1,6 +1,7 @@
 import { getDict } from "@/lib/i18n/server";
 import {
   installA1AppearanceLessonAction,
+  ensureLessonLibrarySchemaAction,
   installGrammarCheckLessonAction,
   installNewDerekLessonAction,
   listLessonFoldersAction,
@@ -29,6 +30,7 @@ export default async function TeacherLessonsPage({
   if (params.install === "a1-appearance") {
     await installA1AppearanceLessonAction();
   }
+  await ensureLessonLibrarySchemaAction();
   const { t } = await getDict();
   const [items, folders] = await Promise.all([
     listLessonsAction(),
