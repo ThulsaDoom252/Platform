@@ -530,7 +530,7 @@ export async function updateHomeworkStatusAction(formData: FormData) {
     await queueStudentNotification({
       teacherId: session.userId,
       studentId: changed.studentId,
-      event: status === "REVIEWED" ? "homeworkReviewed" : "homeworkUpdated",
+      event: status === "REVIEWED" ? "homeworkReviewed" : "homeworkRevisionRequested",
       title: changed.title,
       href: "/student/homework",
     });

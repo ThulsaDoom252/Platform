@@ -1356,6 +1356,7 @@ export const uk: Dict = {
     activityAssigned: "Учитель додав активність «{title}».",
     lessonAssigned: "Учитель додав урок «{title}».",
     homeworkReviewed: "Домашню роботу «{title}» перевірено.",
+    homeworkRevisionRequested: "Домашню роботу «{title}» повернуто на доопрацювання.",
     revisionAssigned: "Учитель додав повторення слів «{title}».",
     materialAdded: "Учитель додав матеріал «{title}».",
     materialUpdated: "Учитель оновив матеріал «{title}».",

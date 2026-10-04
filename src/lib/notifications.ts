@@ -34,6 +34,7 @@ export type StudentNotificationEvent =
   | "activityAssigned"
   | "lessonAssigned"
   | "homeworkReviewed"
+  | "homeworkRevisionRequested"
   | "revisionAssigned"
   | "materialAdded"
   | "materialUpdated";

@@ -1267,6 +1267,7 @@ export const en = {
     activityAssigned: "Teacher added activity “{title}”.",
     lessonAssigned: "Teacher added lesson “{title}”.",
     homeworkReviewed: "Homework “{title}” has been reviewed.",
+    homeworkRevisionRequested: "Homework “{title}” was returned for revision.",
     revisionAssigned: "Teacher added word revision “{title}”.",
     materialAdded: "Teacher added material “{title}”.",
     materialUpdated: "Teacher updated material “{title}”.",
