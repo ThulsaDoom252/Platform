@@ -77,6 +77,7 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
   const [editing, setEditing] = useState<GuessPicturePreset | null>(null);
   const [creating, setCreating] = useState(false);
   const [assigning, setAssigning] = useState<GuessPicturePreset | null>(null);
+  const [presetFolderOpen, setPresetFolderOpen] = useState(false);
   const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
@@ -85,7 +86,11 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
       ? left.title.localeCompare(right.title, undefined, { sensitivity: "base" })
       : new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()), [presets, sort]);
 
-  const reload = async () => setPresets(await listGuessPicturePresetsAction());
+  const reload = async () => {
+    const rows = await listGuessPicturePresetsAction();
+    setPresets(rows);
+    return rows;
+  };
 
   if (creating || editing) {
     return (
@@ -100,6 +105,7 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
           await reload();
           setCreating(false);
           setEditing(null);
+          setPresetFolderOpen(true);
           setNotice(t.game.presetSaved);
         })}
       />
@@ -108,18 +114,18 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
 
   return (
     <section className="flex flex-col gap-4">
-      <button
-        type="button"
-        onClick={() => { setNotice(null); setCreating(true); }}
-        className="group flex w-full items-center gap-3 rounded-2xl bg-surface p-4 text-left ring-1 ring-line shadow-sm transition hover:-translate-y-0.5 hover:ring-accent hover:shadow-md"
-      >
-        <span className="grad-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"><IconGrid className="h-5 w-5" /></span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-black text-content">{t.game.title}</span>
-          <span className="mt-0.5 block text-xs text-muted">{t.game.subtitle}</span>
-        </span>
-        <span className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-black text-white"><IconPlus className="h-4 w-4" /> {t.game.newPreset}</span>
-      </button>
+      {!presetFolderOpen && <button
+          type="button"
+          onClick={() => { setNotice(null); setCreating(true); }}
+          className="group flex w-full items-center gap-3 rounded-2xl bg-surface p-4 text-left ring-1 ring-line shadow-sm transition hover:-translate-y-0.5 hover:ring-accent hover:shadow-md"
+        >
+          <span className="grad-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"><IconGrid className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-black text-content">{t.game.title}</span>
+            <span className="mt-0.5 block text-xs text-muted">{t.game.subtitle}</span>
+          </span>
+          <span className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-black text-white"><IconPlus className="h-4 w-4" /> {t.game.newPreset}</span>
+        </button>}
 
       {notice && (
         <div className="flex items-center justify-between gap-3 rounded-xl bg-accent-soft px-3 py-2 text-sm font-semibold text-accent">
@@ -127,9 +133,18 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
         </div>
       )}
 
-      {presets.length > 0 && (
-        <>
+      {presets.length > 0 && !presetFolderOpen && (
+        <button type="button" onClick={() => setPresetFolderOpen(true)} className="group flex w-full items-center gap-4 rounded-2xl bg-surface p-4 text-left ring-1 ring-line shadow-sm transition hover:-translate-y-0.5 hover:ring-accent hover:shadow-md">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent transition group-hover:bg-accent group-hover:text-white"><IconFolder className="h-6 w-6" /></span>
+          <span className="min-w-0 flex-1"><span className="flex items-center gap-2 font-black text-content">{t.game.presets}<span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{presets.length}</span></span></span>
+          <IconChevronRight className="h-5 w-5 shrink-0 text-faint transition group-hover:translate-x-0.5 group-hover:text-accent" />
+        </button>
+      )}
+
+      {presets.length > 0 && presetFolderOpen && (
+        <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-3 ring-1 ring-line shadow-sm">
+            <button type="button" onClick={() => setPresetFolderOpen(false)} className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-bold text-muted transition hover:border-accent hover:text-accent"><IconChevronLeft className="h-4 w-4" /> {t.wordDeck.back}</button>
             <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-black text-content"><IconFolder className="h-4 w-4 text-accent" /> {t.game.presets}<span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{presets.length}</span></span>
             <span className="text-[11px] font-bold uppercase tracking-wide text-faint">{t.game.sortBy}</span>
             <button type="button" onClick={() => setSort("TITLE")} className={cn("h-8 rounded-lg px-3 text-xs font-bold", sort === "TITLE" ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{t.game.sortTitle}</button>
@@ -145,13 +160,13 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
                 <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
                   <button type="button" onClick={() => setAssigning(preset)} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-bold text-white"><IconUsers className="h-4 w-4" /> {t.wordDeck.addToClass}</button>
                   <button type="button" onClick={() => { setNotice(null); setEditing(preset); }} title={t.wordDeck.edit} className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-muted hover:text-accent"><IconPencil className="h-4 w-4" /></button>
-                  <button type="button" disabled={busy} onClick={() => { if (!confirm(t.game.deletePresetConfirm)) return; startBusy(async () => { const result = await deleteGuessPicturePresetAction(preset.id); if (result.error) setNotice(result.error); await reload(); }); }} title={t.wordDeck.remove} className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint hover:text-rose-500 disabled:opacity-50"><IconTrash className="h-4 w-4" /></button>
+                  <button type="button" disabled={busy} onClick={() => { if (!confirm(t.game.deletePresetConfirm)) return; startBusy(async () => { const result = await deleteGuessPicturePresetAction(preset.id); if (result.error) setNotice(result.error); const rows = await reload(); if (rows.length === 0) setPresetFolderOpen(false); }); }} title={t.wordDeck.remove} className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint hover:text-rose-500 disabled:opacity-50"><IconTrash className="h-4 w-4" /></button>
                 </div>
                 <p className="mt-2 text-[10px] font-semibold text-faint">{t.game.classCopiesStay}</p>
               </article>
             ))}
           </div>
-        </>
+        </div>
       )}
 
       {assigning && <GuessAssignDialog preset={assigning} onClose={() => setAssigning(null)} onDone={(message) => { setNotice(message); setAssigning(null); }} />}

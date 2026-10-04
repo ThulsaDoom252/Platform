@@ -65,6 +65,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
     () => initialActivities.find((activity) => activity.id === initialActivityId) ?? null,
   );
   const [assigning, setAssigning] = useState<WordDeckActivity | null>(null);
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
@@ -104,6 +105,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
           await reload(result.id);
           setCreating(false);
           setEditing(null);
+          setPresetsOpen(true);
         })}
       />
     );
@@ -129,24 +131,43 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
         </div>
       )}
 
-      {activities.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-3 ring-1 ring-line shadow-sm">
-          <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-black text-content">
-            <IconFolder className="h-4 w-4 text-accent" /> {t.wordDeck.presets}
-            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{activities.length}</span>
+      {!presetsOpen ? (
+        <button
+          type="button"
+          onClick={() => setPresetsOpen(true)}
+          className="group flex w-full items-center gap-4 rounded-2xl bg-surface p-4 text-left ring-1 ring-line shadow-sm transition hover:-translate-y-0.5 hover:ring-accent hover:shadow-md"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent transition group-hover:bg-accent group-hover:text-white">
+            <IconFolder className="h-6 w-6" />
           </span>
-          <span className="text-[11px] font-bold uppercase tracking-wide text-faint">{t.wordDeck.sortBy}</span>
-          <button type="button" onClick={() => setSort("TITLE")} className={cn("h-8 rounded-lg px-3 text-xs font-bold", sort === "TITLE" ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{t.wordDeck.sortTitle}</button>
-          <button type="button" onClick={() => setSort("NEWEST")} className={cn("h-8 rounded-lg px-3 text-xs font-bold", sort === "NEWEST" ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{t.wordDeck.sortNewest}</button>
-        </div>
-      )}
-
-      {activities.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line bg-surface p-10 text-center text-sm text-faint">
-          {t.wordDeck.empty}
-        </div>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2 font-black text-content">
+              {t.wordDeck.presets}
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{activities.length}</span>
+            </span>
+          </span>
+          <IconChevronRight className="h-5 w-5 shrink-0 text-faint transition group-hover:translate-x-0.5 group-hover:text-accent" />
+        </button>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-3 ring-1 ring-line shadow-sm">
+            <button type="button" onClick={() => setPresetsOpen(false)} className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-bold text-muted transition hover:border-accent hover:text-accent">
+              <IconChevronLeft className="h-4 w-4" /> {t.wordDeck.back}
+            </button>
+            <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-black text-content">
+              <IconFolder className="h-4 w-4 text-accent" /> {t.wordDeck.presets}
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{activities.length}</span>
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-wide text-faint">{t.wordDeck.sortBy}</span>
+            <button type="button" onClick={() => setSort("TITLE")} className={cn("h-8 rounded-lg px-3 text-xs font-bold", sort === "TITLE" ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{t.wordDeck.sortTitle}</button>
+            <button type="button" onClick={() => setSort("NEWEST")} className={cn("h-8 rounded-lg px-3 text-xs font-bold", sort === "NEWEST" ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{t.wordDeck.sortNewest}</button>
+          </div>
+
+          {activities.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line bg-surface p-10 text-center text-sm text-faint">
+              {t.wordDeck.empty}
+            </div>
+          ) : <div className="grid gap-3 lg:grid-cols-2">
           {sortedActivities.map((activity) => (
             <article key={activity.id} className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm">
               <button type="button" onClick={() => setPreview(activity)} className="group flex w-full items-center gap-3 text-left">
@@ -188,6 +209,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
               <p className="mt-2 text-[10px] font-semibold text-faint">{t.wordDeck.classCopiesStay}</p>
             </article>
           ))}
+          </div>}
         </div>
       )}
 
