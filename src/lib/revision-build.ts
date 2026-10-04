@@ -224,8 +224,14 @@ export function buildMode(
       }));
 
     case "pairs":
-    case "definitionPairs":
       return splitPairs(list).map((group) => ({ mode, words: group }));
+
+    case "definitionPairs":
+      // Один готовый термин — уже рабочая мини-пара. Обычным парам всё
+      // ещё нужны минимум два слова, а описание пользователь просит
+      // разрешать сразу, как только оно есть хотя бы у одной записи.
+      return (list.length === 1 ? [list] : splitPairs(list))
+        .map((group) => ({ mode, words: group }));
 
     case "unscramble":
       return list.map((word) => ({

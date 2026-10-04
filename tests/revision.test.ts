@@ -84,14 +84,27 @@ test("готовность показывает, сколько слов вып�
   assert.equal(picture.ready, true);
 });
 
-test("режиму без нужного числа слов ставится «не готов»", () => {
+test("выбору из переводов нужны варианты, а описанию хватает одной записи", () => {
   const two = [word("a"), word("b")];
   const state = new Map(readiness(two).map((r) => [r.mode, r]));
 
   // Выбор из трёх на двух словах собрать нечем.
   assert.equal(state.get("choose")!.ready, false);
-  assert.equal(state.get("definition")!.ready, false);
+  assert.equal(state.get("definition")!.ready, true);
   assert.equal(state.get("pairs")!.ready, true);
+});
+
+test("одно описание включает оба режима с описаниями", () => {
+  const one = [word("a", { imageUrl: null })];
+  const state = new Map(readiness(one).map((r) => [r.mode, r]));
+  assert.equal(state.get("definition")!.ready, true);
+  assert.equal(state.get("definitionPairs")!.ready, true);
+
+  const plan = buildRevision(one, ["definition", "definitionPairs"], { shuffleWords: false });
+  assert.deepEqual(plan.map((section) => [section.mode, section.steps.length]), [
+    ["definition", 1],
+    ["definitionPairs", 1],
+  ]);
 });
 
 test("задание из одних карточек не задание", () => {

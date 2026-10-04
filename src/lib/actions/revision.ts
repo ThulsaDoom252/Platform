@@ -55,6 +55,7 @@ export async function revisionWordsAction(nodeId: string): Promise<RevisionWord[
       word: materialPhrases.phrase,
       translation: materialPhrases.translation,
       description: materialPhrases.description,
+      directImageUrl: materialPhrases.imageUrl,
       kind: materialPhrases.kind,
     })
     .from(materialPhrases)
@@ -81,7 +82,7 @@ export async function revisionWordsAction(nodeId: string): Promise<RevisionWord[
     word: w.word,
     translation: w.translation,
     description: w.description,
-    imageUrl: imageOf.get(w.phraseId) ?? null,
+    imageUrl: imageOf.get(w.phraseId) ?? w.directImageUrl ?? null,
   }));
 }
 
@@ -641,6 +642,7 @@ async function wordsOf(phraseIds: string[]): Promise<RevisionWord[]> {
       word: materialPhrases.phrase,
       translation: materialPhrases.translation,
       description: materialPhrases.description,
+      directImageUrl: materialPhrases.imageUrl,
     })
     .from(materialPhrases)
     .where(inArray(materialPhrases.id, phraseIds))
@@ -654,7 +656,10 @@ async function wordsOf(phraseIds: string[]): Promise<RevisionWord[]> {
     );
   const imageOf = new Map(images.map((i) => [i.phraseId, i.url]));
 
-  return rows.map((r) => ({ ...r, imageUrl: imageOf.get(r.phraseId) ?? null }));
+  return rows.map(({ directImageUrl, ...r }) => ({
+    ...r,
+    imageUrl: imageOf.get(r.phraseId) ?? directImageUrl ?? null,
+  }));
 }
 
 export type AttemptView = {

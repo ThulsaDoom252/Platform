@@ -85,8 +85,9 @@ export function wordsFor(words: RevisionWord[], mode: RevisionMode): RevisionWor
 /**
  * Сколько слов режиму нужно, чтобы он вообще имел смысл.
  *
- * Выбор из трёх без двух чужих вариантов невозможен, пары — это пары,
- * а на одно слово меньше чем из четырёх выбирать нечего.
+ * Обычный выбор из перевода без двух чужих вариантов невозможен.
+ * Режимы по картинке и описанию доступны уже с одной подходящей записью:
+ * учитель сам решает, насколько большим будет такой набор.
  */
 export const MIN_WORDS: Record<RevisionMode, number> = {
   flashcards: 1,
@@ -94,8 +95,8 @@ export const MIN_WORDS: Record<RevisionMode, number> = {
   pairs: 2,
   unscramble: 1,
   picture: 1,
-  definition: 4,
-  definitionPairs: 2,
+  definition: 1,
+  definitionPairs: 1,
 };
 
 export type ModeReadiness = {
