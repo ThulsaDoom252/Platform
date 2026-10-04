@@ -832,8 +832,11 @@ function Homework({
         <WordDeckBoard key={activity.id} activity={activity} compact />
       ))}
       {lesson.interactiveHomework && session && (
+        /* Saving an answer revalidates the assignment and refreshes
+           session.state. Keep the component instance so an open bonus
+           section does not collapse after fill/manual/drag/voice answers. */
         <InteractiveHomework
-          key={`${session.assignmentId}:${JSON.stringify(session.state)}`}
+          key={session.assignmentId}
           plan={lesson.interactiveHomework}
           session={session}
           onStateChange={onStateChange}
