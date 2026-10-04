@@ -23,6 +23,7 @@ import {
 } from "@/components/icons";
 import { completeFinishedLessons } from "@/lib/lesson-completion";
 import { StudentClassSummons } from "@/components/student/student-class-summons";
+import { NotificationToastHost } from "@/components/notification-toast-host";
 
 export default async function StudentLayout({
   children,
@@ -50,6 +51,7 @@ export default async function StudentLayout({
   return (
     <I18nProvider locale={locale}>
       <StudentClassSummons />
+      <NotificationToastHost />
       <div className="min-h-screen bg-page">
         <div className="mx-auto flex w-full max-w-[1440px]">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}

@@ -49,6 +49,7 @@ import {
   type MaterialTranslationLang,
   type VocabularyTranslationInput,
 } from "@/lib/material-translation";
+import { queueStudentNotification } from "@/lib/notifications";
 
 export type { Misspelling };
 
@@ -65,6 +66,26 @@ function revalidateMaterials() {
   revalidatePath("/student/materials");
   revalidatePath("/student/mistakes");
   revalidatePath("/teacher/students", "layout");
+}
+
+async function notifyStudentMaterial(
+  teacherId: string,
+  nodeId: string,
+  event: "materialAdded" | "materialUpdated" = "materialUpdated",
+) {
+  const [node] = await db.select({
+    name: materialNodes.name,
+    scope: materialNodes.scope,
+    ownerId: materialNodes.ownerId,
+  }).from(materialNodes).where(eq(materialNodes.id, nodeId)).limit(1);
+  if (!node || node.scope !== "STUDENT" || !node.ownerId) return;
+  await queueStudentNotification({
+    teacherId,
+    studentId: node.ownerId,
+    event,
+    title: node.name,
+    href: `/student/materials?node=${encodeURIComponent(nodeId)}`,
+  });
 }
 
 export type NodeState = { ok?: boolean; error?: string; nodeId?: string };
@@ -114,7 +135,7 @@ export async function createNodesAction(
   items: NewNode[],
   opts: CreateOptions,
 ): Promise<BulkState> {
-  await requireTeacher();
+  const session = await requireTeacher();
 
   const parentId = opts.parentId || null;
   const scope = asScope(opts.scope);
@@ -164,6 +185,10 @@ export async function createNodesAction(
       })),
     )
     .returning({ id: materialNodes.id });
+
+  if (scope === "STUDENT" && ownerId && rows[0]) {
+    await notifyStudentMaterial(session.userId, rows[0].id, "materialAdded");
+  }
 
   // Разделы общей базы никому не раздаются сами — доступ выдаёт учитель.
 
@@ -540,7 +565,7 @@ export async function updateNodeAction(
   _prev: NodeState,
   formData: FormData,
 ): Promise<NodeState> {
-  await requireTeacher();
+  const session = await requireTeacher();
 
   const nodeId = String(formData.get("nodeId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -554,6 +579,8 @@ export async function updateNodeAction(
     .update(materialNodes)
     .set({ name, icon, description })
     .where(eq(materialNodes.id, nodeId));
+
+  await notifyStudentMaterial(session.userId, nodeId);
 
   revalidateMaterials();
   return { ok: true, nodeId };
@@ -1718,7 +1745,7 @@ export async function addPhrasesAction(
   nodeId: string,
   items: PhraseInput[],
 ): Promise<BulkState> {
-  await requireTeacher();
+  const session = await requireTeacher();
   if (!nodeId) return { error: "Не выбрана страница" };
 
   let clean = (items ?? [])
@@ -1751,6 +1778,8 @@ export async function addPhrasesAction(
     .set({ pageKind: "VOCAB" })
     .where(eq(materialNodes.id, nodeId));
 
+  await notifyStudentMaterial(session.userId, nodeId);
+
   revalidateMaterials();
   return { ok: true, message: `Добавлено: ${clean.length}` };
 }
@@ -1760,7 +1789,7 @@ export async function updatePhraseAction(
   phraseId: string,
   data: PhraseInput,
 ): Promise<BulkState> {
-  await requireTeacher();
+  const session = await requireTeacher();
   if (!phraseId) return { error: "Не выбрана запись" };
 
   const prepared = cleanPhrase(data);
@@ -1792,6 +1821,8 @@ export async function updatePhraseAction(
     await placeNewPhrases(row.nodeId, new Set([phraseId]));
   }
 
+  if (row) await notifyStudentMaterial(session.userId, row.nodeId);
+
   revalidateMaterials();
   return { ok: true, message: "Сохранено" };
 }
@@ -1802,7 +1833,7 @@ export async function saveVocabularyEditAction(
   items: unknown,
   sourceText: string,
 ): Promise<BulkState> {
-  await requireTeacher();
+  const session = await requireTeacher();
   if (!nodeId) return { error: "Не выбрана страница" };
   if (!Array.isArray(items)) return { error: "Некорректный список записей" };
 
@@ -1854,6 +1885,7 @@ export async function saveVocabularyEditAction(
   });
 
   const notes = clean.filter((item) => item.kind === "NOTE").length;
+  await notifyStudentMaterial(session.userId, nodeId);
   revalidateMaterials();
   return {
     ok: true,
@@ -3326,7 +3358,7 @@ export async function savePageContentAction(
   _prev: ParseState,
   formData: FormData,
 ): Promise<ParseState> {
-  await requireTeacher();
+  const session = await requireTeacher();
 
   const nodeId = String(formData.get("nodeId") || "");
   const requestedMode = String(formData.get("mode") || "vocabulary");
@@ -3436,6 +3468,7 @@ export async function savePageContentAction(
     missed ? `${missed} картинок не скачалось` : "",
   ].filter(Boolean);
 
+  await notifyStudentMaterial(session.userId, nodeId);
   revalidateMaterials();
   return {
     ok: true,
@@ -3457,7 +3490,7 @@ export async function saveRuleBlocksAction(
   _prev: BlocksState,
   formData: FormData,
 ): Promise<BlocksState> {
-  await requireTeacher();
+  const session = await requireTeacher();
 
   const nodeId = String(formData.get("nodeId") || "");
   const applyTitle = formData.get("applyTitle") === "on";
@@ -3497,6 +3530,7 @@ export async function saveRuleBlocksAction(
     .where(eq(materialNodes.id, nodeId));
 
   const tables = blocks.filter((b) => b.type === "table").length;
+  await notifyStudentMaterial(session.userId, nodeId);
   revalidateMaterials();
   return {
     ok: true,
@@ -3514,7 +3548,7 @@ export async function saveRuleEditAction(
   blocks: unknown,
   sourceText: string,
 ): Promise<BulkState> {
-  await requireTeacher();
+  const session = await requireTeacher();
   if (!nodeId) return { error: "Не выбрана страница" };
 
   const clean = sanitizeBlocks(blocks);
@@ -3532,6 +3566,7 @@ export async function saveRuleEditAction(
     .set({ pageKind: "RULE", sourceText: String(sourceText ?? "").slice(0, 200_000) })
     .where(eq(materialNodes.id, nodeId));
 
+  await notifyStudentMaterial(session.userId, nodeId);
   revalidateMaterials();
   return { ok: true, message: `Сохранено блоков: ${clean.length}` };
 }

@@ -23,12 +23,12 @@ import {
   materialBlocks,
   materialNodes,
   materialPhrases,
-  notifications,
   phraseImages,
   users,
   wordDeckActivities,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { queueStudentNotification } from "@/lib/notifications";
 import { parseLexisDocuments } from "@/lib/keyed-parser";
 import { sanitizeBlocks, type RuleBlock } from "@/lib/rule-blocks";
 import {
@@ -1382,7 +1382,7 @@ export async function pinLessonAction(
   unitId: string,
   studentId: string,
 ): Promise<{ id?: string; error?: string }> {
-  await requireTeacher();
+  const session = await requireTeacher();
   const unit = String(unitId ?? "");
   const student = String(studentId ?? "");
   if (!unit || !student) return { error: "Не выбран урок или ученик" };
@@ -1423,11 +1423,12 @@ export async function pinLessonAction(
     .where(eq(lessonUnits.id, unit))
     .limit(1);
 
-  await db.insert(notifications).values({
-    recipientId: student,
-    type: "HOMEWORK_SUBMITTED",
-    message: `Новый урок: ${name?.title ?? ""}`,
-    relatedStudentId: student,
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: student,
+    event: "lessonAssigned",
+    title: name?.title ?? "",
+    href: `/student/lessons/${created?.id ?? ""}`,
   });
 
   revalidatePath("/teacher/lessons");

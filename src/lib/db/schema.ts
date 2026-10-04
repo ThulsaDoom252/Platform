@@ -155,6 +155,8 @@ export const users = pgTable("users", {
    * Учитель включает это отдельно каждому.
    */
   showPastLessons: boolean("show_past_lessons").notNull().default(false),
+  /** Политика уведомлений учителя: всегда, никогда или после подтверждения. */
+  notificationPolicy: text("notification_policy").notNull().default("CONFIRM"),
 
   // ---------- Анкета ученика ----------
   viber: text("viber"),
@@ -751,8 +753,19 @@ export const notifications = pgTable("notifications", {
   recipientId: uuid("recipient_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  /** Кто инициировал сообщение. Нужен для квитанции о прочтении. */
+  senderId: uuid("sender_id").references(() => users.id, { onDelete: "set null" }),
   type: notificationTypeEnum("type").notNull(),
   message: text("message").notNull(),
+  /** Точный экран, которого касается уведомление. */
+  href: text("href"),
+  /** Служебные данные, например запрос учителю на подтверждение отправки. */
+  data: jsonb("data").$type<{
+    kind?: "SEND_CONFIRMATION";
+    studentId?: string;
+    message?: string;
+    href?: string;
+  }>(),
   relatedStudentId: uuid("related_student_id").references(() => users.id, {
     onDelete: "set null",
   }),

@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { markMyNotificationsReadAction } from "@/lib/actions/profile";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  clearMyNotificationsAction,
+  markMyNotificationReadAction,
+  markMyNotificationsReadAction,
+  resolveNotificationPromptAction,
+} from "@/lib/actions/profile";
 import { setCancellationChargeAction } from "@/lib/actions/teacher";
 import { useT } from "@/components/i18n-provider";
 import type { FeedItem, FeedKind } from "@/lib/notifications";
@@ -33,8 +39,28 @@ export function NotificationBell({
   unreadCount: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [busy, startAction] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   const { t } = useT();
+  const visibleItems = items.filter((item) => !hidden.includes(item.id));
+  const hiddenUnread = items.filter((item) => item.unread && hidden.includes(item.id)).length;
+  const visibleUnread = Math.max(0, unreadCount - hiddenUnread);
+
+  const dismiss = (id: string) => setHidden((current) => [...current, id]);
+  const visit = (item: FeedItem) => startAction(async () => {
+    await markMyNotificationReadAction(item.id);
+    dismiss(item.id);
+    setOpen(false);
+    if (item.href) router.push(item.href);
+    router.refresh();
+  });
+  const resolvePrompt = (item: FeedItem, send: boolean) => startAction(async () => {
+    await resolveNotificationPromptAction(item.id, send);
+    dismiss(item.id);
+    router.refresh();
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -54,9 +80,9 @@ export function NotificationBell({
         aria-label={t.notifications.title}
       >
         <IconBell className="h-5 w-5" />
-        {unreadCount > 0 && (
+        {visibleUnread > 0 && (
           <span className="absolute right-1 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-            {unreadCount}
+            {visibleUnread}
           </span>
         )}
       </button>
@@ -65,7 +91,8 @@ export function NotificationBell({
         <div className="absolute right-0 top-12 z-30 w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-line bg-surface shadow-xl shadow-black/10">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-sm font-semibold text-content">{t.notifications.title}</p>
-            {unreadCount > 0 && (
+            <div className="flex items-center gap-3">
+            {visibleUnread > 0 && (
               <form action={markMyNotificationsReadAction}>
                 <button
                   type="submit"
@@ -76,15 +103,28 @@ export function NotificationBell({
                 </button>
               </form>
             )}
+            {visibleItems.length > 0 && (
+              <form
+                action={clearMyNotificationsAction}
+                onSubmit={(event) => {
+                  if (!window.confirm(t.notifications.clearConfirm)) event.preventDefault();
+                }}
+              >
+                <button type="submit" className="text-xs font-medium text-rose-500 hover:opacity-80">
+                  {t.notifications.clear}
+                </button>
+              </form>
+            )}
+            </div>
           </div>
 
           <div className="max-h-[400px] overflow-y-auto">
-            {items.length === 0 && (
+            {visibleItems.length === 0 && (
               <p className="px-4 py-8 text-center text-sm text-muted">
                 {t.notifications.empty}
               </p>
             )}
-            {items.map((it) => {
+            {visibleItems.map((it) => {
               const s = kindStyle[it.kind];
               return (
                 <div
@@ -99,6 +139,26 @@ export function NotificationBell({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm leading-snug text-content">{it.title}</p>
                     <p className="mt-0.5 text-[11px] text-faint">{it.meta}</p>
+                    {it.confirmation && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => resolvePrompt(it, true)}
+                          className="rounded-lg bg-accent px-2 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                        >
+                          {t.notifications.send}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => resolvePrompt(it, false)}
+                          className="rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] font-semibold text-content disabled:opacity-50"
+                        >
+                          {t.notifications.doNotSend}
+                        </button>
+                      </div>
+                    )}
                     {it.cancellationDecision === "pending" && (
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         <form action={setCancellationChargeAction}>
@@ -132,6 +192,16 @@ export function NotificationBell({
                       <p className="mt-1.5 text-[11px] font-semibold text-emerald-600">
                         {t.notifications.balanceKept}
                       </p>
+                    )}
+                    {it.href && !it.confirmation && !it.cancellationDecision && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => visit(it)}
+                        className="mt-2 text-[11px] font-black text-accent hover:underline disabled:opacity-50"
+                      >
+                        {t.notifications.open} →
+                      </button>
                     )}
                   </div>
                   {it.unread && (

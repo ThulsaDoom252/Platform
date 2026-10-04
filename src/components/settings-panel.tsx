@@ -6,7 +6,7 @@ import { IconCheck } from "@/components/icons";
 import type { ReactNode } from "react";
 
 /** Оформление + язык. Общая панель для учителя и ученика. */
-export async function SettingsPanel({ security }: { security?: ReactNode } = {}) {
+export async function SettingsPanel({ security, notifications }: { security?: ReactNode; notifications?: ReactNode } = {}) {
   const { t, locale } = await getDict();
 
   return (
@@ -17,6 +17,8 @@ export async function SettingsPanel({ security }: { security?: ReactNode } = {})
       </div>
 
       <ThemeSettings />
+
+      {notifications}
 
       {security}
 

@@ -12,6 +12,7 @@ import { SidebarNav } from "@/components/teacher/sidebar-nav";
 import { RAIL_ONLY_OPEN, SidebarRail } from "@/components/sidebar-rail";
 import { MobileNav } from "@/components/teacher/mobile-nav";
 import { NotificationBell } from "@/components/teacher/notification-bell";
+import { NotificationToastHost } from "@/components/notification-toast-host";
 import { Avatar } from "@/components/avatar";
 import { GlobalSearch } from "@/components/global-search";
 import { IconCap, IconLogout, IconChevronDown } from "@/components/icons";
@@ -39,6 +40,7 @@ export default async function TeacherLayout({
 
   return (
     <I18nProvider locale={locale}>
+      <NotificationToastHost />
       <div className="min-h-screen bg-page">
         <div className="mx-auto flex w-full max-w-[1920px]">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}

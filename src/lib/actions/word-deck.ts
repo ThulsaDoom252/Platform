@@ -30,6 +30,7 @@ import {
 } from "@/lib/word-deck";
 import { scheduleNow } from "@/lib/schedule-time";
 import { enrichSpellingMistake } from "@/lib/spelling-mistake";
+import { queueStudentNotification } from "@/lib/notifications";
 import {
   removeStoredImage,
   storeUploadedImage,
@@ -367,6 +368,14 @@ export async function addWordDeckToClassAction(
     })
     .returning({ id: activityGames.id });
 
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: targetStudent,
+    event: "activityAssigned",
+    title: activity.title,
+    href: "/student/class",
+  });
+
   revalidatePath("/teacher/class");
   return { id: created?.id };
 }
@@ -416,6 +425,13 @@ export async function assignWordDeckHomeworkAction(
     pausedLeftMs: 0,
     deadline: null,
   }).returning({ id: activityGames.id });
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: targetStudent,
+    event: "activityAssigned",
+    title: activity.title,
+    href: `/student/homework/games/${created?.id ?? ""}`,
+  });
   revalidatePath("/student/homework");
   revalidatePath("/teacher/homeworks");
   return { id: created?.id };
@@ -731,6 +747,13 @@ export async function assignSpellingNotesHomeworkAction(
     status: "LOBBY",
     cards: [], verdicts: [], timings: [], paused: true, pausedLeftMs: 0, deadline: null,
   }).returning({ id: activityGames.id });
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: teacher.studentId,
+    event: "activityAssigned",
+    title: String(input.title ?? "Spelling Practice").trim().slice(0, 120) || "Spelling Practice",
+    href: `/student/homework/games/${created?.id ?? ""}`,
+  });
   revalidatePath("/student/homework");
   revalidatePath("/teacher/homeworks");
   return { id: created?.id };

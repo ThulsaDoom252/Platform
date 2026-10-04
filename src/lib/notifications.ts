@@ -1,7 +1,7 @@
 import "server-only";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { notifications, lessons } from "@/lib/db/schema";
+import { notifications, lessons, users } from "@/lib/db/schema";
 import { fmt, getDictFor, type Dict } from "@/lib/i18n";
 
 export type FeedKind =
@@ -18,8 +18,83 @@ export type FeedItem = {
   title: string;
   meta: string;
   unread: boolean;
+  href?: string | null;
+  confirmation?: {
+    studentId: string;
+    message: string;
+    href: string;
+  };
   cancellationDecision?: "pending" | "charged" | "not_charged";
 };
+
+export type NotificationPolicy = "ALWAYS" | "NEVER" | "CONFIRM";
+export type StudentNotificationEvent =
+  | "homeworkAssigned"
+  | "homeworkUpdated"
+  | "activityAssigned"
+  | "lessonAssigned"
+  | "homeworkReviewed"
+  | "revisionAssigned"
+  | "materialAdded"
+  | "materialUpdated";
+
+export function notificationPolicy(value: unknown): NotificationPolicy {
+  return value === "ALWAYS" || value === "NEVER" ? value : "CONFIRM";
+}
+
+function eventMessage(t: Dict, event: StudentNotificationEvent, title: string) {
+  return fmt(t.notifications[event], { title });
+}
+
+/**
+ * One notification gateway for all teacher-to-student changes.
+ * CONFIRM creates an actionable request for the teacher; ALWAYS sends now.
+ */
+export async function queueStudentNotification(input: {
+  teacherId: string;
+  studentId: string;
+  event: StudentNotificationEvent;
+  title: string;
+  href: string;
+}) {
+  const [[teacher], [student]] = await Promise.all([
+    db.select({ policy: users.notificationPolicy, locale: users.locale })
+      .from(users).where(eq(users.id, input.teacherId)).limit(1),
+    db.select({ name: users.name, locale: users.locale })
+      .from(users).where(eq(users.id, input.studentId)).limit(1),
+  ]);
+  if (!teacher || !student) return;
+  const policy = notificationPolicy(teacher.policy);
+  if (policy === "NEVER") return;
+
+  const message = eventMessage(getDictFor(student.locale), input.event, input.title);
+  if (policy === "ALWAYS") {
+    await db.insert(notifications).values({
+      recipientId: input.studentId,
+      senderId: input.teacherId,
+      type: "HOMEWORK_SUBMITTED",
+      relatedStudentId: input.studentId,
+      message,
+      href: input.href,
+    });
+    return;
+  }
+
+  const teacherT = getDictFor(teacher.locale);
+  await db.insert(notifications).values({
+    recipientId: input.teacherId,
+    senderId: input.teacherId,
+    type: "WISHLIST_NOTE",
+    relatedStudentId: input.studentId,
+    message: fmt(teacherT.notifications.sendPrompt, { name: student.name }),
+    data: {
+      kind: "SEND_CONFIRMATION",
+      studentId: input.studentId,
+      message,
+      href: input.href,
+    },
+  });
+}
 
 const dayFmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" });
 
@@ -40,6 +115,29 @@ const storedKind: Record<string, FeedKind> = {
   CONTACT_CHANGE_REQUEST: "contact",
 };
 
+function fallbackHref(type: string, recipientRole: "TEACHER" | "STUDENT", studentId: string | null) {
+  if (recipientRole === "STUDENT") {
+    return type === "WISHLIST_NOTE" ? "/student/materials" : "/student/homework";
+  }
+  if (type === "LESSON_CANCELLED" || type === "LESSON_RESCHEDULED") return "/teacher/schedule";
+  if (type === "HOMEWORK_SUBMITTED") return "/teacher/homeworks";
+  return studentId ? `/teacher/students/${studentId}` : "/teacher";
+}
+
+function confirmationOf(data: typeof notifications.$inferSelect.data): FeedItem["confirmation"] {
+  if (
+    data?.kind !== "SEND_CONFIRMATION" ||
+    !data.studentId ||
+    !data.message ||
+    !data.href
+  ) return undefined;
+  return {
+    studentId: data.studentId,
+    message: data.message,
+    href: data.href,
+  };
+}
+
 /** Лента ученика: его события + напоминание о ближайшем уроке. */
 export async function getStudentFeed(
   studentId: string,
@@ -50,7 +148,7 @@ export async function getStudentFeed(
   const stored = await db
     .select()
     .from(notifications)
-    .where(eq(notifications.recipientId, studentId))
+    .where(and(eq(notifications.recipientId, studentId), eq(notifications.isRead, false)))
     .orderBy(desc(notifications.createdAt))
     .limit(15);
 
@@ -60,6 +158,8 @@ export async function getStudentFeed(
     title: n.message,
     meta: relTime(n.createdAt, realNow, t),
     unread: !n.isRead,
+    href: n.href ?? fallbackHref(n.type, "STUDENT", n.relatedStudentId),
+    confirmation: confirmationOf(n.data),
   }));
 
   return {
@@ -87,7 +187,7 @@ export async function getTeacherFeed(
     })
     .from(notifications)
     .leftJoin(lessons, eq(lessons.id, notifications.relatedLessonId))
-    .where(eq(notifications.recipientId, teacherId))
+    .where(and(eq(notifications.recipientId, teacherId), eq(notifications.isRead, false)))
     .orderBy(
       sql`case when ${notifications.type} = 'LESSON_CANCELLED'
         and ${lessons.status} in ('CANCELLED_BY_STUDENT', 'BURNED')
@@ -114,6 +214,8 @@ export async function getTeacherFeed(
       title: n.message,
       meta: relTime(n.createdAt, realNow, t),
       unread: cancellationDecision === "pending" || !n.isRead,
+      href: n.href ?? fallbackHref(n.type, "TEACHER", n.relatedStudentId),
+      confirmation: confirmationOf(n.data),
       cancellationDecision,
     };
   });

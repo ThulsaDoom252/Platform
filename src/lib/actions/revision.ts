@@ -33,6 +33,7 @@ import {
 } from "@/lib/revision-modes";
 import { scoreRevision, type RevisionAnswer } from "@/lib/revision-score";
 import { scheduleNow } from "@/lib/schedule-time";
+import { queueStudentNotification } from "@/lib/notifications";
 
 export type RevisionState = { ok?: boolean; error?: string; id?: string };
 
@@ -146,11 +147,12 @@ export async function createRevisionAction(setup: RevisionSetup): Promise<Revisi
     })
     .returning({ id: wordRevisions.id });
 
-  await db.insert(notifications).values({
-    recipientId: studentId,
-    type: "HOMEWORK_SUBMITTED",
-    message: `Новое повторение слов: ${title}`,
-    relatedStudentId: studentId,
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId,
+    event: "revisionAssigned",
+    title,
+    href: `/student/homework/revision/${created?.id ?? ""}`,
   });
   revalidatePath("/teacher/materials");
   revalidatePath("/student/homework");
@@ -348,14 +350,15 @@ export async function assignRevisionPresetAction(
     })
     .returning({ id: wordRevisions.id });
 
-  if (targetPlacement === "HOMEWORK") {
-    await db.insert(notifications).values({
-      recipientId: targetId,
-      type: "HOMEWORK_SUBMITTED",
-      message: `Новая практика слов: ${preset.title}`,
-      relatedStudentId: targetId,
-    });
-  }
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: targetId,
+    event: targetPlacement === "HOMEWORK" ? "revisionAssigned" : "activityAssigned",
+    title: preset.title,
+    href: targetPlacement === "HOMEWORK"
+      ? `/student/homework/revision/${created?.id ?? ""}`
+      : "/student/class",
+  });
 
   revalidatePath("/teacher/activities");
   revalidatePath("/student/homework");

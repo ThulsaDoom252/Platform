@@ -1,12 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, notifications } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import type { Locale } from "@/lib/i18n";
 import { storePublicFile } from "@/lib/public-file-store";
+import { fmt, getDictFor } from "@/lib/i18n";
+import { notificationPolicy } from "@/lib/notifications";
 
 const ALLOWED_LOCALES: Locale[] = ["en", "ru", "uk"];
 
@@ -24,6 +26,160 @@ export async function markMyNotificationsReadAction() {
     .set({ isRead: true })
     .where(eq(notifications.recipientId, session.userId));
   revalidatePath("/", "layout");
+}
+
+/** Удалить всю свою ленту уведомлений. */
+export async function clearMyNotificationsAction() {
+  const session = await requireUser();
+  await db.delete(notifications).where(eq(notifications.recipientId, session.userId));
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Открытие одного уведомления: оно исчезает, а отправитель получает
+ * единственную квитанцию о прочтении.
+ */
+export async function markMyNotificationReadAction(id: string) {
+  const session = await requireUser();
+  const [read] = await db
+    .update(notifications)
+    .set({ isRead: true })
+    .where(and(
+      eq(notifications.id, String(id ?? "")),
+      eq(notifications.recipientId, session.userId),
+      eq(notifications.isRead, false),
+    ))
+    .returning({
+      senderId: notifications.senderId,
+      message: notifications.message,
+    });
+
+  if (read?.senderId && read.senderId !== session.userId && session.role === "STUDENT") {
+    const [sender] = await db.select({ locale: users.locale }).from(users)
+      .where(eq(users.id, read.senderId)).limit(1);
+    if (sender) {
+      const t = getDictFor(sender.locale);
+      await db.insert(notifications).values({
+        recipientId: read.senderId,
+        senderId: session.userId,
+        type: "CONTACT_CHANGE_REQUEST",
+        relatedStudentId: session.userId,
+        href: `/teacher/students/${session.userId}`,
+        message: fmt(t.notifications.readReceipt, {
+          name: session.name,
+          title: read.message,
+        }),
+      });
+    }
+  }
+  revalidatePath("/", "layout");
+}
+
+/** Учитель отвечает на отложенный запрос «отправить уведомление?». */
+export async function resolveNotificationPromptAction(id: string, send: boolean) {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return;
+  const [prompt] = await db.select().from(notifications).where(and(
+    eq(notifications.id, String(id ?? "")),
+    eq(notifications.recipientId, session.userId),
+    eq(notifications.isRead, false),
+  )).limit(1);
+  const data = prompt?.data;
+  if (!prompt || data?.kind !== "SEND_CONFIRMATION" || !data.studentId || !data.message || !data.href) return;
+
+  await db.transaction(async (tx) => {
+    if (send) {
+      await tx.insert(notifications).values({
+        recipientId: data.studentId!,
+        senderId: session.userId,
+        type: "HOMEWORK_SUBMITTED",
+        relatedStudentId: data.studentId!,
+        message: data.message!,
+        href: data.href!,
+      });
+    }
+    await tx.delete(notifications).where(eq(notifications.id, prompt.id));
+  });
+  revalidatePath("/", "layout");
+}
+
+export async function updateNotificationPolicyAction(formData: FormData) {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return;
+  const policy = notificationPolicy(formData.get("policy"));
+  await db.update(users).set({ notificationPolicy: policy, updatedAt: new Date() })
+    .where(eq(users.id, session.userId));
+  revalidatePath("/teacher/settings");
+}
+
+export type ManualNotificationState = {
+  ok?: boolean;
+  error?: "forbidden" | "missing" | "notFound";
+};
+
+/** Ручное сообщение ученику не зависит от автоматической политики. */
+export async function sendManualNotificationAction(
+  _previous: ManualNotificationState,
+  formData: FormData,
+): Promise<ManualNotificationState> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "forbidden" };
+  const studentId = String(formData.get("studentId") ?? "");
+  const message = String(formData.get("message") ?? "").trim().slice(0, 500);
+  if (!studentId || !message) return { error: "missing" };
+  const [student] = await db.select({ id: users.id }).from(users).where(and(
+    eq(users.id, studentId),
+    eq(users.role, "STUDENT"),
+  )).limit(1);
+  if (!student) return { error: "notFound" };
+  await db.insert(notifications).values({
+    recipientId: student.id,
+    senderId: session.userId,
+    type: "WISHLIST_NOTE",
+    relatedStudentId: student.id,
+    message,
+    href: "/student",
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export type NotificationToastItem = {
+  id: string;
+  message: string;
+  href: string | null;
+  confirmation?: { studentId: string; message: string; href: string };
+};
+
+/**
+ * Global presence heartbeat and live notification polling. A toast is only
+ * produced for events created while this browser page is open.
+ */
+export async function pollMyNotificationsAction(since: string): Promise<{
+  cursor: string;
+  items: NotificationToastItem[];
+}> {
+  const session = await requireUser();
+  const now = new Date();
+  const parsed = new Date(since);
+  const after = Number.isNaN(parsed.getTime()) ? now : parsed;
+  await db.update(users).set({ lastSeenAt: now }).where(eq(users.id, session.userId));
+  const rows = await db.select().from(notifications).where(and(
+    eq(notifications.recipientId, session.userId),
+    eq(notifications.isRead, false),
+    gt(notifications.createdAt, after),
+  )).orderBy(asc(notifications.createdAt)).limit(5);
+  return {
+    cursor: now.toISOString(),
+    items: rows.map((row) => ({
+      id: row.id,
+      message: row.message,
+      href: row.href,
+      confirmation: row.data?.kind === "SEND_CONFIRMATION" && row.data.studentId && row.data.message && row.data.href
+        ? { studentId: row.data.studentId, message: row.data.message, href: row.data.href }
+        : undefined,
+    })),
+  };
 }
 
 /** Язык интерфейса — каждый меняет только себе. */

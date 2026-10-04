@@ -18,6 +18,7 @@ import {
   materialNodes,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { queueStudentNotification } from "@/lib/notifications";
 import {
   decryptStudentPassword,
   encryptStudentPassword,
@@ -494,11 +495,19 @@ export async function createHomeworkAction(formData: FormData) {
     status: "NOT_DONE",
   });
 
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId,
+    event: ownedActivity ? "activityAssigned" : "homeworkAssigned",
+    title,
+    href: "/student/homework",
+  });
+
   revalidatePath(`/teacher/students/${studentId}`);
 }
 
 export async function updateHomeworkStatusAction(formData: FormData) {
-  await requireTeacher();
+  const session = await requireTeacher();
   const homeworkId = String(formData.get("homeworkId") || "");
   const studentId = String(formData.get("studentId") || "");
   const status = String(formData.get("status") || "") as
@@ -507,14 +516,25 @@ export async function updateHomeworkStatusAction(formData: FormData) {
   const feedback = String(formData.get("feedback") || "").trim();
   if (!homeworkId || !status) return;
 
-  await db
+  const [changed] = await db
     .update(homework)
     .set({
       status,
       teacherFeedback: feedback || null,
       updatedAt: new Date(),
     })
-    .where(eq(homework.id, homeworkId));
+    .where(eq(homework.id, homeworkId))
+    .returning({ title: homework.title, studentId: homework.studentId });
+
+  if (changed) {
+    await queueStudentNotification({
+      teacherId: session.userId,
+      studentId: changed.studentId,
+      event: status === "REVIEWED" ? "homeworkReviewed" : "homeworkUpdated",
+      title: changed.title,
+      href: "/student/homework",
+    });
+  }
 
   revalidatePath(`/teacher/students/${studentId}`);
 }

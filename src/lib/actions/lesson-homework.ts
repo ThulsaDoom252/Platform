@@ -9,6 +9,7 @@ import { getSession } from "@/lib/session";
 import { scheduleNow } from "@/lib/schedule-time";
 import { translateShortTexts, type MaterialTranslationLang } from "@/lib/material-translation";
 import { removePublicFile } from "@/lib/public-file-store";
+import { queueStudentNotification } from "@/lib/notifications";
 import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-lesson";
 import {
   findHomeworkItem,
@@ -228,6 +229,7 @@ export async function assignInteractiveHomeworkAction(
   if (selected.length === 0) return { error: "Выбери хотя бы одно упражнение" };
 
   const state = { ...(row.assignment.answers ?? {}) };
+  const updating = Boolean(homeworkAssignedAt(state));
   const assignedAt = new Date().toISOString();
   state[homeworkPlanOverrideKey()] = JSON.stringify(row.plan);
   state[homeworkAssignedAtKey()] = assignedAt;
@@ -240,6 +242,14 @@ export async function assignInteractiveHomeworkAction(
     .update(lessonAssignments)
     .set({ answers: state, updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
+
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: row.assignment.studentId,
+    event: updating ? "homeworkUpdated" : "homeworkAssigned",
+    title: row.title,
+    href: `/student/lessons/${row.assignment.id}?section=homework`,
+  });
 
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");
@@ -790,17 +800,16 @@ export async function reviewInteractiveHomeworkAction(
   const reviewedAt = new Date().toISOString();
   state[homeworkReviewedAtKey()] = reviewedAt;
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(lessonAssignments)
-      .set({ answers: state, updatedAt: new Date() })
-      .where(eq(lessonAssignments.id, row.assignment.id));
-    await tx.insert(notifications).values({
-      recipientId: row.assignment.studentId,
-      type: "HOMEWORK_SUBMITTED",
-      relatedStudentId: row.assignment.studentId,
-      message: `Домашняя работа «${row.title}» проверена учителем.`,
-    });
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: row.assignment.studentId,
+    event: "homeworkReviewed",
+    title: row.title,
+    href: `/student/lessons/${row.assignment.id}?section=homework`,
   });
 
   revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
