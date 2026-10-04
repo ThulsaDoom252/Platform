@@ -200,12 +200,15 @@ function GuessAssignDialog({ preset, onClose, onDone }: { preset: GuessPicturePr
   );
 }
 
-function GuessPicturePresetForm({ preset, busy, externalError, onCancel, onSave }: {
+export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint }: {
   preset: GuessPicturePreset | null;
   busy: boolean;
   externalError: string | null;
   onCancel: () => void;
   onSave: (payload: Parameters<typeof saveGuessPicturePresetAction>[0]) => void;
+  heading?: string;
+  submitLabel?: string;
+  footerHint?: string;
 }) {
   const { t } = useT();
   const startingNodes = useMemo(() => presetNodeIds(preset), [preset]);
@@ -299,7 +302,7 @@ function GuessPicturePresetForm({ preset, busy, externalError, onCancel, onSave 
 
   return (
     <section className="activity-panel-in rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
-      <div className="flex items-center gap-3"><button type="button" onClick={onCancel} className="rounded-xl border border-line px-3 py-2 text-sm font-bold text-muted">← {t.wordDeck.back}</button><h2 className="text-xl font-black text-content">{preset ? t.game.editPreset : t.game.newPreset}</h2></div>
+      <div className="flex items-center gap-3"><button type="button" onClick={onCancel} className="rounded-xl border border-line px-3 py-2 text-sm font-bold text-muted">← {t.wordDeck.back}</button><h2 className="text-xl font-black text-content">{heading ?? (preset ? t.game.editPreset : t.game.newPreset)}</h2></div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="flex flex-col gap-5">
           <label><span className="text-xs font-bold text-muted">{t.wordDeck.gameTitle}</span><input value={title} onChange={(event) => setCustomTitle(event.target.value)} placeholder={t.wordDeck.titlePlaceholder} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none focus:border-accent" /></label>
@@ -325,7 +328,7 @@ function GuessPicturePresetForm({ preset, busy, externalError, onCancel, onSave 
         </aside>
       </div>
       {(error || externalError) && <p className="mt-4 text-sm font-semibold text-rose-500">{error || externalError}</p>}
-      <div className="mt-6 flex items-center gap-3 border-t border-line pt-5"><button type="button" disabled={busy || !title.trim() || nodeIds.length === 0 || selectedEligible.length === 0} onClick={() => { setError(null); onSave({ id: preset?.id, title, nodeIds, phraseIds: selectedEligible, mode, shuffleWords, shuffleDecks, seconds }); }} className="h-11 rounded-xl bg-accent px-5 text-sm font-black text-white disabled:opacity-40">{busy ? t.wordDeck.saving : t.game.savePreset}</button><p className="text-xs text-faint">{t.game.snapshotHint}</p></div>
+      <div className="mt-6 flex items-center gap-3 border-t border-line pt-5"><button type="button" disabled={busy || !title.trim() || nodeIds.length === 0 || selectedEligible.length === 0} onClick={() => { setError(null); onSave({ id: preset?.id, title, nodeIds, phraseIds: selectedEligible, mode, shuffleWords, shuffleDecks, seconds }); }} className="h-11 rounded-xl bg-accent px-5 text-sm font-black text-white disabled:opacity-40">{busy ? t.wordDeck.saving : (submitLabel ?? t.game.savePreset)}</button><p className="text-xs text-faint">{footerHint ?? t.game.snapshotHint}</p></div>
     </section>
   );
 }

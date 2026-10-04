@@ -620,6 +620,20 @@ export async function deleteWordDeckActivityAction(id: string): Promise<{ error?
     .limit(1);
   if (!mine) return { error: "Игра не найдена" };
 
+  // Класс хранит полный снимок колоды, включая URL собственного фона.
+  // Если такой снимок уже выдан ученику, удаляем только шаблон: сам файл
+  // всё ещё нужен классу и не должен исчезнуть вместе с пресетом.
+  const [classCopy] = await db
+    .select({ id: activityGames.id })
+    .from(activityGames)
+    .where(
+      and(
+        eq(activityGames.templateId, target),
+        eq(activityGames.kind, "WORD_DECK"),
+      ),
+    )
+    .limit(1);
+
   const lessons = await db
     .select({ id: lessonUnits.id, activityIds: lessonUnits.activityIds })
     .from(lessonUnits)
@@ -636,7 +650,7 @@ export async function deleteWordDeckActivityAction(id: string): Promise<{ error?
   }
   await db.update(homework).set({ activityId: null }).where(eq(homework.activityId, target));
   await db.delete(wordDeckActivities).where(eq(wordDeckActivities.id, target));
-  if (mine.image) await removeStoredImage(mine.image, "activities");
+  if (mine.image && !classCopy) await removeStoredImage(mine.image, "activities");
   revalidatePath("/teacher/activities");
   return {};
 }

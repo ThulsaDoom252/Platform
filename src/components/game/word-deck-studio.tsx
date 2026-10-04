@@ -325,12 +325,15 @@ function initialNodeIds(activity: WordDeckActivity | null): string[] {
   return [...new Set(fromCards?.length ? fromCards : activity?.nodeId ? [activity.nodeId] : [])];
 }
 
-function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
+export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint }: {
   activity: WordDeckActivity | null;
   busy: boolean;
   externalError: string | null;
   onCancel: () => void;
   onSave: (payload: Parameters<typeof saveWordDeckActivityAction>[0], image: File | null) => void;
+  heading?: string;
+  submitLabel?: string;
+  footerHint?: string;
 }) {
   const { t } = useT();
   const startingNodes = useMemo(() => initialNodeIds(activity), [activity]);
@@ -516,7 +519,7 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
     <section className="activity-panel-in rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
       <div className="flex items-center gap-3">
         <button type="button" onClick={onCancel} className="rounded-xl border border-line px-3 py-2 text-sm font-bold text-muted">← {t.wordDeck.back}</button>
-        <h2 className="text-xl font-black text-content">{activity ? t.wordDeck.editGame : t.wordDeck.newGame}</h2>
+        <h2 className="text-xl font-black text-content">{heading ?? (activity ? t.wordDeck.editGame : t.wordDeck.newGame)}</h2>
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -737,9 +740,9 @@ function WordDeckForm({ activity, busy, externalError, onCancel, onSave }: {
           setError(null);
           onSave({ id: activity?.id, title, nodeIds, phraseIds: selectedEligible, settings: { ...settings, repeats: parsedRepeats } }, image);
         }} className="h-11 rounded-xl bg-accent px-5 text-sm font-black text-white transition hover:opacity-90 disabled:opacity-40">
-          {busy ? t.wordDeck.saving : t.wordDeck.save}
+          {busy ? t.wordDeck.saving : (submitLabel ?? t.wordDeck.save)}
         </button>
-        <p className="text-xs text-faint">{t.wordDeck.snapshotHint}</p>
+        <p className="text-xs text-faint">{footerHint ?? t.wordDeck.snapshotHint}</p>
       </div>
     </section>
   );

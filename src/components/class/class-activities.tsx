@@ -25,10 +25,10 @@ import {
   twisterStudentsAction,
   type TwisterStudent,
 } from "@/lib/actions/tongue-twisters";
-import { GuessSetup } from "@/components/game/guess-setup";
 import { GuessPlay } from "@/components/game/guess-play";
 import { GameStatsCard } from "@/components/game/game-stats";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
+import { ClassActivityPicker } from "@/components/class/class-activity-picker";
 import {
   listClassWordDeckActivitiesAction,
   removeWordDeckFromClassAction,
@@ -101,22 +101,14 @@ export function ClassActivities({ studentId }: { studentId: string }) {
 
   if (adding) {
     return (
-      <div className="flex flex-col gap-3">
-        <button
-          type="button"
-          onClick={() => setAdding(false)}
-          className="self-start text-[12px] font-semibold text-muted transition hover:text-content"
-        >
-          ← {t.game.back}
-        </button>
-        <GuessSetup
-          studentId={studentId}
-          onStarted={() => {
-            setAdding(false);
-            void reload();
-          }}
-        />
-      </div>
+      <ClassActivityPicker
+        studentId={studentId}
+        onCancel={() => setAdding(false)}
+        onAdded={async () => {
+          setAdding(false);
+          await reload();
+        }}
+      />
     );
   }
 
