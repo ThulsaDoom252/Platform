@@ -573,6 +573,26 @@ export async function updateClassLessonNoteAction(
   return row ? { note: noteCard(row) } : { error: "Note not found" };
 }
 
+export async function deleteClassLessonNoteAction(
+  noteId: string,
+): Promise<{ deleted?: string; error?: string }> {
+  const { session, studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+
+  const [row] = await db
+    .delete(classLessonNotes)
+    .where(
+      and(
+        eq(classLessonNotes.id, String(noteId)),
+        eq(classLessonNotes.teacherId, session.userId),
+        eq(classLessonNotes.studentId, studentId),
+      ),
+    )
+    .returning({ id: classLessonNotes.id });
+
+  return row ? { deleted: row.id } : { error: "Note not found" };
+}
+
 export async function publishClassLessonSpellingAction(
   noteId: string,
 ): Promise<{ published?: string; error?: string }> {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { BookOpen, Check, CheckCircle2, Eye, ListPlus, Pencil, Send, SpellCheck2, X } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, Eye, ListPlus, Pencil, Send, SpellCheck2, Trash2, X } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
 import {
   createClassLessonNoteAction,
+  deleteClassLessonNoteAction,
   focusClassLessonNoteAction,
   listClassLessonNotesAction,
   publishClassLessonSpellingAction,
@@ -119,6 +120,23 @@ export function ClassNotes({
       const result = await publishClassLessonSpellingDayAction(lessonDay);
       if (result.error) return setMessage(result.error);
       setMessage(t.classRoom.spellingAllAdded);
+      await load();
+    });
+  };
+
+  const deleteNote = (note: ClassLessonNote) => {
+    const warning = note.kind === "SPELLING" && note.publishedAt
+      ? t.classRoom.spellingDeletePublishedConfirm
+      : t.classRoom.notesDeleteConfirm;
+    if (!window.confirm(warning)) return;
+    setMessage(null);
+    startTransition(async () => {
+      const result = await deleteClassLessonNoteAction(note.id);
+      if (result.error) return setMessage(t.classRoom.notesDeleteFailed);
+      if (editing === note.id) {
+        setEditing(null);
+        setEditDraft("");
+      }
       await load();
     });
   };
@@ -311,6 +329,16 @@ export function ClassNotes({
                           className="flex h-7 items-center gap-1 rounded-lg bg-emerald-100 px-2 text-[10px] font-black text-emerald-700 transition hover:bg-emerald-200 disabled:opacity-50 dark:bg-emerald-950/60 dark:text-emerald-300"
                         >
                           <Eye className="h-3 w-3" /> {t.classRoom.notesFocus}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => deleteNote(note)}
+                          title={t.common.delete}
+                          aria-label={t.common.delete}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-faint transition hover:bg-rose-100 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-950/60 dark:hover:text-rose-300"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </article>
