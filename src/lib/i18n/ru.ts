@@ -331,6 +331,7 @@ export const ru: Dict = {
     spellingAdded: "Добавлено в ошибки",
     spellingAllAdded: "Все записи урока добавлены в ошибки",
     spellingFocusTitle: "Фокус на spelling",
+    spellingCategory: "Категория слова",
 
     lesson: "Урок",
     tongueTwister: "Скороговорка",

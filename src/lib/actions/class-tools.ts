@@ -616,6 +616,30 @@ export async function publishClassLessonSpellingDayAction(
   return { count: rows.length };
 }
 
+export async function updateClassLessonSpellingPartOfSpeechAction(
+  noteId: string,
+  value: SpellingPartOfSpeech,
+): Promise<{ note?: ClassLessonNote; error?: string }> {
+  const { session, studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+  if (value !== "NOUN" && value !== "ADJECTIVE" && value !== "VERB" && value !== "PHRASE") {
+    return { error: "Unknown word category" };
+  }
+  const [row] = await db
+    .update(classLessonNotes)
+    .set({ partOfSpeech: value, updatedAt: new Date() })
+    .where(
+      and(
+        eq(classLessonNotes.id, String(noteId)),
+        eq(classLessonNotes.teacherId, session.userId),
+        eq(classLessonNotes.studentId, studentId),
+        eq(classLessonNotes.kind, "SPELLING"),
+      ),
+    )
+    .returning();
+  return row ? { note: noteCard(row) } : { error: "Spelling entry not found" };
+}
+
 export async function focusClassLessonNoteAction(
   noteId: string,
 ): Promise<{ error?: string }> {

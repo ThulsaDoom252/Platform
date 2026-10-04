@@ -324,6 +324,7 @@ export const en = {
     spellingAdded: "Added to Mistakes",
     spellingAllAdded: "All lesson entries were added to Mistakes",
     spellingFocusTitle: "Spelling focus",
+    spellingCategory: "Word category",
 
     lesson: "Lesson",
     tongueTwister: "Tongue twister",

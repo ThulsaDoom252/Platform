@@ -10,6 +10,7 @@ import {
   publishClassLessonSpellingAction,
   publishClassLessonSpellingDayAction,
   updateClassLessonNoteAction,
+  updateClassLessonSpellingPartOfSpeechAction,
   type ClassLessonNote,
 } from "@/lib/actions/class-tools";
 import { SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
@@ -247,9 +248,23 @@ export function ClassNotes({
                               {note.kind === "SPELLING" && (
                                 <div className="mt-2 rounded-lg bg-surface p-2 ring-1 ring-line/70">
                                   <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-300">{note.translation}</p>
-                                  <p className="mt-0.5 text-[9px] font-black uppercase tracking-wide text-faint">
-                                    {note.partOfSpeech ? t.mistakes[note.partOfSpeech === "NOUN" ? "nouns" : note.partOfSpeech === "ADJECTIVE" ? "adjectives" : note.partOfSpeech === "VERB" ? "verbs" : "phrases"] : ""}
-                                  </p>
+                                  <select
+                                    value={note.partOfSpeech ?? "NOUN"}
+                                    disabled={busy}
+                                    aria-label={t.classRoom.spellingCategory}
+                                    onChange={(event) => startTransition(async () => {
+                                      const value = event.target.value as "NOUN" | "ADJECTIVE" | "VERB" | "PHRASE";
+                                      const result = await updateClassLessonSpellingPartOfSpeechAction(note.id, value);
+                                      if (result.error) setMessage(result.error);
+                                      await load();
+                                    })}
+                                    className="mt-1 rounded-md bg-transparent text-[9px] font-black uppercase tracking-wide text-faint outline-none"
+                                  >
+                                    <option value="NOUN">{t.mistakes.nouns}</option>
+                                    <option value="ADJECTIVE">{t.mistakes.adjectives}</option>
+                                    <option value="VERB">{t.mistakes.verbs}</option>
+                                    <option value="PHRASE">{t.mistakes.phrases}</option>
+                                  </select>
                                   {note.examples.map((example, exampleIndex) => (
                                     <p key={exampleIndex} className="mt-1 text-[10px] leading-relaxed text-muted">
                                       <span className="font-semibold text-content">{example.en}</span> — {example.tr}
