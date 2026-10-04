@@ -18,7 +18,7 @@ import {
 } from "@/lib/lesson-homework";
 
 type EditableKind = "fill" | "describe" | "translate" | "question-text" | "question-audio";
-type EditorRow = { id: string; primary: string; answer: string };
+type EditorRow = { id: string; primary: string; answer: string; questionAudioUrl?: string };
 
 const newId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 
@@ -33,7 +33,7 @@ function editableKind(exercise?: HomeworkExercise): EditableKind {
 
 function rowsFromExercise(exercise: HomeworkExercise | undefined, kind: EditableKind): EditorRow[] {
   if (!exercise || exercise.items.length === 0) {
-    return [{ id: newId("item"), primary: "", answer: "" }];
+    return [{ id: newId("item"), primary: "", answer: "", questionAudioUrl: "" }];
   }
   return exercise.items.map((item) => ({
     id: item.id,
@@ -44,6 +44,7 @@ function rowsFromExercise(exercise: HomeworkExercise | undefined, kind: Editable
           ? item.word || item.prompt
           : item.prompt,
     answer: kind === "translate" ? item.answer ?? "" : "",
+    questionAudioUrl: item.questionAudioUrl ?? "",
   }));
 }
 
@@ -85,7 +86,7 @@ export function StudentHomeworkExerciseEditor({
 
   const changeKind = (next: EditableKind) => {
     setKind(next);
-    setRows([{ id: newId("item"), primary: "", answer: "" }]);
+    setRows([{ id: newId("item"), primary: "", answer: "", questionAudioUrl: "" }]);
     setRowsDirection("to-english");
     setError(null);
   };
@@ -108,7 +109,7 @@ export function StudentHomeworkExerciseEditor({
     });
   };
 
-  const updateRow = (id: string, field: "primary" | "answer", value: string) => {
+  const updateRow = (id: string, field: "primary" | "answer" | "questionAudioUrl", value: string) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, [field]: value } : row));
     setError(null);
   };
@@ -157,7 +158,13 @@ export function StudentHomeworkExerciseEditor({
         setError(t.interactiveHomework.completeEveryRow);
         return null;
       }
-      items = rows.map((row) => ({ id: row.id, prompt: row.primary.trim() }));
+      items = rows.map((row) => ({
+        id: row.id,
+        prompt: row.primary.trim(),
+        ...(row.questionAudioUrl?.trim()
+          ? { questionAudioUrl: row.questionAudioUrl.trim() }
+          : {}),
+      }));
     }
 
     return {
@@ -337,6 +344,20 @@ export function StudentHomeworkExerciseEditor({
                     />
                   </label>
                 )}
+                {(kind === "question-text" || kind === "question-audio") && (
+                  <label className="sm:col-span-2">
+                    <span className="mb-1 block text-[11px] font-black text-muted">
+                      {t.interactiveHomework.audioQuestionUrl}
+                    </span>
+                    <input
+                      type="url"
+                      value={row.questionAudioUrl ?? ""}
+                      onChange={(event) => updateRow(row.id, "questionAudioUrl", event.target.value)}
+                      placeholder="https://…/question.mp3"
+                      className="h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm text-content outline-none focus:border-accent"
+                    />
+                  </label>
+                )}
               </div>
               <button
                 type="button"
@@ -353,7 +374,7 @@ export function StudentHomeworkExerciseEditor({
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => setRows((current) => [...current, { id: newId("item"), primary: "", answer: "" }])}
+            onClick={() => setRows((current) => [...current, { id: newId("item"), primary: "", answer: "", questionAudioUrl: "" }])}
             className="flex h-10 items-center gap-2 rounded-xl bg-accent-soft px-3 text-xs font-black text-accent transition hover:brightness-95"
           >
             <IconPlus className="h-4 w-4" />

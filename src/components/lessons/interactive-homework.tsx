@@ -1453,6 +1453,17 @@ function ManualExercise({
           >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
+                {item.questionAudioUrl && (
+                  <div className="mb-3 rounded-xl bg-surface-2 p-3 ring-1 ring-line" data-no-lesson-highlight>
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={item.questionAudioUrl}
+                      aria-label={item.prompt}
+                      className="w-full"
+                    />
+                  </div>
+                )}
                 {item.word && exercise.kind !== "translate" && (
                   <p className="mb-1 text-sm font-black text-accent">
                     <HomeworkHighlightableText

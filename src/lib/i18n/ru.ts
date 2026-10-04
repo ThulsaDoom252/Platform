@@ -1026,6 +1026,7 @@ export const ru: Dict = {
     typeTranslate: "Перевод",
     typeQuestions: "Вопросы",
     typeVoiceQuestions: "Голосовые вопросы",
+    audioQuestionUrl: "Ссылка на голосовой вопрос (необязательно)",
     exerciseTitle: "Название упражнения",
     exerciseInstruction: "Инструкция",
     fillEditorHint: "Напиши полное предложение и оберни пропущенное слово или фразу в **двойные звёздочки**.",

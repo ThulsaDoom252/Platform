@@ -953,6 +953,7 @@ export const en = {
     typeTranslate: "Translation",
     typeQuestions: "Questions",
     typeVoiceQuestions: "Voice questions",
+    audioQuestionUrl: "Audio question URL (optional)",
     exerciseTitle: "Exercise title",
     exerciseInstruction: "Instruction",
     fillEditorHint: "Write the complete sentence and wrap the missing word or phrase in **double asterisks**.",

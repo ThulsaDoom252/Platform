@@ -119,6 +119,36 @@ test("домашка сохраняет и определяет персонал
   }), "UK");
 });
 
+test("голосовой вопрос сохраняет только безопасную ссылку на аудио", () => {
+  const normalized = normalizeInteractiveHomework({
+    kind: "INTERACTIVE_HOMEWORK_V1",
+    title: "Audio questions",
+    exercises: [{
+      id: "audio-questions",
+      title: "Listen and answer",
+      instruction: "Listen to every question and record your answer.",
+      kind: "question-audio",
+      items: [
+        {
+          id: "audio-question-one",
+          prompt: "Audio question 1",
+          questionAudioUrl: "https://example.com/question-1.mp3",
+        },
+        {
+          id: "audio-question-two",
+          prompt: "Audio question 2",
+          questionAudioUrl: "javascript:alert(1)",
+        },
+      ],
+    }],
+  });
+  assert.equal(
+    normalized?.exercises[0].items[0].questionAudioUrl,
+    "https://example.com/question-1.mp3",
+  );
+  assert.equal(normalized?.exercises[0].items[1].questionAudioUrl, undefined);
+});
+
 test("автоматические ответы обычного урока не превращаются в подсказки", () => {
   const normalized = normalizeInteractiveHomework({
     kind: "INTERACTIVE_HOMEWORK_V1",

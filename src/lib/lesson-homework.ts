@@ -14,6 +14,8 @@ export type HomeworkExerciseKind =
 export type HomeworkItem = {
   id: string;
   prompt: string;
+  /** Optional teacher-recorded question played before the student answers. */
+  questionAudioUrl?: string;
   /** Canonical answer for automatically checked tasks. */
   answer?: string;
   accepted?: string[];
@@ -497,9 +499,18 @@ const cleanItem = (value: unknown): HomeworkItem | null => {
   const prompt = typeof raw.prompt === "string" ? raw.prompt.trim().slice(0, 1_500) : "";
   if (!id || !prompt) return null;
   const answer = typeof raw.answer === "string" ? raw.answer.trim().slice(0, 300) : undefined;
+  const questionAudioUrl = typeof raw.questionAudioUrl === "string"
+    ? raw.questionAudioUrl.trim().slice(0, 2_000)
+    : "";
+  const safeQuestionAudioUrl = questionAudioUrl && (
+    questionAudioUrl.startsWith("/uploads/") || /^https:\/\//i.test(questionAudioUrl)
+  )
+    ? questionAudioUrl
+    : undefined;
   return {
     id,
     prompt,
+    ...(safeQuestionAudioUrl ? { questionAudioUrl: safeQuestionAudioUrl } : {}),
     ...(answer ? { answer } : {}),
     ...(Array.isArray(raw.accepted)
       ? {

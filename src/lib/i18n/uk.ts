@@ -1026,6 +1026,7 @@ export const uk: Dict = {
     typeTranslate: "Переклад",
     typeQuestions: "Запитання",
     typeVoiceQuestions: "Голосові запитання",
+    audioQuestionUrl: "Посилання на голосове запитання (необов’язково)",
     exerciseTitle: "Назва вправи",
     exerciseInstruction: "Інструкція",
     fillEditorHint: "Напиши повне речення та обгорни пропущене слово або фразу в **подвійні зірочки**.",
