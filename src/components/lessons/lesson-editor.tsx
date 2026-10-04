@@ -758,8 +758,19 @@ function InteractiveHomeworkPreview({
           <div className="mt-3 flex flex-col gap-1.5">
             {exercise.items.map((item, itemIndex) => (
               <div key={item.id} className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-content">
-                <span className="mr-2 font-black text-accent">{itemIndex + 1}.</span>
-                <span className="font-semibold">{exercise.kind === "describe" ? item.word : item.prompt}</span>
+                {item.questionAudioUrl && (
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={item.questionAudioUrl}
+                    aria-label={item.prompt}
+                    className="mb-2 w-full"
+                  />
+                )}
+                <div>
+                  <span className="mr-2 font-black text-accent">{itemIndex + 1}.</span>
+                  <span className="font-semibold">{exercise.kind === "describe" ? item.word : item.prompt}</span>
+                </div>
                 {showAnswers && item.answer && (
                   <span className="mt-1 block pl-5 font-bold text-emerald-600">{item.answer}</span>
                 )}
