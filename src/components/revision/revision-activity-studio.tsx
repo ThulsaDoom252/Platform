@@ -12,6 +12,7 @@ import {
 } from "@/lib/actions/revision";
 import {
   listCopyTargetsAction,
+  type CopyNode,
   type CopyTree,
 } from "@/lib/actions/materials";
 import {
@@ -31,6 +32,48 @@ import {
 import { cn } from "@/lib/utils";
 
 type VocabularyChoice = { id: string; name: string; path: string };
+type VocabularyBranch = CopyNode & { children: VocabularyBranch[] };
+
+function vocabularyTree(nodes: CopyNode[]): VocabularyBranch[] {
+  const included = new Set<string>();
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  for (const node of nodes) {
+    if (node.type !== "FILE" || node.pageKind !== "VOCAB") continue;
+    for (
+      let current: CopyNode | undefined = node;
+      current;
+      current = current.parentId ? byId.get(current.parentId) : undefined
+    ) {
+      if (included.has(current.id)) break;
+      included.add(current.id);
+    }
+  }
+
+  const branches = new Map<string, VocabularyBranch>();
+  nodes
+    .filter((node) => included.has(node.id))
+    .forEach((node) => branches.set(node.id, { ...node, children: [] }));
+
+  const roots: VocabularyBranch[] = [];
+  for (const branch of branches.values()) {
+    const parent = branch.parentId ? branches.get(branch.parentId) : null;
+    if (parent) parent.children.push(branch);
+    else roots.push(branch);
+  }
+  return roots;
+}
+
+function vocabularyPath(tree: CopyTree, node: CopyNode): string {
+  const byId = new Map(tree.nodes.map((item) => [item.id, item]));
+  const parts = [node.name];
+  let parent = node.parentId ? byId.get(node.parentId) : undefined;
+  while (parent) {
+    parts.unshift(parent.name);
+    parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+  }
+  return [tree.short, ...parts].join(" / ");
+}
 
 export function RevisionActivityStudio({
   initialPresets,
@@ -220,61 +263,133 @@ function VocabularyDialog({
 }) {
   const { t } = useT();
   const [trees, setTrees] = useState<CopyTree[] | null>(null);
+  const [sourceType, setSourceType] = useState<"PERSONAL" | "STUDENT" | "MATERIAL">("PERSONAL");
+  const [studentTreeKey, setStudentTreeKey] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
     listCopyTargetsAction()
-      .then((rows) => alive && setTrees(rows))
+      .then((rows) => {
+        if (!alive) return;
+        setTrees(rows);
+        setStudentTreeKey(rows.find((tree) => tree.scope === "STUDENT")?.key ?? "");
+      })
       .catch(() => alive && setTrees([]));
     return () => { alive = false; };
   }, []);
 
-  const choices = useMemo(() => {
-    if (!trees) return [];
-    const result: VocabularyChoice[] = [];
-    for (const tree of trees) {
-      const byId = new Map(tree.nodes.map((node) => [node.id, node]));
-      for (const node of tree.nodes) {
-        if (node.type !== "FILE" || node.pageKind !== "VOCAB") continue;
-        const parents: string[] = [];
-        let parent = node.parentId ? byId.get(node.parentId) : undefined;
-        while (parent) {
-          parents.unshift(parent.name);
-          parent = parent.parentId ? byId.get(parent.parentId) : undefined;
-        }
-        result.push({
-          id: node.id,
-          name: node.name,
-          path: [tree.short, ...parents, node.name].join(" / "),
-        });
-      }
-    }
-    return result.sort((a, b) => a.path.localeCompare(b.path));
-  }, [trees]);
+  const personalTree = trees?.find((tree) => tree.scope === "PERSONAL") ?? null;
+  const sharedTree = trees?.find((tree) => tree.scope === "MATERIAL") ?? null;
+  const studentTrees = trees?.filter((tree) => tree.scope === "STUDENT") ?? [];
+  const activeTree = sourceType === "PERSONAL"
+    ? personalTree
+    : sourceType === "MATERIAL"
+      ? sharedTree
+      : studentTrees.find((tree) => tree.key === studentTreeKey) ?? null;
+  const roots = vocabularyTree(activeTree?.nodes ?? []);
+
+  const renderBranch = (node: VocabularyBranch, depth = 0): React.ReactNode => {
+    const folder = node.type === "FOLDER";
+    const open = !collapsed.has(node.id);
+    return (
+      <div key={node.id}>
+        <button
+          type="button"
+          onClick={() => {
+            if (folder) {
+              setCollapsed((current) => {
+                const next = new Set(current);
+                if (next.has(node.id)) next.delete(node.id);
+                else next.add(node.id);
+                return next;
+              });
+              return;
+            }
+            if (!activeTree) return;
+            onChoose({ id: node.id, name: node.name, path: vocabularyPath(activeTree, node) });
+          }}
+          style={{ paddingLeft: `${depth * 18 + 12}px` }}
+          className="group flex min-h-11 w-full items-center gap-2 rounded-xl pr-3 text-left transition hover:bg-emerald-500/10"
+        >
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface text-sm text-faint ring-1 ring-line group-hover:text-emerald-500">
+            {folder ? (open ? "▾" : "▸") : (node.icon ?? "📚")}
+          </span>
+          <span className={cn("min-w-0 flex-1 truncate text-sm", folder ? "font-black text-content" : "font-bold text-muted group-hover:text-emerald-600 dark:group-hover:text-emerald-300")}>
+            {node.name}
+          </span>
+          {!folder && <IconChevronRight className="h-4 w-4 shrink-0 text-faint opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />}
+        </button>
+        {folder && open && node.children.map((child) => renderBranch(child, depth + 1))}
+      </div>
+    );
+  };
 
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:p-10" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="w-full max-w-2xl rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line">
+    <div className="fixed inset-0 z-[200] isolate flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm sm:p-8" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-line">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="px-5 pt-5 sm:px-6 sm:pt-6">
             <h3 className="font-black text-content">{t.revision.newPreset}</h3>
             <p className="mt-1 text-sm text-muted">{t.revision.chooseVocabulary}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-faint hover:text-content"><IconX className="h-5 w-5" /></button>
+          <button type="button" onClick={onClose} aria-label={t.common.close} className="mr-5 mt-5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-faint transition hover:bg-surface-2 hover:text-content sm:mr-6 sm:mt-6"><IconX className="h-5 w-5" /></button>
         </div>
-        <div className="mt-4 grid max-h-[60vh] gap-2 overflow-y-auto sm:grid-cols-2">
-          {trees === null && <p className="text-sm text-faint">{t.common.loading}</p>}
-          {trees !== null && choices.length === 0 && <p className="text-sm text-faint">{t.revision.noVocabulary}</p>}
-          {choices.map((choice) => (
-            <button key={choice.id} type="button" onClick={() => onChoose(choice)} className="flex items-center gap-3 rounded-xl bg-surface-2 p-3 text-left ring-1 ring-line transition hover:ring-emerald-400">
-              <span className="text-xl">📚</span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-black text-content">{choice.name}</span>
-                <span className="block truncate text-[11px] text-faint">{choice.path}</span>
-              </span>
+
+        <div className="mt-5 grid grid-cols-3 gap-2 px-5 sm:px-6">
+          {([
+            ["PERSONAL", "📁", t.revision.myMaterials],
+            ["STUDENT", "👥", t.revision.studentMaterials],
+            ["MATERIAL", "🌐", t.revision.sharedBase],
+          ] as const).map(([value, icon, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setSourceType(value)}
+              className={cn(
+                "flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-center text-xs font-black ring-1 transition sm:min-h-12 sm:flex-row sm:text-sm",
+                sourceType === value
+                  ? "bg-emerald-500 text-white ring-emerald-500 shadow-sm"
+                  : "bg-surface-2 text-muted ring-line hover:ring-emerald-400",
+              )}
+            >
+              <span className="text-base">{icon}</span>
+              <span>{label}</span>
             </button>
           ))}
+        </div>
+
+        {sourceType === "STUDENT" && (
+          <div className="mt-3 flex gap-2 overflow-x-auto px-5 pb-1 sm:px-6">
+            {studentTrees.map((tree) => (
+              <button
+                key={tree.key}
+                type="button"
+                onClick={() => setStudentTreeKey(tree.key)}
+                className={cn(
+                  "shrink-0 rounded-xl px-3 py-2 text-xs font-bold ring-1 transition",
+                  studentTreeKey === tree.key
+                    ? "bg-emerald-500/15 text-emerald-700 ring-emerald-400 dark:text-emerald-300"
+                    : "bg-surface-2 text-muted ring-line hover:ring-emerald-400",
+                )}
+              >
+                {tree.short}
+              </button>
+            ))}
+            {trees !== null && studentTrees.length === 0 && <p className="py-2 text-sm text-faint">{t.revision.noStudentMaterials}</p>}
+          </div>
+        )}
+
+        <div className="mx-5 mb-5 mt-4 min-h-56 flex-1 overflow-y-auto rounded-2xl bg-surface-2 p-2 ring-1 ring-line sm:mx-6 sm:mb-6">
+          {trees === null && <p className="p-4 text-sm text-faint">{t.common.loading}</p>}
+          {trees !== null && activeTree && roots.map((root) => renderBranch(root))}
+          {trees !== null && (!activeTree || roots.length === 0) && (
+            <div className="flex min-h-48 flex-col items-center justify-center gap-2 p-5 text-center">
+              <span className="text-3xl opacity-60">📚</span>
+              <p className="text-sm font-semibold text-faint">{t.revision.noVocabularyInSource}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>,
