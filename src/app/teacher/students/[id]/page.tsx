@@ -257,15 +257,6 @@ export default async function StudentDetailPage({
                 {hw.teacherFeedback && (
                   <p className="text-xs text-slate-500">Комментарий: {hw.teacherFeedback}</p>
                 )}
-                {hw.status !== "NOT_DONE" && (
-                  <form action={updateHomeworkStatusAction}>
-                    <input type="hidden" name="homeworkId" value={hw.id} />
-                    <input type="hidden" name="studentId" value={student.id} />
-                    <Button type="submit" name="status" value="NOT_DONE" size="sm" variant="outline">
-                      Сбросить до «Не начато»
-                    </Button>
-                  </form>
-                )}
                 {(hw.status === "SUBMITTED" || hw.status === "IN_REVIEW") && (
                   <form action={updateHomeworkStatusAction} className="flex flex-wrap items-center gap-2">
                     <input type="hidden" name="homeworkId" value={hw.id} />

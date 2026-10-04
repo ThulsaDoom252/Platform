@@ -511,23 +511,22 @@ export async function updateHomeworkStatusAction(formData: FormData) {
   const homeworkId = String(formData.get("homeworkId") || "");
   const studentId = String(formData.get("studentId") || "");
   const status = String(formData.get("status") || "") as
-    | "NOT_DONE"
     | "REVIEWED"
     | "NEEDS_REVISION";
   const feedback = String(formData.get("feedback") || "").trim();
-  if (!homeworkId || !["NOT_DONE", "REVIEWED", "NEEDS_REVISION"].includes(status)) return;
+  if (!homeworkId || !status) return;
 
   const [changed] = await db
     .update(homework)
     .set({
       status,
-      teacherFeedback: status === "NOT_DONE" ? null : feedback || null,
+      teacherFeedback: feedback || null,
       updatedAt: new Date(),
     })
     .where(eq(homework.id, homeworkId))
     .returning({ title: homework.title, studentId: homework.studentId });
 
-  if (changed && status !== "NOT_DONE") {
+  if (changed) {
     await queueStudentNotification({
       teacherId: session.userId,
       studentId: changed.studentId,
@@ -538,7 +537,6 @@ export async function updateHomeworkStatusAction(formData: FormData) {
   }
 
   revalidatePath(`/teacher/students/${studentId}`);
-  revalidatePath("/student/homework");
 }
 
 // ---------- Расписание: редактирование и назначение уроков ----------
