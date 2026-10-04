@@ -47,6 +47,8 @@ export function isTestMode(mode: RevisionMode): boolean {
 export type RevisionWord = {
   phraseId: string;
   word: string;
+  /** Сохранённая emoji-иконка словарной записи. */
+  icon?: string | null;
   translation: string | null;
   description: string | null;
   imageUrl: string | null;
@@ -159,6 +161,7 @@ export function canStart(words: RevisionWord[], modes: RevisionMode[]): boolean 
  * класс: начинающему картинка помогает, продвинутому мешает.
  */
 export type RevisionShow = {
+  cardIcon: boolean;
   cardImage: boolean;
   cardTranslation: boolean;
   cardDescription: boolean;
@@ -167,6 +170,7 @@ export type RevisionShow = {
 };
 
 export const DEFAULT_SHOW: RevisionShow = {
+  cardIcon: false,
   cardImage: false,
   cardTranslation: false,
   cardDescription: false,
@@ -176,11 +180,26 @@ export const DEFAULT_SHOW: RevisionShow = {
 
 /** Ключи настроек по режимам — чтобы форма не выдумывала их заново. */
 export const SHOW_KEYS: Partial<Record<RevisionMode, (keyof RevisionShow)[]>> = {
-  flashcards: ["cardImage", "cardTranslation", "cardDescription"],
+  flashcards: ["cardIcon", "cardImage", "cardTranslation", "cardDescription"],
   unscramble: ["scrambleImage", "scrambleTranslation"],
 };
 
 /** Настройки из базы: чего там нет — того и не показываем. */
 export function readShow(stored: Record<string, boolean> | null | undefined): RevisionShow {
   return { ...DEFAULT_SHOW, ...(stored ?? {}) };
+}
+
+/** Случайная доля слов; каждое нажатие даёт новую выборку. */
+export function randomRevisionPercentage<T>(
+  items: T[],
+  percent: 25 | 50 | 75,
+  random: () => number = Math.random,
+): T[] {
+  if (items.length === 0) return [];
+  const mixed = [...items];
+  for (let i = mixed.length - 1; i > 0; i--) {
+    const at = Math.floor(random() * (i + 1));
+    [mixed[i], mixed[at]] = [mixed[at], mixed[i]];
+  }
+  return mixed.slice(0, Math.max(1, Math.round(items.length * (percent / 100))));
 }

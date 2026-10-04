@@ -3709,7 +3709,8 @@ export async function listCopyTargetsAction(): Promise<CopyTree[]> {
   const students = await db
     .select({ id: users.id, name: users.name })
     .from(users)
-    .where(eq(users.role, "STUDENT"));
+    .where(eq(users.role, "STUDENT"))
+    .orderBy(asc(users.name));
 
   const pick = (scope: string, ownerId: string | null) =>
     rows

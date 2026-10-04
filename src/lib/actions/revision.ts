@@ -44,27 +44,32 @@ async function requireTeacher() {
 }
 
 /** Слова словника вместе с тем, что нужно режимам. */
-export async function revisionWordsAction(nodeId: string): Promise<RevisionWord[]> {
+export type RevisionWordGroup = { nodeId: string; words: RevisionWord[] };
+
+/** Слова нескольких словников одним запросом, сгруппированные для формы выбора. */
+export async function revisionWordGroupsAction(nodeIds: string[]): Promise<RevisionWordGroup[]> {
   await requireTeacher();
-  const id = String(nodeId ?? "");
-  if (!id) return [];
+  const ids = [...new Set((nodeIds ?? []).map(String).filter(Boolean))].slice(0, 30);
+  if (ids.length === 0) return [];
 
   const rows = await db
     .select({
+      nodeId: materialPhrases.nodeId,
       phraseId: materialPhrases.id,
       word: materialPhrases.phrase,
+      icon: materialPhrases.icon,
       translation: materialPhrases.translation,
       description: materialPhrases.description,
       directImageUrl: materialPhrases.imageUrl,
       kind: materialPhrases.kind,
     })
     .from(materialPhrases)
-    .where(eq(materialPhrases.nodeId, id))
+    .where(inArray(materialPhrases.nodeId, ids))
     .orderBy(asc(materialPhrases.sortOrder));
 
   // Заметки 💡 словами не считаются: повторять в них нечего.
   const words = rows.filter((r) => r.kind !== "NOTE");
-  if (words.length === 0) return [];
+  if (words.length === 0) return ids.map((nodeId) => ({ nodeId, words: [] }));
 
   const images = await db
     .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
@@ -77,13 +82,24 @@ export async function revisionWordsAction(nodeId: string): Promise<RevisionWord[
     );
   const imageOf = new Map(images.map((i) => [i.phraseId, i.url]));
 
-  return words.map((w) => ({
-    phraseId: w.phraseId,
-    word: w.word,
-    translation: w.translation,
-    description: w.description,
-    imageUrl: imageOf.get(w.phraseId) ?? w.directImageUrl ?? null,
+  return ids.map((nodeId) => ({
+    nodeId,
+    words: words
+      .filter((word) => word.nodeId === nodeId)
+      .map((word) => ({
+        phraseId: word.phraseId,
+        word: word.word,
+        icon: word.icon,
+        translation: word.translation,
+        description: word.description,
+        imageUrl: imageOf.get(word.phraseId) ?? word.directImageUrl ?? null,
+      })),
   }));
+}
+
+/** Обратная совместимость: назначение из одного словника в Materials. */
+export async function revisionWordsAction(nodeId: string): Promise<RevisionWord[]> {
+  return (await revisionWordGroupsAction([nodeId]))[0]?.words ?? [];
 }
 
 export type RevisionSetup = {
@@ -640,6 +656,7 @@ async function wordsOf(phraseIds: string[]): Promise<RevisionWord[]> {
     .select({
       phraseId: materialPhrases.id,
       word: materialPhrases.phrase,
+      icon: materialPhrases.icon,
       translation: materialPhrases.translation,
       description: materialPhrases.description,
       directImageUrl: materialPhrases.imageUrl,

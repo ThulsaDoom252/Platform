@@ -25,6 +25,7 @@ import { RevisionSetup } from "@/components/revision/revision-setup";
 import { RevisionRunner } from "@/components/revision/revision-runner";
 import { StudentPresence } from "@/components/student-presence";
 import {
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconFolder,
@@ -89,7 +90,7 @@ export function RevisionActivityStudio({
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
   const [choosingSource, setChoosingSource] = useState(false);
-  const [source, setSource] = useState<VocabularyChoice | null>(null);
+  const [sources, setSources] = useState<VocabularyChoice[]>([]);
   const [assigning, setAssigning] = useState<RevisionPreset | null>(null);
   const [playing, setPlaying] = useState<RevisionPreset | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -224,23 +225,24 @@ export function RevisionActivityStudio({
       {choosingSource && (
         <VocabularyDialog
           onClose={() => setChoosingSource(false)}
-          onChoose={(choice) => {
+          onChoose={(choices) => {
             setChoosingSource(false);
-            setSource(choice);
+            setSources(choices);
           }}
         />
       )}
 
-      {source && (
+      {sources.length > 0 && (
         <RevisionSetup
           purpose="PRESET"
           studentId=""
           studentName=""
-          nodeId={source.id}
-          nodeName={source.name}
-          onClose={() => setSource(null)}
+          nodeId={sources[0].id}
+          nodeName={sources.length === 1 ? sources[0].name : fmt(t.revision.vocabulariesSelected, { n: sources.length })}
+          sources={sources}
+          onClose={() => setSources([])}
           onDone={async () => {
-            setSource(null);
+            setSources([]);
             setPresetsOpen(true);
             setNotice(t.revision.presetSaved);
             await reload();
@@ -329,13 +331,14 @@ function VocabularyDialog({
   onChoose,
 }: {
   onClose: () => void;
-  onChoose: (choice: VocabularyChoice) => void;
+  onChoose: (choices: VocabularyChoice[]) => void;
 }) {
   const { t } = useT();
   const [trees, setTrees] = useState<CopyTree[] | null>(null);
   const [sourceType, setSourceType] = useState<"PERSONAL" | "STUDENT" | "MATERIAL">("PERSONAL");
   const [studentTreeKey, setStudentTreeKey] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -343,7 +346,6 @@ function VocabularyDialog({
       .then((rows) => {
         if (!alive) return;
         setTrees(rows);
-        setStudentTreeKey(rows.find((tree) => tree.scope === "STUDENT")?.key ?? "");
       })
       .catch(() => alive && setTrees([]));
     return () => { alive = false; };
@@ -358,6 +360,22 @@ function VocabularyDialog({
       ? sharedTree
       : studentTrees.find((tree) => tree.key === studentTreeKey) ?? null;
   const roots = vocabularyTree(activeTree?.nodes ?? []);
+  const choices = useMemo(
+    () => (trees ?? []).flatMap((tree) =>
+      tree.nodes
+        .filter((node) => node.type === "FILE" && node.pageKind === "VOCAB")
+        .map((node) => ({ id: node.id, name: node.name, path: vocabularyPath(tree, node) }))),
+    [trees],
+  );
+  const chosen = choices.filter((choice) => selected.has(choice.id));
+
+  const toggleVocabulary = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const renderBranch = (node: VocabularyBranch, depth = 0): React.ReactNode => {
     const folder = node.type === "FOLDER";
@@ -376,11 +394,15 @@ function VocabularyDialog({
               });
               return;
             }
-            if (!activeTree) return;
-            onChoose({ id: node.id, name: node.name, path: vocabularyPath(activeTree, node) });
+            toggleVocabulary(node.id);
           }}
           style={{ paddingLeft: `${depth * 18 + 12}px` }}
-          className="group flex min-h-11 w-full items-center gap-2 rounded-xl pr-3 text-left transition hover:bg-emerald-500/10"
+          className={cn(
+            "group flex min-h-11 w-full items-center gap-2 rounded-xl pr-3 text-left ring-1 transition",
+            !folder && selected.has(node.id)
+              ? "bg-emerald-500/10 ring-emerald-400"
+              : "ring-transparent hover:bg-emerald-500/10",
+          )}
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface text-sm text-faint ring-1 ring-line group-hover:text-emerald-500">
             {folder ? (open ? "▾" : "▸") : (node.icon ?? "📚")}
@@ -388,7 +410,14 @@ function VocabularyDialog({
           <span className={cn("min-w-0 flex-1 truncate text-sm", folder ? "font-black text-content" : "font-bold text-muted group-hover:text-emerald-600 dark:group-hover:text-emerald-300")}>
             {node.name}
           </span>
-          {!folder && <IconChevronRight className="h-4 w-4 shrink-0 text-faint opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />}
+          {!folder && (
+            <span className={cn(
+              "flex h-5 w-5 shrink-0 items-center justify-center rounded-md ring-1",
+              selected.has(node.id) ? "bg-emerald-500 text-white ring-emerald-500" : "ring-line",
+            )}>
+              {selected.has(node.id) && <IconCheck className="h-3 w-3" />}
+            </span>
+          )}
         </button>
         {folder && open && node.children.map((child) => renderBranch(child, depth + 1))}
       </div>
@@ -402,7 +431,7 @@ function VocabularyDialog({
         <div className="flex items-start justify-between gap-3">
           <div className="px-5 pt-5 sm:px-6 sm:pt-6">
             <h3 className="font-black text-content">{t.revision.newPreset}</h3>
-            <p className="mt-1 text-sm text-muted">{t.revision.chooseVocabulary}</p>
+            <p className="mt-1 text-sm text-muted">{t.revision.chooseVocabularies}</p>
           </div>
           <button type="button" onClick={onClose} aria-label={t.common.close} className="mr-5 mt-5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-faint transition hover:bg-surface-2 hover:text-content sm:mr-6 sm:mt-6"><IconX className="h-5 w-5" /></button>
         </div>
@@ -431,35 +460,56 @@ function VocabularyDialog({
         </div>
 
         {sourceType === "STUDENT" && (
-          <div className="mt-3 flex gap-2 overflow-x-auto px-5 pb-1 sm:px-6">
-            {studentTrees.map((tree) => (
-              <button
-                key={tree.key}
-                type="button"
-                onClick={() => setStudentTreeKey(tree.key)}
-                className={cn(
-                  "shrink-0 rounded-xl px-3 py-2 text-xs font-bold ring-1 transition",
-                  studentTreeKey === tree.key
-                    ? "bg-emerald-500/15 text-emerald-700 ring-emerald-400 dark:text-emerald-300"
-                    : "bg-surface-2 text-muted ring-line hover:ring-emerald-400",
-                )}
-              >
-                {tree.short}
-              </button>
-            ))}
-            {trees !== null && studentTrees.length === 0 && <p className="py-2 text-sm text-faint">{t.revision.noStudentMaterials}</p>}
+          <div className="mt-3 px-5 sm:px-6">
+            <p className="mb-2 text-[11px] font-semibold text-faint">{t.revision.chooseStudentFirst}</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {studentTrees.map((tree) => (
+                <button
+                  key={tree.key}
+                  type="button"
+                  onClick={() => setStudentTreeKey(tree.key)}
+                  className={cn(
+                    "shrink-0 rounded-xl px-3 py-2 text-xs font-bold ring-1 transition",
+                    studentTreeKey === tree.key
+                      ? "bg-emerald-500/15 text-emerald-700 ring-emerald-400 dark:text-emerald-300"
+                      : "bg-surface-2 text-muted ring-line hover:ring-emerald-400",
+                  )}
+                >
+                  {tree.short}
+                </button>
+              ))}
+              {trees !== null && studentTrees.length === 0 && <p className="py-2 text-sm text-faint">{t.revision.noStudentMaterials}</p>}
+            </div>
           </div>
         )}
 
-        <div className="mx-5 mb-5 mt-4 min-h-56 flex-1 overflow-y-auto rounded-2xl bg-surface-2 p-2 ring-1 ring-line sm:mx-6 sm:mb-6">
+        <div className="mx-5 mt-4 min-h-56 flex-1 overflow-y-auto rounded-2xl bg-surface-2 p-2 ring-1 ring-line sm:mx-6">
           {trees === null && <p className="p-4 text-sm text-faint">{t.common.loading}</p>}
           {trees !== null && activeTree && roots.map((root) => renderBranch(root))}
           {trees !== null && (!activeTree || roots.length === 0) && (
             <div className="flex min-h-48 flex-col items-center justify-center gap-2 p-5 text-center">
               <span className="text-3xl opacity-60">📚</span>
-              <p className="text-sm font-semibold text-faint">{t.revision.noVocabularyInSource}</p>
+              <p className="text-sm font-semibold text-faint">
+                {sourceType === "STUDENT" && !studentTreeKey
+                  ? t.revision.chooseStudentFirst
+                  : t.revision.noVocabularyInSource}
+              </p>
             </div>
           )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 px-5 py-5 sm:px-6 sm:py-6">
+          <span className="min-w-0 flex-1 text-sm font-bold text-content">
+            {fmt(t.revision.vocabulariesSelected, { n: chosen.length })}
+          </span>
+          <button
+            type="button"
+            disabled={chosen.length === 0}
+            onClick={() => onChoose(chosen)}
+            className="h-11 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {fmt(t.revision.continueWithVocabularies, { n: chosen.length })}
+          </button>
         </div>
       </div>
     </div>,

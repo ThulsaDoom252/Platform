@@ -20,8 +20,9 @@ import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
   createRevisionAction,
-  revisionWordsAction,
+  revisionWordGroupsAction,
   saveRevisionPresetAction,
+  type RevisionWordGroup,
 } from "@/lib/actions/revision";
 import {
   canStartWith,
@@ -30,6 +31,7 @@ import {
   modeReady,
   MIN_WORDS,
   REVISION_MODES,
+  randomRevisionPercentage,
   SHOW_KEYS,
   wordsFor,
   type RevisionMode,
@@ -41,6 +43,7 @@ import { cn } from "@/lib/utils";
 
 /** Подписи настроек показа. Отдельно — их две группы на один словарь. */
 const SHOW_LABEL = (t: ReturnType<typeof useT>["t"]): Record<keyof RevisionShow, string> => ({
+  cardIcon: t.revision.showIcon,
   cardImage: t.revision.showImage,
   cardTranslation: t.revision.showTranslation,
   cardDescription: t.revision.showDescription,
@@ -51,11 +54,18 @@ const SHOW_LABEL = (t: ReturnType<typeof useT>["t"]): Record<keyof RevisionShow,
 const inputCls =
   "h-10 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition placeholder:text-faint focus:border-accent";
 
+export type RevisionVocabularySource = {
+  id: string;
+  name: string;
+  path?: string;
+};
+
 export function RevisionSetup({
   studentId,
   studentName,
   nodeId,
   nodeName,
+  sources,
   onClose,
   onDone,
   purpose = "ASSIGN",
@@ -64,19 +74,32 @@ export function RevisionSetup({
   studentName: string;
   nodeId: string;
   nodeName: string;
+  /** Несколько словников смешиваются в одну практику. */
+  sources?: RevisionVocabularySource[];
   onClose: () => void;
   onDone?: (id?: string) => void;
   purpose?: "ASSIGN" | "PRESET";
 }) {
   const { t } = useT();
-  const [words, setWords] = useState<RevisionWord[] | null>(null);
+  const sourceList = useMemo<RevisionVocabularySource[]>(
+    () => sources?.length ? sources : [{ id: nodeId, name: nodeName, path: nodeName }],
+    [nodeId, nodeName, sources],
+  );
+  const sourceKey = sourceList.map((source) => source.id).join(":");
+  const [wordGroups, setWordGroups] = useState<RevisionWordGroup[] | null>(null);
+  /** Общий базовый выбор: режимы дальше могут дополнительно сузить его. */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [modes, setModes] = useState<RevisionMode[]>([]);
   /** Снятые галочки по режимам: пусто — взяты все подходящие слова. */
   const [dropped, setDropped] = useState<Partial<Record<RevisionMode, string[]>>>({});
   const [open, setOpen] = useState<RevisionMode | null>(null);
   /** Что показывать рядом с заданием: по умолчанию ничего. */
   const [show, setShow] = useState<RevisionShow>(DEFAULT_SHOW);
-  const [title, setTitle] = useState(nodeName);
+  const [title, setTitle] = useState(
+    sourceList.length > 1
+      ? sourceList.map((source) => source.name).join(" + ")
+      : sourceList[0]?.name ?? nodeName,
+  );
   const [due, setDue] = useState("");
   const [perAnswer, setPerAnswer] = useState<number | null>(null);
   const [wholeMinutes, setWholeMinutes] = useState("");
@@ -85,15 +108,58 @@ export function RevisionSetup({
 
   useEffect(() => {
     let alive = true;
-    revisionWordsAction(nodeId)
-      .then((list) => alive && setWords(list))
-      .catch(() => alive && setWords([]));
+    const ids = sourceKey.split(":").filter(Boolean);
+    revisionWordGroupsAction(ids)
+      .then((groups) => {
+        if (!alive) return;
+        setWordGroups(groups);
+        setSelectedIds(new Set(groups.flatMap((group) => group.words.map((word) => word.phraseId))));
+        setDropped({});
+      })
+      .catch(() => {
+        if (!alive) return;
+        setWordGroups([]);
+        setSelectedIds(new Set());
+      });
     return () => {
       alive = false;
     };
-  }, [nodeId]);
+  }, [sourceKey]);
 
-  const all = useMemo(() => words ?? [], [words]);
+  const sourceOf = useMemo(
+    () => new Map(sourceList.map((source) => [source.id, source])),
+    [sourceList],
+  );
+  const allWords = useMemo(() => {
+    const seen = new Set<string>();
+    return (wordGroups ?? []).flatMap((group) => group.words).filter((word) => {
+      if (seen.has(word.phraseId)) return false;
+      seen.add(word.phraseId);
+      return true;
+    });
+  }, [wordGroups]);
+  const all = useMemo(
+    () => allWords.filter((word) => selectedIds.has(word.phraseId)),
+    [allWords, selectedIds],
+  );
+
+  const selectGroup = (group: RevisionWordGroup, ids: string[]) => {
+    const own = new Set(group.words.map((word) => word.phraseId));
+    const chosen = new Set(ids);
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => !own.has(id)));
+      for (const id of chosen) next.add(id);
+      return next;
+    });
+  };
+
+  const toggleBaseWord = (phraseId: string) =>
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(phraseId)) next.delete(phraseId);
+      else next.add(phraseId);
+      return next;
+    });
 
   /** Что режим вообще может взять — без учёта галочек. */
   const fitting = useMemo(() => {
@@ -175,7 +241,7 @@ export function RevisionSetup({
 
       const minutes = Number(wholeMinutes) || 0;
       const common = {
-        nodeId,
+        nodeId: sourceList[0]?.id ?? nodeId,
         title: title.trim(),
         phraseIds: [...union],
         modes,
@@ -230,11 +296,121 @@ export function RevisionSetup({
           />
         </label>
 
+        <section className="rounded-2xl bg-surface-2 p-3 ring-1 ring-line">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-black text-content">{t.revision.words}</h3>
+              <p className="text-[11px] text-faint">
+                {fmt(t.revision.selected, { n: all.length })} · {fmt(t.revision.vocabulariesSelected, { n: sourceList.length })}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set(allWords.map((word) => word.phraseId)))}
+                className="h-8 rounded-lg bg-surface px-2.5 text-[11px] font-bold text-accent ring-1 ring-line transition hover:ring-accent"
+              >
+                {t.revision.selectAll}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="h-8 rounded-lg bg-surface px-2.5 text-[11px] font-bold text-muted ring-1 ring-line transition hover:text-rose-500"
+              >
+                {t.revision.clearAll}
+              </button>
+            </div>
+          </div>
+
+          {wordGroups === null ? (
+            <p className="py-6 text-center text-sm text-faint">{t.common.loading}</p>
+          ) : (
+            <div className="mt-3 flex flex-col gap-2.5">
+              {wordGroups.map((group) => {
+                const source = sourceOf.get(group.nodeId);
+                const selectedCount = group.words.filter((word) => selectedIds.has(word.phraseId)).length;
+                return (
+                  <div key={group.nodeId} className="rounded-xl bg-surface p-3 ring-1 ring-line">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-black text-content">{source?.name ?? group.nodeId}</p>
+                        {source?.path && source.path !== source.name && (
+                          <p className="truncate text-[10px] text-faint">{source.path}</p>
+                        )}
+                        <p className="mt-0.5 text-[11px] font-semibold text-accent">
+                          {fmt(t.revision.ready, { n: selectedCount, total: group.words.length })}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => selectGroup(group, group.words.map((word) => word.phraseId))}
+                          className="h-7 rounded-lg bg-accent-soft px-2 text-[10px] font-bold text-accent transition hover:bg-accent hover:text-white"
+                        >
+                          {t.revision.allWords}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => selectGroup(group, [])}
+                          className="h-7 rounded-lg bg-surface-2 px-2 text-[10px] font-bold text-muted transition hover:text-rose-500"
+                        >
+                          {t.revision.none}
+                        </button>
+                        {([75, 50, 25] as const).map((percent) => (
+                          <button
+                            key={percent}
+                            type="button"
+                            title={fmt(t.revision.randomPercent, { n: percent })}
+                            aria-label={fmt(t.revision.randomPercent, { n: percent })}
+                            onClick={() => selectGroup(
+                              group,
+                              randomRevisionPercentage(group.words, percent).map((word) => word.phraseId),
+                            )}
+                            className="h-7 rounded-lg bg-surface-2 px-2 text-[10px] font-bold text-muted transition hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-300"
+                          >
+                            {percent}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 grid max-h-36 gap-0.5 overflow-y-auto rounded-lg bg-surface-2 p-1.5 sm:grid-cols-2">
+                      {group.words.map((word) => {
+                        const checked = selectedIds.has(word.phraseId);
+                        return (
+                          <label
+                            key={word.phraseId}
+                            className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 transition hover:bg-surface"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleBaseWord(word.phraseId)}
+                              className="h-3.5 w-3.5 accent-[var(--accent)]"
+                            />
+                            {word.icon && <span className="text-sm leading-none">{word.icon}</span>}
+                            <span className={cn(
+                              "min-w-0 flex-1 truncate text-[12px]",
+                              checked ? "text-content" : "text-faint line-through",
+                            )}>
+                              {word.word}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         <div>
           <span className="text-sm font-bold text-content">{t.revision.modes}</span>
           <p className="text-[12px] text-faint">{t.revision.modesHint}</p>
 
-          {words === null ? (
+          {wordGroups === null ? (
             <p className="mt-2 text-sm text-faint">{t.common.loading}</p>
           ) : (
             <div className="mt-2 flex flex-col gap-1.5">

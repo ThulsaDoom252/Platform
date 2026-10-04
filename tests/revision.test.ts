@@ -4,6 +4,7 @@ import {
   canStart,
   canStartWith,
   readiness,
+  randomRevisionPercentage,
   wordFits,
 
   TEST_MODES,
@@ -57,6 +58,13 @@ test("карточкам хватает одного слова", () => {
   assert.equal(wordFits(word("x", { translation: null }), "unscramble"), true);
 });
 
+test("карточка сохраняет словарную иконку", () => {
+  const plan = buildRevision([word("apple", { icon: "🍎" })], ["flashcards"], {}, seeded(1));
+  const card = plan[0]?.steps[0];
+  assert.equal(card?.mode, "flashcards");
+  if (card?.mode === "flashcards") assert.equal(card.words[0].icon, "🍎");
+});
+
 test("режимы с переводом отсеивают слова без перевода", () => {
   const bare = word("x", { translation: null });
   assert.equal(wordFits(bare, "choose"), false);
@@ -82,6 +90,19 @@ test("готовность показывает, сколько слов вып�
   assert.equal(picture.usable, 1);
   assert.equal(picture.skipped, 2);
   assert.equal(picture.ready, true);
+});
+
+test("случайные проценты выбирают нужную долю без дублей", () => {
+  const words = Array.from({ length: 20 }, (_, index) => word(String(index)));
+  for (const percent of [25, 50, 75] as const) {
+    const picked = randomRevisionPercentage(words, percent, seeded(percent));
+    assert.equal(picked.length, 20 * percent / 100);
+    assert.equal(new Set(picked.map((item) => item.phraseId)).size, picked.length);
+  }
+});
+
+test("случайный процент не оставляет непустой словник без слов", () => {
+  assert.equal(randomRevisionPercentage([word("only")], 25, seeded(1)).length, 1);
 });
 
 test("выбору из переводов нужны варианты, а описанию хватает одной записи", () => {

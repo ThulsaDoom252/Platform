@@ -266,9 +266,17 @@ function Flashcards({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-center text-[12px] font-semibold text-faint">
-        {fmt(t.revision.stepOf, { n: at + 1, total: words.length })}
-      </p>
+      <div className="mx-auto flex w-full max-w-sm items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2 ring-1 ring-line">
+          <span
+            className="block h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-[width] duration-200"
+            style={{ width: `${((at + 1) / words.length) * 100}%` }}
+          />
+        </div>
+        <span className="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-black tabular-nums text-emerald-600 ring-1 ring-emerald-500/20 dark:text-emerald-300">
+          {fmt(t.revision.stepOf, { n: at + 1, total: words.length })}
+        </span>
+      </div>
 
       {/*
        * На карточке только английское слово. Перевод, картинка и
@@ -276,6 +284,11 @@ function Flashcards({
        * отвечает сама за себя и повторять нечего.
        */}
       <div className="flex min-h-[40vh] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-surface p-6 text-center ring-1 ring-line shadow-sm">
+        {show.cardIcon && word.icon && (
+          <span className="text-6xl leading-none drop-shadow-sm sm:text-7xl" aria-hidden="true">
+            {word.icon}
+          </span>
+        )}
         {show.cardImage && word.imageUrl && (
           <div className="w-full max-w-[220px]">
             <WordImage url={word.imageUrl} alt={word.word} />
