@@ -101,7 +101,11 @@ const fillExercise = (
   instruction: "Complete each sentence with a word or phrase from the list.",
   kind: "fill",
   optional,
-  wordBank: items.map((item) => item.answer!).filter(Boolean),
+  wordBank: items
+    .map((item) => item.answer!)
+    .filter(Boolean)
+    .slice(1)
+    .concat(items[0]?.answer ? [items[0].answer] : []),
   items,
 });
 

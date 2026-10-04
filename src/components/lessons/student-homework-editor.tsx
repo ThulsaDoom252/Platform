@@ -22,6 +22,22 @@ type EditorRow = { id: string; primary: string; answer: string; questionAudioUrl
 
 const newId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 
+function mixedWordBank(items: HomeworkItem[]) {
+  const answers = [...new Set(items.map((item) => item.answer!).filter(Boolean))];
+  if (answers.length < 2) return answers;
+  const mixed = [...answers];
+  for (let index = mixed.length - 1; index > 0; index -= 1) {
+    const swapWith = Math.floor(Math.random() * (index + 1));
+    [mixed[index], mixed[swapWith]] = [mixed[swapWith], mixed[index]];
+  }
+  const itemAnswers = items.map((item) => item.answer ?? "");
+  for (let shift = 0; shift < mixed.length; shift += 1) {
+    if (mixed.every((word, index) => word !== itemAnswers[index])) return mixed;
+    mixed.push(mixed.shift()!);
+  }
+  return mixed;
+}
+
 function editableKind(exercise?: HomeworkExercise): EditableKind {
   if (!exercise) return "fill";
   if (exercise.kind === "describe") return "describe";
@@ -173,7 +189,7 @@ export function StudentHomeworkExerciseEditor({
       instruction: original?.instruction ?? "",
       kind,
       optional,
-      ...(kind === "fill" ? { wordBank: [...new Set(items.map((item) => item.answer!))] } : {}),
+      ...(kind === "fill" ? { wordBank: mixedWordBank(items) } : {}),
       ...(kind === "translate"
         ? { translationDirection: direction, translationLanguage }
         : {}),

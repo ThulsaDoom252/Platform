@@ -19,6 +19,7 @@ import {
   removeHomeworkQuestionAction,
   reviewInteractiveHomeworkAction,
   resetHomeworkExerciseAnswersAction,
+  shuffleHomeworkExerciseItemsAction,
   saveStudentHomeworkPlanAction,
   saveHomeworkResponseAction,
   saveHomeworkTeacherNoteAction,
@@ -73,6 +74,7 @@ import {
   IconEyeOff,
   IconPencil,
   IconPlus,
+  IconShuffle,
   IconTrash,
   IconX,
 } from "@/components/icons";
@@ -180,6 +182,18 @@ export function InteractiveHomework({
     );
     if (result.error || !result.plan || !result.state) {
       return result.error ?? t.interactiveHomework.translationFailed;
+    }
+    setEditedPlan(result.plan);
+    setState(result.state);
+  };
+
+  const shuffleExercise = async (exerciseId: string) => {
+    const result = await shuffleHomeworkExerciseItemsAction(
+      session.assignmentId,
+      exerciseId,
+    );
+    if (result.error || !result.plan || !result.state) {
+      return result.error ?? t.interactiveHomework.shuffleFailed;
     }
     setEditedPlan(result.plan);
     setState(result.state);
@@ -396,6 +410,9 @@ export function InteractiveHomework({
             setDeleteError(null);
             setDeletingExerciseId(exercise.id);
           } : undefined}
+          onShuffle={session.teacher && exercise.items.length > 1
+            ? () => shuffleExercise(exercise.id)
+            : undefined}
           onTranslateLanguage={session.teacher && exercise.kind === "translate"
             ? (language) => translateExerciseLanguage(exercise.id, language)
             : undefined}
@@ -695,6 +712,7 @@ function HomeworkExerciseView({
   onFocus,
   onEdit,
   onDelete,
+  onShuffle,
   onTranslateLanguage,
 }: {
   exercise: HomeworkExercise;
@@ -707,12 +725,13 @@ function HomeworkExerciseView({
   onFocus?: (elementId: string) => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onShuffle?: () => Promise<string | undefined>;
   onTranslateLanguage?: (language: "RU" | "UK") => Promise<string | undefined>;
 }) {
   const { t } = useT();
   const interaction = useContext(HomeworkInteractionContext);
   const [resetKey, setResetKey] = useState(0);
-  const [languageError, setLanguageError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, startAction] = useTransition();
   const hidden = homeworkExerciseHidden(state, exercise.id);
   const exerciseFocusId = homeworkExerciseFocusId(exercise.id);
@@ -721,10 +740,19 @@ function HomeworkExerciseView({
     : null;
   const switchLanguage = (language: "RU" | "UK") => {
     if (!onTranslateLanguage || language === translationLanguage) return;
-    setLanguageError(null);
+    setActionError(null);
     startAction(async () => {
       const error = await onTranslateLanguage(language);
-      if (error) setLanguageError(error);
+      if (error) setActionError(error);
+      else setResetKey((key) => key + 1);
+    });
+  };
+  const shuffleItems = () => {
+    if (!onShuffle) return;
+    setActionError(null);
+    startAction(async () => {
+      const error = await onShuffle();
+      if (error) setActionError(error);
       else setResetKey((key) => key + 1);
     });
   };
@@ -747,9 +775,9 @@ function HomeworkExerciseView({
   const instruction = exercise.instruction.trim() || fallbackInstruction;
   const body = (
     <div className="mt-4">
-      {languageError && (
+      {actionError && (
         <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">
-          {languageError}
+          {actionError}
         </p>
       )}
       {exercise.wordBank && exercise.wordBank.length > 0 && exercise.kind !== "drag" && exercise.kind !== "describe" && (
@@ -835,6 +863,19 @@ function HomeworkExerciseView({
           state={state}
           setState={setState}
         />
+        {onShuffle && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={shuffleItems}
+            title={t.interactiveHomework.shuffleExercise}
+            aria-label={t.interactiveHomework.shuffleExercise}
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 text-[11px] font-black text-accent transition hover:bg-accent hover:text-white disabled:opacity-45"
+          >
+            <IconShuffle className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t.interactiveHomework.shuffle}</span>
+          </button>
+        )}
         {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"
@@ -905,6 +946,19 @@ function HomeworkExerciseView({
           state={state}
           setState={setState}
         />
+        {onShuffle && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={shuffleItems}
+            title={t.interactiveHomework.shuffleExercise}
+            aria-label={t.interactiveHomework.shuffleExercise}
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 text-[11px] font-black text-accent transition hover:bg-accent hover:text-white disabled:opacity-45"
+          >
+            <IconShuffle className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t.interactiveHomework.shuffle}</span>
+          </button>
+        )}
         {session.teacher && onFocus && !interaction.highlightMode && (
           <button
             type="button"

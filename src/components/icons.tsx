@@ -135,6 +135,16 @@ export const IconDots = (p: IconProps) => (
   </Svg>
 );
 
+export const IconShuffle = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6h3.5c5.5 0 5.5 12 11 12H21" />
+    <path d="m18 15 3 3-3 3" />
+    <path d="M3 18h3.5c2.1 0 3.4-1.8 4.6-4" />
+    <path d="M13 9.8C14.2 7.7 15.5 6 17.5 6H21" />
+    <path d="m18 3 3 3-3 3" />
+  </Svg>
+);
+
 /** Ручка захвата: за неё элемент перетаскивают. */
 export const IconGrip = (p: IconProps) => (
   <Svg {...p}>

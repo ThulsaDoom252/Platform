@@ -1,6 +1,6 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -522,6 +522,63 @@ export async function translateHomeworkExerciseLanguageAction(
       error: error instanceof Error ? error.message : "DeepL не смог перевести предложения",
     };
   }
+}
+
+function shuffleIntoNewOrder<T extends { id: string }>(items: T[]): T[] {
+  const next = [...items];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapWith = randomInt(index + 1);
+    [next[index], next[swapWith]] = [next[swapWith], next[index]];
+  }
+  if (next.length > 1 && next.every((item, index) => item.id === items[index]?.id)) {
+    next.push(next.shift()!);
+  }
+  return next;
+}
+
+/** Reorder one exercise in this student's private copy without clearing any answers. */
+export async function shuffleHomeworkExerciseItemsAction(
+  assignmentId: string,
+  exerciseId: string,
+): Promise<{
+  plan?: InteractiveHomeworkPlan;
+  state?: HomeworkStoredState;
+  error?: string;
+}> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const id = String(exerciseId ?? "");
+  const exercise = row.plan.exercises.find((item) => item.id === id);
+  if (!exercise) return { error: "Упражнение не найдено" };
+  if (exercise.items.length < 2) return { error: "В упражнении недостаточно предложений" };
+
+  const plan: InteractiveHomeworkPlan = {
+    ...row.plan,
+    exercises: row.plan.exercises.map((item) => item.id === id
+      ? { ...item, items: shuffleIntoNewOrder(item.items) }
+      : item),
+  };
+  const state: HomeworkStoredState = {
+    ...(row.assignment.answers ?? {}),
+    [homeworkPlanOverrideKey()]: JSON.stringify(plan),
+  };
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  return { plan, state };
 }
 
 /** Проверить один автоматически оцениваемый ответ и сохранить все попытки. */

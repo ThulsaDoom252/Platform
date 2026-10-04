@@ -74,7 +74,7 @@ const fillExercise: HomeworkExercise = {
   title: "Vocabulary 1 — Fill in the gaps",
   instruction: "Complete each sentence with a word or phrase from the list.",
   kind: "fill",
-  wordBank: fillItems.map((item) => item.answer!).filter(Boolean),
+  wordBank: fillItems.map((item) => item.answer!).filter(Boolean).slice(1).concat(fillItems[0].answer!),
   items: fillItems,
 };
 
