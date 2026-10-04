@@ -5,6 +5,7 @@ import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
   addWordDeckToClassAction,
+  assignWordDeckHomeworkAction,
   deleteWordDeckActivityAction,
   listWordDeckActivitiesAction,
   listWordDeckStudentsAction,
@@ -53,9 +54,10 @@ const backgroundChoices: { id: Exclude<WordDeckBackground, "CUSTOM">; swatch: st
   { id: "SUNSET", swatch: "from-orange-950 via-orange-600 to-rose-800" },
 ];
 
-export function WordDeckStudio({ initialActivities, initialActivityId }: {
+export function WordDeckStudio({ initialActivities, initialActivityId, mode = "WORD_DECK" }: {
   initialActivities: WordDeckActivity[];
   initialActivityId?: string;
+  mode?: "WORD_DECK" | "SPELLING";
 }) {
   const { t } = useT();
   const [activities, setActivities] = useState(initialActivities);
@@ -69,6 +71,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
   const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
+  const spelling = mode === "SPELLING";
   const sortedActivities = useMemo(() => [...activities].sort((left, right) =>
     sort === "TITLE"
       ? left.title.localeCompare(right.title, undefined, { sensitivity: "base" })
@@ -76,8 +79,9 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
 
   const reload = async (openId?: string) => {
     const rows = await listWordDeckActivitiesAction();
-    setActivities(rows);
-    if (openId) setPreview(rows.find((row) => row.id === openId) ?? null);
+    const filtered = rows.filter((row) => (row.settings.gameType === "SPELLING") === spelling);
+    setActivities(filtered);
+    if (openId) setPreview(filtered.find((row) => row.id === openId) ?? null);
   };
 
   if (creating || editing) {
@@ -86,6 +90,9 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
         activity={editing}
         busy={busy}
         externalError={notice}
+        forcedGameType={spelling ? "SPELLING" : undefined}
+        heading={spelling ? (editing ? t.wordDeck.editSpellingPractice : t.wordDeck.newSpellingPractice) : undefined}
+        submitLabel={spelling ? t.wordDeck.saveSpellingPractice : undefined}
         onCancel={() => {
           setCreating(false);
           setEditing(null);
@@ -115,14 +122,14 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
     <section className="activity-panel-in relative flex flex-col gap-4 overflow-hidden rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
       <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-500/10 blur-3xl" />
       <div className="relative flex flex-wrap items-center gap-4">
-        <span className="flex h-14 w-14 shrink-0 -rotate-3 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-3xl text-white shadow-lg shadow-violet-500/20 transition-transform duration-200 hover:rotate-0 motion-reduce:transition-none">♠</span>
+        <span className={cn("flex h-14 w-14 shrink-0 -rotate-3 items-center justify-center rounded-2xl text-3xl text-white shadow-lg transition-transform duration-200 hover:rotate-0 motion-reduce:transition-none", spelling ? "bg-gradient-to-br from-cyan-500 to-blue-600 shadow-cyan-500/20" : "bg-gradient-to-br from-violet-500 to-indigo-600 shadow-violet-500/20")}>{spelling ? "🔤" : "♠"}</span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-black uppercase tracking-[.18em] text-violet-500">{t.wordDeck.eyebrow}</p>
-          <h2 className="mt-0.5 text-xl font-black text-content">{t.wordDeck.title}</h2>
-          <p className="mt-1 max-w-3xl text-sm text-muted">{t.wordDeck.subtitle}</p>
+          <p className={cn("text-[11px] font-black uppercase tracking-[.18em]", spelling ? "text-cyan-500" : "text-violet-500")}>{spelling ? t.wordDeck.spellingEyebrow : t.wordDeck.eyebrow}</p>
+          <h2 className="mt-0.5 text-xl font-black text-content">{spelling ? t.wordDeck.spellingTitle : t.wordDeck.title}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted">{spelling ? t.wordDeck.spellingSubtitle : t.wordDeck.subtitle}</p>
         </div>
         <button type="button" onClick={() => { setNotice(null); setCreating(true); }} className="flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 px-4 text-sm font-bold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none">
-          <IconPlus className="h-4 w-4" /> {t.wordDeck.newGame}
+          <IconPlus className="h-4 w-4" /> {spelling ? t.wordDeck.newSpellingPractice : t.wordDeck.newGame}
         </button>
       </div>
 
@@ -174,7 +181,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId }: {
           {sortedActivities.map((activity) => (
             <article key={activity.id} className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm">
               <button type="button" onClick={() => setPreview(activity)} className="group flex w-full items-center gap-3 text-left">
-                <span className="flex h-14 w-11 shrink-0 -rotate-3 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet-600 text-2xl text-white shadow-lg transition group-hover:rotate-0">♠</span>
+                <span className="flex h-14 w-11 shrink-0 -rotate-3 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-violet-600 text-2xl text-white shadow-lg transition group-hover:rotate-0">{spelling ? "🔤" : "♠"}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-black text-content">{activity.title}</span>
                   <span className="mt-0.5 block text-xs text-faint">
@@ -275,22 +282,39 @@ function AssignToClassDialog({ activity, onClose, onDone }: {
           {students === null && <p className="text-sm text-faint">{t.common.loading}</p>}
           {students?.length === 0 && <p className="text-sm text-faint">{t.wordDeck.noStudents}</p>}
           {students?.map((student) => (
-            <button
-              key={student.id}
-              type="button"
-              disabled={busy}
-              onClick={() => startBusy(async () => {
-                setError(null);
-                const result = await addWordDeckToClassAction(activity.id, student.id);
-                if (result.error) setError(result.error);
-                else onDone(result.existed
-                  ? fmt(t.wordDeck.alreadyInClass, { name: student.name })
-                  : fmt(t.wordDeck.addedToClass, { name: student.name }));
-              })}
-              className="flex h-11 items-center gap-2 rounded-xl bg-surface-2 px-3 text-left text-sm font-bold text-content transition hover:bg-accent-soft hover:text-accent disabled:opacity-50"
-            >
-              <IconUsers className="h-4 w-4" /> {student.name}
-            </button>
+            <div key={student.id} className="rounded-xl bg-surface-2 p-2 ring-1 ring-line">
+              <p className="px-1 text-sm font-black text-content">{student.name}</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => startBusy(async () => {
+                    setError(null);
+                    const result = await addWordDeckToClassAction(activity.id, student.id);
+                    if (result.error) setError(result.error);
+                    else onDone(result.existed
+                      ? fmt(t.wordDeck.alreadyInClass, { name: student.name })
+                      : fmt(t.wordDeck.addedToClass, { name: student.name }));
+                  })}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-accent-soft px-2 text-xs font-bold text-accent transition hover:bg-accent hover:text-white disabled:opacity-50"
+                >
+                  <IconUsers className="h-3.5 w-3.5" /> {t.wordDeck.toActivities}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => startBusy(async () => {
+                    setError(null);
+                    const result = await assignWordDeckHomeworkAction(activity.id, student.id);
+                    if (result.error) setError(result.error);
+                    else onDone(fmt(t.wordDeck.addedToHomework, { name: student.name }));
+                  })}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-2 text-xs font-bold text-white transition hover:bg-emerald-400 disabled:opacity-50"
+                >
+                  ✓ {t.wordDeck.toHomework}
+                </button>
+              </div>
+            </div>
           ))}
         </div>
         {error && <p className="mt-3 text-sm font-semibold text-rose-500">{error}</p>}
@@ -325,7 +349,7 @@ function initialNodeIds(activity: WordDeckActivity | null): string[] {
   return [...new Set(fromCards?.length ? fromCards : activity?.nodeId ? [activity.nodeId] : [])];
 }
 
-export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint }: {
+export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint, forcedGameType, includeSpellingType = false }: {
   activity: WordDeckActivity | null;
   busy: boolean;
   externalError: string | null;
@@ -334,8 +358,10 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
   heading?: string;
   submitLabel?: string;
   footerHint?: string;
+  forcedGameType?: "SPELLING";
+  includeSpellingType?: boolean;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const startingNodes = useMemo(() => initialNodeIds(activity), [activity]);
   const [customTitle, setCustomTitle] = useState<string | null>(activity?.title ?? null);
   const [trees, setTrees] = useState<CopyTree[] | null>(null);
@@ -350,7 +376,14 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
   const [autoSelectNodes] = useState(() => new Set<string>());
   const [activeGroup, setActiveGroup] = useState(0);
   const [loadingWords, setLoadingWords] = useState(startingNodes.length > 0);
-  const [settings, setSettings] = useState<WordDeckSettings>(normalizeWordDeckSettings(activity?.settings ?? DEFAULT_WORD_DECK_SETTINGS));
+  const [settings, setSettings] = useState<WordDeckSettings>(() => normalizeWordDeckSettings({
+    ...(activity?.settings ?? DEFAULT_WORD_DECK_SETTINGS),
+    ...(forcedGameType ? { gameType: forcedGameType } : {}),
+  }));
+  const [manualWords, setManualWords] = useState(() => (activity?.cards ?? [])
+    .filter((card) => !card.nodeId)
+    .map((card) => card.word)
+    .join("\n"));
   const [repeatsInput, setRepeatsInput] = useState(() => String(settings.repeats));
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -445,8 +478,11 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
       .map((word) => word.phraseId),
   );
   const selectedEligible = [...selected].filter((id) => eligibleIds.has(id));
-  const total = selectedEligible.length * (repeatsValid ? parsedRepeats : 0);
-  const enough = selectedEligible.length >= MIN_WORD_DECK_WORDS;
+  const manualList = [...new Set(manualWords.split(/[\n,;]+/).map((word) => word.trim()).filter(Boolean))];
+  const sourceCount = selectedEligible.length + (settings.gameType === "SPELLING" ? manualList.length : 0);
+  const total = sourceCount * (repeatsValid ? parsedRepeats : 0);
+  const minimum = settings.gameType === "SPELLING" ? 1 : MIN_WORD_DECK_WORDS;
+  const enough = sourceCount >= minimum;
 
   const toggleNode = (id: string) => {
     if (nodeIds.includes(id)) autoSelectNodes.delete(id);
@@ -524,14 +560,14 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-5">
-          <div>
+          {!forcedGameType && <div>
             <p className="text-xs font-bold text-muted">{t.wordDeck.gameType}</p>
-            <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
-              {(["WORDS", "GUESS_DESCRIPTION"] as const).map((gameType) => (
+            <div className={cn("mt-1.5 grid gap-2", includeSpellingType ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
+              {(["WORDS", "GUESS_DESCRIPTION", ...(includeSpellingType ? ["SPELLING" as const] : [])] as const).map((gameType) => (
                 <button
                   key={gameType}
                   type="button"
-                  onClick={() => setSettings((value) => ({ ...value, gameType }))}
+                  onClick={() => setSettings((value) => ({ ...value, gameType, ...(gameType === "SPELLING" ? { alternate: false } : {}) }))}
                   className={cn(
                     "rounded-2xl border p-3 text-left transition",
                     settings.gameType === gameType
@@ -540,15 +576,15 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
                   )}
                 >
                   <span className="block text-sm font-black">
-                    {gameType === "WORDS" ? t.wordDeck.wordsGame : t.wordDeck.guessByDescription}
+                    {gameType === "WORDS" ? t.wordDeck.wordsGame : gameType === "SPELLING" ? t.wordDeck.spellingTitle : t.wordDeck.guessByDescription}
                   </span>
                   <span className="mt-0.5 block text-[11px] leading-relaxed">
-                    {gameType === "WORDS" ? t.wordDeck.wordsGameHint : t.wordDeck.guessByDescriptionHint}
+                    {gameType === "WORDS" ? t.wordDeck.wordsGameHint : gameType === "SPELLING" ? t.wordDeck.spellingSubtitle : t.wordDeck.guessByDescriptionHint}
                   </span>
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           <label>
             <span className="text-xs font-bold text-muted">{t.wordDeck.gameTitle}</span>
@@ -556,6 +592,21 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
               setCustomTitle(event.target.value);
             }} className={`${input} mt-1.5`} placeholder={t.wordDeck.titlePlaceholder} />
           </label>
+
+          {settings.gameType === "SPELLING" && (
+            <label className="rounded-2xl border border-cyan-500/25 bg-cyan-500/5 p-4">
+              <span className="text-sm font-black text-content">{t.wordDeck.manualWords}</span>
+              <span className="mt-1 block text-xs text-faint">{t.wordDeck.manualWordsHint}</span>
+              <textarea
+                value={manualWords}
+                onChange={(event) => setManualWords(event.target.value)}
+                rows={4}
+                className="mt-3 w-full resize-y rounded-xl border border-line bg-surface px-3.5 py-3 text-sm font-semibold text-content outline-none focus:border-accent"
+                placeholder={t.wordDeck.manualWordsPlaceholder}
+              />
+              {manualList.length > 0 && <span className="mt-2 block text-xs font-bold text-cyan-600 dark:text-cyan-300">{fmt(t.wordDeck.manualWordsCount, { n: manualList.length })}</span>}
+            </label>
+          )}
 
           <div>
             <p className="text-xs font-bold text-muted">{t.wordDeck.chooseSource}</p>
@@ -673,7 +724,22 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
           )}
 
           <div className="rounded-2xl border border-line p-4">
-            {settings.gameType === "GUESS_DESCRIPTION" ? (
+            {settings.gameType === "SPELLING" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {([
+                  ["autoPronounce", t.wordDeck.autoPronounce, t.wordDeck.autoPronounceHint],
+                  ["allowUsAudio", t.wordDeck.allowUsAudio, t.wordDeck.allowUsAudioHint],
+                  ["allowUkAudio", t.wordDeck.allowUkAudio, t.wordDeck.allowUkAudioHint],
+                  ["showTips", t.wordDeck.showTips, t.wordDeck.showTipsHint],
+                  ["autoPronounceUk", t.wordDeck.autoPronounceUk, t.wordDeck.autoPronounceUkHint],
+                ] as const).map(([key, label, hint]) => (
+                  <label key={key} className="flex cursor-pointer items-start gap-3 rounded-xl bg-surface-2 p-3">
+                    <input type="checkbox" checked={settings[key]} onChange={(event) => setSettings((value) => ({ ...value, [key]: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
+                    <span><span className="block text-sm font-black text-content">{label}</span><span className="block text-xs text-faint">{hint}</span></span>
+                  </label>
+                ))}
+              </div>
+            ) : settings.gameType === "GUESS_DESCRIPTION" ? (
               <div className="mb-4 grid gap-4 border-b border-line pb-4 sm:grid-cols-2">
                 <label className="flex cursor-pointer items-start gap-3">
                   <input type="checkbox" checked={settings.descriptionIcons} onChange={(event) => setSettings((value) => ({ ...value, descriptionIcons: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
@@ -690,11 +756,11 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
                 <span><span className="block text-sm font-black text-content">{t.wordDeck.showIcons}</span><span className="block text-xs text-faint">{t.wordDeck.showIconsHint}</span></span>
               </label>
             )}
-            <label className="flex cursor-pointer items-start gap-3">
+            {settings.gameType !== "SPELLING" && <label className="flex cursor-pointer items-start gap-3">
               <input type="checkbox" checked={settings.alternate} onChange={(event) => setSettings((value) => ({ ...value, alternate: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />
               <span><span className="block text-sm font-black text-content">{t.wordDeck.alternate}</span><span className="block text-xs text-faint">{t.wordDeck.alternateHint}</span></span>
-            </label>
-            {settings.alternate && (
+            </label>}
+            {settings.gameType !== "SPELLING" && settings.alternate && (
               <div className="mt-4">
                 <div className="flex justify-between text-xs font-bold text-muted"><span>{t.wordDeck.forTeacher}</span><span>{t.wordDeck.forStudent}: {settings.studentPercent}%</span></div>
                 <input type="range" min={0} max={100} step={5} value={settings.studentPercent} onChange={(event) => setSettings((value) => ({ ...value, studentPercent: Number(event.target.value) }))} className="mt-2 w-full accent-[var(--accent)]" />
@@ -725,20 +791,28 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
             <p className="text-xs font-bold text-muted">{t.wordDeck.summary}</p>
             <p className="mt-2 text-3xl font-black text-content">{total}</p>
             <p className="text-xs text-faint">{t.wordDeck.cardsShort}</p>
-            {!enough && <p className="mt-2 text-xs font-bold text-amber-600">{fmt(t.wordDeck.minimumWords, { n: MIN_WORD_DECK_WORDS })}</p>}
+            {!enough && <p className="mt-2 text-xs font-bold text-amber-600">{fmt(t.wordDeck.minimumWords, { n: minimum })}</p>}
           </div>
         </aside>
       </div>
 
       {(error || externalError) && <p className="mt-4 text-sm font-semibold text-rose-500">{error || externalError}</p>}
       <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5">
-        <button type="button" disabled={busy || !title.trim() || nodeIds.length === 0 || !enough} onClick={() => {
+        <button type="button" disabled={busy || !title.trim() || !enough} onClick={() => {
           if (!repeatsValid) {
             setError(t.wordDeck.repeatsRequired);
             return;
           }
           setError(null);
-          onSave({ id: activity?.id, title, nodeIds, phraseIds: selectedEligible, settings: { ...settings, repeats: parsedRepeats } }, image);
+          onSave({
+            id: activity?.id,
+            title,
+            nodeIds,
+            phraseIds: selectedEligible,
+            manualWords: settings.gameType === "SPELLING" ? manualList : [],
+            translationLang: locale === "uk" ? "UK" : "RU",
+            settings: { ...settings, repeats: parsedRepeats },
+          }, image);
         }} className="h-11 rounded-xl bg-accent px-5 text-sm font-black text-white transition hover:opacity-90 disabled:opacity-40">
           {busy ? t.wordDeck.saving : (submitLabel ?? t.wordDeck.save)}
         </button>

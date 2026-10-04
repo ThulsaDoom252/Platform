@@ -56,6 +56,8 @@ export function DockablePanel({
   onDock,
   onMove,
   onResize,
+  allowWidthToggle = false,
+  widthToggleLabel,
   children,
 }: {
   title: string;
@@ -68,6 +70,8 @@ export function DockablePanel({
   onDock: () => void;
   onMove: (x: number, y: number) => void;
   onResize: (width: number, height: number) => void;
+  allowWidthToggle?: boolean;
+  widthToggleLabel?: string;
   children: ReactNode;
 }) {
   const panel = useRef<HTMLElement>(null);
@@ -260,6 +264,25 @@ export function DockablePanel({
         >
           {placement.floating ? "↩" : "↗"}
         </button>
+        {placement.floating && allowWidthToggle && (
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              const nextWidth = sizeRef.current.width > 560
+                ? DEFAULT_CLASS_PANEL_LAYOUT.notes.width
+                : Math.min(760, Math.max(280, window.innerWidth - positionRef.current.x - 12));
+              sizeRef.current = { ...sizeRef.current, width: nextWidth };
+              setSize(sizeRef.current);
+              onResize(nextWidth, sizeRef.current.height);
+            }}
+            title={widthToggleLabel ?? resizeLabel}
+            aria-label={widthToggleLabel ?? resizeLabel}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base font-bold text-muted transition hover:bg-surface-2 hover:text-accent"
+          >
+            ⇔
+          </button>
+        )}
       </header>
       <div className="min-h-0 flex-1">{children}</div>
       {placement.floating && (

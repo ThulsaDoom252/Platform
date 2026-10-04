@@ -1,10 +1,12 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   activityGames,
+  classLessonNotes,
   homework,
   lessonUnits,
   materialNodes,
@@ -15,8 +17,7 @@ import {
 import { getSession } from "@/lib/session";
 import {
   DEFAULT_WORD_DECK_SETTINGS,
-  MIN_WORD_DECK_WORDS,
-  hasEnoughWordDeckWords,
+  minimumWordDeckWords,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
   playableWordDeckCards,
@@ -24,6 +25,7 @@ import {
   type WordDeckSettings,
   type WordDeckSourceCard,
 } from "@/lib/word-deck";
+import { enrichSpellingMistake } from "@/lib/spelling-mistake";
 import {
   removeStoredImage,
   storeUploadedImage,
@@ -159,6 +161,11 @@ async function wordDeckGroups(
       word: materialPhrases.phrase,
       icon: materialPhrases.icon,
       description: materialPhrases.description,
+      translation: materialPhrases.translation,
+      transcriptionUs: materialPhrases.transcriptionUs,
+      transcriptionUk: materialPhrases.transcriptionUk,
+      tip: materialPhrases.note,
+      examples: materialPhrases.examples,
       kind: materialPhrases.kind,
     })
     .from(materialPhrases)
@@ -176,6 +183,11 @@ async function wordDeckGroups(
       word: row.word,
       icon: row.icon,
       description: row.description,
+      translation: row.translation,
+      transcriptionUs: row.transcriptionUs,
+      transcriptionUk: row.transcriptionUk,
+      tip: row.tip,
+      examples: row.examples,
       nodeId: node.id,
       vocabName: node.name,
       vocabIcon: node.icon,
@@ -309,8 +321,10 @@ export async function addWordDeckToClassAction(
     return { error: "Это пресет другой игры" };
   }
   if (!student) return { error: "Ученик не найден" };
-  if (!hasEnoughWordDeckWords(activity.cards.length)) {
-    return { error: `Для колоды нужно минимум ${MIN_WORD_DECK_WORDS} слова` };
+  const settings = normalizeWordDeckSettings(activity.settings);
+  const minimum = minimumWordDeckWords(settings);
+  if (activity.cards.length < minimum) {
+    return { error: `Для этой игры нужно минимум ${minimum} ${minimum === 1 ? "слово" : "слова"}` };
   }
 
   const [existing] = await db
@@ -333,7 +347,7 @@ export async function addWordDeckToClassAction(
       kind: "WORD_DECK",
       templateId,
       wordDeck: {
-        settings: normalizeWordDeckSettings(activity.settings),
+        settings,
         backgroundImageUrl: activity.backgroundImageUrl,
         cards: activity.cards,
       },
@@ -350,6 +364,189 @@ export async function addWordDeckToClassAction(
     .returning({ id: activityGames.id });
 
   revalidatePath("/teacher/class");
+  return { id: created?.id };
+}
+
+/** Assign a saved game as an independent student-controlled homework snapshot. */
+export async function assignWordDeckHomeworkAction(
+  activityId: string,
+  studentId: string,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const templateId = String(activityId ?? "");
+  const targetStudent = String(studentId ?? "");
+  const [[activity], [student]] = await Promise.all([
+    db.select().from(wordDeckActivities).where(and(
+      eq(wordDeckActivities.id, templateId),
+      eq(wordDeckActivities.authorId, session.userId),
+    )).limit(1),
+    db.select({ id: users.id }).from(users).where(and(
+      eq(users.id, targetStudent),
+      eq(users.role, "STUDENT"),
+    )).limit(1),
+  ]);
+  if (!activity) return { error: "Игра не найдена" };
+  if (!student) return { error: "Ученик не найден" };
+  const settings = normalizeWordDeckSettings(activity.settings);
+  if (settings.gameType === "GUESS_PICTURE") return { error: "Это пресет другой игры" };
+  if (activity.cards.length < minimumWordDeckWords(settings)) return { error: "В игре недостаточно слов" };
+
+  const [created] = await db.insert(activityGames).values({
+    studentId: targetStudent,
+    kind: "WORD_DECK_HOMEWORK",
+    templateId,
+    wordDeck: {
+      settings,
+      backgroundImageUrl: activity.backgroundImageUrl,
+      cards: activity.cards,
+    },
+    mode: "WORD_DECK",
+    title: activity.title,
+    status: "LOBBY",
+    cards: [],
+    verdicts: [],
+    timings: [],
+    paused: true,
+    pausedLeftMs: 0,
+    deadline: null,
+  }).returning({ id: activityGames.id });
+  revalidatePath("/student/homework");
+  return { id: created?.id };
+}
+
+export type WordDeckHomework = ClassWordDeckActivity & {
+  status: "LOBBY" | "RUNNING" | "DONE";
+};
+
+function homeworkWordDeckOf(row: typeof activityGames.$inferSelect): WordDeckHomework | null {
+  const activity = classWordDeckOf(row);
+  if (!activity) return null;
+  return {
+    ...activity,
+    status: row.status === "DONE" ? "DONE" : row.status === "RUNNING" ? "RUNNING" : "LOBBY",
+  };
+}
+
+export async function myWordDeckHomeworkAction(): Promise<WordDeckHomework[]> {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") return [];
+  const rows = await db.select().from(activityGames).where(and(
+    eq(activityGames.studentId, session.userId),
+    eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+  )).orderBy(desc(activityGames.createdAt));
+  return rows.flatMap((row) => {
+    const item = homeworkWordDeckOf(row);
+    return item ? [item] : [];
+  });
+}
+
+export async function wordDeckHomeworkAction(id: string): Promise<WordDeckHomework | null> {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") return null;
+  const [row] = await db.select().from(activityGames).where(and(
+    eq(activityGames.id, String(id ?? "")),
+    eq(activityGames.studentId, session.userId),
+    eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+  )).limit(1);
+  return row ? homeworkWordDeckOf(row) : null;
+}
+
+/** Students can only update the order/progress of their own assigned snapshot. */
+export async function saveWordDeckHomeworkStateAction(
+  gameId: string,
+  input: WordDeckLiveState,
+): Promise<{ state?: WordDeckLiveState; error?: string }> {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") return { error: "Войди как ученик" };
+  const [row] = await db.select().from(activityGames).where(and(
+    eq(activityGames.id, String(gameId ?? "")),
+    eq(activityGames.studentId, session.userId),
+    eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+  )).limit(1);
+  if (!row?.wordDeck) return { error: "Домашняя игра не найдена" };
+  const normalized = normalizeWordDeckLiveState(row.wordDeck.cards, row.wordDeck.settings, input);
+  if (!normalized) return { error: "Состояние игры повреждено" };
+  const state = { ...normalized, updatedAt: new Date().toISOString() };
+  const settings = normalizeWordDeckSettings(row.wordDeck.settings);
+  const needsReveal = settings.gameType === "GUESS_DESCRIPTION" || settings.gameType === "GUESS_PICTURE";
+  const finished = state.at >= state.deck.length - 1 && state.at >= 0 && (!needsReveal || state.faceUp);
+  await db.update(activityGames).set({
+    wordDeck: { ...row.wordDeck, liveState: state },
+    status: finished ? "DONE" : state.at >= 0 ? "RUNNING" : "LOBBY",
+    updatedAt: new Date(),
+  }).where(eq(activityGames.id, row.id));
+  revalidatePath("/student/homework");
+  return { state };
+}
+
+export type AssignSpellingNotesHomeworkInput = {
+  noteIds: string[];
+  additionalWords?: string[];
+  title?: string;
+  settings?: Partial<WordDeckSettings>;
+};
+
+/** Build pronunciation homework directly from the current student's Spelling notes. */
+export async function assignSpellingNotesHomeworkAction(
+  input: AssignSpellingNotesHomeworkInput,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const [teacher] = await db.select({ studentId: users.classWithId }).from(users)
+    .where(eq(users.id, session.userId)).limit(1);
+  if (!teacher?.studentId) return { error: "Сначала выбери ученика в классе" };
+  const requested = [...new Set((input.noteIds ?? []).map(String).filter(Boolean))].slice(0, 100);
+  const extra = [...new Set((input.additionalWords ?? [])
+    .map((word) => String(word ?? "").trim().replace(/\s+/g, " ").slice(0, 300))
+    .filter(Boolean))].slice(0, 100);
+  const notes = requested.length === 0 ? [] : await db.select().from(classLessonNotes).where(and(
+    inArray(classLessonNotes.id, requested),
+    eq(classLessonNotes.teacherId, session.userId),
+    eq(classLessonNotes.studentId, teacher.studentId),
+    eq(classLessonNotes.kind, "SPELLING"),
+  ));
+  if (notes.length !== requested.length) return { error: "Одна из записей больше недоступна" };
+  if (notes.length === 0 && extra.length === 0) return { error: "Выбери хотя бы одно слово" };
+
+  let extraCards: WordDeckSourceCard[] = [];
+  try {
+    const lang = notes[0]?.translationLang ?? "RU";
+    const details = await Promise.all(extra.map((word) => enrichSpellingMistake(word, lang)));
+    extraCards = details.map((card) => ({
+      phraseId: `manual:${randomUUID()}`,
+      word: card.english,
+      translation: card.translation,
+      icon: card.icon,
+      examples: card.examples,
+      tip: card.partOfSpeech,
+    }));
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Не удалось подготовить слова" };
+  }
+  const noteCards: WordDeckSourceCard[] = notes.map((note) => ({
+    phraseId: `note:${note.id}`,
+    word: note.body,
+    translation: note.translation,
+    icon: note.icon,
+    examples: note.examples ?? [],
+    tip: note.partOfSpeech,
+  }));
+  const unique = new Map<string, WordDeckSourceCard>();
+  [...noteCards, ...extraCards].forEach((card) => unique.set(card.word.toLocaleLowerCase("en"), card));
+  const settings = normalizeWordDeckSettings({
+    ...input.settings,
+    gameType: "SPELLING",
+    repeats: input.settings?.repeats ?? 1,
+  });
+  const [created] = await db.insert(activityGames).values({
+    studentId: teacher.studentId,
+    kind: "WORD_DECK_HOMEWORK",
+    wordDeck: { settings, backgroundImageUrl: null, cards: [...unique.values()] },
+    mode: "WORD_DECK",
+    title: String(input.title ?? "Spelling Practice").trim().slice(0, 120) || "Spelling Practice",
+    status: "LOBBY",
+    cards: [], verdicts: [], timings: [], paused: true, pausedLeftMs: 0, deadline: null,
+  }).returning({ id: activityGames.id });
+  revalidatePath("/student/homework");
   return { id: created?.id };
 }
 
@@ -497,6 +694,10 @@ export type SaveWordDeckInput = {
   /** Старые клиенты и сохранённые формы с одним словником. */
   nodeId?: string;
   phraseIds?: string[];
+  /** English words typed directly in Spelling Practice. */
+  manualWords?: string[];
+  /** Interface language used for automatically generated translations. */
+  translationLang?: "RU" | "UK";
   settings?: Partial<WordDeckSettings>;
 };
 
@@ -513,8 +714,13 @@ export async function saveWordDeckActivityAction(
         .filter(Boolean),
     ),
   ];
+  const manualWords = [...new Set((input?.manualWords ?? [])
+    .map((word) => String(word ?? "").trim().replace(/\s+/g, " ").slice(0, 300))
+    .filter(Boolean))].slice(0, 100);
   if (!title) return { error: "Назови игру" };
-  if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
+  if (nodeIds.length === 0 && manualWords.length === 0) {
+    return { error: "Выбери словник или добавь слова вручную" };
+  }
   const requestedRepeats = input?.settings?.repeats;
   if (!Number.isInteger(requestedRepeats) || Number(requestedRepeats) < 1 || Number(requestedRepeats) > 20) {
     return { error: "Укажи количество повторов от 1 до 20" };
@@ -528,14 +734,35 @@ export async function saveWordDeckActivityAction(
   const picked = Array.isArray(input?.phraseIds)
     ? new Set(input.phraseIds.map(String))
     : null;
-  const cards = picked ? words.filter((word) => picked.has(word.phraseId)) : words;
   const normalized = normalizeWordDeckSettings(input?.settings ?? DEFAULT_WORD_DECK_SETTINGS);
   const settings = normalized.gameType === "GUESS_PICTURE"
     ? { ...normalized, gameType: "WORDS" as const }
     : normalized;
-  const playableCards = playableWordDeckCards(cards, settings);
-  if (!hasEnoughWordDeckWords(playableCards.length)) {
-    return { error: `Для колоды нужно минимум ${MIN_WORD_DECK_WORDS} слова` };
+  if (manualWords.length > 0 && settings.gameType !== "SPELLING") {
+    return { error: "Ручной ввод доступен только в Spelling Practice" };
+  }
+  const selectedCards = picked ? words.filter((word) => picked.has(word.phraseId)) : words;
+  let manualCards: WordDeckSourceCard[] = [];
+  if (manualWords.length > 0) {
+    try {
+      const translationLang = input?.translationLang === "UK" ? "UK" : "RU";
+      const details = await Promise.all(manualWords.map((word) => enrichSpellingMistake(word, translationLang)));
+      manualCards = details.map((card) => ({
+        phraseId: `manual:${randomUUID()}`,
+        word: card.english,
+        icon: card.icon,
+        translation: card.translation,
+        examples: card.examples,
+        tip: card.partOfSpeech,
+      }));
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Не удалось подготовить слова" };
+    }
+  }
+  const playableCards = playableWordDeckCards([...selectedCards, ...manualCards], settings);
+  const minimum = minimumWordDeckWords(settings);
+  if (playableCards.length < minimum) {
+    return { error: `Для этой игры нужно минимум ${minimum} ${minimum === 1 ? "слово" : "слова"}` };
   }
 
   const id = String(input?.id ?? "");

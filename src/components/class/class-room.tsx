@@ -1048,6 +1048,8 @@ export function ClassRoom({
               detachLabel={t.classRoom.detachPanel}
               dockLabel={t.classRoom.dockPanel}
               resizeLabel={t.classRoom.resizePanel}
+              allowWidthToggle
+              widthToggleLabel={t.classRoom.notesWide}
               onDetach={() => detachPanel("notes")}
               onDock={() => dockPanel("notes")}
               onMove={(x, y) => movePanel("notes", x, y)}

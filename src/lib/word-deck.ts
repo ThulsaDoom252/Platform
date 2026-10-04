@@ -1,7 +1,7 @@
 /** Чистая логика активности «Колода слов». */
 
 export type WordDeckTimerMode = "NONE" | "GAME" | "CARD";
-export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE";
+export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE" | "SPELLING";
 export type GuessPictureMode = "PICTURE" | "TRANSLATION" | "MIXED";
 export type WordDeckOwner = "TEACHER" | "STUDENT" | null;
 export type WordDeckVerdict = "RIGHT" | "WRONG" | null;
@@ -25,6 +25,11 @@ export type WordDeckSourceCard = {
   /** Used by saved Guess by picture presets. */
   translation?: string | null;
   imageUrl?: string | null;
+  promptFace?: "PICTURE" | "TRANSLATION";
+  transcriptionUs?: string | null;
+  transcriptionUk?: string | null;
+  tip?: string | null;
+  examples?: { en: string; tr: string }[];
 };
 
 export const MIN_WORD_DECK_WORDS = 4;
@@ -79,6 +84,12 @@ export type WordDeckSettings = {
   guessMode: GuessPictureMode;
   shuffleWords: boolean;
   shuffleDecks: boolean;
+  /** Spelling Practice: pronunciation and hint controls. */
+  autoPronounce: boolean;
+  allowUsAudio: boolean;
+  allowUkAudio: boolean;
+  showTips: boolean;
+  autoPronounceUk: boolean;
 };
 
 export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
@@ -97,6 +108,11 @@ export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
   guessMode: "PICTURE",
   shuffleWords: true,
   shuffleDecks: false,
+  autoPronounce: true,
+  allowUsAudio: true,
+  allowUkAudio: false,
+  showTips: true,
+  autoPronounceUk: false,
 };
 
 const clamp = (value: unknown, min: number, max: number, fallback: number) => {
@@ -120,7 +136,7 @@ export function normalizeWordDeckSettings(
   ];
   return {
     gameType:
-      value?.gameType === "GUESS_DESCRIPTION" || value?.gameType === "GUESS_PICTURE"
+      value?.gameType === "GUESS_DESCRIPTION" || value?.gameType === "GUESS_PICTURE" || value?.gameType === "SPELLING"
         ? value.gameType
         : "WORDS",
     timerMode,
@@ -142,7 +158,18 @@ export function normalizeWordDeckSettings(
         : "PICTURE",
     shuffleWords: value?.shuffleWords !== false,
     shuffleDecks: value?.shuffleDecks === true,
+    autoPronounce: value?.autoPronounce !== false,
+    allowUsAudio: value?.allowUsAudio !== false,
+    allowUkAudio: value?.allowUkAudio === true,
+    showTips: value?.showTips !== false,
+    autoPronounceUk: value?.autoPronounceUk === true,
   };
+}
+
+export function minimumWordDeckWords(rawSettings: Partial<WordDeckSettings>): number {
+  return normalizeWordDeckSettings(rawSettings).gameType === "SPELLING"
+    ? 1
+    : MIN_WORD_DECK_WORDS;
 }
 
 /** В игре по описанию слова без описания не могут попасть на стол. */

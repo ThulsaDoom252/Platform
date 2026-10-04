@@ -362,6 +362,54 @@ export async function addGuessPicturePresetToClassAction(
   return { id: created?.id };
 }
 
+/** Assign the saved picture game as a self-controlled homework snapshot. */
+export async function assignGuessPicturePresetHomeworkAction(
+  presetId: string,
+  studentId: string,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const targetPreset = String(presetId ?? "");
+  const targetStudent = String(studentId ?? "");
+  const [[row], [student]] = await Promise.all([
+    db.select().from(wordDeckActivities).where(and(
+      eq(wordDeckActivities.id, targetPreset),
+      eq(wordDeckActivities.authorId, session.userId),
+    )).limit(1),
+    db.select({ id: users.id }).from(users).where(and(
+      eq(users.id, targetStudent),
+      eq(users.role, "STUDENT"),
+    )).limit(1),
+  ]);
+  const preset = row ? guessPresetOf(row) : null;
+  if (!preset) return { error: "Пресет не найден" };
+  if (!student) return { error: "Ученик не найден" };
+  const homeworkCards = preset.mode === "MIXED"
+    ? row.cards.flatMap((card) => [
+        { ...card, phraseId: `${card.phraseId}:picture`, promptFace: "PICTURE" as const },
+        { ...card, phraseId: `${card.phraseId}:translation`, promptFace: "TRANSLATION" as const },
+      ])
+    : row.cards.map((card) => ({
+        ...card,
+        promptFace: preset.mode === "TRANSLATION" ? "TRANSLATION" as const : "PICTURE" as const,
+      }));
+  const [created] = await db.insert(activityGames).values({
+    studentId: targetStudent,
+    kind: "WORD_DECK_HOMEWORK",
+    templateId: targetPreset,
+    wordDeck: {
+      settings: normalizeWordDeckSettings(row.settings),
+      backgroundImageUrl: row.backgroundImageUrl,
+      cards: homeworkCards,
+    },
+    mode: "WORD_DECK",
+    title: preset.title,
+    status: "LOBBY",
+    cards: [], verdicts: [], timings: [], paused: true, pausedLeftMs: 0, deadline: null,
+  }).returning({ id: activityGames.id });
+  revalidatePath("/student/homework");
+  return { id: created?.id };
+}
+
 export async function deleteGuessPicturePresetAction(id: string): Promise<{ error?: string }> {
   const session = await requireTeacher();
   const target = String(id ?? "");

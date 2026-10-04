@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
@@ -15,6 +16,7 @@ import {
 import {
   classWordDeckLiveStateAction,
   saveClassWordDeckLiveStateAction,
+  saveWordDeckHomeworkStateAction,
 } from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
 
@@ -62,28 +64,30 @@ function beep(kind: "deal" | "shuffle") {
   window.setTimeout(() => void audio.close(), 450);
 }
 
-function readEnglish(text: string) {
+function readEnglish(text: string, variant: "US" | "UK" = "US") {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
   const clean = text.trim();
   if (!clean) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(clean);
-  utterance.lang = "en-US";
+  utterance.lang = variant === "UK" ? "en-GB" : "en-US";
   utterance.rate = 0.92;
   const voice = window.speechSynthesis
     .getVoices()
-    .find((candidate) => candidate.lang.toLowerCase().startsWith("en-us"));
+    .find((candidate) => candidate.lang.toLowerCase().startsWith(variant === "UK" ? "en-gb" : "en-us"));
   if (voice) utterance.voice = voice;
   window.speechSynthesis.speak(utterance);
 }
 
-export function WordDeckBoard({ activity, compact = false, live = false, observer = false }: {
+export function WordDeckBoard({ activity, compact = false, live = false, observer = false, homework = false }: {
   activity: WordDeckPlayable;
   compact?: boolean;
   /** Публиковать действия учителя в живой класс. */
   live?: boolean;
   /** Ученик видит общий стол, но не может им управлять. */
   observer?: boolean;
+  /** Student owns controls and progress is saved into the assigned homework snapshot. */
+  homework?: boolean;
 }) {
   const { t } = useT();
   const settings = useMemo(() => normalizeWordDeckSettings(activity.settings), [activity.settings]);
@@ -107,7 +111,10 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
   const [verdict, setVerdict] = useState(saved?.verdict ?? null);
   const [feedback, setFeedback] = useState(saved?.feedback ?? null);
   const started = at >= 0;
-  const finished = at >= deck.length - 1 && started;
+  const descriptionGame = settings.gameType === "GUESS_DESCRIPTION";
+  const spellingGame = settings.gameType === "SPELLING";
+  const pictureGame = settings.gameType === "GUESS_PICTURE";
+  const finished = at >= deck.length - 1 && started && ((!descriptionGame && !pictureGame) || faceUp);
   const canDeal = canDealNextWordDeckCard({
     cardCount: deck.length,
     at,
@@ -115,7 +122,6 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
     observer,
   });
   const current = deck[at] ?? null;
-  const descriptionGame = settings.gameType === "GUESS_DESCRIPTION";
   const flipTimer = useRef<number | null>(null);
   const feedbackTimer = useRef<number | null>(null);
   const spokenCard = useRef("");
@@ -125,17 +131,17 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
   const deal = useCallback(() => {
     if (!canDeal) return;
     if (sound) beep("deal");
-    setFaceUp(false);
+    setFaceUp(spellingGame);
     setExpired(false);
     setVerdict(null);
     setFeedback(null);
     setAt((value) => value + 1);
     if (settings.timerMode === "CARD") setTime(settings.cardSeconds);
     if (flipTimer.current) window.clearTimeout(flipTimer.current);
-    if (!descriptionGame) {
+    if (!descriptionGame && !spellingGame && !pictureGame) {
       flipTimer.current = window.setTimeout(() => setFaceUp(true), 260);
     }
-  }, [canDeal, descriptionGame, settings.cardSeconds, settings.timerMode, sound]);
+  }, [canDeal, descriptionGame, pictureGame, settings.cardSeconds, settings.timerMode, sound, spellingGame]);
 
   useEffect(() => () => {
     if (flipTimer.current) window.clearTimeout(flipTimer.current);
@@ -153,10 +159,11 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
       if (time <= 1) {
         setExpired(true);
         if (descriptionGame) setFeedback("TIME_UP");
+        if (pictureGame) setFaceUp(true);
       }
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [descriptionGame, expired, observer, settings.timerMode, started, time, verdict]);
+  }, [descriptionGame, expired, observer, pictureGame, settings.timerMode, started, time, verdict]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -180,6 +187,16 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
     spokenCard.current = current.instanceId;
     readEnglish(current.description);
   }, [current?.description, current?.instanceId, descriptionGame, readDescriptions, started]);
+
+  useEffect(() => {
+    if (!spellingGame || !started || !current?.word) return;
+    if (!settings.autoPronounce && !settings.autoPronounceUk) return;
+    const timer = window.setTimeout(() => {
+      if (settings.autoPronounceUk) readEnglish(current.word, "UK");
+      else if (settings.autoPronounce && settings.allowUsAudio) readEnglish(current.word, "US");
+    }, 140);
+    return () => window.clearTimeout(timer);
+  }, [current?.instanceId, current?.word, settings.allowUsAudio, settings.autoPronounce, settings.autoPronounceUk, spellingGame, started]);
 
   useEffect(() => {
     if (!observer) return;
@@ -235,6 +252,20 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
     return () => window.clearTimeout(timer);
   }, [activity.id, at, deck, expired, faceUp, feedback, live, observer, readDescriptions, sound, time, verdict]);
 
+  useEffect(() => {
+    if (!homework || observer) return;
+    const state: WordDeckLiveState = {
+      deck, at, faceUp, sound, time, expired, readDescriptions, verdict, feedback,
+      updatedAt: new Date().toISOString(),
+    };
+    const timer = window.setTimeout(() => {
+      publishQueue.current = publishQueue.current.then(async () => {
+        await saveWordDeckHomeworkStateAction(activity.id, state);
+      });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [activity.id, at, deck, expired, faceUp, feedback, homework, observer, readDescriptions, sound, time, verdict]);
+
   const shuffle = () => {
     if (observer) return;
     if (sound) beep("shuffle");
@@ -244,7 +275,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
   const previous = () => {
     if (observer || at <= 0) return;
     setAt((value) => value - 1);
-    setFaceUp(!descriptionGame);
+    setFaceUp(!descriptionGame && !pictureGame);
     setExpired(false);
     setVerdict(null);
     setFeedback(null);
@@ -270,7 +301,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
   };
 
   const showAnswer = () => {
-    if (observer || !descriptionGame || !started) return;
+    if (observer || (!descriptionGame && !pictureGame) || !started) return;
     setFaceUp(true);
   };
 
@@ -292,7 +323,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-black uppercase tracking-[.22em] text-white/55">
-            {t.wordDeck.eyebrow}
+            {spellingGame ? t.wordDeck.spellingEyebrow : t.wordDeck.eyebrow}
           </p>
           <h3 className="truncate text-xl font-black sm:text-2xl">{activity.title}</h3>
         </div>
@@ -339,7 +370,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
               />
             ))}
             <span className="absolute inset-0 flex flex-col items-center justify-center rounded-[1.6rem] border border-white/30 bg-black/15 p-5 shadow-2xl backdrop-blur-md">
-              <span className="text-5xl">♠</span>
+              <span className="text-5xl">{spellingGame ? "🔤" : "♠"}</span>
               <span className="mt-5 text-sm font-black uppercase tracking-[.18em]">{t.wordDeck.tapDeck}</span>
               <span className="mt-2 text-xs text-white/60">{deck.length} {t.wordDeck.cardsShort}</span>
             </span>
@@ -348,8 +379,8 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
           <button
             key={current?.instanceId}
             type="button"
-            onClick={descriptionGame ? undefined : deal}
-            disabled={descriptionGame || !canDeal}
+            onClick={pictureGame ? showAnswer : descriptionGame ? undefined : deal}
+            disabled={descriptionGame || (pictureGame ? faceUp : !canDeal)}
             className="word-deck-card word-deck-deal-in h-60 w-full max-w-[23rem] [perspective:1200px] disabled:cursor-default sm:h-72"
           >
             <span className={cn(
@@ -358,7 +389,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
             )}>
               <span className={cn(
                 "absolute inset-0 flex flex-col items-center justify-center rounded-[1.75rem] border shadow-2xl [backface-visibility:hidden]",
-                descriptionGame
+                descriptionGame || pictureGame
                   ? "border-slate-200 bg-[#fffdf7] px-6 pb-12 pt-14 text-slate-950"
                   : "border-white/25 bg-gradient-to-br from-white/22 to-black/10 backdrop-blur-xl",
               )}>
@@ -382,6 +413,17 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
                       {at + 1} / {deck.length}
                     </span>
                   </>
+                ) : pictureGame ? (
+                  <>
+                    {(current?.promptFace ?? (settings.guessMode === "TRANSLATION" ? "TRANSLATION" : "PICTURE")) === "TRANSLATION" ? (
+                      <span className="max-h-full max-w-full overflow-y-auto break-words text-center text-3xl font-black leading-tight sm:text-5xl">{current?.translation}</span>
+                    ) : current?.imageUrl ? (
+                      <Image src={current.imageUrl} alt="" fill sizes="(max-width: 640px) 90vw, 23rem" unoptimized className="object-contain p-4" />
+                    ) : (
+                      <span className="text-sm font-bold text-slate-400">{t.wordDeck.noPicture}</span>
+                    )}
+                    <span className="absolute bottom-4 left-0 right-0 text-center text-[11px] font-bold uppercase tracking-[.2em] text-slate-400">{at + 1} / {deck.length}</span>
+                  </>
                 ) : (
                   <span className="text-6xl">♠</span>
                 )}
@@ -395,7 +437,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
                     {current.owner === "STUDENT" ? t.wordDeck.forStudent : t.wordDeck.forTeacher}
                   </span>
                 )}
-                {(descriptionGame ? settings.answerIcons : settings.showIcons) && current?.icon && (
+                {(descriptionGame ? settings.answerIcons : (settings.showIcons || spellingGame)) && current?.icon && (
                   <span className="mb-3 text-5xl leading-none sm:text-6xl" aria-hidden>
                     {current.icon}
                   </span>
@@ -403,6 +445,20 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
                 <span className="max-h-full max-w-full overflow-y-auto break-words text-center text-3xl font-black leading-tight sm:text-5xl">
                   {current?.word}
                 </span>
+                {spellingGame && (
+                  <div className="mt-3 max-h-24 w-full overflow-y-auto text-center">
+                    {(current?.transcriptionUs || current?.transcriptionUk) && (
+                      <p className="text-xs font-bold text-slate-400">
+                        {current.transcriptionUs ? `US ${current.transcriptionUs}` : ""}
+                        {current.transcriptionUs && current.transcriptionUk ? " · " : ""}
+                        {current.transcriptionUk ? `UK ${current.transcriptionUk}` : ""}
+                      </p>
+                    )}
+                    {settings.showTips && current?.translation && <p className="mt-1 text-sm font-bold text-emerald-700">{current.translation}</p>}
+                    {settings.showTips && current?.tip && <p className="mt-1 text-[11px] font-semibold text-slate-500">💡 {current.tip}</p>}
+                    {settings.showTips && current?.examples?.[0] && <p className="mt-1 text-[10px] text-slate-500">{current.examples[0].en}</p>}
+                  </div>
+                )}
                 <span className="absolute bottom-4 left-0 right-0 text-center text-[11px] font-bold uppercase tracking-[.2em] text-slate-400">
                   {at + 1} / {deck.length}
                 </span>
@@ -410,7 +466,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
             </span>
           </button>
         )}
-        {expired && !descriptionGame && (
+        {expired && !descriptionGame && !pictureGame && (
           <div className="absolute inset-0 flex items-center justify-center rounded-3xl bg-slate-950/70 backdrop-blur-sm">
             <div className="text-center">
               <p className="text-3xl font-black">{t.wordDeck.timeUp}</p>
@@ -444,6 +500,27 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
           </div>
         )}
       </div>
+
+      {spellingGame && started && current && (
+        <div className="mx-auto mt-3 flex max-w-xl flex-wrap items-center justify-center gap-2">
+          {settings.allowUsAudio && (
+            <button type="button" onClick={() => readEnglish(current.word, "US")} className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-black text-white backdrop-blur transition hover:bg-white/20">
+              🔊 US {t.wordDeck.listenAgain}
+            </button>
+          )}
+          {settings.allowUkAudio && (
+            <button type="button" onClick={() => readEnglish(current.word, "UK")} className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-black text-white backdrop-blur transition hover:bg-white/20">
+              🔊 UK {t.wordDeck.listenAgain}
+            </button>
+          )}
+        </div>
+      )}
+
+      {pictureGame && started && !faceUp && !observer && (
+        <button type="button" onClick={showAnswer} className="mx-auto mt-3 block rounded-xl border border-white/20 bg-white/10 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white backdrop-blur transition hover:bg-white/20">
+          {t.wordDeck.openAnswer}
+        </button>
+      )}
 
       {!observer && descriptionGame && started && (
         <div className="mt-4 grid grid-cols-1 gap-2 min-[430px]:grid-cols-3">

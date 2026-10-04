@@ -32,7 +32,12 @@ export default async function ActivitiesPage({
       </div>
 
       <WordDeckStudio
-        initialActivities={wordDeckActivities}
+        initialActivities={wordDeckActivities.filter((activity) => activity.settings.gameType !== "SPELLING")}
+        initialActivityId={initialActivityId}
+      />
+      <WordDeckStudio
+        mode="SPELLING"
+        initialActivities={wordDeckActivities.filter((activity) => activity.settings.gameType === "SPELLING")}
         initialActivityId={initialActivityId}
       />
       <GuessPictureStudio initialPresets={guessPicturePresets} />

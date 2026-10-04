@@ -187,6 +187,7 @@ export function ClassActivityPicker({
         heading={t.activityPicker.createWordDeck}
         submitLabel={t.activityPicker.createAndAdd}
         footerHint={t.activityPicker.createHint}
+        includeSpellingType
       />
     );
   }
@@ -276,7 +277,7 @@ export function ClassActivityPicker({
               const isWord = "settings" in preset;
               const cards = isWord ? preset.cards.length * preset.settings.repeats : preset.cards.length * (preset.mode === "MIXED" ? 2 : 1);
               const meta = isWord
-                ? preset.settings.gameType === "GUESS_DESCRIPTION" ? t.wordDeck.guessByDescription : t.wordDeck.wordsGame
+                ? preset.settings.gameType === "GUESS_DESCRIPTION" ? t.wordDeck.guessByDescription : preset.settings.gameType === "SPELLING" ? t.wordDeck.spellingTitle : t.wordDeck.wordsGame
                 : preset.mode === "PICTURE" ? t.game.modePicture : preset.mode === "TRANSLATION" ? t.game.modeTranslation : t.game.modeMixed;
               return (
                 <article key={preset.id} className="rounded-2xl bg-surface-2/70 p-4 ring-1 ring-line transition hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none">

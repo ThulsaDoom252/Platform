@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { BookOpen, Check, CheckCircle2, Eye, ListPlus, Pencil, Send, SpellCheck2, Trash2, X } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, Eye, GraduationCap, ListPlus, Maximize2, Minimize2, Pencil, Send, SpellCheck2, Trash2, X } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
 import {
   createClassLessonNoteAction,
@@ -14,6 +14,7 @@ import {
   updateClassLessonSpellingPartOfSpeechAction,
   type ClassLessonNote,
 } from "@/lib/actions/class-tools";
+import { assignSpellingNotesHomeworkAction } from "@/lib/actions/word-deck";
 import { SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,8 @@ export function ClassNotes({
   const [editing, setEditing] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [wide, setWide] = useState(false);
+  const [homeworkDay, setHomeworkDay] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
   const load = () => listClassLessonNotesAction().then(setNotes);
@@ -145,7 +148,7 @@ export function ClassNotes({
     <section className={cn(
       "flex min-h-0 flex-col overflow-hidden bg-surface",
       embedded ? "h-full" : "rounded-2xl shadow-xl ring-1 ring-line",
-      !embedded && (compact ? "h-full max-h-[720px]" : "h-[min(70dvh,650px)] w-[min(430px,calc(100vw-1rem))]"),
+      !embedded && (compact ? "h-full max-h-[720px]" : cn("h-[min(70dvh,650px)] transition-[width]", wide ? "w-[min(760px,calc(100vw-1rem))]" : "w-[min(430px,calc(100vw-1rem))]")),
     )}>
       {!embedded && <header className="flex items-center gap-2 border-b border-line bg-surface-2 px-3.5 py-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
@@ -155,6 +158,11 @@ export function ClassNotes({
           <h3 className="text-sm font-black text-content">{t.classRoom.notes}</h3>
           <p className="truncate text-[11px] text-faint">{studentName}</p>
         </div>
+        {!compact && (
+          <button type="button" onClick={() => setWide((value) => !value)} title={wide ? t.classRoom.notesDefaultWidth : t.classRoom.notesWide} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface hover:text-content">
+            {wide ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
+        )}
         {onClose && (
           <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface hover:text-content" aria-label={t.common.close}>
             <X className="h-4 w-4" />
@@ -224,15 +232,20 @@ export function ClassNotes({
                   <p className="text-[10px] font-black uppercase tracking-[.14em] text-faint">
                     {day.format(new Date(items[0].lessonDay))}
                   </p>
-                  {activeTab === "SPELLING" && items.some((item) => !item.publishedAt) && (
-                    <button
+                  {activeTab === "SPELLING" && (
+                    <div className="flex items-center gap-1">
+                    <button type="button" disabled={busy} onClick={() => setHomeworkDay(key)} className="flex h-7 items-center gap-1 rounded-lg bg-cyan-100 px-2 text-[10px] font-black text-cyan-700 transition hover:bg-cyan-200 disabled:opacity-45 dark:bg-cyan-950/60 dark:text-cyan-300">
+                      <GraduationCap className="h-3 w-3" /> {t.classRoom.spellingHomework}
+                    </button>
+                    {items.some((item) => !item.publishedAt) && <button
                       type="button"
                       disabled={busy}
                       onClick={() => publishDay(items[0].lessonDay)}
                       className="flex h-7 items-center gap-1 rounded-lg bg-accent-soft px-2 text-[10px] font-black text-accent transition hover:bg-accent hover:text-white disabled:opacity-45"
                     >
                       <ListPlus className="h-3 w-3" /> {t.classRoom.spellingAddAll}
-                    </button>
+                    </button>}
+                    </div>
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
@@ -349,7 +362,64 @@ export function ClassNotes({
           </div>
         )}
       </div>
+      {homeworkDay && (
+        <SpellingHomeworkDialog
+          notes={notes.filter((note) => note.kind === "SPELLING" && note.lessonDay.slice(0, 10) === homeworkDay)}
+          onClose={() => setHomeworkDay(null)}
+          onDone={() => {
+            setHomeworkDay(null);
+            setMessage(t.classRoom.spellingHomeworkAssigned);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function SpellingHomeworkDialog({ notes, onClose, onDone }: {
+  notes: ClassLessonNote[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useT();
+  const [selected, setSelected] = useState(() => new Set(notes.map((note) => note.id)));
+  const [extra, setExtra] = useState("");
+  const [settings, setSettings] = useState({
+    autoPronounce: true,
+    allowUsAudio: true,
+    allowUkAudio: false,
+    showTips: true,
+    autoPronounceUk: false,
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+  const extraWords = extra.split(/[\n,;]+/).map((word) => word.trim()).filter(Boolean);
+  return (
+    <div className="fixed inset-0 z-[170] flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:p-10" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="w-full max-w-2xl rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/10 text-2xl">🔤</span>
+          <div className="min-w-0 flex-1"><h3 className="text-lg font-black text-content">{t.classRoom.spellingHomeworkTitle}</h3><p className="mt-1 text-xs text-muted">{t.classRoom.spellingHomeworkHint}</p></div>
+          <button type="button" onClick={onClose} className="text-muted"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {notes.map((note) => {
+            const checked = selected.has(note.id);
+            return <button key={note.id} type="button" onClick={() => setSelected((current) => { const next = new Set(current); if (next.has(note.id)) next.delete(note.id); else next.add(note.id); return next; })} className={cn("flex items-center gap-2 rounded-xl p-3 text-left ring-1", checked ? "bg-accent-soft text-accent ring-accent" : "bg-surface-2 text-muted ring-line")}><span className="text-xl">{note.icon ?? "✏️"}</span><span className="min-w-0 flex-1 truncate text-sm font-black">{note.body}</span>{checked && <Check className="h-4 w-4" />}</button>;
+          })}
+        </div>
+        <label className="mt-4 block"><span className="text-xs font-black text-muted">{t.classRoom.spellingHomeworkExtra}</span><textarea value={extra} onChange={(event) => setExtra(event.target.value)} rows={3} placeholder={t.wordDeck.manualWordsPlaceholder} className="mt-2 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-content outline-none focus:border-accent" /></label>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {([
+            ["autoPronounce", t.wordDeck.autoPronounce], ["allowUsAudio", t.wordDeck.allowUsAudio],
+            ["allowUkAudio", t.wordDeck.allowUkAudio], ["showTips", t.wordDeck.showTips],
+            ["autoPronounceUk", t.wordDeck.autoPronounceUk],
+          ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 rounded-xl bg-surface-2 p-3 text-xs font-bold text-content"><input type="checkbox" checked={settings[key]} onChange={(event) => setSettings((value) => ({ ...value, [key]: event.target.checked }))} className="h-4 w-4 accent-[var(--accent)]" />{label}</label>)}
+        </div>
+        {error && <p className="mt-3 text-sm font-bold text-rose-500">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="h-10 rounded-xl border border-line px-4 text-sm font-bold text-muted">{t.common.cancel}</button><button type="button" disabled={busy || (selected.size === 0 && extraWords.length === 0)} onClick={() => startTransition(async () => { setError(null); const result = await assignSpellingNotesHomeworkAction({ noteIds: [...selected], additionalWords: extraWords, settings }); if (result.error) setError(result.error); else onDone(); })} className="h-10 rounded-xl bg-accent px-5 text-sm font-black text-white disabled:opacity-40">{busy ? t.wordDeck.saving : t.wordDeck.toHomework}</button></div>
+      </section>
+    </div>
   );
 }
 

@@ -6,6 +6,7 @@ import {
   hasEnoughWordDeckWords,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
+  minimumWordDeckWords,
   playableWordDeckCards,
   randomWordDeckPercentage,
   shuffleWordDeckTail,
@@ -49,6 +50,11 @@ test("таймеры по умолчанию выключены, значени�
     guessMode: "PICTURE",
     shuffleWords: true,
     shuffleDecks: false,
+    autoPronounce: true,
+    allowUsAudio: true,
+    allowUkAudio: false,
+    showTips: true,
+    autoPronounceUk: false,
   });
 });
 
@@ -57,6 +63,17 @@ test("у Guess by description свои безопасные настройки �
   assert.equal(settings.gameType, "GUESS_DESCRIPTION");
   assert.equal(settings.descriptionIcons, false);
   assert.equal(settings.answerIcons, true);
+});
+
+test("Spelling Practice включает US-озвучку и tips, но не UK", () => {
+  const settings = normalizeWordDeckSettings({ gameType: "SPELLING" });
+  assert.equal(settings.gameType, "SPELLING");
+  assert.equal(settings.autoPronounce, true);
+  assert.equal(settings.allowUsAudio, true);
+  assert.equal(settings.allowUkAudio, false);
+  assert.equal(settings.showTips, true);
+  assert.equal(settings.autoPronounceUk, false);
+  assert.equal(minimumWordDeckWords(settings), 1);
 });
 
 test("пресет Guess by picture сохраняет режим и порядок колод", () => {

@@ -5,6 +5,7 @@ import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
   addGuessPicturePresetToClassAction,
+  assignGuessPicturePresetHomeworkAction,
   deleteGuessPicturePresetAction,
   listGuessPicturePresetGroupsAction,
   listGuessPicturePresetsAction,
@@ -192,7 +193,7 @@ function GuessAssignDialog({ preset, onClose, onDone }: { preset: GuessPicturePr
         <div className="flex items-start justify-between gap-3"><div><h3 className="font-black text-content">{t.wordDeck.addToClass}</h3><p className="mt-1 text-sm text-muted">{preset.title}</p></div><button type="button" onClick={onClose}><IconX className="h-5 w-5 text-faint" /></button></div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           {students === null && <p className="text-sm text-faint">{t.common.loading}</p>}
-          {students?.map((student) => <button key={student.id} type="button" disabled={busy} onClick={() => startBusy(async () => { const result = await addGuessPicturePresetToClassAction(preset.id, student.id); if (result.error) setError(result.error); else onDone(result.existed ? fmt(t.wordDeck.alreadyInClass, { name: student.name }) : fmt(t.wordDeck.addedToClass, { name: student.name })); })} className="flex h-11 items-center gap-2 rounded-xl bg-surface-2 px-3 text-left text-sm font-bold text-content transition hover:bg-accent-soft hover:text-accent disabled:opacity-50"><IconUsers className="h-4 w-4" /> {student.name}</button>)}
+          {students?.map((student) => <div key={student.id} className="rounded-xl bg-surface-2 p-2 ring-1 ring-line"><p className="px-1 text-sm font-black text-content">{student.name}</p><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" disabled={busy} onClick={() => startBusy(async () => { const result = await addGuessPicturePresetToClassAction(preset.id, student.id); if (result.error) setError(result.error); else onDone(result.existed ? fmt(t.wordDeck.alreadyInClass, { name: student.name }) : fmt(t.wordDeck.addedToClass, { name: student.name })); })} className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-accent-soft px-2 text-xs font-bold text-accent transition hover:bg-accent hover:text-white disabled:opacity-50"><IconUsers className="h-3.5 w-3.5" /> {t.wordDeck.toActivities}</button><button type="button" disabled={busy} onClick={() => startBusy(async () => { const result = await assignGuessPicturePresetHomeworkAction(preset.id, student.id); if (result.error) setError(result.error); else onDone(fmt(t.wordDeck.addedToHomework, { name: student.name })); })} className="h-10 rounded-lg bg-emerald-500 px-2 text-xs font-bold text-white transition hover:bg-emerald-400 disabled:opacity-50">✓ {t.wordDeck.toHomework}</button></div></div>)}
         </div>
         {error && <p className="mt-3 text-sm font-semibold text-rose-500">{error}</p>}
       </div>
