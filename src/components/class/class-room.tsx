@@ -778,13 +778,18 @@ export function ClassRoom({
   const dictionaryPlacement = placementOf("dictionary");
   const chatPlacement = placementOf("chat");
   const verbsPlacement = placementOf("verbs");
+  const notesPlacement = placementOf("notes");
   const dockedDictionary = open.dictionary && !dictionaryPlacement.floating;
   const dockedRight =
     (open.chat && !chatPlacement.floating) ||
-    (open.verbs && !verbsPlacement.floating);
+    (open.verbs && !verbsPlacement.floating) ||
+    Boolean(teacher && partner && open.notes && !notesPlacement.floating);
   const chatTitle = partner
     ? fmt(t.classRoom.chatWith, { name: partner.name })
     : t.classRoom.chat;
+  const notesTitle = partner
+    ? fmt(t.classRoom.notesWith, { name: partner.name })
+    : t.classRoom.notes;
 
   return (
     <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
@@ -1034,6 +1039,23 @@ export function ClassRoom({
               <QuickVerbs />
             </DockablePanel>
           )}
+
+          {teacher && partner && open.notes && (
+            <DockablePanel
+              title={notesTitle}
+              placement={notesPlacement}
+              dockedClassName="h-[520px] shrink-0"
+              detachLabel={t.classRoom.detachPanel}
+              dockLabel={t.classRoom.dockPanel}
+              resizeLabel={t.classRoom.resizePanel}
+              onDetach={() => detachPanel("notes")}
+              onDock={() => dockPanel("notes")}
+              onMove={(x, y) => movePanel("notes", x, y)}
+              onResize={(width, height) => resizePanel("notes", width, height)}
+            >
+              <ClassNotes studentName={partner.name} compact embedded />
+            </DockablePanel>
+          )}
         </div>
       </div>
 
@@ -1153,15 +1175,6 @@ export function ClassRoom({
       {!teacher && <StudentClassTimer state={timerState} />}
       {!teacher && (
         <StudentFocusedNote note={focusedNote} onClose={() => setFocusedNote(null)} />
-      )}
-
-      {teacher && partner && open.notes && (
-        <div className="fixed bottom-20 right-2 z-[75] sm:right-4 lg:bottom-16">
-          <ClassNotes
-            studentName={partner.name}
-            onClose={() => setOpen((prev) => ({ ...prev, notes: false }))}
-          />
-        </div>
       )}
 
       {teacher && partner && showTimer && (

@@ -296,6 +296,7 @@ export const en = {
     timerStartBurst: "Start!",
     timerTimesUp: "Time’s up!",
     notes: "Notes",
+    notesWith: "Notes — {name}",
     notesPlaceholder: "Type a note and press Enter…",
     notesAdd: "Add note",
     notesEnterHint: "Each Enter creates a separate saved entry.",

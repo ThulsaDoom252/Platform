@@ -303,6 +303,7 @@ export const uk: Dict = {
     timerStartBurst: "Start!",
     timerTimesUp: "Time’s up!",
     notes: "Notes",
+    notesWith: "Notes — {name}",
     notesPlaceholder: "Напиши нотатку й натисни Enter…",
     notesAdd: "Додати нотатку",
     notesEnterHint: "Кожен Enter створює окремий збережений запис.",

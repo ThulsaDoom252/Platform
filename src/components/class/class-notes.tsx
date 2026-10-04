@@ -23,10 +23,12 @@ export type FocusedClassNote = {
 export function ClassNotes({
   studentName,
   compact = false,
+  embedded = false,
   onClose,
 }: {
   studentName: string;
   compact?: boolean;
+  embedded?: boolean;
   onClose?: () => void;
 }) {
   const { t, locale } = useT();
@@ -94,10 +96,11 @@ export function ClassNotes({
 
   return (
     <section className={cn(
-      "flex min-h-0 flex-col overflow-hidden rounded-2xl bg-surface shadow-xl ring-1 ring-line",
-      compact ? "h-full max-h-[720px]" : "h-[min(70dvh,650px)] w-[min(430px,calc(100vw-1rem))]",
+      "flex min-h-0 flex-col overflow-hidden bg-surface",
+      embedded ? "h-full" : "rounded-2xl shadow-xl ring-1 ring-line",
+      !embedded && (compact ? "h-full max-h-[720px]" : "h-[min(70dvh,650px)] w-[min(430px,calc(100vw-1rem))]"),
     )}>
-      <header className="flex items-center gap-2 border-b border-line bg-surface-2 px-3.5 py-3">
+      {!embedded && <header className="flex items-center gap-2 border-b border-line bg-surface-2 px-3.5 py-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
           <BookOpen className="h-5 w-5" />
         </span>
@@ -110,7 +113,7 @@ export function ClassNotes({
             <X className="h-4 w-4" />
           </button>
         )}
-      </header>
+      </header>}
 
       <div className="border-b border-line p-3">
         <div className="flex items-center gap-2 rounded-xl bg-surface-2 p-1.5 ring-1 ring-line focus-within:ring-accent">
