@@ -25,6 +25,7 @@ import {
 import {
   nextSection,
   planProgress,
+  testSectionsComplete,
   timeoutRest,
 } from "@/lib/revision-build";
 import { scoreRevision, type RevisionAnswer } from "@/lib/revision-score";
@@ -116,7 +117,9 @@ export function RevisionRunner({
 
     const next = [...answers, ...entries];
     const after = planProgress(attempt.plan, next);
-    const finished = after.every((p) => p.done);
+    // Flashcards — необязательная разминка. Они не блокируют сдачу:
+    // игра заканчивается после всех проверочных режимов.
+    const finished = testSectionsComplete(after);
 
     setAnswers(next);
     if (!preview) void saveAnswersAction(attempt.id, next, finished);
@@ -140,11 +143,14 @@ export function RevisionRunner({
 
   if (phase === "intro" || !attempt) {
     return (
-      <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
+      <div className="revision-game-theme mx-auto flex w-full max-w-xl flex-col gap-5">
         {!embedded && <Back />}
 
-        <div className="rounded-3xl bg-surface p-6 ring-1 ring-line shadow-sm">
-          <h1 className="text-xl font-bold text-content">{card.title}</h1>
+        <div className="relative overflow-hidden rounded-[1.75rem] bg-surface p-5 ring-1 ring-line shadow-xl sm:p-7">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-400/15 blur-3xl" />
+          <div className="relative">
+          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-2xl text-white shadow-lg shadow-emerald-500/20">🧠</span>
+          <h1 className="text-xl font-black text-content sm:text-2xl">{card.title}</h1>
 
           <p className="mt-1 text-sm text-muted">
             {fmt(t.revision.selected, { n: card.words })}
@@ -187,13 +193,15 @@ export function RevisionRunner({
               type="button"
               onClick={begin}
               disabled={busy}
-              className="mt-4 h-12 w-full rounded-xl bg-accent text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+              className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-black text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:shadow-xl disabled:translate-y-0 disabled:opacity-50"
             >
+              {!busy && <span aria-hidden>▶</span>}
               {busy ? t.common.loading : t.revision.start}
             </button>
           )}
 
           {error && <p className="mt-3 text-sm text-rose-500">{error}</p>}
+          </div>
         </div>
       </div>
     );
@@ -204,8 +212,8 @@ export function RevisionRunner({
   const step = progress[section].step;
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="revision-game-theme mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 px-1">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-content">{card.title}</p>
           <p className="text-[11px] text-faint">
@@ -236,7 +244,7 @@ export function RevisionRunner({
        * идёт, нельзя: ученик уходит на другой и возвращается — секция
        * ждёт его на том же шаге.
        */}
-      <div className="flex flex-wrap gap-1">
+      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
         {attempt.plan.map((s, i) => {
           const p = progress[i];
           return (
@@ -248,7 +256,7 @@ export function RevisionRunner({
                 setPhase("play");
               }}
               className={cn(
-                "flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold transition",
+                "flex h-8 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition",
                 i === section
                   ? "bg-accent text-white"
                   : p.done
@@ -271,7 +279,7 @@ export function RevisionRunner({
           answers={answers}
           mode={here.mode}
           label={MODE_LABEL}
-          last={progress.every((p) => p.done)}
+          last={testSectionsComplete(progress)}
           onNext={() => {
             const to = nextSection(progress, section + 1);
             if (to >= 0) setSection(to);
@@ -442,7 +450,7 @@ function Result({
   const result = scoreRevision(answers);
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
+    <div className="revision-game-theme mx-auto flex w-full max-w-xl flex-col gap-5">
       {!embedded && <Back />}
 
       <div className="rounded-3xl bg-surface p-6 text-center ring-1 ring-line shadow-sm">

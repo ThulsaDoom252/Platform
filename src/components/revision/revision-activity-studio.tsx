@@ -300,16 +300,22 @@ function RevisionPresetPlayer({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] isolate overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-sm sm:p-7" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="mx-auto w-full max-w-3xl">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="min-w-0 truncate text-sm font-black text-white">{preset.title}</p>
-          <button type="button" onClick={onClose} className="shrink-0 rounded-full bg-white px-4 py-2 text-sm font-black text-slate-950">× {t.wordDeck.close}</button>
-        </div>
-        <div className="rounded-3xl bg-canvas p-3 shadow-2xl ring-1 ring-white/10 sm:p-6">
+    <div className="fixed inset-0 z-[200] isolate overflow-y-auto bg-slate-950/90 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="flex min-h-full items-center justify-center sm:p-6">
+        <div className="revision-game-theme relative flex min-h-[100dvh] w-full max-w-5xl items-center justify-center overflow-hidden bg-canvas px-3 pb-5 pt-20 shadow-2xl sm:min-h-[min(44rem,calc(100dvh-3rem))] sm:rounded-[2rem] sm:px-8 sm:pb-8 sm:pt-20 sm:ring-1 sm:ring-white/10">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(16,185,129,.16),transparent_35%),radial-gradient(circle_at_90%_85%,rgba(20,184,166,.12),transparent_38%)]" />
+          <div className="absolute left-4 right-4 top-4 z-10 flex items-center justify-between gap-3 sm:left-6 sm:right-6 sm:top-6">
+            <span className="flex min-w-0 items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-500 ring-1 ring-emerald-500/20">
+              <span>🧠</span>
+              <span className="truncate">{preset.title}</span>
+            </span>
+            <button type="button" onClick={onClose} className="shrink-0 rounded-full bg-white px-4 py-2 text-sm font-black text-slate-950 shadow-lg transition hover:-translate-y-0.5">× {t.wordDeck.close}</button>
+          </div>
+          <div className="relative w-full">
           {view === undefined && <p className="py-16 text-center text-sm font-semibold text-faint">{t.common.loading}</p>}
           {view === null && <p className="py-16 text-center text-sm font-semibold text-rose-500">{t.revision.failed}</p>}
           {view && <RevisionRunner card={card} embedded preview={view} />}
+          </div>
         </div>
       </div>
     </div>,

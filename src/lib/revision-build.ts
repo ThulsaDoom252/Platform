@@ -13,6 +13,7 @@
  */
 import { shuffle } from "./game-deck";
 import {
+  isTestMode,
   MIN_WORDS,
   wordsFor,
   type RevisionMode,
@@ -353,6 +354,17 @@ export function nextSection(progress: SectionProgress[], from = 0): number {
     if (!progress[at].done) return at;
   }
   return -1;
+}
+
+/**
+ * Сдана ли проверочная часть игры.
+ * Flashcards остаются доступной разминкой, но не мешают закончить игру.
+ */
+export function testSectionsComplete(
+  progress: Pick<SectionProgress, "mode" | "done">[],
+): boolean {
+  const tests = progress.filter((section) => isTestMode(section.mode));
+  return tests.length > 0 && tests.every((section) => section.done);
 }
 
 /**

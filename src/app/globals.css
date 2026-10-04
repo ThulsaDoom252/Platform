@@ -110,6 +110,14 @@
   --c4b: #22d3ee;
 }
 
+/* Words revision has its own emerald/teal game identity regardless of
+   the account palette. All nested controls keep one coherent theme. */
+.revision-game-theme {
+  --accent: #10b981;
+  --accent-2: #14b8a6;
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--surface));
+}
+
 /* ---------- Night mode ---------- */
 :root[data-mode="dark"] {
   --page: #0f1320;

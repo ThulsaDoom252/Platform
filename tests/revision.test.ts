@@ -18,6 +18,7 @@ import {
   scrambleParts,
   pairOrder,
   planProgress,
+  testSectionsComplete,
   nextSection,
   stepSize,
   timeoutRest,
@@ -228,6 +229,7 @@ test("точность считается по проверочным, карт�
   assert.equal(result.total, 2);
   assert.equal(result.right, 1);
   assert.equal(result.accuracy, 50);
+  assert.deepEqual(result.sections.map((section) => section.mode), ["choose"]);
 });
 
 test("истёкшее время считается ошибкой и учитывается отдельно", () => {
@@ -281,13 +283,13 @@ test("лучшая и худшая секции — только когда ес
   assert.equal(two.worst, "unscramble");
 });
 
-test("общее время включает и карточки", () => {
+test("общее время не включает карточки", () => {
   const result = scoreRevision([
     answer("flashcards", "a", true, 5000),
     answer("choose", "b", true, 1000),
   ]);
 
-  assert.equal(result.totalMs, 6000);
+  assert.equal(result.totalMs, 1000);
 });
 
 test("пустая попытка не делит на ноль", () => {
@@ -469,6 +471,14 @@ test("карточки закрываются одним шагом целико
 
   assert.equal(half[0].done, true);
   assert.equal(half[1].done, false);
+});
+
+test("карточки не блокируют завершение проверочной части", () => {
+  const plan = buildRevision(FIVE, ["flashcards", "choose"], {}, seeded(4));
+  const progress = planProgress(plan, answerIn("choose", 5));
+
+  assert.equal(progress.find((section) => section.mode === "flashcards")?.done, false);
+  assert.equal(testSectionsComplete(progress), true);
 });
 
 test("следующая секция ищется по кругу", () => {

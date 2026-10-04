@@ -50,7 +50,7 @@ export type RevisionResult = {
   wrong: number;
   timeouts: number;
   accuracy: number;
-  /** Всё время задания, включая карточки. */
+  /** Время только проверочной части; просмотр карточек в результат не входит. */
   totalMs: number;
   fastestMs: number | null;
   fastestWord: string | null;
@@ -68,10 +68,13 @@ export type RevisionResult = {
  * было раньше, а что под конец, когда ученик устал.
  */
 export function scoreRevision(answers: RevisionAnswer[]): RevisionResult {
+  // Flashcards — подготовка, а не проверка. Они не дают очков, не
+  // образуют строку результата и не увеличивают итоговое время.
+  const tested = answers.filter((answer) => isTestMode(answer.mode));
   const order: RevisionMode[] = [];
   const grouped = new Map<RevisionMode, RevisionAnswer[]>();
 
-  for (const answer of answers) {
+  for (const answer of tested) {
     if (!grouped.has(answer.mode)) {
       grouped.set(answer.mode, []);
       order.push(answer.mode);
@@ -95,9 +98,6 @@ export function scoreRevision(answers: RevisionAnswer[]): RevisionResult {
     };
   });
 
-  // Итог считаем по проверочным: карточки ничего не спрашивают, и
-  // включать их в точность значило бы всегда завышать её.
-  const tested = answers.filter((a) => isTestMode(a.mode));
   const right = tested.filter((a) => a.correct).length;
 
   /*
@@ -128,7 +128,7 @@ export function scoreRevision(answers: RevisionAnswer[]): RevisionResult {
     wrong: tested.length - right,
     timeouts: tested.filter((a) => a.reason === "timeout").length,
     accuracy: tested.length > 0 ? Math.round((right / tested.length) * 100) : 0,
-    totalMs: answers.reduce((sum, a) => sum + Math.max(0, a.ms), 0),
+    totalMs: tested.reduce((sum, a) => sum + Math.max(0, a.ms), 0),
     fastestMs: fastest?.ms ?? null,
     fastestWord: fastest?.word ?? null,
     slowestMs: slowest?.ms ?? null,
