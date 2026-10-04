@@ -15,6 +15,7 @@ import { db } from "@/lib/db";
 import {
   users,
   activityGames,
+  classActivityPreferences,
   classMessages,
   classLessonNotes,
   classVocabularyWords,
@@ -31,6 +32,11 @@ import {
 import { scheduleNow } from "@/lib/schedule-time";
 import { liveClassTimerState, type ClassTimerState } from "@/lib/class-timer";
 import { presenceFromLastSeen, type Presence } from "@/lib/presence";
+import {
+  classActivityKey,
+  normalizeClassGameReview,
+  type ClassGameReview,
+} from "@/lib/class-game-meta";
 
 export type { Presence } from "@/lib/presence";
 
@@ -721,6 +727,10 @@ export type ClassSync = {
     translation: string;
     createdAt: string;
   }[];
+  /** The student's visible rating for the game currently in the centre. */
+  gameReview: ClassGameReview | null;
+  /** Latest visible rating, used for the colourful in-class notification. */
+  gameReviewNotice: ClassGameReview | null;
 };
 
 /**
@@ -754,6 +764,8 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
       timer: null,
       noteFocus: null,
       vocabularyEvents: [],
+      gameReview: null,
+      gameReviewNotice: null,
     };
   }
 
@@ -842,6 +854,32 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
   const timer = liveClassTimerState(
     me.role === "TEACHER" ? partner?.classFocus?.timerState : me.classFocus?.timerState,
   );
+  const focusedActivityKey =
+    me.role === "STUDENT" && me.classFocus?.view === "GAME"
+      ? me.classFocus.revisionId
+        ? classActivityKey("revision", me.classFocus.revisionId)
+        : me.classFocus.gameId
+          ? classActivityKey("game", me.classFocus.gameId)
+          : null
+      : null;
+  const [storedGameReview] = me.role === "STUDENT" && studentId
+    ? await db
+        .select({
+          reviews: classActivityPreferences.reviews,
+          notice: classActivityPreferences.reviewNotice,
+        })
+        .from(classActivityPreferences)
+        .where(eq(classActivityPreferences.studentId, studentId))
+        .limit(1)
+    : [];
+  const currentGameReview = focusedActivityKey
+    ? normalizeClassGameReview(storedGameReview?.reviews?.[focusedActivityKey])
+    : null;
+  const latestGameReview = normalizeClassGameReview(storedGameReview?.notice);
+  const visibleGameReview = {
+    review: currentGameReview?.visible ? currentGameReview : null,
+    notice: latestGameReview?.visible ? latestGameReview : null,
+  };
 
   let noteFocus: ClassSync["noteFocus"] = null;
   const requestedNote = me.role === "STUDENT" ? me.classFocus?.noteFocus : null;
@@ -940,6 +978,8 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
     ),
     timer,
     noteFocus,
+    gameReview: me.role === "STUDENT" ? visibleGameReview.review : null,
+    gameReviewNotice: me.role === "STUDENT" ? visibleGameReview.notice : null,
     vocabularyEvents: vocabularyEvents.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),
@@ -988,6 +1028,36 @@ export async function showGameToStudentAction(gameId?: string): Promise<{ error?
       .limit(1);
     if (!assigned) return { error: "Эта игра не добавлена выбранному ученику" };
   }
+  let focusedGameId = requestedGameId;
+  if (!focusedGameId) {
+    const [running] = await db
+      .select({ id: activityGames.id })
+      .from(activityGames)
+      .where(
+        and(
+          eq(activityGames.studentId, me.classWithId),
+          eq(activityGames.kind, "GUESS_PICTURE"),
+          eq(activityGames.status, "RUNNING"),
+        ),
+      )
+      .orderBy(desc(activityGames.updatedAt))
+      .limit(1);
+    const [queued] = running
+      ? []
+      : await db
+          .select({ id: activityGames.id })
+          .from(activityGames)
+          .where(
+            and(
+              eq(activityGames.studentId, me.classWithId),
+              eq(activityGames.kind, "GUESS_PICTURE"),
+              eq(activityGames.status, "LOBBY"),
+            ),
+          )
+          .orderBy(asc(activityGames.createdAt))
+          .limit(1);
+    focusedGameId = running?.id ?? queued?.id ?? "";
+  }
 
   await db
     .update(users)
@@ -995,7 +1065,7 @@ export async function showGameToStudentAction(gameId?: string): Promise<{ error?
       classFocus: {
         at: new Date().toISOString(),
         view: "GAME",
-        ...(requestedGameId ? { gameId: requestedGameId } : {}),
+        ...(focusedGameId ? { gameId: focusedGameId } : {}),
         // Урок помним: закончится игра — ученику будет куда вернуться.
         ...(student.classFocus?.lessonAssignmentId
           ? { lessonAssignmentId: student.classFocus.lessonAssignmentId }

@@ -952,6 +952,24 @@ export async function playGameAction(gameId: string): Promise<GameActionState> {
     })
     .where(eq(activityGames.id, row.id));
 
+  const [student] = await db
+    .select({ classFocus: users.classFocus })
+    .from(users)
+    .where(eq(users.id, row.studentId))
+    .limit(1);
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        ...student?.classFocus,
+        at: new Date().toISOString(),
+        view: "GAME",
+        gameId: row.id,
+        revisionId: undefined,
+      },
+    })
+    .where(eq(users.id, row.studentId));
+
   return { ok: true };
 }
 

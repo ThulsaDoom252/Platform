@@ -4,9 +4,8 @@
  * Скрипт урока внутри класса.
  *
  * Берётся тот, что написан к сегодняшнему занятию этого ученика: в
- * классе известен ученик, а урок подбирается сам. Открывается на всём
- * рабочем месте — подготовку читают целиком, а не вполглаза, — и
- * закрывается той же кнопкой снизу или крестиком здесь.
+ * классе известен ученик, а урок подбирается сам. Открывается как
+ * закрепляемая или плавающая панель, поэтому игра в центре не исчезает.
  *
  * Ученик этого не видит: панель показывается только учителю.
  */
@@ -20,9 +19,11 @@ import { SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 export function ClassScript({
   studentId,
   onClose,
+  embedded = false,
 }: {
   studentId: string;
   onClose: () => void;
+  embedded?: boolean;
 }) {
   const { t, locale } = useT();
   // Дата занятия — на языке учителя: «1 окт., 09:00» или «1 Oct, 09:00».
@@ -50,8 +51,8 @@ export function ClassScript({
     };
   }, [studentId]);
 
-  return (
-    <section className="flex min-h-[420px] flex-col gap-3 rounded-2xl bg-surface p-3.5 ring-1 ring-line">
+  const content = (
+    <>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-bold text-content">{t.classRoom.scriptTitle}</span>
         {doc && (
@@ -75,6 +76,10 @@ export function ClassScript({
       )}
 
       {loaded && doc && <ScriptEditor key={doc.lessonId} doc={doc} compact />}
-    </section>
+    </>
   );
+
+  return embedded
+    ? <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3.5">{content}</div>
+    : <section className="flex min-h-[420px] flex-col gap-3 rounded-2xl bg-surface p-3.5 ring-1 ring-line">{content}</section>;
 }

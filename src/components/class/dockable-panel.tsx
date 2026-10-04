@@ -10,7 +10,7 @@ import {
 import { IconGrip } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
-export type ClassUtilityPanel = "dictionary" | "chat" | "verbs" | "notes";
+export type ClassUtilityPanel = "dictionary" | "chat" | "verbs" | "notes" | "script";
 
 export type ClassPanelPlacement = {
   floating: boolean;
@@ -25,6 +25,7 @@ export const DEFAULT_CLASS_PANEL_LAYOUT: Record<ClassUtilityPanel, ClassPanelPla
   chat: { floating: false, x: 760, y: 88, width: 360, height: 420 },
   verbs: { floating: false, x: 760, y: 528, width: 360, height: 360 },
   notes: { floating: false, x: 760, y: 88, width: 380, height: 520 },
+  script: { floating: false, x: 700, y: 88, width: 520, height: 620 },
 };
 
 function finite(value: unknown, fallback: number) {

@@ -10,7 +10,7 @@
  * вышло, а учитель не нажал, карта переворачивается сама — это решает
  * сервер, здесь только видно результат.
  */
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useState, useTransition, type ReactNode } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
@@ -39,11 +39,15 @@ export function GuessPlay({
   studentId,
   onBack,
   onChanged,
+  teacherSeesAnswers = false,
+  reviewEditor,
 }: {
   gameId: string;
   studentId: string;
   onBack: () => void;
   onChanged: () => void;
+  teacherSeesAnswers?: boolean;
+  reviewEditor?: ReactNode;
 }) {
   const { t } = useT();
   const load = useCallback(
@@ -81,6 +85,7 @@ export function GuessPlay({
         <div className="rounded-2xl bg-surface p-5 ring-1 ring-line">
           <GameStatsCard stats={state.stats} />
         </div>
+        {reviewEditor}
       </div>
     );
   }
@@ -123,6 +128,17 @@ export function GuessPlay({
       {focusError && <p className="text-sm font-semibold text-rose-500">{focusError}</p>}
 
       <GuessCard state={state} leftMs={leftMs} />
+
+      {teacherSeesAnswers && state.card && !state.revealed && (
+        <aside className="rounded-2xl border border-amber-400/35 bg-amber-400/10 px-4 py-3 text-content shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-[.18em] text-amber-500">
+            👁 {t.classRoom.privateAnswer}
+          </p>
+          <p className="mt-1 break-words text-lg font-black">{state.card.word}</p>
+          {state.card.translation && <p className="mt-0.5 text-xs font-semibold text-muted">{state.card.translation}</p>}
+          <p className="mt-2 text-[11px] text-faint">{t.classRoom.teacherSeesAnswersHint}</p>
+        </aside>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {state.paused ? (

@@ -21,6 +21,11 @@ import {
   pgEnum,
   index,
 } from "drizzle-orm/pg-core";
+import type {
+  ClassActivitySetting,
+  ClassGameReview,
+  ClassGameReviewNotice,
+} from "@/lib/class-game-meta";
 import { relations } from "drizzle-orm";
 
 // ---------- Enums ----------
@@ -180,6 +185,31 @@ export const users = pgTable("users", {
   /** Всё остальное, что учителю стоит помнить. */
   teacherNote: text("teacher_note"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Persistent teacher controls for the Activities area of one student's class.
+ * Kept outside classFocus because navigation commands intentionally replace
+ * that short-lived JSON object.
+ */
+export const classActivityPreferences = pgTable("class_activity_preferences", {
+  studentId: uuid("student_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  teacherId: uuid("teacher_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  activityOrder: jsonb("activity_order").$type<string[]>().default([]).notNull(),
+  settings: jsonb("settings")
+    .$type<Record<string, ClassActivitySetting>>()
+    .default({})
+    .notNull(),
+  reviews: jsonb("reviews")
+    .$type<Record<string, ClassGameReview>>()
+    .default({})
+    .notNull(),
+  reviewNotice: jsonb("review_notice").$type<ClassGameReviewNotice>(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

@@ -95,6 +95,8 @@ import {
   StudentFocusedNote,
   type FocusedClassNote,
 } from "./class-notes";
+import { ClassGameReviewBanner } from "./class-game-review";
+import type { ClassGameReview } from "@/lib/class-game-meta";
 
 const BEAT_MS = 30_000;
 const CHAT_UNREAD_MS = 4_000;
@@ -166,6 +168,8 @@ export function ClassRoom({
   const [twisterSession, setTwisterSession] = useState<ClassTwisterSession | null>(null);
   const [focusedWordDeck, setFocusedWordDeck] = useState<ClassWordDeckActivity | null>(null);
   const [focusedRevisionId, setFocusedRevisionId] = useState<string | null>(null);
+  const [gameReview, setGameReview] = useState<ClassGameReview | null>(null);
+  const [gameReviewNotice, setGameReviewNotice] = useState<ClassGameReview | null>(null);
   const [videoSync, setVideoSync] = useState<ClassVideoState | null>(null);
   const [lessonSectionFocus, setLessonSectionFocus] = useState<{
     assignmentId: string;
@@ -190,6 +194,7 @@ export function ClassRoom({
   const boardOpen = useRef(false);
   const appliedView = useRef<string | null>(null);
   const appliedNote = useRef<string | null>(null);
+  const appliedGameReviewNotice = useRef<string | null>(null);
   const seenVocabularyEvents = useRef(new Set<string>());
   const vocabularyEventsReady = useRef(false);
   const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -388,6 +393,23 @@ export function ClassRoom({
           setPartnerOnBoard(sync.partnerOnBoard);
           setVideoSync(sync.video);
           setTimerState(sync.timer);
+          if (!teacher) {
+            setGameReview(sync.gameReview);
+            const noticeAt = sync.gameReviewNotice?.at;
+            const noticeAge = noticeAt ? Date.now() - Date.parse(noticeAt) : Number.POSITIVE_INFINITY;
+            if (
+              sync.gameReviewNotice &&
+              noticeAt &&
+              appliedGameReviewNotice.current !== noticeAt &&
+              Number.isFinite(noticeAge) &&
+              noticeAge <= 120_000
+            ) {
+              appliedGameReviewNotice.current = noticeAt;
+              setGameReviewNotice(sync.gameReviewNotice);
+              chime.current?.();
+              window.setTimeout(() => setGameReviewNotice((current) => current?.at === noticeAt ? null : current), 8_000);
+            }
+          }
           if (!teacher && sync.noteFocus && appliedNote.current !== sync.noteFocus.at) {
             appliedNote.current = sync.noteFocus.at;
             setFocusedNote(sync.noteFocus);
@@ -778,10 +800,12 @@ export function ClassRoom({
   const chatPlacement = placementOf("chat");
   const verbsPlacement = placementOf("verbs");
   const notesPlacement = placementOf("notes");
+  const scriptPlacement = placementOf("script");
   const dockedDictionary = open.dictionary && !dictionaryPlacement.floating;
   const dockedRight =
     (open.chat && !chatPlacement.floating) ||
     (open.verbs && !verbsPlacement.floating) ||
+    Boolean(teacher && partner && open.script && !scriptPlacement.floating) ||
     Boolean(teacher && partner && open.notes && !notesPlacement.floating);
   const chatTitle = partner
     ? fmt(t.classRoom.chatWith, { name: partner.name })
@@ -792,6 +816,9 @@ export function ClassRoom({
 
   return (
     <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
+      {!teacher && gameReviewNotice && (
+        <ClassGameReviewBanner review={gameReviewNotice} floating onClose={() => setGameReviewNotice(null)} />
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
           <PresenceIndicator presence="online" />
@@ -959,9 +986,8 @@ export function ClassRoom({
         )}
 
         <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-none">
-          {open.script && teacher && partner ? (
-            <ClassScript studentId={partner.id} onClose={() => toggle("script")} />
-          ) : teacher && !partner ? (
+          {!teacher && gameReview && <ClassGameReviewBanner review={gameReview} />}
+          {teacher && !partner ? (
             picker
           ) : teacher ? (
             lessonSection
@@ -1021,6 +1047,23 @@ export function ClassRoom({
                 canArchive={teacher}
                 compact
               />
+            </DockablePanel>
+          )}
+
+          {teacher && partner && open.script && (
+            <DockablePanel
+              title={t.classRoom.scriptTitle}
+              placement={scriptPlacement}
+              dockedClassName="h-[620px] shrink-0"
+              detachLabel={t.classRoom.detachPanel}
+              dockLabel={t.classRoom.dockPanel}
+              resizeLabel={t.classRoom.resizePanel}
+              onDetach={() => detachPanel("script")}
+              onDock={() => dockPanel("script")}
+              onMove={(x, y) => movePanel("script", x, y)}
+              onResize={(width, height) => resizePanel("script", width, height)}
+            >
+              <ClassScript studentId={partner.id} onClose={() => toggle("script")} embedded />
             </DockablePanel>
           )}
 

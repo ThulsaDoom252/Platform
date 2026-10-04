@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
   buildWordDeck,
@@ -87,7 +87,28 @@ function spellingWordSize(text: string | undefined) {
   return "text-xl sm:text-3xl";
 }
 
-export function WordDeckBoard({ activity, compact = false, live = false, observer = false, homework = false }: {
+function privateTeacherExamples(card: WordDeckSourceCard) {
+  const word = card.word.trim();
+  const stored = (card.examples ?? [])
+    .map((example) => example.en.trim())
+    .filter(Boolean);
+  const fallbacks = [
+    `I came across “${word}” today.`,
+    `We discussed “${word}” during the lesson.`,
+    `Can you use “${word}” in a different context?`,
+  ];
+  return [...new Set([...stored, ...fallbacks])].slice(0, 3);
+}
+
+export function WordDeckBoard({
+  activity,
+  compact = false,
+  live = false,
+  observer = false,
+  homework = false,
+  teacherSeesAnswers = false,
+  reviewEditor,
+}: {
   activity: WordDeckPlayable;
   compact?: boolean;
   /** Публиковать действия учителя в живой класс. */
@@ -96,6 +117,10 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
   observer?: boolean;
   /** Student owns controls and progress is saved into the assigned homework snapshot. */
   homework?: boolean;
+  /** Private teacher-only answer/example rail. Never pass this in an observer/student view. */
+  teacherSeesAnswers?: boolean;
+  /** Teacher rating control shown only after the last card. */
+  reviewEditor?: ReactNode;
 }) {
   const { t } = useT();
   const settings = useMemo(() => normalizeWordDeckSettings(activity.settings), [activity.settings]);
@@ -546,6 +571,30 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
         </button>
       )}
 
+      {teacherSeesAnswers && !observer && started && current && (
+        <aside className="mx-auto mt-4 max-w-3xl rounded-2xl border border-amber-300/35 bg-slate-950/45 px-4 py-3 text-white shadow-xl backdrop-blur">
+          <p className="text-[10px] font-black uppercase tracking-[.18em] text-amber-300">
+            👁 {descriptionGame || pictureGame ? t.classRoom.privateAnswer : t.classRoom.privateExamples}
+          </p>
+          {(descriptionGame || pictureGame) ? (
+            <>
+              <p className="mt-1 break-words text-lg font-black">{current.word}</p>
+              {current.translation && <p className="mt-0.5 text-xs font-semibold text-white/65">{current.translation}</p>}
+            </>
+          ) : (
+            <ol className="mt-2 grid gap-1.5 text-sm font-semibold leading-relaxed text-white/90">
+              {privateTeacherExamples(current).map((example, index) => (
+                <li key={`${current.instanceId}-example-${index}`} className="flex gap-2">
+                  <span className="font-black text-amber-300">{index + 1}.</span>
+                  <span>{example}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="mt-2 text-[11px] text-white/45">{t.classRoom.teacherSeesAnswersHint}</p>
+        </aside>
+      )}
+
       {!observer && descriptionGame && started && (
         <div className="mt-4 grid grid-cols-1 gap-2 min-[430px]:grid-cols-3">
           <button
@@ -596,6 +645,7 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
           {finished ? `↻ ${t.wordDeck.again}` : `➜ ${t.wordDeck.deal}`}
         </button>
       </div>}
+      {!observer && finished && reviewEditor && <div className="mt-4">{reviewEditor}</div>}
     </section>
   );
 }
