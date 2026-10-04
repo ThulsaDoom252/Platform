@@ -642,6 +642,38 @@ export const classTimerPresets = pgTable(
   (table) => [index("class_timer_teacher_updated_idx").on(table.teacherId, table.updatedAt)],
 );
 
+/** Saved timers that belong to one teacher/student pair. */
+export const classStudentTimers = pgTable(
+  "class_student_timers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    topic: text("topic").notNull().default(""),
+    durationSeconds: integer("duration_seconds").notNull().default(300),
+    theme: text("theme").notNull().default("violet"),
+    tickSound: text("tick_sound").notNull().default("soft"),
+    endSound: text("end_sound").notNull().default("bell"),
+    tickSoundEnabled: boolean("tick_sound_enabled").notNull().default(false),
+    endSoundEnabled: boolean("end_sound_enabled").notNull().default(true),
+    startVoiceEnabled: boolean("start_voice_enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("class_student_timer_owner_updated_idx").on(
+      table.teacherId,
+      table.studentId,
+      table.updatedAt,
+    ),
+  ],
+);
+
 /** Teacher-only lesson notes, grouped by student and lesson day. */
 export const classLessonNotes = pgTable(
   "class_lesson_notes",

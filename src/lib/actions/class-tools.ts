@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   classLessonNotes,
+  classStudentTimers,
   classTimerPresets,
   lessons,
   users,
@@ -72,7 +73,11 @@ function timerPresetValues(input: SaveClassTimerPresetInput) {
   };
 }
 
-const presetCard = (row: typeof classTimerPresets.$inferSelect): ClassTimerPreset => ({
+type TimerRow =
+  | typeof classTimerPresets.$inferSelect
+  | typeof classStudentTimers.$inferSelect;
+
+const timerCard = (row: TimerRow): ClassTimerPreset => ({
   id: row.id,
   name: row.name,
   topic: row.topic,
@@ -94,7 +99,23 @@ export async function listClassTimerPresetsAction(): Promise<ClassTimerPreset[]>
     .from(classTimerPresets)
     .where(eq(classTimerPresets.teacherId, session.userId))
     .orderBy(desc(classTimerPresets.updatedAt));
-  return rows.map(presetCard);
+  return rows.map(timerCard);
+}
+
+export async function listClassStudentTimersAction(): Promise<ClassTimerPreset[]> {
+  const { session, studentId } = await teacherWithStudent();
+  if (!studentId) return [];
+  const rows = await db
+    .select()
+    .from(classStudentTimers)
+    .where(
+      and(
+        eq(classStudentTimers.teacherId, session.userId),
+        eq(classStudentTimers.studentId, studentId),
+      ),
+    )
+    .orderBy(desc(classStudentTimers.updatedAt));
+  return rows.map(timerCard);
 }
 
 export async function saveClassTimerPresetAction(
@@ -115,14 +136,90 @@ export async function saveClassTimerPresetAction(
         ),
       )
       .returning();
-    return row ? { preset: presetCard(row) } : { error: "Timer not found" };
+    return row ? { preset: timerCard(row) } : { error: "Timer not found" };
   }
 
   const [row] = await db
     .insert(classTimerPresets)
     .values({ teacherId: session.userId, ...values })
     .returning();
-  return { preset: presetCard(row) };
+  return { preset: timerCard(row) };
+}
+
+export async function saveClassStudentTimerAction(
+  input: SaveClassTimerPresetInput,
+  saveAsPreset = false,
+): Promise<{ timer?: ClassTimerPreset; preset?: ClassTimerPreset; error?: string }> {
+  const { session, studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+  const values = timerPresetValues(input);
+  if (!values) return { error: "Enter a timer name" };
+
+  if (input.id) {
+    const [row] = await db
+      .update(classStudentTimers)
+      .set({ ...values, updatedAt: new Date() })
+      .where(
+        and(
+          eq(classStudentTimers.id, String(input.id)),
+          eq(classStudentTimers.teacherId, session.userId),
+          eq(classStudentTimers.studentId, studentId),
+        ),
+      )
+      .returning();
+    return row ? { timer: timerCard(row) } : { error: "Timer not found" };
+  }
+
+  return db.transaction(async (tx) => {
+    const [timerRow] = await tx
+      .insert(classStudentTimers)
+      .values({ teacherId: session.userId, studentId, ...values })
+      .returning();
+    const [presetRow] = saveAsPreset
+      ? await tx
+        .insert(classTimerPresets)
+        .values({ teacherId: session.userId, ...values })
+        .returning()
+      : [];
+    return {
+      timer: timerCard(timerRow),
+      ...(presetRow ? { preset: timerCard(presetRow) } : {}),
+    };
+  });
+}
+
+export async function deleteClassStudentTimerAction(
+  timerId: string,
+): Promise<{ error?: string }> {
+  const { session, studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+  const [row] = await db
+    .delete(classStudentTimers)
+    .where(
+      and(
+        eq(classStudentTimers.id, String(timerId)),
+        eq(classStudentTimers.teacherId, session.userId),
+        eq(classStudentTimers.studentId, studentId),
+      ),
+    )
+    .returning({ id: classStudentTimers.id });
+  return row ? {} : { error: "Timer not found" };
+}
+
+export async function deleteClassTimerPresetAction(
+  presetId: string,
+): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const [row] = await db
+    .delete(classTimerPresets)
+    .where(
+      and(
+        eq(classTimerPresets.id, String(presetId)),
+        eq(classTimerPresets.teacherId, session.userId),
+      ),
+    )
+    .returning({ id: classTimerPresets.id });
+  return row ? {} : { error: "Timer not found" };
 }
 
 async function studentFocus(studentId: string) {
@@ -143,27 +240,40 @@ async function storeTimerState(studentId: string, timerState: ClassTimerState | 
 }
 
 export async function prepareClassTimerAction(
-  presetId: string,
+  timerId: string,
+  source: "student" | "preset" = "preset",
 ): Promise<{ state?: ClassTimerState; error?: string }> {
   const { session, studentId } = await teacherWithStudent();
   if (!studentId) return { error: "Pick a student first" };
-  const [preset] = await db
-    .select()
-    .from(classTimerPresets)
-    .where(
-      and(
-        eq(classTimerPresets.id, String(presetId)),
-        eq(classTimerPresets.teacherId, session.userId),
-      ),
-    )
-    .limit(1);
-  if (!preset) return { error: "Timer not found" };
+  const [timer] = source === "student"
+    ? await db
+      .select()
+      .from(classStudentTimers)
+      .where(
+        and(
+          eq(classStudentTimers.id, String(timerId)),
+          eq(classStudentTimers.teacherId, session.userId),
+          eq(classStudentTimers.studentId, studentId),
+        ),
+      )
+      .limit(1)
+    : await db
+      .select()
+      .from(classTimerPresets)
+      .where(
+        and(
+          eq(classTimerPresets.id, String(timerId)),
+          eq(classTimerPresets.teacherId, session.userId),
+        ),
+      )
+      .limit(1);
+  if (!timer) return { error: "Timer not found" };
 
   const now = new Date().toISOString();
   const state: ClassTimerState = {
-    ...presetCard(preset),
+    ...timerCard(timer),
     status: "READY",
-    remainingMs: preset.durationSeconds * 1000,
+    remainingMs: timer.durationSeconds * 1000,
     endsAt: null,
     visible: false,
     startedSignalAt: null,

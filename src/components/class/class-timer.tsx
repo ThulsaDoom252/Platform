@@ -13,6 +13,7 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
+  Trash2,
   Volume2,
   VolumeX,
   X,
@@ -20,8 +21,12 @@ import {
 import { useT } from "@/components/i18n-provider";
 import {
   controlClassTimerAction,
+  deleteClassStudentTimerAction,
+  deleteClassTimerPresetAction,
+  listClassStudentTimersAction,
   listClassTimerPresetsAction,
   prepareClassTimerAction,
+  saveClassStudentTimerAction,
   saveClassTimerPresetAction,
   setClassTimerVisibleAction,
   updateActiveClassTimerAction,
@@ -280,19 +285,37 @@ export function ClassTimerManager({
   notes?: React.ReactNode;
 }) {
   const { t } = useT();
+  const [studentTimers, setStudentTimers] = useState<ClassTimerPreset[]>([]);
   const [presets, setPresets] = useState<ClassTimerPreset[]>([]);
   const [mode, setMode] = useState<"list" | "edit" | "active">(state ? "active" : "list");
   const [draft, setDraft] = useState<SaveClassTimerPresetInput>(emptyPreset);
+  const [editTarget, setEditTarget] = useState<"student-new" | "student" | "preset">("student-new");
+  const [saveAsPreset, setSaveAsPreset] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    void listClassTimerPresetsAction().then((items) => {
-      if (alive) setPresets(items);
+    void Promise.all([
+      listClassStudentTimersAction(),
+      listClassTimerPresetsAction(),
+    ]).then(([timers, presetItems]) => {
+      if (!alive) return;
+      setStudentTimers(timers);
+      setPresets(presetItems);
     });
     return () => { alive = false; };
-  }, []);
+  }, [studentName]);
+
+  const refreshLibrary = async () => {
+    const [timers, presetItems] = await Promise.all([
+      listClassStudentTimersAction(),
+      listClassTimerPresetsAction(),
+    ]);
+    setStudentTimers(timers);
+    setPresets(presetItems);
+  };
 
   const act = (task: () => Promise<{ state?: ClassTimerState | null; error?: string }>) => {
     setError(null);
@@ -312,6 +335,41 @@ export function ClassTimerManager({
       const result = await controlClassTimerAction("CLOSE");
       if (!result.error) onClose();
       return result;
+    });
+  };
+
+  const editTimer = (timer: ClassTimerPreset, target: "student" | "preset") => {
+    setDraft({
+      id: timer.id,
+      name: timer.name,
+      topic: timer.topic,
+      durationSeconds: timer.durationSeconds,
+      theme: timer.theme,
+      tickSound: timer.tickSound,
+      endSound: timer.endSound,
+      tickSoundEnabled: timer.tickSoundEnabled,
+      endSoundEnabled: timer.endSoundEnabled,
+      startVoiceEnabled: timer.startVoiceEnabled,
+    });
+    setEditTarget(target);
+    setSaveAsPreset(false);
+    setMode("edit");
+  };
+
+  const removeTimer = (id: string, target: "student" | "preset") => {
+    const deleteKey = `${target}:${id}`;
+    if (pendingDelete !== deleteKey) {
+      setPendingDelete(deleteKey);
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = target === "student"
+        ? await deleteClassStudentTimerAction(id)
+        : await deleteClassTimerPresetAction(id);
+      if (result.error) return setError(result.error);
+      setPendingDelete(null);
+      await refreshLibrary();
     });
   };
 
@@ -353,70 +411,58 @@ export function ClassTimerManager({
               type="button"
               onClick={() => {
                 setDraft(emptyPreset());
+                setEditTarget("student-new");
+                setSaveAsPreset(false);
+                setPendingDelete(null);
                 setMode("edit");
               }}
               className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-accent/35 bg-accent-soft/40 text-sm font-black text-accent transition hover:border-accent hover:bg-accent-soft"
             >
               <Plus className="h-5 w-5" /> {t.classRoom.timerCreate}
             </button>
-            {presets.length === 0 ? (
-              <p className="rounded-2xl bg-surface-2 p-8 text-center text-sm font-semibold text-faint">
-                {t.classRoom.timerEmpty}
-              </p>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {presets.map((preset) => (
-                  <article key={preset.id} className={cn("rounded-2xl bg-gradient-to-br p-4 ring-1 ring-line", THEME_STYLE[preset.theme].shell)}>
-                    <div className="flex items-start gap-3">
-                      <span className={cn("flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br text-2xl text-white shadow-md", THEME_STYLE[preset.theme].clock)}>⏰</span>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-sm font-black text-content">{preset.name}</h3>
-                        <p className="mt-0.5 truncate text-xs text-muted">{preset.topic || "—"}</p>
-                        <p className="mt-1 font-mono text-xs font-bold text-accent">
-                          {Math.floor(preset.durationSeconds / 60)}:{String(preset.durationSeconds % 60).padStart(2, "0")}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => act(async () => {
-                          const result = await prepareClassTimerAction(preset.id);
-                          if (!result.error) setMode("active");
-                          return result;
-                        })}
-                        className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent text-xs font-black text-white transition hover:brightness-95 disabled:opacity-50"
-                      >
-                        <Play className="h-4 w-4" /> {t.classRoom.timerOpen}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDraft({
-                            id: preset.id,
-                            name: preset.name,
-                            topic: preset.topic,
-                            durationSeconds: preset.durationSeconds,
-                            theme: preset.theme,
-                            tickSound: preset.tickSound,
-                            endSound: preset.endSound,
-                            tickSoundEnabled: preset.tickSoundEnabled,
-                            endSoundEnabled: preset.endSoundEnabled,
-                            startVoiceEnabled: preset.startVoiceEnabled,
-                          });
-                          setMode("edit");
-                        }}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface/80 text-muted ring-1 ring-line transition hover:text-accent"
-                        aria-label={t.classRoom.edit}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+            <TimerLibrarySection
+              title={t.classRoom.timerStudentTimers}
+              subtitle={studentName}
+              items={studentTimers}
+              empty={t.classRoom.timerEmpty}
+              source="student"
+              busy={busy}
+              pendingDelete={pendingDelete}
+              openLabel={t.classRoom.timerOpen}
+              editLabel={t.classRoom.edit}
+              deleteLabel={t.classRoom.timerDelete}
+              deleteConfirmLabel={t.classRoom.timerDeleteConfirm}
+              deleteCancelLabel={t.classRoom.timerDeleteCancel}
+              onOpen={(timer) => act(async () => {
+                const result = await prepareClassTimerAction(timer.id, "student");
+                if (!result.error) setMode("active");
+                return result;
+              })}
+              onEdit={(timer) => editTimer(timer, "student")}
+              onDelete={(timer) => removeTimer(timer.id, "student")}
+              onCancelDelete={() => setPendingDelete(null)}
+            />
+            <TimerLibrarySection
+              title={t.classRoom.timerPresets}
+              items={presets}
+              empty={t.classRoom.timerPresetsEmpty}
+              source="preset"
+              busy={busy}
+              pendingDelete={pendingDelete}
+              openLabel={t.classRoom.timerOpen}
+              editLabel={t.classRoom.edit}
+              deleteLabel={t.classRoom.timerDelete}
+              deleteConfirmLabel={t.classRoom.timerDeleteConfirm}
+              deleteCancelLabel={t.classRoom.timerDeleteCancel}
+              onOpen={(timer) => act(async () => {
+                const result = await prepareClassTimerAction(timer.id, "preset");
+                if (!result.error) setMode("active");
+                return result;
+              })}
+              onEdit={(timer) => editTimer(timer, "preset")}
+              onDelete={(timer) => removeTimer(timer.id, "preset")}
+              onCancelDelete={() => setPendingDelete(null)}
+            />
           </div>
         )}
 
@@ -424,15 +470,22 @@ export function ClassTimerManager({
           <TimerPresetEditor
             value={draft}
             busy={busy}
+            saveAsPreset={saveAsPreset}
+            offerPreset={editTarget === "student-new"}
             onChange={setDraft}
-            onCancel={() => setMode("list")}
+            onSaveAsPreset={setSaveAsPreset}
+            onCancel={() => {
+              setPendingDelete(null);
+              setMode("list");
+            }}
             onSave={() => {
               setError(null);
               startTransition(async () => {
-                const result = await saveClassTimerPresetAction(draft);
+                const result = editTarget === "preset"
+                  ? await saveClassTimerPresetAction(draft)
+                  : await saveClassStudentTimerAction(draft, editTarget === "student-new" && saveAsPreset);
                 if (result.error) return setError(result.error);
-                const list = await listClassTimerPresetsAction();
-                setPresets(list);
+                await refreshLibrary();
                 setMode("list");
               });
             }}
@@ -546,16 +599,140 @@ export function ClassTimerManager({
   );
 }
 
+function TimerLibrarySection({
+  title,
+  subtitle,
+  items,
+  empty,
+  source,
+  busy,
+  pendingDelete,
+  openLabel,
+  editLabel,
+  deleteLabel,
+  deleteConfirmLabel,
+  deleteCancelLabel,
+  onOpen,
+  onEdit,
+  onDelete,
+  onCancelDelete,
+}: {
+  title: string;
+  subtitle?: string;
+  items: ClassTimerPreset[];
+  empty: string;
+  source: "student" | "preset";
+  busy: boolean;
+  pendingDelete: string | null;
+  openLabel: string;
+  editLabel: string;
+  deleteLabel: string;
+  deleteConfirmLabel: string;
+  deleteCancelLabel: string;
+  onOpen: (timer: ClassTimerPreset) => void;
+  onEdit: (timer: ClassTimerPreset) => void;
+  onDelete: (timer: ClassTimerPreset) => void;
+  onCancelDelete: () => void;
+}) {
+  return (
+    <section className="rounded-3xl bg-surface-2/65 p-3 ring-1 ring-line sm:p-4">
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black text-content">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs font-semibold text-muted">{subtitle}</p>}
+        </div>
+        <span className="rounded-full bg-surface px-2.5 py-1 text-[10px] font-black text-accent ring-1 ring-line">
+          {items.length}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-line bg-surface/60 p-6 text-center text-sm font-semibold text-faint">
+          {empty}
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((timer) => {
+            const deleteKey = `${source}:${timer.id}`;
+            const confirming = pendingDelete === deleteKey;
+            return (
+              <article key={timer.id} className={cn("rounded-2xl bg-gradient-to-br p-4 ring-1 ring-line", THEME_STYLE[timer.theme].shell)}>
+                <div className="flex items-start gap-3">
+                  <span className={cn("flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br text-2xl text-white shadow-md", THEME_STYLE[timer.theme].clock)}>⏰</span>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="truncate text-sm font-black text-content">{timer.name}</h4>
+                    <p className="mt-0.5 truncate text-xs text-muted">{timer.topic || "—"}</p>
+                    <p className="mt-1 font-mono text-xs font-bold text-accent">
+                      {Math.floor(timer.durationSeconds / 60)}:{String(timer.durationSeconds % 60).padStart(2, "0")}
+                    </p>
+                  </div>
+                </div>
+                {confirming ? (
+                  <div className="mt-4 rounded-xl bg-rose-50/90 p-2 ring-1 ring-rose-200 dark:bg-rose-950/70 dark:ring-rose-900">
+                    <p className="text-center text-xs font-black text-rose-600 dark:text-rose-200">{deleteConfirmLabel}</p>
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" disabled={busy} onClick={onCancelDelete} className="h-8 flex-1 rounded-lg bg-surface text-[11px] font-bold text-muted ring-1 ring-line disabled:opacity-50">
+                        {deleteCancelLabel}
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => onDelete(timer)} className="h-8 flex-1 rounded-lg bg-rose-500 text-[11px] font-black text-white disabled:opacity-50">
+                        {deleteLabel}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onOpen(timer)}
+                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent text-xs font-black text-white transition hover:brightness-95 disabled:opacity-50"
+                    >
+                      <Play className="h-4 w-4" /> {openLabel}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onEdit(timer)}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface/80 text-muted ring-1 ring-line transition hover:text-accent disabled:opacity-50"
+                      aria-label={editLabel}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onDelete(timer)}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface/80 text-muted ring-1 ring-line transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-50 dark:hover:bg-rose-950/50"
+                      aria-label={deleteLabel}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function TimerPresetEditor({
   value,
   busy,
+  saveAsPreset,
+  offerPreset,
   onChange,
+  onSaveAsPreset,
   onCancel,
   onSave,
 }: {
   value: SaveClassTimerPresetInput;
   busy: boolean;
+  saveAsPreset: boolean;
+  offerPreset: boolean;
   onChange: (value: SaveClassTimerPresetInput) => void;
+  onSaveAsPreset: (value: boolean) => void;
   onCancel: () => void;
   onSave: () => void;
 }) {
@@ -615,6 +792,33 @@ function TimerPresetEditor({
           onChange={(enabled) => onChange({ ...value, startVoiceEnabled: enabled })}
           icon={<Sparkles className="h-4 w-4" />}
         />
+        {offerPreset && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={saveAsPreset}
+            onClick={() => onSaveAsPreset(!saveAsPreset)}
+            className={cn(
+              "rounded-2xl p-3 text-left ring-1 transition",
+              saveAsPreset
+                ? "bg-accent-soft text-content ring-accent/40"
+                : "bg-surface-2 text-content ring-line hover:ring-accent/30",
+            )}
+          >
+            <span className="flex items-center gap-2 text-xs font-black">
+              <span className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-md ring-1",
+                saveAsPreset ? "bg-accent text-white ring-accent" : "bg-surface text-transparent ring-line",
+              )}>
+                <Check className="h-3.5 w-3.5" />
+              </span>
+              {t.classRoom.timerSavePreset}
+            </span>
+            <span className="mt-2 block text-[11px] font-semibold leading-relaxed text-muted">
+              {t.classRoom.timerSavePresetHint}
+            </span>
+          </button>
+        )}
         <div className="mt-auto flex gap-2 pt-2">
           <button type="button" onClick={onCancel} className="h-11 flex-1 rounded-xl bg-surface-2 text-sm font-bold text-muted ring-1 ring-line">{t.common.cancel}</button>
           <button type="button" disabled={busy} onClick={onSave} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-black text-white disabled:opacity-50"><Check className="h-4 w-4" />{t.common.save}</button>
