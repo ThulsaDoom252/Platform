@@ -527,6 +527,7 @@ export const ru: Dict = {
   },
 
   game: {
+    eyebrow: "Карточки с картинками",
     title: "Угадай по картинке",
     modeTitle: "Что на карте",
     modePicture: "По картинке",

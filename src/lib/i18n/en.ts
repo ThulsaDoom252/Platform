@@ -463,6 +463,7 @@ export const en = {
   },
 
   game: {
+    eyebrow: "Picture cards",
     title: "Guess by picture",
     modeTitle: "What is on the card",
     modePicture: "By picture",

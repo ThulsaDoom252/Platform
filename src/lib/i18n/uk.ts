@@ -527,6 +527,7 @@ export const uk: Dict = {
   },
 
   game: {
+    eyebrow: "Картки із зображеннями",
     title: "Вгадай за картинкою",
     modeTitle: "Що на картці",
     modePicture: "За картинкою",

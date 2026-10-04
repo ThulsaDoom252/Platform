@@ -113,19 +113,17 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
   }
 
   return (
-    <section className="flex flex-col gap-4">
-      {!presetFolderOpen && <button
-          type="button"
-          onClick={() => { setNotice(null); setCreating(true); }}
-          className="group flex w-full items-center gap-3 rounded-2xl bg-surface p-4 text-left ring-1 ring-line shadow-sm transition hover:-translate-y-0.5 hover:ring-accent hover:shadow-md"
-        >
-          <span className="grad-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"><IconGrid className="h-5 w-5" /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-black text-content">{t.game.title}</span>
-            <span className="mt-0.5 block text-xs text-muted">{t.game.subtitle}</span>
-          </span>
-          <span className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-black text-white"><IconPlus className="h-4 w-4" /> {t.game.newPreset}</span>
-        </button>}
+    <section className="activity-panel-in relative flex flex-col gap-4 overflow-hidden rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
+      <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-cyan-500/10 blur-3xl" />
+      <div className="relative flex flex-wrap items-center gap-4">
+        <span className="flex h-14 w-14 shrink-0 rotate-2 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-cyan-500/20 transition-transform duration-200 hover:rotate-0 motion-reduce:transition-none"><IconGrid className="h-6 w-6" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-black uppercase tracking-[.18em] text-sky-500">{t.game.eyebrow}</p>
+          <h2 className="mt-0.5 text-xl font-black text-content">{t.game.title}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted">{t.game.subtitle}</p>
+        </div>
+        <button type="button" onClick={() => { setNotice(null); setCreating(true); }} className="flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-4 text-sm font-bold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none"><IconPlus className="h-4 w-4" /> {t.game.newPreset}</button>
+      </div>
 
       {notice && (
         <div className="flex items-center justify-between gap-3 rounded-xl bg-accent-soft px-3 py-2 text-sm font-semibold text-accent">
@@ -133,16 +131,17 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
         </div>
       )}
 
+      <div className="relative">
       {presets.length > 0 && !presetFolderOpen && (
-        <button type="button" onClick={() => setPresetFolderOpen(true)} className="group flex w-full items-center gap-4 rounded-2xl bg-surface p-4 text-left ring-1 ring-line shadow-sm transition hover:-translate-y-0.5 hover:ring-accent hover:shadow-md">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent transition group-hover:bg-accent group-hover:text-white"><IconFolder className="h-6 w-6" /></span>
+        <button type="button" onClick={() => setPresetFolderOpen(true)} className="activity-panel-in group flex w-full items-center gap-4 rounded-2xl bg-surface-2/80 p-4 text-left ring-1 ring-line transition-all duration-200 hover:-translate-y-0.5 hover:ring-sky-400 hover:shadow-md motion-reduce:transition-none">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-500 transition-colors duration-200 group-hover:bg-sky-500 group-hover:text-white motion-reduce:transition-none"><IconFolder className="h-6 w-6" /></span>
           <span className="min-w-0 flex-1"><span className="flex items-center gap-2 font-black text-content">{t.game.presets}<span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{presets.length}</span></span></span>
-          <IconChevronRight className="h-5 w-5 shrink-0 text-faint transition group-hover:translate-x-0.5 group-hover:text-accent" />
+          <IconChevronRight className="h-5 w-5 shrink-0 text-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-sky-500 motion-reduce:transition-none" />
         </button>
       )}
 
       {presets.length > 0 && presetFolderOpen && (
-        <div className="flex flex-col gap-4">
+        <div className="activity-panel-in flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-3 ring-1 ring-line shadow-sm">
             <button type="button" onClick={() => setPresetFolderOpen(false)} className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-bold text-muted transition hover:border-accent hover:text-accent"><IconChevronLeft className="h-4 w-4" /> {t.wordDeck.back}</button>
             <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-black text-content"><IconFolder className="h-4 w-4 text-accent" /> {t.game.presets}<span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-faint">{presets.length}</span></span>
@@ -168,6 +167,7 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
           </div>
         </div>
       )}
+      </div>
 
       {assigning && <GuessAssignDialog preset={assigning} onClose={() => setAssigning(null)} onDone={(message) => { setNotice(message); setAssigning(null); }} />}
     </section>
@@ -298,7 +298,7 @@ function GuessPicturePresetForm({ preset, busy, externalError, onCancel, onSave 
   };
 
   return (
-    <section className="rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
+    <section className="activity-panel-in rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
       <div className="flex items-center gap-3"><button type="button" onClick={onCancel} className="rounded-xl border border-line px-3 py-2 text-sm font-bold text-muted">← {t.wordDeck.back}</button><h2 className="text-xl font-black text-content">{preset ? t.game.editPreset : t.game.newPreset}</h2></div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="flex flex-col gap-5">

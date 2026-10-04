@@ -29,7 +29,6 @@ export default async function ActivitiesPage({
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold text-content">{t.nav.activities}</h1>
-        <p className="mt-1 text-sm text-muted">{t.game.subtitle}</p>
       </div>
 
       <WordDeckStudio
