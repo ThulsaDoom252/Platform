@@ -3,8 +3,10 @@ import {
   listWordDeckActivitiesAction,
 } from "@/lib/actions/word-deck";
 import { listGuessPicturePresetsAction } from "@/lib/actions/guess-picture";
+import { listRevisionPresetsAction } from "@/lib/actions/revision";
 import { WordDeckStudio } from "@/components/game/word-deck-studio";
 import { GuessPictureStudio } from "@/components/game/guess-picture-studio";
+import { RevisionActivityStudio } from "@/components/revision/revision-activity-studio";
 
 /**
  * Активности: витрина игр.
@@ -20,9 +22,10 @@ export default async function ActivitiesPage({
 }) {
   const { t } = await getDict();
   const { activity: initialActivityId } = await searchParams;
-  const [wordDeckActivities, guessPicturePresets] = await Promise.all([
+  const [wordDeckActivities, guessPicturePresets, revisionPresets] = await Promise.all([
     listWordDeckActivitiesAction(),
     listGuessPicturePresetsAction(),
+    listRevisionPresetsAction(),
   ]);
 
   return (
@@ -40,6 +43,7 @@ export default async function ActivitiesPage({
         initialActivities={wordDeckActivities.filter((activity) => activity.settings.gameType === "SPELLING")}
         initialActivityId={initialActivityId}
       />
+      <RevisionActivityStudio initialPresets={revisionPresets} />
       <GuessPictureStudio initialPresets={guessPicturePresets} />
     </div>
   );

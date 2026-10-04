@@ -26,6 +26,10 @@ import {
   teacherWordDeckHomeworkAssignmentsAction,
   type TeacherWordDeckHomeworkCard,
 } from "@/lib/actions/word-deck";
+import {
+  teacherRevisionHomeworkAssignmentsAction,
+  type TeacherRevisionHomeworkCard,
+} from "@/lib/actions/revision";
 import { getDict } from "@/lib/i18n/server";
 import { SCHOOL_TIME_ZONE, SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 import {
@@ -37,7 +41,7 @@ import {
 } from "@/lib/teacher-homework-order";
 import { cn } from "@/lib/utils";
 
-type TeacherHomeworkListItem = TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard;
+type TeacherHomeworkListItem = TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard | TeacherRevisionHomeworkCard;
 
 const FOLDER_THEMES = [
   {
@@ -88,12 +92,13 @@ export default async function TeacherHomeworksPage({
   const params = await searchParams;
   const sort = params.sort === "status" ? "status" : "assigned";
   const desc = params.dir ? params.dir === "desc" : sort === "assigned";
-  const [lessonItems, activityItems, { t, locale }] = await Promise.all([
+  const [lessonItems, activityItems, revisionItems, { t, locale }] = await Promise.all([
     teacherHomeworkAssignmentsAction(),
     teacherWordDeckHomeworkAssignmentsAction(),
+    teacherRevisionHomeworkAssignmentsAction(),
     getDict(),
   ]);
-  const items: TeacherHomeworkListItem[] = [...lessonItems, ...activityItems];
+  const items: TeacherHomeworkListItem[] = [...lessonItems, ...activityItems, ...revisionItems];
   const localeName = locale === "ru" ? "ru-RU" : locale === "uk" ? "uk-UA" : "en-US";
   const groups = groupTeacherHomeworksByStudent(items, localeName);
   const selectedGroup = groups.find((group) => group.studentId === params.student) ?? null;
@@ -187,7 +192,17 @@ export default async function TeacherHomeworksPage({
           </section>
 
           <div className="flex flex-col gap-3">
-            {sorted.map((item) => (
+            {sorted.map((item) => item.kind === "REVISION" ? (
+              <RevisionHomeworkCard
+                key={item.id}
+                item={item}
+                labels={t.teacherHomeworks}
+                revisionLabels={t.revision}
+                activityLabels={t.wordDeck}
+                assignedDateFormat={assignedDateFormat}
+                lessonDateFormat={lessonDateFormat}
+              />
+            ) : (
               <HomeworkCard
                 key={item.id}
                 item={item}
@@ -375,6 +390,101 @@ function FolderMetric({
   );
 }
 
+function RevisionHomeworkCard({
+  item,
+  labels,
+  revisionLabels,
+  activityLabels,
+  assignedDateFormat,
+  lessonDateFormat,
+}: {
+  item: TeacherRevisionHomeworkCard;
+  labels: {
+    assigned: string;
+    nextLesson: string;
+    noNextLesson: string;
+    check: string;
+    deleteHomework: string;
+    deleteHomeworkConfirm: string;
+    deletingHomework: string;
+    deleteHomeworkError: string;
+    cancelDelete: string;
+  };
+  revisionLabels: {
+    activityEyebrow: string;
+    notDone: string;
+    inProgress: string;
+    words: string;
+    mistakes: string;
+  };
+  activityLabels: {
+    homeworkFinishedTimes: string;
+    viewActivity: string;
+  };
+  assignedDateFormat: Intl.DateTimeFormat;
+  lessonDateFormat: Intl.DateTimeFormat;
+}) {
+  const state = teacherHomeworkOverviewState(item);
+  const status = item.status === "RUNNING"
+    ? revisionLabels.inProgress
+    : item.attempts.length > 0
+      ? activityLabels.homeworkFinishedTimes.replace("{n}", String(item.attempts.length))
+      : revisionLabels.notDone;
+
+  return (
+    <HomeworkStatusSurface state={state}>
+      <div className="relative">
+        <Link
+          href={`/teacher/homeworks/revisions/${item.id}`}
+          className="group flex flex-col gap-4 px-4 py-4 pr-16 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-16"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <Avatar name={item.studentName} src={item.studentAvatarUrl} className="h-11 w-11 shrink-0 text-sm" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-sm font-black text-content">{item.title}</h2>
+                <span className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
+                  item.status === "RUNNING"
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                    : item.attempts.length > 0
+                      ? "bg-emerald-700 text-white dark:bg-emerald-500 dark:text-emerald-950"
+                      : "bg-surface-2 text-faint",
+                )}>{status}</span>
+              </div>
+              <p className="truncate text-xs font-semibold text-muted">{revisionLabels.activityEyebrow}</p>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-faint">
+                <span className="inline-flex items-center gap-1"><IconCalendar className="h-3.5 w-3.5" />{labels.assigned}: {assignedDateFormat.format(new Date(item.assignedAt))}</span>
+                <span className="inline-flex items-center gap-1"><IconClock className="h-3.5 w-3.5" />{labels.nextLesson}: {item.nextLessonAt ? lessonDateFormat.format(new Date(item.nextLessonAt)) : labels.noNextLesson}</span>
+              </div>
+              {item.attempts.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {item.attempts.map((attempt, index) => (
+                    <span key={attempt.id} className="rounded-lg bg-surface/75 px-2 py-1 text-[10px] font-bold text-muted ring-1 ring-line/70">
+                      #{index + 1} · {formatDuration(attempt.result.totalMs)} · {attempt.result.accuracy}% · {revisionLabels.mistakes}: {attempt.mistakes.length}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <span className="rounded-xl bg-surface/70 px-3 py-2 text-xs font-black text-content ring-1 ring-line/70">
+              {item.words} · {revisionLabels.words}
+            </span>
+            <span className="ml-auto flex h-9 items-center gap-1 rounded-xl bg-accent px-3 text-xs font-black text-white shadow-sm transition group-hover:brightness-95 sm:ml-2">
+              {activityLabels.viewActivity}<IconChevronRight className="h-4 w-4" />
+            </span>
+          </div>
+        </Link>
+        <div className="absolute right-3 top-3 z-10">
+          <DeleteStudentHomeworkButton assignmentId={item.id} kind="REVISION" labels={labels} />
+        </div>
+      </div>
+    </HomeworkStatusSurface>
+  );
+}
+
 function HomeworkCard({
   item,
   labels,
@@ -382,7 +492,7 @@ function HomeworkCard({
   assignedDateFormat,
   lessonDateFormat,
 }: {
-  item: TeacherHomeworkListItem;
+  item: TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard;
   labels: {
     assigned: string;
     nextLesson: string;

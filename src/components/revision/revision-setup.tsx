@@ -21,6 +21,7 @@ import { fmt } from "@/lib/i18n";
 import {
   createRevisionAction,
   revisionWordsAction,
+  saveRevisionPresetAction,
 } from "@/lib/actions/revision";
 import {
   canStartWith,
@@ -57,13 +58,15 @@ export function RevisionSetup({
   nodeName,
   onClose,
   onDone,
+  purpose = "ASSIGN",
 }: {
   studentId: string;
   studentName: string;
   nodeId: string;
   nodeName: string;
   onClose: () => void;
-  onDone?: () => void;
+  onDone?: (id?: string) => void;
+  purpose?: "ASSIGN" | "PRESET";
 }) {
   const { t } = useT();
   const [words, setWords] = useState<RevisionWord[] | null>(null);
@@ -171,8 +174,7 @@ export function RevisionSetup({
       }
 
       const minutes = Number(wholeMinutes) || 0;
-      const result = await createRevisionAction({
-        studentId,
+      const common = {
         nodeId,
         title: title.trim(),
         phraseIds: [...union],
@@ -181,14 +183,20 @@ export function RevisionSetup({
         show,
         answerSeconds: perAnswer,
         totalSeconds: minutes > 0 ? minutes * 60 : null,
-        dueAt: due ? new Date(due).toISOString() : null,
-      });
+      };
+      const result = purpose === "PRESET"
+        ? await saveRevisionPresetAction(common)
+        : await createRevisionAction({
+            ...common,
+            studentId,
+            dueAt: due ? new Date(due).toISOString() : null,
+          });
 
       if (result.error) {
         setError(result.error);
         return;
       }
-      onDone?.();
+      onDone?.(result.id);
       onClose();
     });
   }
@@ -207,7 +215,9 @@ export function RevisionSetup({
       open
       onClose={onClose}
       wide
-      title={`${t.revision.assign} — ${studentName}`}
+      title={purpose === "PRESET"
+        ? t.revision.newPreset
+        : `${t.revision.assign} — ${studentName}`}
     >
       <div className="flex flex-col gap-4">
         <label className="block">
@@ -403,7 +413,7 @@ export function RevisionSetup({
         </div>
 
         {/* Время и срок */}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={cn("grid gap-3", purpose === "ASSIGN" && "sm:grid-cols-2")}>
           <div>
             <span className="text-sm font-medium text-content">{t.revision.timing}</span>
             <div className="mt-1.5 flex flex-wrap gap-1">
@@ -453,7 +463,7 @@ export function RevisionSetup({
             )}
           </div>
 
-          <label className="block">
+          {purpose === "ASSIGN" && <label className="block">
             <span className="text-sm font-medium text-content">{t.revision.due}</span>
             <input
               type="datetime-local"
@@ -461,7 +471,7 @@ export function RevisionSetup({
               onChange={(e) => setDue(e.target.value)}
               className={`${inputCls} mt-1.5`}
             />
-          </label>
+          </label>}
         </div>
 
         {error && <p className="text-sm text-rose-500">{error}</p>}
@@ -481,7 +491,9 @@ export function RevisionSetup({
             disabled={busy || !ready}
             className="h-11 flex-1 rounded-xl bg-accent text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? t.revision.giving : t.revision.give}
+            {busy
+              ? (purpose === "PRESET" ? t.revision.savingPreset : t.revision.giving)
+              : (purpose === "PRESET" ? t.revision.savePreset : t.revision.give)}
           </button>
         </div>
       </div>

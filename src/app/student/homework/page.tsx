@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { myInteractiveHomeworkAction } from "@/lib/actions/lesson-homework";
 import { myWordDeckHomeworkAction } from "@/lib/actions/word-deck";
+import { myRevisionsAction } from "@/lib/actions/revision";
 import { getDict } from "@/lib/i18n/server";
 import { IconCheckCircle } from "@/components/icons";
+import { RevisionList } from "@/components/revision/revision-list";
 
 export default async function StudentHomeworkPage() {
-  const [items, games, { t }] = await Promise.all([
+  const [items, games, revisions, { t }] = await Promise.all([
     myInteractiveHomeworkAction(),
     myWordDeckHomeworkAction(),
+    myRevisionsAction(),
     getDict(),
   ]);
 
@@ -76,7 +79,9 @@ export default async function StudentHomeworkPage() {
         </section>
       )}
 
-      {items.length === 0 && games.length === 0 && <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
+      {revisions.length > 0 && <RevisionList items={revisions} />}
+
+      {items.length === 0 && games.length === 0 && revisions.length === 0 && <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
         <IconCheckCircle className="mx-auto h-10 w-10 text-emerald-500" />
         <p className="mt-3 text-sm font-bold text-content">{t.interactiveHomework.nothingAssigned}</p>
       </div>}

@@ -20,6 +20,7 @@ import {
   studentMaterials,
   users,
   wordDeckActivities,
+  wordRevisions,
   type GameCard,
   type GameVerdict,
 } from "@/lib/db/schema";
@@ -435,7 +436,20 @@ export async function clearClassActivitiesAction(
   await requireTeacher();
   const target = String(studentId ?? "");
   if (!target) return { error: "Не выбран ученик" };
-  await db.delete(activityGames).where(eq(activityGames.studentId, target));
+  await Promise.all([
+    db.delete(activityGames).where(
+      and(
+        eq(activityGames.studentId, target),
+        ne(activityGames.kind, "WORD_DECK_HOMEWORK"),
+      ),
+    ),
+    db.delete(wordRevisions).where(
+      and(
+        eq(wordRevisions.studentId, target),
+        eq(wordRevisions.placement, "CLASS"),
+      ),
+    ),
+  ]);
   return {};
 }
 
@@ -463,7 +477,12 @@ export async function duplicateClassActivitiesAction(
   const rows = await db
     .select()
     .from(activityGames)
-    .where(eq(activityGames.studentId, source))
+    .where(
+      and(
+        eq(activityGames.studentId, source),
+        ne(activityGames.kind, "WORD_DECK_HOMEWORK"),
+      ),
+    )
     .orderBy(asc(activityGames.createdAt));
 
   if (rows.length > 0) {
@@ -485,6 +504,34 @@ export async function duplicateClassActivitiesAction(
         paused: true,
         pausedLeftMs: row.seconds * 1000,
         deadline: null,
+      })),
+    );
+  }
+  const revisions = await db
+    .select()
+    .from(wordRevisions)
+    .where(
+      and(
+        eq(wordRevisions.studentId, source),
+        eq(wordRevisions.placement, "CLASS"),
+      ),
+    )
+    .orderBy(asc(wordRevisions.createdAt));
+  if (revisions.length > 0) {
+    await db.insert(wordRevisions).values(
+      revisions.map((revision) => ({
+        studentId: target,
+        assignedByTeacherId: revision.assignedByTeacherId,
+        nodeId: revision.nodeId,
+        title: revision.title,
+        phraseIds: revision.phraseIds,
+        modes: revision.modes,
+        modeWords: revision.modeWords,
+        show: revision.show,
+        answerSeconds: revision.answerSeconds,
+        totalSeconds: revision.totalSeconds,
+        placement: "CLASS",
+        reopened: false,
       })),
     );
   }

@@ -126,6 +126,8 @@ export const users = pgTable("users", {
     enterClassAt?: string;
     /** Назначенная ученику колода, которую учитель открыл поверх урока. */
     gameId?: string;
+    /** Практика слов, которую учитель открыл поверх урока. */
+    revisionId?: string;
     /** Временный полноэкранный просмотр скороговорки и совместный рисунок. */
     twisterId?: string;
     twisterSessionId?: string;
@@ -979,6 +981,9 @@ export const wordRevisions = pgTable("word_revisions", {
   studentId: uuid("student_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  assignedByTeacherId: uuid("assigned_by_teacher_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   /** Откуда выдано — ссылка на словник в материалах ученика. */
   nodeId: uuid("node_id").references(() => materialNodes.id, {
     onDelete: "set null",
@@ -1015,6 +1020,13 @@ export const wordRevisions = pgTable("word_revisions", {
   /** До какого числа пройти. */
   dueAt: timestamp("due_at"),
   /**
+   * Где ученик проходит практику.
+   *
+   * HOMEWORK появляется в самостоятельной домашке, CLASS живёт в
+   * очереди активностей текущего урока и открывается учителем в классе.
+   */
+  placement: text("placement").notNull().default("HOMEWORK"),
+  /**
    * Разрешено ли пройти ещё раз.
    *
    * Сданное задание закрывается; учитель может открыть его снова, и
@@ -1022,6 +1034,32 @@ export const wordRevisions = pgTable("word_revisions", {
    */
   reopened: boolean("reopened").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/**
+ * Сохранённая настройка «Практики слов» в разделе Activities.
+ *
+ * Это именно шаблон: каждое назначение копирует настройки в
+ * word_revisions, поэтому удаление или правка пресета не затрагивает
+ * уже выданную домашку и активность урока.
+ */
+export const wordRevisionPresets = pgTable("word_revision_presets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  authorId: uuid("author_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  nodeId: uuid("node_id").references(() => materialNodes.id, {
+    onDelete: "set null",
+  }),
+  title: text("title").notNull(),
+  phraseIds: jsonb("phrase_ids").$type<string[]>().default([]).notNull(),
+  modes: jsonb("modes").$type<string[]>().default([]).notNull(),
+  modeWords: jsonb("mode_words").$type<Record<string, string[]>>(),
+  show: jsonb("show").$type<Record<string, boolean>>(),
+  answerSeconds: integer("answer_seconds"),
+  totalSeconds: integer("total_seconds"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const wordRevisionsRelations = relations(wordRevisions, ({ one, many }) => ({

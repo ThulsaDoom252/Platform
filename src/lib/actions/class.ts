@@ -695,6 +695,7 @@ export type ClassSync = {
     boardObjectId: number | null;
     boardCommand: "SHOW" | "FOCUS" | "FLASH" | null;
     gameId: string | null;
+    revisionId: string | null;
     lessonSection: string | null;
     lessonElementId: string | null;
   } | null;
@@ -805,6 +806,10 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
           gameId:
             me.classFocus.view === "GAME"
               ? (me.classFocus.gameId ?? null)
+              : null,
+          revisionId:
+            me.classFocus.view === "GAME"
+              ? (me.classFocus.revisionId ?? null)
               : null,
           lessonSection:
             me.classFocus.view === "LESSON" &&

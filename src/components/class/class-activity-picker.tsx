@@ -30,9 +30,14 @@ import {
 } from "@/lib/actions/word-deck";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import {
+  assignRevisionPresetAction,
+  listRevisionPresetsAction,
+  type RevisionPreset,
+} from "@/lib/actions/revision";
 
-type GameKind = "WORD_DECK" | "GUESS_PICTURE";
-type PickerStage = "CATALOG" | "WORD_PRESETS" | "GUESS_PRESETS" | "WORD_CREATE" | "GUESS_CREATE" | "SAVE_OFFER";
+type GameKind = "WORD_DECK" | "GUESS_PICTURE" | "REVISION";
+type PickerStage = "CATALOG" | "WORD_PRESETS" | "GUESS_PRESETS" | "REVISION_PRESETS" | "WORD_CREATE" | "GUESS_CREATE" | "SAVE_OFFER";
 
 type PendingPreset = {
   kind: GameKind;
@@ -53,6 +58,7 @@ export function ClassActivityPicker({
   const [stage, setStage] = useState<PickerStage>("CATALOG");
   const [wordPresets, setWordPresets] = useState<WordDeckActivity[] | null>(null);
   const [guessPresets, setGuessPresets] = useState<GuessPicturePreset[] | null>(null);
+  const [revisionPresets, setRevisionPresets] = useState<RevisionPreset[] | null>(null);
   const [pendingPreset, setPendingPreset] = useState<PendingPreset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
@@ -62,16 +68,19 @@ export function ClassActivityPicker({
     Promise.all([
       listWordDeckActivitiesAction(),
       listGuessPicturePresetsAction(),
+      listRevisionPresetsAction(),
     ])
-      .then(([wordDecks, guesses]) => {
+      .then(([wordDecks, guesses, revisions]) => {
         if (!alive) return;
         setWordPresets(wordDecks);
         setGuessPresets(guesses);
+        setRevisionPresets(revisions);
       })
       .catch(() => {
         if (!alive) return;
         setWordPresets([]);
         setGuessPresets([]);
+        setRevisionPresets([]);
         setError(t.activityPicker.loadFailed);
       });
     return () => { alive = false; };
@@ -85,6 +94,10 @@ export function ClassActivityPicker({
     () => [...(guessPresets ?? [])].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: "base" })),
     [guessPresets],
   );
+  const sortedRevisions = useMemo(
+    () => [...(revisionPresets ?? [])].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: "base" })),
+    [revisionPresets],
+  );
 
   const go = (next: PickerStage) => {
     setError(null);
@@ -96,7 +109,9 @@ export function ClassActivityPicker({
     startBusy(async () => {
       const result = kind === "WORD_DECK"
         ? await addWordDeckToClassAction(id, studentId)
-        : await addGuessPicturePresetToClassAction(id, studentId);
+        : kind === "GUESS_PICTURE"
+          ? await addGuessPicturePresetToClassAction(id, studentId)
+          : await assignRevisionPresetAction(id, studentId, "CLASS");
       if (result.error) {
         setError(result.error);
         return;
@@ -243,6 +258,47 @@ export function ClassActivityPicker({
     );
   }
 
+  if (stage === "REVISION_PRESETS") {
+    return (
+      <section className="activity-panel-in relative overflow-hidden rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => go("CATALOG")} className="flex h-10 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-bold text-muted transition hover:border-accent hover:text-accent">
+            <IconChevronLeft className="h-4 w-4" /> {t.wordDeck.back}
+          </button>
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-xl text-white shadow-sm">🧠</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-black text-content">{t.revision.title}</h2>
+            <p className="text-xs text-faint">{t.activityPicker.choosePreset}</p>
+          </div>
+        </div>
+        {error && <p className="relative mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-500">{error}</p>}
+        {revisionPresets === null ? (
+          <p className="relative mt-5 text-sm text-faint">{t.common.loading}</p>
+        ) : sortedRevisions.length === 0 ? (
+          <div className="relative mt-5 rounded-2xl border border-dashed border-line bg-surface-2/60 p-8 text-center text-sm text-faint">{t.activityPicker.noPresets}</div>
+        ) : (
+          <div className="relative mt-5 grid gap-3 lg:grid-cols-2">
+            {sortedRevisions.map((preset) => (
+              <article key={preset.id} className="rounded-2xl bg-surface-2/70 p-4 ring-1 ring-line transition hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-xl text-white">🧠</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-black text-content">{preset.title}</span>
+                    <span className="block text-xs text-faint">{fmt(t.revision.selected, { n: preset.phraseIds.length })} · {preset.modes.length} {t.revision.sections.toLowerCase()}</span>
+                  </span>
+                  <button type="button" disabled={busy} onClick={() => addExisting("REVISION", preset.id)} className="h-9 rounded-xl bg-emerald-500 px-3 text-xs font-black text-white transition hover:bg-emerald-400 disabled:opacity-50">
+                    {t.activityPicker.addPreset}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   if (stage === "WORD_PRESETS" || stage === "GUESS_PRESETS") {
     const wordDeck = stage === "WORD_PRESETS";
     const presets = wordDeck ? sortedWords : sortedGuesses;
@@ -315,7 +371,7 @@ export function ClassActivityPicker({
       </div>
 
       {error && <p className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-500">{error}</p>}
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
         <GameCard
           title={t.wordDeck.title}
           description={t.wordDeck.subtitle}
@@ -323,6 +379,15 @@ export function ClassActivityPicker({
           color="violet"
           icon={<span className="text-3xl">♠</span>}
           onClick={() => go("WORD_PRESETS")}
+          presetLabel={t.activityPicker.presetsAvailable}
+        />
+        <GameCard
+          title={t.revision.title}
+          description={t.revision.activitySubtitle}
+          count={revisionPresets?.length}
+          color="emerald"
+          icon={<span className="text-3xl">🧠</span>}
+          onClick={() => go("REVISION_PRESETS")}
           presetLabel={t.activityPicker.presetsAvailable}
         />
         <GameCard
@@ -351,7 +416,7 @@ function GameCard({
   title: string;
   description: string;
   count: number | undefined;
-  color: "violet" | "cyan";
+  color: "violet" | "cyan" | "emerald";
   icon: React.ReactNode;
   onClick: () => void;
   presetLabel: string;
@@ -362,11 +427,11 @@ function GameCard({
       onClick={onClick}
       className={cn(
         "group relative min-h-48 overflow-hidden rounded-3xl bg-surface-2/70 p-5 text-left ring-1 ring-line transition-all duration-200 hover:-translate-y-1 hover:shadow-lg motion-reduce:transition-none",
-        color === "violet" ? "hover:ring-violet-400" : "hover:ring-sky-400",
+        color === "violet" ? "hover:ring-violet-400" : color === "emerald" ? "hover:ring-emerald-400" : "hover:ring-sky-400",
       )}
     >
-      <span className={cn("pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full blur-3xl", color === "violet" ? "bg-violet-500/15" : "bg-cyan-500/15")} />
-      <span className={cn("relative flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg transition-transform duration-200 group-hover:rotate-0 motion-reduce:transition-none", color === "violet" ? "-rotate-3 bg-gradient-to-br from-violet-500 to-indigo-600 shadow-violet-500/20" : "rotate-2 bg-gradient-to-br from-sky-500 to-cyan-500 shadow-cyan-500/20")}>
+      <span className={cn("pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full blur-3xl", color === "violet" ? "bg-violet-500/15" : color === "emerald" ? "bg-emerald-500/15" : "bg-cyan-500/15")} />
+      <span className={cn("relative flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg transition-transform duration-200 group-hover:rotate-0 motion-reduce:transition-none", color === "violet" ? "-rotate-3 bg-gradient-to-br from-violet-500 to-indigo-600 shadow-violet-500/20" : color === "emerald" ? "-rotate-2 bg-gradient-to-br from-emerald-500 to-teal-700 shadow-emerald-500/20" : "rotate-2 bg-gradient-to-br from-sky-500 to-cyan-500 shadow-cyan-500/20")}>
         {icon}
       </span>
       <span className="relative mt-4 block text-lg font-black text-content">{title}</span>

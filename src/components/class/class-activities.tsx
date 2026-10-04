@@ -34,6 +34,14 @@ import {
   removeWordDeckFromClassAction,
   type ClassWordDeckActivity,
 } from "@/lib/actions/word-deck";
+import {
+  deleteRevisionAction,
+  listClassRevisionsAction,
+  reopenRevisionAction,
+  showRevisionToStudentAction,
+  type RevisionCard,
+} from "@/lib/actions/revision";
+import { RevisionAttempts } from "@/components/revision/revision-teacher-list";
 import { IconPlus, IconTrash, IconUser, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
@@ -41,10 +49,13 @@ export function ClassActivities({ studentId }: { studentId: string }) {
   const { t } = useT();
   const [queue, setQueue] = useState<QueuedGame[] | null>(null);
   const [decks, setDecks] = useState<ClassWordDeckActivity[] | null>(null);
+  const [revisions, setRevisions] = useState<RevisionCard[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [openDeck, setOpenDeck] = useState<ClassWordDeckActivity | null>(null);
   const [focusedDeckId, setFocusedDeckId] = useState<string | null>(null);
+  const [focusedRevisionId, setFocusedRevisionId] = useState<string | null>(null);
+  const [openRevisionId, setOpenRevisionId] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
   const [students, setStudents] = useState<TwisterStudent[]>([]);
   const [copyTarget, setCopyTarget] = useState("");
@@ -53,12 +64,14 @@ export function ClassActivities({ studentId }: { studentId: string }) {
   const [showError, setShowError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const [rows, wordDecks] = await Promise.all([
+    const [rows, wordDecks, wordRevisions] = await Promise.all([
       listGamesAction(studentId),
       listClassWordDeckActivitiesAction(studentId),
+      listClassRevisionsAction(studentId),
     ]);
     setQueue(rows);
     setDecks(wordDecks);
+    setRevisions(wordRevisions);
     return rows;
   }, [studentId]);
 
@@ -67,16 +80,19 @@ export function ClassActivities({ studentId }: { studentId: string }) {
     Promise.all([
       listGamesAction(studentId),
       listClassWordDeckActivitiesAction(studentId),
+      listClassRevisionsAction(studentId),
     ])
-      .then(([rows, wordDecks]) => {
+      .then(([rows, wordDecks, wordRevisions]) => {
         if (!alive) return;
         setQueue(rows);
         setDecks(wordDecks);
+        setRevisions(wordRevisions);
       })
       .catch(() => {
         if (!alive) return;
         setQueue([]);
         setDecks([]);
+        setRevisions([]);
       });
     return () => {
       alive = false;
@@ -88,7 +104,7 @@ export function ClassActivities({ studentId }: { studentId: string }) {
     TRANSLATION: t.game.modeTranslation,
     MIXED: t.game.modeMixed,
   };
-  const hasActivities = (queue?.length ?? 0) + (decks?.length ?? 0) > 0;
+  const hasActivities = (queue?.length ?? 0) + (decks?.length ?? 0) + (revisions?.length ?? 0) > 0;
 
   const openCopy = () => {
     setCopying(true);
@@ -196,12 +212,87 @@ export function ClassActivities({ studentId }: { studentId: string }) {
         </button>
       </div>
 
-      {(queue === null || decks === null) && <p className="text-sm text-faint">{t.common.loading}</p>}
+      {(queue === null || decks === null || revisions === null) && <p className="text-sm text-faint">{t.common.loading}</p>}
 
-      {queue?.length === 0 && decks?.length === 0 && (
+      {queue?.length === 0 && decks?.length === 0 && revisions?.length === 0 && (
         <div className="rounded-2xl bg-surface-2 p-6 text-center">
           <p className="text-sm font-semibold text-content">{t.game.queueEmpty}</p>
           <p className="mt-1 text-[12px] text-faint">{t.game.subtitle}</p>
+        </div>
+      )}
+
+      {(revisions ?? []).length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-black uppercase tracking-wide text-faint">{t.revision.activityEyebrow}</p>
+          {(revisions ?? []).map((revision) => (
+            <div key={revision.id} className="rounded-2xl bg-surface p-3 ring-1 ring-line">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-xl">🧠</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-bold text-content">{revision.title}</span>
+                  <span className="block text-[11px] text-faint">
+                    {fmt(t.revision.selected, { n: revision.words })} · {revision.attempts > 0
+                      ? fmt(t.revision.attemptsDone, { n: revision.attempts })
+                      : t.revision.notDone}
+                  </span>
+                </span>
+                {revision.attempts > 0 && (
+                  <button type="button" onClick={() => setOpenRevisionId(openRevisionId === revision.id ? null : revision.id)} className="h-9 rounded-xl bg-surface-2 px-3 text-xs font-bold text-content transition hover:text-accent">
+                    {t.revision.results}
+                  </button>
+                )}
+                {!revision.open && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => startBusy(async () => {
+                      await reopenRevisionAction(revision.id, true);
+                      await reload();
+                    })}
+                    className="h-9 rounded-xl border border-line px-3 text-xs font-bold text-content transition hover:border-accent hover:text-accent disabled:opacity-50"
+                  >
+                    {t.revision.reopen}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={busy || !revision.open}
+                  onClick={() => startBusy(async () => {
+                    const result = await showRevisionToStudentAction(revision.id);
+                    setShowError(result.error ?? null);
+                    if (!result.error) setFocusedRevisionId(revision.id);
+                  })}
+                  className={cn(
+                    "flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition disabled:opacity-50",
+                    focusedRevisionId === revision.id
+                      ? "bg-amber-400 text-slate-950"
+                      : "bg-emerald-500 text-white hover:bg-emerald-400",
+                  )}
+                >
+                  <IconUser className="h-4 w-4" />
+                  {focusedRevisionId === revision.id
+                    ? t.classRoom.studentFocusedOnGame
+                    : t.classRoom.sendStudentToGame}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!confirm(t.revision.removeConfirm)) return;
+                    startBusy(async () => {
+                      await deleteRevisionAction(revision.id);
+                      await reload();
+                    });
+                  }}
+                  title={t.revision.remove}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-faint transition hover:bg-surface-2 hover:text-rose-500 disabled:opacity-50"
+                >
+                  <IconTrash className="h-4 w-4" />
+                </button>
+              </div>
+              {openRevisionId === revision.id && <RevisionAttempts revisionId={revision.id} />}
+            </div>
+          ))}
         </div>
       )}
 

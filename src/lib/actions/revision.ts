@@ -9,15 +9,17 @@
  * останется повторением, а не заучиванием последовательности.
  */
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, inArray, isNull, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
   materialPhrases,
   notifications,
   phraseImages,
+  lessons,
   users,
   wordRevisionAttempts,
+  wordRevisionPresets,
   wordRevisions,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
@@ -30,6 +32,7 @@ import {
   type RevisionWord,
 } from "@/lib/revision-modes";
 import { scoreRevision, type RevisionAnswer } from "@/lib/revision-score";
+import { scheduleNow } from "@/lib/schedule-time";
 
 export type RevisionState = { ok?: boolean; error?: string; id?: string };
 
@@ -130,6 +133,7 @@ export async function createRevisionAction(setup: RevisionSetup): Promise<Revisi
     .insert(wordRevisions)
     .values({
       studentId,
+      assignedByTeacherId: session.userId,
       nodeId,
       title,
       phraseIds,
@@ -148,10 +152,172 @@ export async function createRevisionAction(setup: RevisionSetup): Promise<Revisi
     message: `Новое повторение слов: ${title}`,
     relatedStudentId: studentId,
   });
-  void session;
-
   revalidatePath("/teacher/materials");
   revalidatePath("/student/homework");
+  return { ok: true, id: created?.id };
+}
+
+export type RevisionPreset = {
+  id: string;
+  title: string;
+  nodeId: string | null;
+  nodeName: string | null;
+  phraseIds: string[];
+  modes: string[];
+  modeWords: Record<string, string[]>;
+  show: Record<string, boolean>;
+  answerSeconds: number | null;
+  totalSeconds: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type RevisionPresetSetup = Omit<RevisionSetup, "studentId" | "dueAt">;
+
+/** Сохранить отдельный пресет в Activities. */
+export async function saveRevisionPresetAction(
+  setup: RevisionPresetSetup,
+): Promise<RevisionState> {
+  const session = await requireTeacher();
+  const nodeId = String(setup?.nodeId ?? "");
+  const title = String(setup?.title ?? "").trim().slice(0, 120);
+  const phraseIds = [...new Set((setup?.phraseIds ?? []).map(String).filter(Boolean))];
+  const modes = (setup?.modes ?? []).filter((mode): mode is RevisionMode =>
+    REVISION_MODES.includes(mode as RevisionMode),
+  );
+  const inTask = new Set(phraseIds);
+  const modeWords: Record<string, string[]> = {};
+  for (const mode of modes) {
+    const own = (setup?.modeWords?.[mode] ?? [])
+      .map(String)
+      .filter((id) => inTask.has(id));
+    if (own.length > 0) modeWords[mode] = own;
+  }
+
+  if (!nodeId) return { error: "Не выбран словник" };
+  if (!title) return { error: "Дай игре название" };
+  if (phraseIds.length === 0) return { error: "Не выбрано ни одного слова" };
+  if (modes.length === 0) return { error: "Не выбран ни один режим" };
+
+  const [created] = await db
+    .insert(wordRevisionPresets)
+    .values({
+      authorId: session.userId,
+      nodeId,
+      title,
+      phraseIds,
+      modes,
+      modeWords,
+      show: setup?.show ?? {},
+      answerSeconds: setup?.answerSeconds ?? null,
+      totalSeconds: setup?.totalSeconds ?? null,
+      updatedAt: new Date(),
+    })
+    .returning({ id: wordRevisionPresets.id });
+
+  revalidatePath("/teacher/activities");
+  return { ok: true, id: created?.id };
+}
+
+/** Пресеты текущего учителя. */
+export async function listRevisionPresetsAction(): Promise<RevisionPreset[]> {
+  const session = await requireTeacher();
+  const rows = await db
+    .select({ preset: wordRevisionPresets, nodeName: materialNodes.name })
+    .from(wordRevisionPresets)
+    .leftJoin(materialNodes, eq(materialNodes.id, wordRevisionPresets.nodeId))
+    .where(eq(wordRevisionPresets.authorId, session.userId))
+    .orderBy(desc(wordRevisionPresets.createdAt));
+
+  return rows.map(({ preset, nodeName }) => ({
+    id: preset.id,
+    title: preset.title,
+    nodeId: preset.nodeId,
+    nodeName,
+    phraseIds: preset.phraseIds ?? [],
+    modes: preset.modes ?? [],
+    modeWords: preset.modeWords ?? {},
+    show: preset.show ?? {},
+    answerSeconds: preset.answerSeconds,
+    totalSeconds: preset.totalSeconds,
+    createdAt: preset.createdAt.toISOString(),
+    updatedAt: preset.updatedAt.toISOString(),
+  }));
+}
+
+export async function deleteRevisionPresetAction(id: string): Promise<RevisionState> {
+  const session = await requireTeacher();
+  await db
+    .delete(wordRevisionPresets)
+    .where(
+      and(
+        eq(wordRevisionPresets.id, String(id ?? "")),
+        eq(wordRevisionPresets.authorId, session.userId),
+      ),
+    );
+  revalidatePath("/teacher/activities");
+  return { ok: true };
+}
+
+/** Копия пресета для конкретного ученика: в урок или в самостоятельную домашку. */
+export async function assignRevisionPresetAction(
+  presetId: string,
+  studentId: string,
+  placement: "CLASS" | "HOMEWORK",
+): Promise<RevisionState & { existed?: boolean }> {
+  const session = await requireTeacher();
+  const targetId = String(studentId ?? "");
+  const targetPlacement = placement === "CLASS" ? "CLASS" : "HOMEWORK";
+
+  const [[preset], [student]] = await Promise.all([
+    db
+      .select()
+      .from(wordRevisionPresets)
+      .where(
+        and(
+          eq(wordRevisionPresets.id, String(presetId ?? "")),
+          eq(wordRevisionPresets.authorId, session.userId),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, targetId), eq(users.role, "STUDENT")))
+      .limit(1),
+  ]);
+  if (!preset) return { error: "Пресет не найден" };
+  if (!student) return { error: "Ученик не найден" };
+
+  const [created] = await db
+    .insert(wordRevisions)
+    .values({
+      studentId: targetId,
+      assignedByTeacherId: session.userId,
+      nodeId: preset.nodeId,
+      title: preset.title,
+      phraseIds: preset.phraseIds ?? [],
+      modes: preset.modes ?? [],
+      modeWords: preset.modeWords ?? {},
+      show: preset.show ?? {},
+      answerSeconds: preset.answerSeconds,
+      totalSeconds: preset.totalSeconds,
+      placement: targetPlacement,
+    })
+    .returning({ id: wordRevisions.id });
+
+  if (targetPlacement === "HOMEWORK") {
+    await db.insert(notifications).values({
+      recipientId: targetId,
+      type: "HOMEWORK_SUBMITTED",
+      message: `Новая практика слов: ${preset.title}`,
+      relatedStudentId: targetId,
+    });
+  }
+
+  revalidatePath("/teacher/activities");
+  revalidatePath("/student/homework");
+  revalidatePath("/teacher/class");
   return { ok: true, id: created?.id };
 }
 
@@ -170,9 +336,13 @@ export type RevisionCard = {
   lastFinishedAt: string | null;
   /** Можно ли проходить: не сдано или открыто заново. */
   open: boolean;
+  placement: "CLASS" | "HOMEWORK";
 };
 
-async function cardsFor(studentId: string): Promise<RevisionCard[]> {
+async function cardsFor(
+  studentId: string,
+  placement?: "CLASS" | "HOMEWORK",
+): Promise<RevisionCard[]> {
   const rows = await db
     .select({
       revision: wordRevisions,
@@ -180,7 +350,14 @@ async function cardsFor(studentId: string): Promise<RevisionCard[]> {
     })
     .from(wordRevisions)
     .leftJoin(materialNodes, eq(materialNodes.id, wordRevisions.nodeId))
-    .where(eq(wordRevisions.studentId, studentId))
+    .where(
+      placement
+        ? and(
+            eq(wordRevisions.studentId, studentId),
+            eq(wordRevisions.placement, placement),
+          )
+        : eq(wordRevisions.studentId, studentId),
+    )
     .orderBy(desc(wordRevisions.createdAt));
 
   if (rows.length === 0) return [];
@@ -215,6 +392,7 @@ async function cardsFor(studentId: string): Promise<RevisionCard[]> {
       lastFinishedAt: last?.toISOString() ?? null,
       // Сдано — закрыто, пока учитель не откроет заново.
       open: done.length === 0 || revision.reopened,
+      placement: revision.placement === "CLASS" ? "CLASS" : "HOMEWORK",
     };
   });
 }
@@ -230,7 +408,77 @@ export async function listRevisionsAction(studentId: string): Promise<RevisionCa
 export async function myRevisionsAction(): Promise<RevisionCard[]> {
   const session = await getSession();
   if (!session) return [];
-  return cardsFor(session.userId);
+  return cardsFor(session.userId, "HOMEWORK");
+}
+
+export async function myRevisionAction(id: string): Promise<RevisionCard | null> {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") return null;
+  const cards = await cardsFor(session.userId, "HOMEWORK");
+  return cards.find((card) => card.id === String(id ?? "")) ?? null;
+}
+
+/** Активности, которые учитель положил в текущую очередь урока ученика. */
+export async function listClassRevisionsAction(studentId: string): Promise<RevisionCard[]> {
+  await requireTeacher();
+  const id = String(studentId ?? "");
+  return id ? cardsFor(id, "CLASS") : [];
+}
+
+/** Одна классная практика для экрана ученика. */
+export async function myClassRevisionAction(id: string): Promise<RevisionCard | null> {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") return null;
+  const cards = await cardsFor(session.userId, "CLASS");
+  return cards.find((card) => card.id === String(id ?? "")) ?? null;
+}
+
+/** Показать выбранную практику ученику поверх текущего урока. */
+export async function showRevisionToStudentAction(
+  revisionId: string,
+): Promise<RevisionState> {
+  const session = await requireTeacher();
+  const [teacher] = await db
+    .select({ studentId: users.classWithId })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (!teacher?.studentId) return { error: "Класс не начат" };
+
+  const [revision] = await db
+    .select({ id: wordRevisions.id })
+    .from(wordRevisions)
+    .where(
+      and(
+        eq(wordRevisions.id, String(revisionId ?? "")),
+        eq(wordRevisions.studentId, teacher.studentId),
+        eq(wordRevisions.placement, "CLASS"),
+      ),
+    )
+    .limit(1);
+  if (!revision) return { error: "Практика не добавлена выбранному ученику" };
+
+  const [student] = await db
+    .select({ classFocus: users.classFocus })
+    .from(users)
+    .where(eq(users.id, teacher.studentId))
+    .limit(1);
+
+  await db
+    .update(users)
+    .set({
+      classFocus: {
+        at: new Date().toISOString(),
+        view: "GAME",
+        revisionId: revision.id,
+        ...(student?.classFocus?.lessonAssignmentId
+          ? { lessonAssignmentId: student.classFocus.lessonAssignmentId }
+          : {}),
+      },
+    })
+    .where(eq(users.id, teacher.studentId));
+
+  return { ok: true };
 }
 
 /** Убрать задание вместе с попытками. */
@@ -241,6 +489,9 @@ export async function deleteRevisionAction(id: string): Promise<RevisionState> {
 
   await db.delete(wordRevisions).where(eq(wordRevisions.id, revisionId));
   revalidatePath("/teacher/materials");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/homework");
   return { ok: true };
 }
 
@@ -259,6 +510,8 @@ export async function reopenRevisionAction(
     .where(eq(wordRevisions.id, revisionId));
 
   revalidatePath("/teacher/materials");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/teacher/class");
   revalidatePath("/student/homework");
   return { ok: true };
 }
@@ -439,6 +692,13 @@ export async function saveAnswersAction(
     })
     .where(eq(wordRevisionAttempts.id, id));
 
+  if (finished && row.revision.reopened) {
+    await db
+      .update(wordRevisions)
+      .set({ reopened: false })
+      .where(eq(wordRevisions.id, row.revision.id));
+  }
+
   if (finished) {
     const [student] = await db
       .select({ name: users.name })
@@ -465,6 +725,8 @@ export async function saveAnswersAction(
 
   revalidatePath("/student/homework");
   revalidatePath("/teacher/materials");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/teacher/class");
   return { ok: true };
 }
 
@@ -473,6 +735,12 @@ export type AttemptSummary = {
   startedAt: string;
   finishedAt: string | null;
   result: ReturnType<typeof scoreRevision>;
+  mistakes: {
+    word: string;
+    mode: RevisionMode;
+    reason: "wrong" | "timeout";
+    ms: number;
+  }[];
 };
 
 /** Все попытки задания с разбором — для учителя. */
@@ -487,10 +755,142 @@ export async function attemptsAction(revisionId: string): Promise<AttemptSummary
     .where(eq(wordRevisionAttempts.revisionId, id))
     .orderBy(asc(wordRevisionAttempts.startedAt));
 
-  return rows.map((row) => ({
+  return rows.map((row) => {
+    const answers = (row.answers ?? []) as RevisionAnswer[];
+    return {
+      id: row.id,
+      startedAt: row.startedAt.toISOString(),
+      finishedAt: row.finishedAt?.toISOString() ?? null,
+      result: scoreRevision(answers),
+      mistakes: answers
+        .filter((answer) => !answer.correct)
+        .map((answer) => ({
+          word: answer.word,
+          mode: answer.mode,
+          reason: answer.reason === "timeout" ? "timeout" as const : "wrong" as const,
+          ms: answer.ms,
+        })),
+    };
+  });
+}
+
+export type TeacherRevisionHomeworkCard = {
+  kind: "REVISION";
+  id: string;
+  title: string;
+  homeworkTitle: string;
+  status: "LOBBY" | "RUNNING" | "DONE";
+  attempts: AttemptSummary[];
+  words: number;
+  modes: string[];
+  studentId: string;
+  studentName: string;
+  studentAvatarUrl: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  started: boolean;
+  assignedAt: string;
+  nextLessonAt: string | null;
+};
+
+/** Практика слов в общих папках домашек учителя. */
+export async function teacherRevisionHomeworkAssignmentsAction(): Promise<TeacherRevisionHomeworkCard[]> {
+  const session = await requireTeacher();
+  const rows = await db
+    .select({ revision: wordRevisions, studentName: users.name, studentAvatarUrl: users.avatarUrl })
+    .from(wordRevisions)
+    .innerJoin(users, eq(users.id, wordRevisions.studentId))
+    .where(
+      and(
+        eq(wordRevisions.placement, "HOMEWORK"),
+        or(
+          eq(wordRevisions.assignedByTeacherId, session.userId),
+          isNull(wordRevisions.assignedByTeacherId),
+        ),
+      ),
+    )
+    .orderBy(desc(wordRevisions.createdAt));
+  if (rows.length === 0) return [];
+
+  const revisionIds = rows.map((row) => row.revision.id);
+  const studentIds = [...new Set(rows.map((row) => row.revision.studentId))];
+  const [attemptRows, upcomingLessons] = await Promise.all([
+    db
+      .select()
+      .from(wordRevisionAttempts)
+      .where(inArray(wordRevisionAttempts.revisionId, revisionIds))
+      .orderBy(asc(wordRevisionAttempts.startedAt)),
+    db
+      .select({ studentId: lessons.studentId, startTime: lessons.startTime })
+      .from(lessons)
+      .where(
+        and(
+          inArray(lessons.studentId, studentIds),
+          eq(lessons.status, "SCHEDULED"),
+          gte(lessons.startTime, scheduleNow()),
+        ),
+      )
+      .orderBy(asc(lessons.startTime)),
+  ]);
+  const nextLessonByStudent = new Map<string, string>();
+  for (const lesson of upcomingLessons) {
+    if (!nextLessonByStudent.has(lesson.studentId)) {
+      nextLessonByStudent.set(lesson.studentId, lesson.startTime.toISOString());
+    }
+  }
+
+  return rows.map(({ revision, studentName, studentAvatarUrl }) => {
+    const mine = attemptRows.filter((attempt) => attempt.revisionId === revision.id);
+    const attempts = mine.map((attempt) => attemptSummary(attempt));
+    const finished = mine.filter((attempt) => attempt.finishedAt);
+    const latest = finished
+      .map((attempt) => attempt.finishedAt!)
+      .sort((left, right) => right.getTime() - left.getTime())[0];
+    const running = mine.some((attempt) => !attempt.finishedAt);
+    return {
+      kind: "REVISION" as const,
+      id: revision.id,
+      title: revision.title,
+      homeworkTitle: "Words practice",
+      status: running ? "RUNNING" as const : latest ? "DONE" as const : "LOBBY" as const,
+      attempts,
+      words: (revision.phraseIds ?? []).length,
+      modes: revision.modes ?? [],
+      studentId: revision.studentId,
+      studentName,
+      studentAvatarUrl,
+      submittedAt: latest?.toISOString() ?? null,
+      reviewedAt: latest?.toISOString() ?? null,
+      started: mine.length > 0,
+      assignedAt: revision.createdAt.toISOString(),
+      nextLessonAt: nextLessonByStudent.get(revision.studentId) ?? null,
+    };
+  });
+}
+
+export async function teacherRevisionHomeworkAction(
+  id: string,
+): Promise<TeacherRevisionHomeworkCard | null> {
+  const rows = await teacherRevisionHomeworkAssignmentsAction();
+  return rows.find((row) => row.id === String(id ?? "")) ?? null;
+}
+
+function attemptSummary(
+  row: typeof wordRevisionAttempts.$inferSelect,
+): AttemptSummary {
+  const answers = (row.answers ?? []) as RevisionAnswer[];
+  return {
     id: row.id,
     startedAt: row.startedAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
-    result: scoreRevision((row.answers ?? []) as RevisionAnswer[]),
-  }));
+    result: scoreRevision(answers),
+    mistakes: answers
+      .filter((answer) => !answer.correct)
+      .map((answer) => ({
+        word: answer.word,
+        mode: answer.mode,
+        reason: answer.reason === "timeout" ? "timeout" : "wrong",
+        ms: answer.ms,
+      })),
+  };
 }

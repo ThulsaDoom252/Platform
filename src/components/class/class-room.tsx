@@ -84,6 +84,7 @@ import {
   focusedClassWordDeckAction,
   type ClassWordDeckActivity,
 } from "@/lib/actions/word-deck";
+import { RevisionClassRunner } from "@/components/revision/revision-class-runner";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTimerState } from "@/lib/class-timer";
@@ -176,6 +177,7 @@ export function ClassRoom({
   } | null>(null);
   const [twisterSession, setTwisterSession] = useState<ClassTwisterSession | null>(null);
   const [focusedWordDeck, setFocusedWordDeck] = useState<ClassWordDeckActivity | null>(null);
+  const [focusedRevisionId, setFocusedRevisionId] = useState<string | null>(null);
   const [videoSync, setVideoSync] = useState<ClassVideoState | null>(null);
   const [lessonSectionFocus, setLessonSectionFocus] = useState<{
     assignmentId: string;
@@ -422,6 +424,7 @@ export function ClassRoom({
                 if (!alive || !next || appliedView.current === commandAt) return;
                 setLessonSectionFocus(null);
                 setFocusedWordDeck(null);
+                setFocusedRevisionId(null);
                 setOpen((prev) => ({ ...prev, board: false }));
                 setTwisterSession(next);
                 // Считаем команду выполненной только после успешной загрузки.
@@ -436,14 +439,21 @@ export function ClassRoom({
           if (sync.view.target === "BOARD") {
             setLessonSectionFocus(null);
             setFocusedWordDeck(null);
+            setFocusedRevisionId(null);
             setBoardFocus({
               objectId: sync.view.boardObjectId,
               command: sync.view.boardCommand ?? "SHOW",
               at: sync.view.at,
             });
             setOpen((prev) => ({ ...prev, board: true }));
+          } else if (sync.view.target === "GAME" && sync.view.revisionId) {
+            setLessonSectionFocus(null);
+            setFocusedWordDeck(null);
+            setFocusedRevisionId(sync.view.revisionId);
+            setOpen((prev) => ({ ...prev, board: false }));
           } else if (sync.view.target === "GAME" && sync.view.gameId) {
             setLessonSectionFocus(null);
+            setFocusedRevisionId(null);
             setOpen((prev) => ({ ...prev, board: false }));
             const commandAt = sync.view.at;
             void focusedClassWordDeckAction().then((activity) => {
@@ -453,6 +463,7 @@ export function ClassRoom({
             });
           } else {
             setFocusedWordDeck(null);
+            setFocusedRevisionId(null);
             setLessonSectionFocus(
               sync.view.target === "LESSON" &&
                 sync.view.lessonSection &&
@@ -969,7 +980,9 @@ export function ClassRoom({
           ) : (
             /* У ученика секция урока не разложена на части: ему нужна
                карта, а не то, из чего урок собран. */
-            focusedWordDeck ? (
+            focusedRevisionId ? (
+              <RevisionClassRunner revisionId={focusedRevisionId} />
+            ) : focusedWordDeck ? (
               <WordDeckBoard
                 key={focusedWordDeck.id}
                 activity={focusedWordDeck}

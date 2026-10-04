@@ -35,7 +35,13 @@ import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "play" | "between" | "done";
 
-export function RevisionRunner({ card }: { card: RevisionCard }) {
+export function RevisionRunner({
+  card,
+  embedded = false,
+}: {
+  card: RevisionCard;
+  embedded?: boolean;
+}) {
   const { t } = useT();
 
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
@@ -111,6 +117,7 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
         answers={answers}
         timeUp={timeUp}
         labels={MODE_LABEL}
+        embedded={embedded}
       />
     );
   }
@@ -118,7 +125,7 @@ export function RevisionRunner({ card }: { card: RevisionCard }) {
   if (phase === "intro" || !attempt) {
     return (
       <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
-        <Back />
+        {!embedded && <Back />}
 
         <div className="rounded-3xl bg-surface p-6 ring-1 ring-line shadow-sm">
           <h1 className="text-xl font-bold text-content">{card.title}</h1>
@@ -407,18 +414,20 @@ function Result({
   answers,
   timeUp,
   labels,
+  embedded,
 }: {
   title: string;
   answers: RevisionAnswer[];
   timeUp: boolean;
   labels: Record<RevisionMode, string>;
+  embedded: boolean;
 }) {
   const { t } = useT();
   const result = scoreRevision(answers);
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
-      <Back />
+      {!embedded && <Back />}
 
       <div className="rounded-3xl bg-surface p-6 text-center ring-1 ring-line shadow-sm">
         <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full tint-green">

@@ -69,6 +69,11 @@ export function RevisionTeacherList({ studentId }: { studentId: string }) {
                 ? fmt(t.revision.attemptsDone, { n: item.attempts })
                 : t.revision.notDone}
             </span>
+            <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] font-semibold text-faint ring-1 ring-line">
+              {item.placement === "CLASS"
+                ? t.revision.placementClass
+                : t.revision.placementHomework}
+            </span>
 
             {item.attempts > 0 && (
               <button
@@ -121,7 +126,7 @@ export function RevisionTeacherList({ studentId }: { studentId: string }) {
             {item.nodeName && ` · ${t.revision.fromVocab}: ${item.nodeName}`}
           </p>
 
-          {open === item.id && <Attempts revisionId={item.id} />}
+          {open === item.id && <RevisionAttempts revisionId={item.id} />}
         </div>
       ))}
     </div>
@@ -129,7 +134,7 @@ export function RevisionTeacherList({ studentId }: { studentId: string }) {
 }
 
 /** Разбор попыток: подряд, чтобы видеть, меняется ли что-нибудь. */
-function Attempts({ revisionId }: { revisionId: string }) {
+export function RevisionAttempts({ revisionId }: { revisionId: string }) {
   const { t } = useT();
   const [rows, setRows] = useState<AttemptSummary[] | null>(null);
 
@@ -241,6 +246,24 @@ function Attempts({ revisionId }: { revisionId: string }) {
                 </span>
               )}
             </div>
+
+            {row.mistakes.length > 0 && (
+              <div className="mt-2 rounded-lg bg-rose-500/5 p-2 ring-1 ring-rose-500/15">
+                <p className="text-[10px] font-black uppercase tracking-wide text-rose-500">
+                  {t.revision.mistakes} · {row.mistakes.length}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {row.mistakes.map((mistake, mistakeIndex) => (
+                    <span key={`${mistake.mode}:${mistake.word}:${mistakeIndex}`} className="rounded-md bg-surface px-2 py-1 text-[10px] text-muted ring-1 ring-line">
+                      <b className="text-content">{mistake.word}</b>
+                      {" · "}{MODE_LABEL[mistake.mode]}
+                      {" · "}{mistake.reason === "timeout" ? t.revision.timedOut : t.revision.wrongAnswer}
+                      {mistake.ms > 0 && ` · ${secs(mistake.ms)}`}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}

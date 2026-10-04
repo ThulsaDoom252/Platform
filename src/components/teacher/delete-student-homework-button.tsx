@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconTrash, IconX } from "@/components/icons";
 import { deleteStudentHomeworkAssignmentAction } from "@/lib/actions/lesson-homework";
 import { deleteWordDeckHomeworkAction } from "@/lib/actions/word-deck";
+import { deleteRevisionAction } from "@/lib/actions/revision";
 
 export function DeleteStudentHomeworkButton({
   assignmentId,
@@ -12,7 +13,7 @@ export function DeleteStudentHomeworkButton({
   labels,
 }: {
   assignmentId: string;
-  kind?: "LESSON" | "ACTIVITY";
+  kind?: "LESSON" | "ACTIVITY" | "REVISION";
   labels: {
     deleteHomework: string;
     deleteHomeworkConfirm: string;
@@ -31,7 +32,9 @@ export function DeleteStudentHomeworkButton({
     startDelete(async () => {
       const result = kind === "ACTIVITY"
         ? await deleteWordDeckHomeworkAction(assignmentId)
-        : await deleteStudentHomeworkAssignmentAction(assignmentId);
+        : kind === "REVISION"
+          ? await deleteRevisionAction(assignmentId)
+          : await deleteStudentHomeworkAssignmentAction(assignmentId);
       if (result.error) {
         setError(result.error || labels.deleteHomeworkError);
         return;
