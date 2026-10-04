@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
@@ -70,6 +71,11 @@ export function WordDeckStudio({ initialActivities, initialActivityId, mode = "W
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
   const [notice, setNotice] = useState<string | null>(null);
+  const portalReady = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const [busy, startBusy] = useTransition();
   const spelling = mode === "SPELLING";
   const sortedActivities = useMemo(() => [...activities].sort((left, right) =>
@@ -224,15 +230,16 @@ export function WordDeckStudio({ initialActivities, initialActivityId, mode = "W
       )}
       </div>
 
-      {preview && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 p-3 backdrop-blur-sm sm:p-7" onMouseDown={(event) => event.target === event.currentTarget && setPreview(null)}>
-          <div className="mx-auto max-w-4xl">
+      {portalReady && preview && createPortal(
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/80 p-3 backdrop-blur-sm sm:p-7" onMouseDown={(event) => event.target === event.currentTarget && setPreview(null)}>
+          <div className="mx-auto w-full max-w-5xl">
             <div className="mb-3 flex justify-end">
               <button type="button" onClick={() => setPreview(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-950">× {t.wordDeck.close}</button>
             </div>
             <WordDeckBoard key={`${preview.id}:${preview.updatedAt}`} activity={preview} />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {assigning && (
@@ -267,7 +274,8 @@ function AssignToClassDialog({ activity, onClose, onDone }: {
     return () => { alive = false; };
   }, [t.wordDeck.studentsFailed]);
 
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-10" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="w-full max-w-lg rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line">
         <div className="flex items-start justify-between gap-3">
@@ -319,7 +327,8 @@ function AssignToClassDialog({ activity, onClose, onDone }: {
         </div>
         {error && <p className="mt-3 text-sm font-semibold text-rose-500">{error}</p>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

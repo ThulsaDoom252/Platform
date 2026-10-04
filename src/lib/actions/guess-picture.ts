@@ -400,6 +400,8 @@ export async function assignGuessPicturePresetHomeworkAction(
       settings: normalizeWordDeckSettings(row.settings),
       backgroundImageUrl: row.backgroundImageUrl,
       cards: homeworkCards,
+      assignedByTeacherId: session.userId,
+      attempts: [],
     },
     mode: "WORD_DECK",
     title: preset.title,
@@ -407,6 +409,7 @@ export async function assignGuessPicturePresetHomeworkAction(
     cards: [], verdicts: [], timings: [], paused: true, pausedLeftMs: 0, deadline: null,
   }).returning({ id: activityGames.id });
   revalidatePath("/student/homework");
+  revalidatePath("/teacher/homeworks");
   return { id: created?.id };
 }
 

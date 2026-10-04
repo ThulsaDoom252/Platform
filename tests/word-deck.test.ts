@@ -7,6 +7,7 @@ import {
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
   minimumWordDeckWords,
+  nextWordDeckHomeworkTracking,
   playableWordDeckCards,
   randomWordDeckPercentage,
   shuffleWordDeckTail,
@@ -206,4 +207,50 @@ test("ученик не может прислать неполную или по
   const base = { at: 0, faceUp: true, sound: true, time: 10, expired: false, updatedAt: "now" };
   assert.equal(normalizeWordDeckLiveState(words, { repeats: 1 }, { ...base, deck: deck.slice(1) }), null);
   assert.equal(normalizeWordDeckLiveState(words, { repeats: 1 }, { ...base, deck: [deck[0], deck[0], deck[2]] }), null);
+});
+
+test("домашняя игра хранит время каждого завершённого прохождения без дублей", () => {
+  const started = nextWordDeckHomeworkTracking(
+    { assignedByTeacherId: "teacher", attempts: [] },
+    { started: true, finished: false, wasFinished: false },
+    new Date("2026-10-04T10:00:00.000Z"),
+  );
+  const finished = nextWordDeckHomeworkTracking(
+    started,
+    { started: true, finished: true, wasFinished: false },
+    new Date("2026-10-04T10:02:05.000Z"),
+  );
+  assert.equal(finished.attempts?.length, 1);
+  assert.equal(finished.attempts?.[0]?.durationMs, 125_000);
+
+  const duplicate = nextWordDeckHomeworkTracking(
+    finished,
+    { started: true, finished: true, wasFinished: true },
+    new Date("2026-10-04T10:03:00.000Z"),
+  );
+  assert.deepEqual(duplicate.attempts, finished.attempts);
+});
+
+test("после сброса следующая попытка домашней игры считается отдельно", () => {
+  const first = {
+    attemptStartedAt: "2026-10-04T10:00:00.000Z",
+    lastCompletedAttemptStartedAt: "2026-10-04T10:00:00.000Z",
+    attempts: [{ finishedAt: "2026-10-04T10:01:00.000Z", durationMs: 60_000 }],
+  };
+  const reset = nextWordDeckHomeworkTracking(
+    first,
+    { started: false, finished: false, wasFinished: true },
+    new Date("2026-10-04T10:02:00.000Z"),
+  );
+  const restarted = nextWordDeckHomeworkTracking(
+    reset,
+    { started: true, finished: false, wasFinished: false },
+    new Date("2026-10-04T10:03:00.000Z"),
+  );
+  const second = nextWordDeckHomeworkTracking(
+    restarted,
+    { started: true, finished: true, wasFinished: false },
+    new Date("2026-10-04T10:03:45.000Z"),
+  );
+  assert.deepEqual(second.attempts?.map((attempt) => attempt.durationMs), [60_000, 45_000]);
 });

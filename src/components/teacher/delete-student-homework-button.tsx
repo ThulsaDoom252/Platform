@@ -4,12 +4,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconTrash, IconX } from "@/components/icons";
 import { deleteStudentHomeworkAssignmentAction } from "@/lib/actions/lesson-homework";
+import { deleteWordDeckHomeworkAction } from "@/lib/actions/word-deck";
 
 export function DeleteStudentHomeworkButton({
   assignmentId,
+  kind = "LESSON",
   labels,
 }: {
   assignmentId: string;
+  kind?: "LESSON" | "ACTIVITY";
   labels: {
     deleteHomework: string;
     deleteHomeworkConfirm: string;
@@ -26,7 +29,9 @@ export function DeleteStudentHomeworkButton({
   const remove = () => {
     setError(null);
     startDelete(async () => {
-      const result = await deleteStudentHomeworkAssignmentAction(assignmentId);
+      const result = kind === "ACTIVITY"
+        ? await deleteWordDeckHomeworkAction(assignmentId)
+        : await deleteStudentHomeworkAssignmentAction(assignmentId);
       if (result.error) {
         setError(result.error || labels.deleteHomeworkError);
         return;

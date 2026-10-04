@@ -22,6 +22,10 @@ import {
   teacherHomeworkAssignmentsAction,
   type TeacherHomeworkAssignmentCard,
 } from "@/lib/actions/lesson-homework";
+import {
+  teacherWordDeckHomeworkAssignmentsAction,
+  type TeacherWordDeckHomeworkCard,
+} from "@/lib/actions/word-deck";
 import { getDict } from "@/lib/i18n/server";
 import { SCHOOL_TIME_ZONE, SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 import {
@@ -32,6 +36,8 @@ import {
   type TeacherHomeworkStudentGroup,
 } from "@/lib/teacher-homework-order";
 import { cn } from "@/lib/utils";
+
+type TeacherHomeworkListItem = TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard;
 
 const FOLDER_THEMES = [
   {
@@ -82,10 +88,12 @@ export default async function TeacherHomeworksPage({
   const params = await searchParams;
   const sort = params.sort === "status" ? "status" : "assigned";
   const desc = params.dir ? params.dir === "desc" : sort === "assigned";
-  const [items, { t, locale }] = await Promise.all([
+  const [lessonItems, activityItems, { t, locale }] = await Promise.all([
     teacherHomeworkAssignmentsAction(),
+    teacherWordDeckHomeworkAssignmentsAction(),
     getDict(),
   ]);
+  const items: TeacherHomeworkListItem[] = [...lessonItems, ...activityItems];
   const localeName = locale === "ru" ? "ru-RU" : locale === "uk" ? "uk-UA" : "en-US";
   const groups = groupTeacherHomeworksByStudent(items, localeName);
   const selectedGroup = groups.find((group) => group.studentId === params.student) ?? null;
@@ -184,6 +192,7 @@ export default async function TeacherHomeworksPage({
                 key={item.id}
                 item={item}
                 labels={t.teacherHomeworks}
+                activityLabels={t.wordDeck}
                 assignedDateFormat={assignedDateFormat}
                 lessonDateFormat={lessonDateFormat}
               />
@@ -221,7 +230,7 @@ function StudentFolder({
   group,
   labels,
 }: {
-  group: TeacherHomeworkStudentGroup<TeacherHomeworkAssignmentCard>;
+  group: TeacherHomeworkStudentGroup<TeacherHomeworkListItem>;
   labels: FolderLabels;
 }) {
   const theme = themeForStudent(group.studentId);
@@ -288,7 +297,7 @@ function StudentFolderHeader({
   group,
   labels,
 }: {
-  group: TeacherHomeworkStudentGroup<TeacherHomeworkAssignmentCard>;
+  group: TeacherHomeworkStudentGroup<TeacherHomeworkListItem>;
   labels: FolderLabels;
 }) {
   const theme = themeForStudent(group.studentId);
@@ -369,10 +378,11 @@ function FolderMetric({
 function HomeworkCard({
   item,
   labels,
+  activityLabels,
   assignedDateFormat,
   lessonDateFormat,
 }: {
-  item: TeacherHomeworkAssignmentCard;
+  item: TeacherHomeworkListItem;
   labels: {
     assigned: string;
     nextLesson: string;
@@ -390,15 +400,37 @@ function HomeworkCard({
     deleteHomeworkError: string;
     cancelDelete: string;
   };
+  activityLabels: {
+    homeworkActivities: string;
+    homeworkStarted: string;
+    homeworkNotStarted: string;
+    homeworkFinishedTimes: string;
+    attemptTime: string;
+    viewActivity: string;
+    spellingTitle: string;
+    guessByPicture: string;
+    title: string;
+  };
   assignedDateFormat: Intl.DateTimeFormat;
   lessonDateFormat: Intl.DateTimeFormat;
 }) {
   const state = teacherHomeworkOverviewState(item);
+  const activity = item.kind === "ACTIVITY";
+  const activityName = activity
+    ? item.activityType === "SPELLING"
+      ? activityLabels.spellingTitle
+      : item.activityType === "GUESS_PICTURE"
+        ? activityLabels.guessByPicture
+        : activityLabels.title
+    : "";
+  const href = activity
+    ? `/teacher/homeworks/activities/${item.id}`
+    : `/teacher/homeworks/${item.id}`;
   return (
     <HomeworkStatusSurface state={state}>
       <div className="relative">
         <Link
-          href={`/teacher/homeworks/${item.id}`}
+          href={href}
           className="group flex flex-col gap-4 px-4 py-4 pr-16 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-16"
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -410,9 +442,13 @@ function HomeworkCard({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-sm font-black text-content">{item.title}</h2>
-                <Status state={state} labels={labels} />
+                {activity
+                  ? <ActivityStatus item={item} labels={activityLabels} />
+                  : <Status state={state} labels={labels} />}
               </div>
-              <p className="truncate text-xs font-semibold text-muted">{item.homeworkTitle}</p>
+              <p className="truncate text-xs font-semibold text-muted">
+                {activity ? `${activityLabels.homeworkActivities} · ${activityName}` : item.homeworkTitle}
+              </p>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-faint">
                 <span className="inline-flex items-center gap-1">
                   <IconCalendar className="h-3.5 w-3.5" />
@@ -425,26 +461,73 @@ function HomeworkCard({
                     : labels.noNextLesson}
                 </span>
               </div>
+              {activity && item.attempts.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {item.attempts.map((attempt, index) => (
+                    <span key={`${attempt.finishedAt}:${index}`} className="rounded-lg bg-surface/75 px-2 py-1 text-[10px] font-bold text-muted ring-1 ring-line/70">
+                      {activityLabels.attemptTime.replace("{n}", String(index + 1))}: {formatDuration(attempt.durationMs)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <ProgressPill label={labels.required} done={item.requiredDone} total={item.requiredTotal} />
-            {item.bonusTotal > 0 && (
+            {!activity && <ProgressPill label={labels.required} done={item.requiredDone} total={item.requiredTotal} />}
+            {!activity && item.bonusTotal > 0 && (
               <ProgressPill label={labels.bonuses} done={item.bonusDone} total={item.bonusTotal} />
             )}
             <span className="ml-auto flex h-9 items-center gap-1 rounded-xl bg-accent px-3 text-xs font-black text-white shadow-sm transition group-hover:brightness-95 sm:ml-2">
-              {labels.check}
+              {activity ? activityLabels.viewActivity : labels.check}
               <IconChevronRight className="h-4 w-4" />
             </span>
           </div>
         </Link>
         <div className="absolute right-3 top-3 z-10">
-          <DeleteStudentHomeworkButton assignmentId={item.id} labels={labels} />
+          <DeleteStudentHomeworkButton assignmentId={item.id} kind={item.kind} labels={labels} />
         </div>
       </div>
     </HomeworkStatusSurface>
   );
+}
+
+function ActivityStatus({
+  item,
+  labels,
+}: {
+  item: TeacherWordDeckHomeworkCard;
+  labels: {
+    homeworkStarted: string;
+    homeworkNotStarted: string;
+    homeworkFinishedTimes: string;
+  };
+}) {
+  const finished = item.attempts.length;
+  const label = item.status === "RUNNING"
+    ? labels.homeworkStarted
+    : finished > 0 || item.status === "DONE"
+      ? labels.homeworkFinishedTimes.replace("{n}", String(Math.max(1, finished)))
+      : labels.homeworkNotStarted;
+  return (
+    <span className={cn(
+      "rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
+      item.status === "RUNNING"
+        ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+        : finished > 0 || item.status === "DONE"
+          ? "bg-emerald-700 text-white dark:bg-emerald-500 dark:text-emerald-950"
+          : "bg-surface-2 text-faint",
+    )}>
+      {label}
+    </span>
+  );
+}
+
+function formatDuration(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function Summary({

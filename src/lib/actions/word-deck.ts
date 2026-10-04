@@ -2,12 +2,13 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   activityGames,
   classLessonNotes,
   homework,
+  lessons,
   lessonUnits,
   materialNodes,
   materialPhrases,
@@ -18,13 +19,16 @@ import { getSession } from "@/lib/session";
 import {
   DEFAULT_WORD_DECK_SETTINGS,
   minimumWordDeckWords,
+  nextWordDeckHomeworkTracking,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
   playableWordDeckCards,
   type WordDeckLiveState,
+  type WordDeckHomeworkAttempt,
   type WordDeckSettings,
   type WordDeckSourceCard,
 } from "@/lib/word-deck";
+import { scheduleNow } from "@/lib/schedule-time";
 import { enrichSpellingMistake } from "@/lib/spelling-mistake";
 import {
   removeStoredImage,
@@ -399,6 +403,8 @@ export async function assignWordDeckHomeworkAction(
       settings,
       backgroundImageUrl: activity.backgroundImageUrl,
       cards: activity.cards,
+      assignedByTeacherId: session.userId,
+      attempts: [],
     },
     mode: "WORD_DECK",
     title: activity.title,
@@ -411,11 +417,38 @@ export async function assignWordDeckHomeworkAction(
     deadline: null,
   }).returning({ id: activityGames.id });
   revalidatePath("/student/homework");
+  revalidatePath("/teacher/homeworks");
   return { id: created?.id };
 }
 
 export type WordDeckHomework = ClassWordDeckActivity & {
   status: "LOBBY" | "RUNNING" | "DONE";
+  assignedAt: string;
+  attempts: WordDeckHomeworkAttempt[];
+};
+
+export type TeacherWordDeckHomeworkCard = {
+  kind: "ACTIVITY";
+  id: string;
+  title: string;
+  homeworkTitle: string;
+  activityType: WordDeckSettings["gameType"];
+  status: "LOBBY" | "RUNNING" | "DONE";
+  attempts: WordDeckHomeworkAttempt[];
+  studentId: string;
+  studentName: string;
+  studentAvatarUrl: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  started: boolean;
+  assignedAt: string;
+  nextLessonAt: string | null;
+};
+
+export type TeacherWordDeckHomeworkDetail = WordDeckHomework & {
+  studentId: string;
+  studentName: string;
+  studentAvatarUrl: string | null;
 };
 
 function homeworkWordDeckOf(row: typeof activityGames.$inferSelect): WordDeckHomework | null {
@@ -424,6 +457,8 @@ function homeworkWordDeckOf(row: typeof activityGames.$inferSelect): WordDeckHom
   return {
     ...activity,
     status: row.status === "DONE" ? "DONE" : row.status === "RUNNING" ? "RUNNING" : "LOBBY",
+    assignedAt: row.createdAt.toISOString(),
+    attempts: row.wordDeck?.attempts ?? [],
   };
 }
 
@@ -451,6 +486,114 @@ export async function wordDeckHomeworkAction(id: string): Promise<WordDeckHomewo
   return row ? homeworkWordDeckOf(row) : null;
 }
 
+function teacherOwnsWordDeckHomework(
+  teacherId: string,
+  row: { game: typeof activityGames.$inferSelect; templateAuthorId: string | null },
+) {
+  return row.game.wordDeck?.assignedByTeacherId === teacherId || row.templateAuthorId === teacherId;
+}
+
+/** Homework activities shown alongside ordinary lesson homework in teacher folders. */
+export async function teacherWordDeckHomeworkAssignmentsAction(): Promise<TeacherWordDeckHomeworkCard[]> {
+  const session = await requireTeacher();
+  const rows = await db.select({
+    game: activityGames,
+    studentName: users.name,
+    studentAvatarUrl: users.avatarUrl,
+    templateAuthorId: wordDeckActivities.authorId,
+  }).from(activityGames)
+    .innerJoin(users, eq(users.id, activityGames.studentId))
+    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+    .where(eq(activityGames.kind, "WORD_DECK_HOMEWORK"))
+    .orderBy(desc(activityGames.createdAt));
+  const mine = rows.filter((row) => teacherOwnsWordDeckHomework(session.userId, row));
+  const studentIds = [...new Set(mine.map((row) => row.game.studentId))];
+  const upcomingLessons = studentIds.length > 0
+    ? await db.select({ studentId: lessons.studentId, startTime: lessons.startTime })
+      .from(lessons)
+      .where(and(
+        inArray(lessons.studentId, studentIds),
+        eq(lessons.status, "SCHEDULED"),
+        gte(lessons.startTime, scheduleNow()),
+      ))
+      .orderBy(asc(lessons.startTime))
+    : [];
+  const nextLessonByStudent = new Map<string, string>();
+  for (const lesson of upcomingLessons) {
+    if (!nextLessonByStudent.has(lesson.studentId)) {
+      nextLessonByStudent.set(lesson.studentId, lesson.startTime.toISOString());
+    }
+  }
+  return mine.flatMap((row) => {
+    const item = homeworkWordDeckOf(row.game);
+    if (!item) return [];
+    const latest = item.attempts.at(-1)?.finishedAt ?? (item.status === "DONE" ? row.game.updatedAt.toISOString() : null);
+    return [{
+      kind: "ACTIVITY" as const,
+      id: item.id,
+      title: item.title,
+      homeworkTitle: "Activity",
+      activityType: item.settings.gameType,
+      status: item.status,
+      attempts: item.attempts,
+      studentId: row.game.studentId,
+      studentName: row.studentName,
+      studentAvatarUrl: row.studentAvatarUrl,
+      submittedAt: latest,
+      reviewedAt: latest,
+      started: item.status !== "LOBBY" || item.attempts.length > 0,
+      assignedAt: item.assignedAt,
+      nextLessonAt: nextLessonByStudent.get(row.game.studentId) ?? null,
+    }];
+  });
+}
+
+export async function teacherWordDeckHomeworkAction(id: string): Promise<TeacherWordDeckHomeworkDetail | null> {
+  const session = await requireTeacher();
+  const [row] = await db.select({
+    game: activityGames,
+    studentName: users.name,
+    studentAvatarUrl: users.avatarUrl,
+    templateAuthorId: wordDeckActivities.authorId,
+  }).from(activityGames)
+    .innerJoin(users, eq(users.id, activityGames.studentId))
+    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+    .where(and(
+      eq(activityGames.id, String(id ?? "")),
+      eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+    ))
+    .limit(1);
+  if (!row || !teacherOwnsWordDeckHomework(session.userId, row)) return null;
+  const item = homeworkWordDeckOf(row.game);
+  return item ? {
+    ...item,
+    studentId: row.game.studentId,
+    studentName: row.studentName,
+    studentAvatarUrl: row.studentAvatarUrl,
+  } : null;
+}
+
+export async function deleteWordDeckHomeworkAction(id: string): Promise<{ error?: string }> {
+  const session = await requireTeacher();
+  const [row] = await db.select({
+    game: activityGames,
+    templateAuthorId: wordDeckActivities.authorId,
+  }).from(activityGames)
+    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+    .where(and(
+      eq(activityGames.id, String(id ?? "")),
+      eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
+    ))
+    .limit(1);
+  if (!row || !teacherOwnsWordDeckHomework(session.userId, row)) {
+    return { error: "Домашняя активность не найдена" };
+  }
+  await db.delete(activityGames).where(eq(activityGames.id, row.game.id));
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/homework");
+  return {};
+}
+
 /** Students can only update the order/progress of their own assigned snapshot. */
 export async function saveWordDeckHomeworkStateAction(
   gameId: string,
@@ -466,16 +609,29 @@ export async function saveWordDeckHomeworkStateAction(
   if (!row?.wordDeck) return { error: "Домашняя игра не найдена" };
   const normalized = normalizeWordDeckLiveState(row.wordDeck.cards, row.wordDeck.settings, input);
   if (!normalized) return { error: "Состояние игры повреждено" };
-  const state = { ...normalized, updatedAt: new Date().toISOString() };
+  const now = new Date();
+  const state = { ...normalized, updatedAt: now.toISOString() };
   const settings = normalizeWordDeckSettings(row.wordDeck.settings);
   const needsReveal = settings.gameType === "GUESS_DESCRIPTION" || settings.gameType === "GUESS_PICTURE";
   const finished = state.at >= state.deck.length - 1 && state.at >= 0 && (!needsReveal || state.faceUp);
+  const tracking = nextWordDeckHomeworkTracking(row.wordDeck, {
+    started: state.at >= 0,
+    finished,
+    wasFinished: row.status === "DONE",
+  }, now);
   await db.update(activityGames).set({
-    wordDeck: { ...row.wordDeck, liveState: state },
+    wordDeck: {
+      ...row.wordDeck,
+      liveState: state,
+      attemptStartedAt: tracking.attemptStartedAt,
+      lastCompletedAttemptStartedAt: tracking.lastCompletedAttemptStartedAt,
+      attempts: tracking.attempts,
+    },
     status: finished ? "DONE" : state.at >= 0 ? "RUNNING" : "LOBBY",
-    updatedAt: new Date(),
+    updatedAt: now,
   }).where(eq(activityGames.id, row.id));
   revalidatePath("/student/homework");
+  revalidatePath("/teacher/homeworks");
   return { state };
 }
 
@@ -540,13 +696,20 @@ export async function assignSpellingNotesHomeworkAction(
   const [created] = await db.insert(activityGames).values({
     studentId: teacher.studentId,
     kind: "WORD_DECK_HOMEWORK",
-    wordDeck: { settings, backgroundImageUrl: null, cards: [...unique.values()] },
+    wordDeck: {
+      settings,
+      backgroundImageUrl: null,
+      cards: [...unique.values()],
+      assignedByTeacherId: session.userId,
+      attempts: [],
+    },
     mode: "WORD_DECK",
     title: String(input.title ?? "Spelling Practice").trim().slice(0, 120) || "Spelling Practice",
     status: "LOBBY",
     cards: [], verdicts: [], timings: [], paused: true, pausedLeftMs: 0, deadline: null,
   }).returning({ id: activityGames.id });
   revalidatePath("/student/homework");
+  revalidatePath("/teacher/homeworks");
   return { id: created?.id };
 }
 

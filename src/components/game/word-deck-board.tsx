@@ -79,6 +79,14 @@ function readEnglish(text: string, variant: "US" | "UK" = "US") {
   window.speechSynthesis.speak(utterance);
 }
 
+function spellingWordSize(text: string | undefined) {
+  const length = text?.trim().length ?? 0;
+  if (length <= 18) return "text-4xl sm:text-6xl";
+  if (length <= 38) return "text-3xl sm:text-5xl";
+  if (length <= 72) return "text-2xl sm:text-4xl";
+  return "text-xl sm:text-3xl";
+}
+
 export function WordDeckBoard({ activity, compact = false, live = false, observer = false, homework = false }: {
   activity: WordDeckPlayable;
   compact?: boolean;
@@ -359,7 +367,12 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
         )}
       </div>
 
-      <div className="relative mx-auto mt-7 flex min-h-[18rem] max-w-xl items-center justify-center sm:min-h-[23rem]">
+      <div className={cn(
+        "relative mx-auto mt-7 flex items-center justify-center",
+        spellingGame
+          ? "min-h-[25rem] max-w-3xl sm:min-h-[29rem]"
+          : "min-h-[18rem] max-w-xl sm:min-h-[23rem]",
+      )}>
         {!started ? (
           <button type="button" onClick={deal} disabled={observer} className="group relative h-60 w-44 disabled:cursor-default sm:h-72 sm:w-52">
             {[2, 1, 0].map((layer) => (
@@ -381,7 +394,12 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
             type="button"
             onClick={pictureGame ? showAnswer : descriptionGame ? undefined : deal}
             disabled={descriptionGame || (pictureGame ? faceUp : !canDeal)}
-            className="word-deck-card word-deck-deal-in h-60 w-full max-w-[23rem] [perspective:1200px] disabled:cursor-default sm:h-72"
+            className={cn(
+              "word-deck-card word-deck-deal-in w-full [perspective:1200px] disabled:cursor-default",
+              spellingGame
+                ? "h-[24rem] max-w-3xl sm:h-[27rem]"
+                : "h-60 max-w-[23rem] sm:h-72",
+            )}
           >
             <span className={cn(
               "relative block h-full w-full transition-transform duration-500 [transform-style:preserve-3d]",
@@ -428,7 +446,10 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
                   <span className="text-6xl">♠</span>
                 )}
               </span>
-              <span className="absolute inset-0 flex [transform:rotateY(180deg)] flex-col items-center justify-center rounded-[1.75rem] bg-[#fffdf7] px-6 pb-12 pt-14 text-slate-950 shadow-2xl [backface-visibility:hidden]">
+              <span className={cn(
+                "absolute inset-0 flex [transform:rotateY(180deg)] flex-col items-center justify-center rounded-[1.75rem] bg-[#fffdf7] text-slate-950 shadow-2xl [backface-visibility:hidden]",
+                spellingGame ? "px-5 pb-10 pt-6 sm:px-10 sm:pb-12 sm:pt-8" : "px-6 pb-12 pt-14",
+              )}>
                 {current?.owner && (
                   <span className={cn(
                     "absolute right-4 top-4 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide",
@@ -438,25 +459,28 @@ export function WordDeckBoard({ activity, compact = false, live = false, observe
                   </span>
                 )}
                 {(descriptionGame ? settings.answerIcons : (settings.showIcons || spellingGame)) && current?.icon && (
-                  <span className="mb-3 text-5xl leading-none sm:text-6xl" aria-hidden>
+                  <span className={cn("mb-3 leading-none", spellingGame ? "text-4xl sm:text-5xl" : "text-5xl sm:text-6xl")} aria-hidden>
                     {current.icon}
                   </span>
                 )}
-                <span className="max-h-full max-w-full overflow-y-auto break-words text-center text-3xl font-black leading-tight sm:text-5xl">
+                <span className={cn(
+                  "max-w-full break-words text-center font-black leading-[1.08]",
+                  spellingGame ? spellingWordSize(current?.word) : "max-h-full overflow-y-auto text-3xl sm:text-5xl",
+                )}>
                   {current?.word}
                 </span>
                 {spellingGame && (
-                  <div className="mt-3 max-h-24 w-full overflow-y-auto text-center">
+                  <div className="mt-4 w-full max-w-2xl text-center">
                     {(current?.transcriptionUs || current?.transcriptionUk) && (
-                      <p className="text-xs font-bold text-slate-400">
+                      <p className="text-[11px] font-bold leading-snug text-slate-400 sm:text-xs">
                         {current.transcriptionUs ? `US ${current.transcriptionUs}` : ""}
                         {current.transcriptionUs && current.transcriptionUk ? " · " : ""}
                         {current.transcriptionUk ? `UK ${current.transcriptionUk}` : ""}
                       </p>
                     )}
-                    {settings.showTips && current?.translation && <p className="mt-1 text-sm font-bold text-emerald-700">{current.translation}</p>}
-                    {settings.showTips && current?.tip && <p className="mt-1 text-[11px] font-semibold text-slate-500">💡 {current.tip}</p>}
-                    {settings.showTips && current?.examples?.[0] && <p className="mt-1 text-[10px] text-slate-500">{current.examples[0].en}</p>}
+                    {settings.showTips && current?.translation && <p className="mt-2 break-words text-sm font-bold leading-snug text-emerald-700 sm:text-base">{current.translation}</p>}
+                    {settings.showTips && current?.tip && <p className="mt-2 break-words text-[11px] font-semibold leading-snug text-slate-500 sm:text-xs">💡 {current.tip}</p>}
+                    {settings.showTips && current?.examples?.[0] && <p className="mt-2 break-words text-[10px] leading-snug text-slate-500 sm:text-[11px]">{current.examples[0].en}</p>}
                   </div>
                 )}
                 <span className="absolute bottom-4 left-0 right-0 text-center text-[11px] font-bold uppercase tracking-[.2em] text-slate-400">

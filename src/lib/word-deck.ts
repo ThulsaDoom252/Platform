@@ -67,6 +67,48 @@ export type WordDeckLiveState = {
   updatedAt: string;
 };
 
+export type WordDeckHomeworkAttempt = {
+  finishedAt: string;
+  durationMs: number;
+};
+
+export type WordDeckHomeworkTracking = {
+  assignedByTeacherId?: string;
+  attemptStartedAt?: string;
+  lastCompletedAttemptStartedAt?: string;
+  attempts?: WordDeckHomeworkAttempt[];
+};
+
+export function nextWordDeckHomeworkTracking(
+  tracking: WordDeckHomeworkTracking,
+  progress: { started: boolean; finished: boolean; wasFinished: boolean },
+  now = new Date(),
+): WordDeckHomeworkTracking {
+  const attempts = tracking.attempts ?? [];
+  if (!progress.started) {
+    return { ...tracking, attemptStartedAt: undefined, attempts };
+  }
+  // A legacy completed row has no start timestamp. Opening it must not create
+  // a fake zero-second attempt; the next explicit reset starts fresh tracking.
+  if (progress.finished && progress.wasFinished && !tracking.attemptStartedAt) {
+    return { ...tracking, attempts };
+  }
+  const attemptStartedAt = tracking.attemptStartedAt ?? now.toISOString();
+  if (!progress.finished || tracking.lastCompletedAttemptStartedAt === attemptStartedAt) {
+    return { ...tracking, attemptStartedAt, attempts };
+  }
+  const startedMs = new Date(attemptStartedAt).getTime();
+  return {
+    ...tracking,
+    attemptStartedAt,
+    lastCompletedAttemptStartedAt: attemptStartedAt,
+    attempts: [...attempts, {
+      finishedAt: now.toISOString(),
+      durationMs: Number.isFinite(startedMs) ? Math.max(0, now.getTime() - startedMs) : 0,
+    }].slice(-100),
+  };
+}
+
 export type WordDeckSettings = {
   gameType: WordDeckGameType;
   timerMode: WordDeckTimerMode;

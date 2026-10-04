@@ -857,6 +857,7 @@ export type HomeworkAssignmentCard = {
 };
 
 export type TeacherHomeworkAssignmentCard = HomeworkAssignmentCard & {
+  kind: "LESSON";
   studentId: string;
   studentName: string;
   studentAvatarUrl: string | null;
@@ -925,6 +926,7 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
     const started = homeworkStarted(state);
 
     return [{
+      kind: "LESSON" as const,
       id: row.assignment.id,
       title: row.title,
       homeworkTitle: plan?.title || legacy[0]?.title || "Homework",

@@ -6,6 +6,7 @@ import type { RegularLessonSection } from "@/lib/regular-lesson";
 import type { LessonHomeworkEntry } from "@/lib/lesson-homework";
 import type {
   WordDeckLiveState,
+  WordDeckHomeworkAttempt,
   WordDeckSettings,
   WordDeckSourceCard,
 } from "@/lib/word-deck";
@@ -909,6 +910,14 @@ export const activityGames = pgTable("activity_games", {
     cards: WordDeckSourceCard[];
     /** Текущий стол живого класса. Управляет только учитель. */
     liveState?: WordDeckLiveState;
+    /** Кто назначил домашнюю активность; живому классу это поле не нужно. */
+    assignedByTeacherId?: string;
+    /** Серверное начало текущего прохождения для точного времени. */
+    attemptStartedAt?: string;
+    /** Не даёт повторно записать уже завершённое прохождение. */
+    lastCompletedAttemptStartedAt?: string;
+    /** Независимая история всех завершённых прохождений. */
+    attempts?: WordDeckHomeworkAttempt[];
   }>(),
   /**
    * Чем спрашиваем.
