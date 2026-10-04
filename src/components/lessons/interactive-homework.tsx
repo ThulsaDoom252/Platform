@@ -1484,7 +1484,7 @@ function ManualExercise({
                     />
                   </p>
                 )}
-                {item.hint && exercise.kind !== "translate" && (
+                {item.hint && exercise.kind !== "translate" && exercise.kind !== "describe" && (
                   <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
                     {item.hint}
                   </span>
