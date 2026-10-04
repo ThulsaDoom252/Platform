@@ -38,9 +38,12 @@ type Phase = "intro" | "play" | "between" | "done";
 export function RevisionRunner({
   card,
   embedded = false,
+  preview,
 }: {
   card: RevisionCard;
   embedded?: boolean;
+  /** Одноразовый прогон учителя: ответы и статистика никуда не сохраняются. */
+  preview?: AttemptView | null;
 }) {
   const { t } = useT();
 
@@ -65,6 +68,19 @@ export function RevisionRunner({
 
   function begin() {
     setError(null);
+    if (preview) {
+      setAttempt({
+        ...preview,
+        answers: [],
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+      });
+      setAnswers([]);
+      setSection(0);
+      setTimeUp(false);
+      setPhase("play");
+      return;
+    }
     startBusy(async () => {
       const started = await startRevisionAction(card.id);
       if (started.error || !started.attemptId) {
@@ -92,7 +108,7 @@ export function RevisionRunner({
   function close(final: RevisionAnswer[]) {
     setAnswers(final);
     setPhase("done");
-    if (attempt) void saveAnswersAction(attempt.id, final, true);
+    if (attempt && !preview) void saveAnswersAction(attempt.id, final, true);
   }
 
   function stepDone(entries: RevisionAnswer[]) {
@@ -103,7 +119,7 @@ export function RevisionRunner({
     const finished = after.every((p) => p.done);
 
     setAnswers(next);
-    void saveAnswersAction(attempt.id, next, finished);
+    if (!preview) void saveAnswersAction(attempt.id, next, finished);
 
     if (finished) setPhase("done");
     // Секция кончилась — поздравляем; иначе просто следующий шаг.

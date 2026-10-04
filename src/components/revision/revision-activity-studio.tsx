@@ -8,6 +8,8 @@ import {
   assignRevisionPresetAction,
   deleteRevisionPresetAction,
   listRevisionPresetsAction,
+  previewRevisionPresetAction,
+  type AttemptView,
   type RevisionPreset,
 } from "@/lib/actions/revision";
 import {
@@ -20,6 +22,7 @@ import {
   type WordDeckStudent,
 } from "@/lib/actions/word-deck";
 import { RevisionSetup } from "@/components/revision/revision-setup";
+import { RevisionRunner } from "@/components/revision/revision-runner";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -87,6 +90,7 @@ export function RevisionActivityStudio({
   const [choosingSource, setChoosingSource] = useState(false);
   const [source, setSource] = useState<VocabularyChoice | null>(null);
   const [assigning, setAssigning] = useState<RevisionPreset | null>(null);
+  const [playing, setPlaying] = useState<RevisionPreset | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
 
@@ -186,6 +190,9 @@ export function RevisionActivityStudio({
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+                    <button type="button" onClick={() => setPlaying(preset)} className="h-9 flex-1 rounded-xl bg-emerald-500/15 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-500 hover:text-white dark:text-emerald-300">
+                      ▶ {t.wordDeck.play}
+                    </button>
                     <button type="button" onClick={() => setAssigning(preset)} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-3 text-xs font-bold text-white transition hover:bg-emerald-400">
                       <IconUsers className="h-4 w-4" /> {t.wordDeck.addToClass}
                     </button>
@@ -250,7 +257,63 @@ export function RevisionActivityStudio({
           }}
         />
       )}
+
+      {playing && (
+        <RevisionPresetPlayer preset={playing} onClose={() => setPlaying(null)} />
+      )}
     </section>
+  );
+}
+
+function RevisionPresetPlayer({
+  preset,
+  onClose,
+}: {
+  preset: RevisionPreset;
+  onClose: () => void;
+}) {
+  const { t } = useT();
+  const [view, setView] = useState<AttemptView | null | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    previewRevisionPresetAction(preset.id)
+      .then((result) => alive && setView(result))
+      .catch(() => alive && setView(null));
+    return () => { alive = false; };
+  }, [preset.id]);
+
+  if (typeof document === "undefined") return null;
+  const card = {
+    id: preset.id,
+    title: preset.title,
+    nodeId: preset.nodeId,
+    nodeName: preset.nodeName,
+    createdAt: preset.createdAt,
+    dueAt: null,
+    modes: preset.modes,
+    words: preset.phraseIds.length,
+    attempts: 0,
+    lastFinishedAt: null,
+    open: true,
+    placement: "CLASS" as const,
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] isolate overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-sm sm:p-7" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="min-w-0 truncate text-sm font-black text-white">{preset.title}</p>
+          <button type="button" onClick={onClose} className="shrink-0 rounded-full bg-white px-4 py-2 text-sm font-black text-slate-950">× {t.wordDeck.close}</button>
+        </div>
+        <div className="rounded-3xl bg-canvas p-3 shadow-2xl ring-1 ring-white/10 sm:p-6">
+          {view === undefined && <p className="py-16 text-center text-sm font-semibold text-faint">{t.common.loading}</p>}
+          {view === null && <p className="py-16 text-center text-sm font-semibold text-rose-500">{t.revision.failed}</p>}
+          {view && <RevisionRunner card={card} embedded preview={view} />}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

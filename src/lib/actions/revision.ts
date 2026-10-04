@@ -245,6 +245,48 @@ export async function listRevisionPresetsAction(): Promise<RevisionPreset[]> {
   }));
 }
 
+/**
+ * Собрать одноразовый прогон пресета для учителя.
+ *
+ * Никакая попытка в базу не пишется: это ровно та же случайная колода,
+ * которую получит ученик, но только для проверки и игры в Activities.
+ */
+export async function previewRevisionPresetAction(
+  id: string,
+): Promise<AttemptView | null> {
+  const session = await requireTeacher();
+  const [preset] = await db
+    .select()
+    .from(wordRevisionPresets)
+    .where(
+      and(
+        eq(wordRevisionPresets.id, String(id ?? "")),
+        eq(wordRevisionPresets.authorId, session.userId),
+      ),
+    )
+    .limit(1);
+
+  if (!preset) return null;
+  const words = await wordsOf(preset.phraseIds ?? []);
+  const plan = buildRevision(words, (preset.modes ?? []) as RevisionMode[], {
+    byMode: preset.modeWords ?? undefined,
+  });
+  if (plan.length === 0) return null;
+
+  return {
+    id: `preview-${preset.id}`,
+    revisionId: preset.id,
+    title: preset.title,
+    plan,
+    answers: [],
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    answerSeconds: preset.answerSeconds,
+    totalSeconds: preset.totalSeconds,
+    show: readShow(preset.show),
+  };
+}
+
 export async function deleteRevisionPresetAction(id: string): Promise<RevisionState> {
   const session = await requireTeacher();
   await db
