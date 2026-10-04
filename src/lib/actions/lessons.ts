@@ -13,7 +13,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, max, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   lessonAssignments,
@@ -202,42 +202,6 @@ export type LessonFolderCard = {
   sortOrder: number;
   createdAt: string;
 };
-
-let lessonLibrarySchemaReady: Promise<void> | null = null;
-
-/**
- * Production can use a different database from local development. Keep this
- * additive bootstrap until every environment has received the folder schema.
- */
-export async function ensureLessonLibrarySchemaAction(): Promise<void> {
-  await requireTeacher();
-  if (!lessonLibrarySchemaReady) {
-    lessonLibrarySchemaReady = db.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS "lesson_folders" (
-        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-        "author_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE cascade,
-        "name" text NOT NULL,
-        "sort_order" integer DEFAULT 0 NOT NULL,
-        "created_at" timestamp DEFAULT now() NOT NULL,
-        "updated_at" timestamp DEFAULT now() NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS "lesson_folders_author_order_idx"
-        ON "lesson_folders" USING btree ("author_id", "sort_order");
-      ALTER TABLE "lesson_units" ADD COLUMN IF NOT EXISTS "folder_id" uuid;
-      ALTER TABLE "lesson_units" ADD COLUMN IF NOT EXISTS "sort_order" integer DEFAULT 0 NOT NULL;
-      DO $$ BEGIN
-        ALTER TABLE "lesson_units"
-          ADD CONSTRAINT "lesson_units_folder_id_lesson_folders_id_fk"
-          FOREIGN KEY ("folder_id") REFERENCES "lesson_folders"("id") ON DELETE set null;
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$;
-    `)).then(() => undefined).catch((error) => {
-      lessonLibrarySchemaReady = null;
-      throw error;
-    });
-  }
-  await lessonLibrarySchemaReady;
-}
 
 export async function listLessonFoldersAction(): Promise<LessonFolderCard[]> {
   const session = await requireTeacher();
