@@ -6,6 +6,7 @@ import {
   type BalanceSettings,
 } from "@/lib/actions/teacher";
 import { IconCheck } from "@/components/icons";
+import { StudentPresence } from "@/components/student-presence";
 import { cn } from "@/lib/utils";
 
 /** Привычные размеры пакетов — чтобы не набирать руками каждый раз. */
@@ -196,6 +197,7 @@ export function BalancePanel({
                   className="h-4 w-4 accent-[var(--accent)]"
                 />
                 <span className="text-[12px] font-medium text-content">{student.name}</span>
+                <StudentPresence studentId={student.id} />
               </label>
             ))}
           </div>

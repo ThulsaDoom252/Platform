@@ -9,6 +9,7 @@
  */
 import { useEffect, useState, useTransition } from "react";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
@@ -140,6 +141,7 @@ export function TwisterAssign({
                     </span>
                   )}
                 </span>
+                <StudentPresence studentId={student.id} />
 
                 {justDone ? (
                   <span className="flex shrink-0 items-center gap-1 text-[12px] font-semibold text-accent">

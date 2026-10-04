@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
-import { fmt, type Dict } from "@/lib/i18n";
+import { fmt } from "@/lib/i18n";
 import {
   SCHEDULE_FORMAT_TIME_ZONE,
   scheduleNow,
@@ -39,6 +39,7 @@ import {
   type ClassPartnerProfile,
   type Presence,
 } from "@/lib/actions/class";
+import { PresenceIndicator } from "@/components/student-presence";
 import { ClassChat } from "./class-chat";
 import { QuickVerbs } from "./quick-verbs";
 import {
@@ -103,19 +104,6 @@ const CHAT_UNREAD_MS = 4_000;
  */
 const SYNC_MS = 4_000;
 const STUDENT_FOCUS_SYNC_MS = 1_000;
-
-/** Короткая точка статуса: зелёная — на платформе, красная — нет. */
-function Dot({ presence, t }: { presence: Presence; t: Dict }) {
-  return (
-    <span
-      title={presence === "online" ? t.classRoom.onlineTitle : t.classRoom.offlineTitle}
-      className={cn(
-        "h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-surface",
-        presence === "online" ? "bg-emerald-500" : "bg-rose-500",
-      )}
-    />
-  );
-}
 
 type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "script" | "notes";
 
@@ -651,7 +639,7 @@ export function ClassRoom({
             className="h-20 w-20 text-xl ring-2 ring-line transition group-hover:ring-accent"
           />
           <span className="absolute bottom-1 right-1">
-            <Dot presence={p.presence} t={t} />
+            <PresenceIndicator presence={p.presence} />
           </span>
           {p.unread > 0 && (
             <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
@@ -806,7 +794,7 @@ export function ClassRoom({
     <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
-          <Dot presence="online" t={t} />
+          <PresenceIndicator presence="online" />
           <span className="text-sm font-semibold text-content">{selfName}</span>
           <span className="text-[11px] text-faint">{t.classRoom.youAre}</span>
         </div>
@@ -829,7 +817,7 @@ export function ClassRoom({
                   className="h-9 w-9 text-sm ring-1 ring-line"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5">
-                  <Dot presence={partner.presence} t={t} />
+                  <PresenceIndicator presence={partner.presence} />
                 </span>
               </button>
               <Link
@@ -864,7 +852,7 @@ export function ClassRoom({
                   className="h-9 w-9 text-sm ring-1 ring-line"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5">
-                  <Dot presence={partner.presence} t={t} />
+                  <PresenceIndicator presence={partner.presence} />
                 </span>
               </button>
               <span className="text-sm font-semibold text-content">{partner.name}</span>

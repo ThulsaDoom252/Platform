@@ -7,6 +7,7 @@ import { getDict } from "@/lib/i18n/server";
 import { getMistakesTree } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import { IconChevronLeft } from "@/components/icons";
 import { getPublishedSpellingMistakes } from "@/lib/spelling-mistakes-data";
 import { SpellingMistakesView } from "@/components/mistakes/spelling-mistakes-view";
@@ -49,10 +50,13 @@ export default async function StudentMistakesForTeacherPage({
         <Avatar name={student.name} src={student.avatarUrl} className="h-11 w-11 text-sm" />
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-content">{t.mistakes.title}</h1>
-          <p className="text-sm text-muted">
-            {student.name}
-            {student.level ? ` · ${student.level}` : ""}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            <span>
+              {student.name}
+              {student.level ? ` · ${student.level}` : ""}
+            </span>
+            <StudentPresence studentId={student.id} showLabel />
+          </div>
         </div>
       </div>
 

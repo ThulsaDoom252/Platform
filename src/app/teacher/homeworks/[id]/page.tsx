@@ -8,6 +8,7 @@ import {
 import { assignedLessonAction } from "@/lib/actions/lessons";
 import { getDict } from "@/lib/i18n/server";
 import { assignedInteractiveHomework } from "@/lib/lesson-homework";
+import { StudentPresence } from "@/components/student-presence";
 
 export default async function TeacherHomeworkReviewPage({
   params,
@@ -37,9 +38,12 @@ export default async function TeacherHomeworkReviewPage({
       </Link>
 
       <header className="rounded-2xl bg-surface px-4 py-4 shadow-sm ring-1 ring-line sm:px-5">
-        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-accent">
-          {item.studentName}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-accent">
+            {item.studentName}
+          </p>
+          <StudentPresence studentId={item.studentId} showLabel />
+        </div>
         <h1 className="mt-1 text-xl font-black text-content">{item.title}</h1>
         <p className="mt-1 text-sm text-muted">{item.homeworkTitle}</p>
       </header>

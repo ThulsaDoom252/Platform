@@ -5,6 +5,7 @@ import { users, lessonPackages } from "@/lib/db/schema";
 import { getDict } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import { ToClassButton } from "@/components/class/to-class-button";
 import {
   SharedPackagesContent,
@@ -152,8 +153,11 @@ export default async function TeacherStudentsPage({
               >
                 <Avatar name={s.name} src={s.avatarUrl} className="h-11 w-11 text-sm" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-content group-hover:text-accent">
-                    {s.name}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-semibold text-content group-hover:text-accent">
+                      {s.name}
+                    </span>
+                    <StudentPresence studentId={s.id} />
                   </span>
                   <span className="block text-xs text-faint">
                     {s.login}

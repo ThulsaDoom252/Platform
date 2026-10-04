@@ -23,6 +23,7 @@ import {
 } from "@/lib/actions/word-deck";
 import { RevisionSetup } from "@/components/revision/revision-setup";
 import { RevisionRunner } from "@/components/revision/revision-runner";
+import { StudentPresence } from "@/components/student-presence";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -505,7 +506,10 @@ function AssignRevisionDialog({
           {students?.length === 0 && <p className="text-sm text-faint">{t.wordDeck.noStudents}</p>}
           {students?.map((student) => (
             <div key={student.id} className="rounded-xl bg-surface-2 p-2 ring-1 ring-line">
-              <p className="px-1 text-sm font-black text-content">{student.name}</p>
+              <div className="flex items-center gap-2 px-1">
+                <p className="min-w-0 truncate text-sm font-black text-content">{student.name}</p>
+                <StudentPresence studentId={student.id} />
+              </div>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"

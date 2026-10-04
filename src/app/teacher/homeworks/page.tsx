@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import {
   HomeworkBackgroundToggle,
   HomeworkStatusSurface,
@@ -282,7 +283,10 @@ function StudentFolder({
             className="h-12 w-12 shrink-0 text-sm shadow-sm ring-2 ring-white/70 dark:ring-white/10"
           />
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-lg font-black text-content">{group.studentName}</h3>
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 className="truncate text-lg font-black text-content">{group.studentName}</h3>
+              <StudentPresence studentId={group.studentId} />
+            </div>
             <p className={cn("mt-0.5 text-xs font-bold", theme.accent)}>
               {group.counts.total} · {labels.homeworksCount}
             </p>
@@ -340,7 +344,10 @@ function StudentFolderHeader({
             <p className={cn("text-[10px] font-black uppercase tracking-[0.16em]", theme.accent)}>
               {labels.homeworksCount}
             </p>
-            <h2 className="truncate text-xl font-black text-content">{group.studentName}</h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="truncate text-xl font-black text-content">{group.studentName}</h2>
+              <StudentPresence studentId={group.studentId} showLabel />
+            </div>
           </div>
         </div>
         <div className="relative grid flex-1 grid-cols-2 gap-2 sm:grid-cols-5">
@@ -443,6 +450,7 @@ function RevisionHomeworkCard({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-sm font-black text-content">{item.title}</h2>
+                <StudentPresence studentId={item.studentId} />
                 <span className={cn(
                   "rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
                   item.status === "RUNNING"
@@ -552,6 +560,7 @@ function HomeworkCard({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-sm font-black text-content">{item.title}</h2>
+                <StudentPresence studentId={item.studentId} />
                 {activity
                   ? <ActivityStatus item={item} labels={activityLabels} />
                   : <Status state={state} labels={labels} />}

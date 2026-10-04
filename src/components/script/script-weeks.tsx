@@ -11,6 +11,7 @@
  */
 import { useEffect, useState, useTransition } from "react";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import {
   listScriptHistoryAction,
   listScriptWeekAction,
@@ -138,6 +139,7 @@ export function ScriptWeeks({
             <span className="truncate text-[13px] font-semibold text-content">
               {lesson.studentName}
             </span>
+            <StudentPresence studentId={lesson.studentId} />
             {lesson.hasScript && (
               <span
                 title="Скрипт написан"

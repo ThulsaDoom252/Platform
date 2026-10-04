@@ -9,6 +9,7 @@
  */
 import { useEffect, useState, useTransition } from "react";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import {
   getScriptAction,
   type ScriptDoc,
@@ -92,8 +93,9 @@ export function ScriptWorkspace({ initial }: { initial?: ScriptLesson | null }) 
                 className="h-10 w-10 text-sm"
               />
               <span className="min-w-0">
-                <span className="block text-sm font-bold text-content">
-                  {open.studentName}
+                <span className="flex items-center gap-2 text-sm font-bold text-content">
+                  <span className="truncate">{open.studentName}</span>
+                  <StudentPresence studentId={open.studentId} showLabel />
                 </span>
                 <span className="block text-[12px] text-faint">
                   {day.format(new Date(open.startTime))} ·{" "}

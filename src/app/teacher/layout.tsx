@@ -17,6 +17,8 @@ import { Avatar } from "@/components/avatar";
 import { GlobalSearch } from "@/components/global-search";
 import { IconCap, IconLogout, IconChevronDown } from "@/components/icons";
 import { completeFinishedLessons } from "@/lib/lesson-completion";
+import { studentPresenceSnapshotAction } from "@/lib/actions/presence";
+import { StudentPresenceProvider } from "@/components/student-presence";
 
 export default async function TeacherLayout({
   children,
@@ -35,14 +37,18 @@ export default async function TeacherLayout({
   // Аккаунт удалён (или база пересоздана) — токен больше не действителен.
   if (!me) redirect("/login");
 
-  const { t, locale } = await getDict();
+  const [{ t, locale }, presences] = await Promise.all([
+    getDict(),
+    studentPresenceSnapshotAction(),
+  ]);
   const { items, unreadCount } = await getTeacherFeed(session.userId, locale);
 
   return (
     <I18nProvider locale={locale}>
-      <NotificationToastHost />
-      <div className="min-h-screen bg-page">
-        <div className="mx-auto flex w-full max-w-[1920px]">
+      <StudentPresenceProvider initial={presences}>
+        <NotificationToastHost />
+        <div className="min-h-screen bg-page">
+          <div className="mx-auto flex w-full max-w-[1920px]">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}
           <SidebarRail>
             <Link href="/teacher" className="flex items-center gap-3 px-1">
@@ -125,10 +131,11 @@ export default async function TeacherLayout({
 
             <main className="flex-1 px-4 py-6 pb-24 sm:px-8 lg:pb-6">{children}</main>
           </div>
-        </div>
+          </div>
 
-        <MobileNav />
-      </div>
+          <MobileNav />
+        </div>
+      </StudentPresenceProvider>
     </I18nProvider>
   );
 }

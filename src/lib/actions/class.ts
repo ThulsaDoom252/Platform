@@ -30,11 +30,9 @@ import {
 } from "@/lib/class-video";
 import { scheduleNow } from "@/lib/schedule-time";
 import { liveClassTimerState, type ClassTimerState } from "@/lib/class-timer";
+import { presenceFromLastSeen, type Presence } from "@/lib/presence";
 
-/** Сколько отметка держится за «онлайн». */
-const ONLINE_WINDOW_MS = 75_000;
-
-export type Presence = "online" | "offline";
+export type { Presence } from "@/lib/presence";
 
 /** Занятие ученика: начало и длительность. */
 export type ClassLesson = { at: string; minutes: number };
@@ -85,8 +83,7 @@ async function requireUser() {
   return session;
 }
 
-const isOnline = (seen: Date | null) =>
-  !!seen && Date.now() - seen.getTime() < ONLINE_WINDOW_MS;
+const isOnline = (seen: Date | null) => presenceFromLastSeen(seen) === "online";
 
 async function countUnreadMessages(userId: string, studentId: string | null) {
   if (!studentId) return 0;

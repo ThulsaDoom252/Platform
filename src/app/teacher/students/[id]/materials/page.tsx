@@ -10,6 +10,7 @@ import { SharedAccess } from "@/components/materials/shared-access";
 import { ReportButton } from "@/components/materials/report-button";
 import { StudentWipe } from "@/components/materials/student-wipe";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import { IconChevronLeft, IconUser } from "@/components/icons";
 import { viewAsStudentAction } from "@/lib/actions/auth";
 import { restoreStudentMaterialsAction } from "@/lib/actions/materials";
@@ -87,10 +88,13 @@ export default async function StudentMaterialsForTeacherPage({
         <Avatar name={student.name} src={student.avatarUrl} className="h-11 w-11 text-sm" />
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-content">{t.materials.title}</h1>
-          <p className="text-sm text-muted">
-            {student.name}
-            {student.level ? ` · ${student.level}` : ""}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            <span>
+              {student.name}
+              {student.level ? ` · ${student.level}` : ""}
+            </span>
+            <StudentPresence studentId={student.id} showLabel />
+          </div>
         </div>
         <ReportButton studentId={student.id} studentName={student.name} />
         <form action={viewAsStudentAction}>

@@ -21,6 +21,7 @@ import {
 import { lessonSectionsForKind, type LessonSection } from "@/lib/lesson-unit";
 import { regularSectionKey, type RegularLessonSection } from "@/lib/regular-lesson";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import { IconCheck, IconChevronRight, IconTrash } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +97,7 @@ export function LessonPin({
             >
               <Avatar name={s.name} src={s.avatarUrl} className="h-8 w-8 text-[11px]" />
               <span className="text-[13px] font-semibold text-content">{s.name}</span>
+              <StudentPresence studentId={s.id} />
 
               {card ? (
                 <>

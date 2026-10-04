@@ -7,6 +7,7 @@ import { fmt } from "@/lib/i18n";
 import { getMaterialsTree, getOwnedTree } from "@/lib/materials";
 import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 import { Avatar } from "@/components/avatar";
+import { StudentPresence } from "@/components/student-presence";
 import { IconChevronRight } from "@/components/icons";
 import { getSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -141,6 +142,7 @@ export default async function TeacherMaterialsPage({
                     {s.level && (
                       <span className="text-[11px] text-faint">{s.level}</span>
                     )}
+                    <StudentPresence studentId={s.id} />
                   </Link>
                 );
               })}
@@ -161,9 +163,12 @@ export default async function TeacherMaterialsPage({
       {current === "students" && !chosen ? null : (
         <div>
           {chosen && (
-            <h2 className="mb-2 text-sm font-bold text-content">
-              {fmt(t.materials.personalOf, { name: chosen.name })}
-            </h2>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-bold text-content">
+                {fmt(t.materials.personalOf, { name: chosen.name })}
+              </h2>
+              <StudentPresence studentId={chosen.id} showLabel />
+            </div>
           )}
           <MaterialsExplorer
             key={`${current === "students" ? (chosen?.id ?? "none") : current}:${initialNodeId ?? "root"}`}

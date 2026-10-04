@@ -17,6 +17,7 @@ import {
   IconSprout,
   IconChart,
 } from "@/components/icons";
+import { StudentPresence } from "@/components/student-presence";
 import {
   SCHEDULE_FORMAT_TIME_ZONE,
   scheduleNow,
@@ -261,9 +262,12 @@ export default async function TeacherOverviewPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-content group-hover:text-accent">
-                        {s.name}
-                      </p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-content group-hover:text-accent">
+                          {s.name}
+                        </p>
+                        <StudentPresence studentId={s.id} />
+                      </div>
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${s.balance > 3 ? "tint-green" : s.balance > 0 ? "tint-amber" : "tint-rose"}`}
                       >
@@ -312,9 +316,12 @@ export default async function TeacherOverviewPage() {
                     className={`h-2 w-2 shrink-0 rounded-full ${join ? "bg-accent" : "bg-faint"}`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-content">
-                      {l.studentName}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-content">
+                        {l.studentName}
+                      </p>
+                      <StudentPresence studentId={l.studentId} />
+                    </div>
                     <p className="truncate text-xs text-faint">{l.topic}</p>
                   </div>
                   <Link

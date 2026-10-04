@@ -36,6 +36,7 @@ import {
   IconCheck,
   IconCap,
 } from "@/components/icons";
+import { StudentPresence } from "@/components/student-presence";
 
 export type LessonItem = {
   id: string;
@@ -475,8 +476,11 @@ export function ScheduleClient({
                               {hm.format(l.startTime)}–{hm.format(end)}
                             </span>
                           )}
-                          <span className="truncate text-[11px] font-bold leading-tight text-white">
-                            {hide(l.studentName, l.studentId)}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[11px] font-bold leading-tight text-white">
+                              {hide(l.studentName, l.studentId)}
+                            </span>
+                            <StudentPresence studentId={l.studentId} />
                           </span>
                         </button>
                       );
@@ -565,8 +569,11 @@ export function ScheduleClient({
                     className="flex min-w-0 flex-1 items-center rounded-xl px-3.5 py-3 shadow-sm"
                     style={{ background: c }}
                   >
-                    <span className="truncate text-sm font-bold text-white">
-                      {hide(l.studentName, l.studentId)}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-bold text-white">
+                        {hide(l.studentName, l.studentId)}
+                      </span>
+                      <StudentPresence studentId={l.studentId} />
                     </span>
                   </span>
                 </button>

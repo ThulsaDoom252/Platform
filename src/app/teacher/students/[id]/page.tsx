@@ -27,6 +27,7 @@ import { BalancePanel } from "@/components/teacher/balance-panel";
 import { listWordDeckActivitiesAction } from "@/lib/actions/word-deck";
 import { StudentPasswordPanel } from "@/components/teacher/student-password-panel";
 import { DeleteStudentPanel } from "@/components/teacher/delete-student-panel";
+import { StudentPresence } from "@/components/student-presence";
 
 export default async function StudentDetailPage({
   params,
@@ -71,9 +72,12 @@ export default async function StudentDetailPage({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-            {student.name}
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+              {student.name}
+            </h1>
+            <StudentPresence studentId={student.id} showLabel />
+          </div>
           <p className="text-sm text-slate-500">логин: {student.login}</p>
         </div>
         <Badge tone={student.lessonBalance > 0 ? "success" : "danger"}>

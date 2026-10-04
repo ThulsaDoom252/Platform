@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
 import { teacherWordDeckHomeworkAction } from "@/lib/actions/word-deck";
 import { getDict } from "@/lib/i18n/server";
+import { StudentPresence } from "@/components/student-presence";
 
 export default async function TeacherActivityHomeworkPage({
   params,
@@ -33,7 +34,10 @@ export default async function TeacherActivityHomeworkPage({
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-xl font-black text-content">{activity.title}</h1>
-            <p className="mt-1 text-sm text-muted">{activity.studentName}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
+              <span>{activity.studentName}</span>
+              <StudentPresence studentId={activity.studentId} showLabel />
+            </div>
           </div>
           <p className="text-xs font-bold text-faint">{activity.cards.length} {t.wordDeck.cardsShort}</p>
         </div>
