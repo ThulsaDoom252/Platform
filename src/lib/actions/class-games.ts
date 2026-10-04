@@ -23,6 +23,7 @@ import {
   type ClassGameReview,
 } from "@/lib/class-game-meta";
 import { normalizeWordDeckSettings } from "@/lib/word-deck";
+import { ensureClassActivityPreferencesTable } from "@/lib/db/ensure-class-activity-preferences";
 
 async function teacherForStudent(studentId: string) {
   const session = await getSession();
@@ -119,6 +120,7 @@ export async function listClassActivityMetaAction(
 ): Promise<ClassActivityMeta> {
   const target = String(studentId ?? "");
   const session = await teacherForStudent(target);
+  await ensureClassActivityPreferencesTable();
   const [activities, stored] = await Promise.all([
     activityRows(target),
     storedMeta(target, session.userId),
@@ -154,6 +156,7 @@ export async function saveClassActivityOrderAction(
 ): Promise<{ order: string[] }> {
   const target = String(studentId ?? "");
   const session = await teacherForStudent(target);
+  await ensureClassActivityPreferencesTable();
   const activities = await activityRows(target);
   const order = cleanOrder(requestedOrder, activities.map((activity) => activity.key));
   await db
@@ -174,6 +177,7 @@ export async function setClassGameAnswerVisibilityAction(
   const target = String(studentId ?? "");
   const key = String(activityKey ?? "");
   const session = await teacherForStudent(target);
+  await ensureClassActivityPreferencesTable();
   const activities = await activityRows(target);
   const activity = activities.find((item) => item.key === key);
   if (!activity?.teacherAnswers) return { error: "This setting is not available for this game" };
@@ -214,6 +218,7 @@ export async function saveClassGameReviewAction(input: {
   const studentId = String(input?.studentId ?? "");
   const activityKey = String(input?.activityKey ?? "");
   const session = await teacherForStudent(studentId);
+  await ensureClassActivityPreferencesTable();
   const activities = await activityRows(studentId);
   if (!activities.some((activity) => activity.key === activityKey)) {
     return { error: "Game not found" };

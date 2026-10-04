@@ -37,6 +37,7 @@ import {
   normalizeClassGameReview,
   type ClassGameReview,
 } from "@/lib/class-game-meta";
+import { ensureClassActivityPreferencesTable } from "@/lib/db/ensure-class-activity-preferences";
 
 export type { Presence } from "@/lib/presence";
 
@@ -863,14 +864,16 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
           : null
       : null;
   const [storedGameReview] = me.role === "STUDENT" && studentId
-    ? await db
-        .select({
-          reviews: classActivityPreferences.reviews,
-          notice: classActivityPreferences.reviewNotice,
-        })
-        .from(classActivityPreferences)
-        .where(eq(classActivityPreferences.studentId, studentId))
-        .limit(1)
+    ? await ensureClassActivityPreferencesTable().then(() =>
+        db
+          .select({
+            reviews: classActivityPreferences.reviews,
+            notice: classActivityPreferences.reviewNotice,
+          })
+          .from(classActivityPreferences)
+          .where(eq(classActivityPreferences.studentId, studentId))
+          .limit(1),
+      )
     : [];
   const currentGameReview = focusedActivityKey
     ? normalizeClassGameReview(storedGameReview?.reviews?.[focusedActivityKey])
