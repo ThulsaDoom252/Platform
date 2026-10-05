@@ -97,6 +97,12 @@ import {
 } from "./class-notes";
 import { ClassGameReviewBanner } from "./class-game-review";
 import type { ClassGameReview } from "@/lib/class-game-meta";
+import type { ClassReaction } from "@/lib/class-reaction";
+import {
+  ReactionToolbarIcon,
+  StudentClassReaction,
+  TeacherReactionPanel,
+} from "./class-reactions";
 
 const BEAT_MS = 30_000;
 const CHAT_UNREAD_MS = 4_000;
@@ -152,7 +158,9 @@ export function ClassRoom({
   const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
   const [sortDesc, setSortDesc] = useLocalJson("class-sort-desc", false);
   const [showTimer, setShowTimer] = useState(false);
+  const [showReactions, setShowReactions] = useState(false);
   const [timerState, setTimerState] = useState<ClassTimerState | null>(null);
+  const [studentReaction, setStudentReaction] = useState<ClassReaction | null>(null);
   const [focusedNote, setFocusedNote] = useState<FocusedClassNote | null>(null);
   const [unreadState, setUnreadState] = useState<{
     conversation: string | null;
@@ -195,6 +203,7 @@ export function ClassRoom({
   const appliedView = useRef<string | null>(null);
   const appliedNote = useRef<string | null>(null);
   const appliedGameReviewNotice = useRef<string | null>(null);
+  const appliedReaction = useRef<string | null>(null);
   const seenVocabularyEvents = useRef(new Set<string>());
   const vocabularyEventsReady = useRef(false);
   const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -334,6 +343,10 @@ export function ClassRoom({
     setTextSelection(null);
   }, []);
 
+  const closeStudentReaction = useCallback(() => {
+    setStudentReaction(null);
+  }, []);
+
   const toggle = (key: PanelKey) => {
     setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
     if (key === "chat" && !open.chat) {
@@ -408,6 +421,18 @@ export function ClassRoom({
               setGameReviewNotice(sync.gameReviewNotice);
               chime.current?.();
               window.setTimeout(() => setGameReviewNotice((current) => current?.at === noticeAt ? null : current), 8_000);
+            }
+            if (sync.reaction && appliedReaction.current !== sync.reaction.id) {
+              appliedReaction.current = sync.reaction.id;
+              try {
+                const key = `class-reaction-seen:${selfId}`;
+                if (window.sessionStorage.getItem(key) !== sync.reaction.id) {
+                  window.sessionStorage.setItem(key, sync.reaction.id);
+                  setStudentReaction(sync.reaction);
+                }
+              } catch {
+                setStudentReaction(sync.reaction);
+              }
             }
           }
           if (!teacher && sync.noteFocus && appliedNote.current !== sync.noteFocus.at) {
@@ -507,7 +532,7 @@ export function ClassRoom({
       alive = false;
       clearInterval(id);
     };
-  }, [showVocabularyNotice, teacher]);
+  }, [selfId, showVocabularyNotice, teacher]);
 
   /*
    * Сегодня и завтра называем словами, остальные дни — днём недели: на
@@ -936,6 +961,7 @@ export function ClassRoom({
               setActiveLessonId(null);
               setTimerState(null);
               setShowTimer(false);
+              setShowReactions(false);
               setNonce((n) => n + 1);
             })}
             className="ml-auto flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-content transition hover:border-rose-400 hover:text-rose-500"
@@ -1219,6 +1245,13 @@ export function ClassRoom({
       />
 
       {!teacher && <StudentClassTimer state={timerState} />}
+      {!teacher && studentReaction && (
+        <StudentClassReaction
+          key={studentReaction.id}
+          reaction={studentReaction}
+          onDone={closeStudentReaction}
+        />
+      )}
       {!teacher && (
         <StudentFocusedNote note={focusedNote} onClose={() => setFocusedNote(null)} />
       )}
@@ -1231,6 +1264,10 @@ export function ClassRoom({
           onClose={() => setShowTimer(false)}
           notes={<ClassNotes studentName={partner.name} compact />}
         />
+      )}
+
+      {teacher && partner && showReactions && (
+        <TeacherReactionPanel onClose={() => setShowReactions(false)} />
       )}
 
       {vocabularyNotice && (
@@ -1262,6 +1299,23 @@ export function ClassRoom({
           {teacher && tabBtn("script", <IconFile className="h-4 w-4" />, t.classRoom.script)}
           {tabBtn("board", <IconGrid className="h-4 w-4" />, t.classRoom.board)}
           {teacher && tabBtn("notes", <NotebookPen className="h-4 w-4" />, t.classRoom.notes)}
+
+          {teacher && (
+            <button
+              type="button"
+              disabled={!partner}
+              onClick={() => setShowReactions((value) => !value)}
+              className={cn(
+                "flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-35",
+                showReactions
+                  ? "bg-accent text-white"
+                  : "text-muted hover:bg-surface-2 hover:text-content",
+              )}
+            >
+              <ReactionToolbarIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">{t.classRoom.reactions}</span>
+            </button>
+          )}
 
           {teacher && (
             <button

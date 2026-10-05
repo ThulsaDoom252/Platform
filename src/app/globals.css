@@ -1421,12 +1421,62 @@ body {
   animation: word-deck-deal-in 0.38s ease-out;
 }
 
+/* ---------- Live class reactions ---------- */
+@keyframes class-reaction-backdrop {
+  0% { opacity: 0; }
+  12%, 82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes class-reaction-card {
+  0% { opacity: 0; transform: translateY(42px) scale(0.48) rotate(-5deg); }
+  16% { opacity: 1; transform: translateY(-12px) scale(1.06) rotate(1.5deg); }
+  28% { transform: translateY(0) scale(1) rotate(0); }
+  82% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: translateY(-18px) scale(1.06); }
+}
+
+@keyframes class-reaction-emoji {
+  0% { transform: scale(0.25) rotate(-18deg); }
+  20% { transform: scale(1.18) rotate(5deg); }
+  38% { transform: scale(0.96) rotate(-2deg); }
+  55%, 100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes class-reaction-title {
+  0%, 18% { opacity: 0; transform: translateY(20px) scale(0.8); }
+  35% { opacity: 1; transform: translateY(0) scale(1.07); }
+  48%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes class-reaction-particle {
+  0% { opacity: 0; transform: translateY(35px) scale(0) rotate(0); }
+  25% { opacity: 1; transform: translateY(0) scale(1) rotate(90deg); }
+  80% { opacity: 0.75; }
+  100% { opacity: 0; transform: translateY(-85px) scale(0.4) rotate(220deg); }
+}
+
+.class-reaction-backdrop { animation: class-reaction-backdrop 4.2s ease-out both; }
+.class-reaction-card { animation: class-reaction-card 4.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.class-reaction-emoji { animation: class-reaction-emoji 1.15s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.class-reaction-title { animation: class-reaction-title 1.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.class-reaction-particle { animation: class-reaction-particle 2.1s ease-out 2 both; }
+
 @media (prefers-reduced-motion: reduce) {
   .pop-emoji,
   .activity-panel-in,
   .word-deck-correct,
   .word-deck-verdict,
   .word-deck-deal-in {
+    animation: none;
+    opacity: 1;
+  }
+
+  .class-reaction-backdrop,
+  .class-reaction-card,
+  .class-reaction-emoji,
+  .class-reaction-title,
+  .class-reaction-particle {
     animation: none;
     opacity: 1;
   }

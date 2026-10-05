@@ -2,6 +2,7 @@ import type { RuleBlock, RuleBlockVariant } from "@/lib/rule-blocks";
 import type { TwisterStroke } from "@/lib/twister-drawing";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTimerState } from "@/lib/class-timer";
+import type { ClassReaction } from "@/lib/class-reaction";
 import type { RegularLessonSection } from "@/lib/regular-lesson";
 import type { LessonHomeworkEntry } from "@/lib/lesson-homework";
 import type {
@@ -144,6 +145,8 @@ export const users = pgTable("users", {
     timerState?: ClassTimerState;
     /** Одноразовый показ одной учительской заметки ученику. */
     noteFocus?: { id: string; at: string };
+    /** Крупная анимированная реакция учителя во время живого урока. */
+    reaction?: ClassReaction;
   }>(),
   /** Цифры за весь период показывать как приблизительные. */
   statsApproximate: boolean("stats_approximate").notNull().default(false),

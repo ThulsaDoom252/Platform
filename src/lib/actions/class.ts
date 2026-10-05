@@ -38,6 +38,7 @@ import {
   type ClassGameReview,
 } from "@/lib/class-game-meta";
 import { ensureClassActivityPreferencesTable } from "@/lib/db/ensure-class-activity-preferences";
+import { normalizeClassReaction, type ClassReaction } from "@/lib/class-reaction";
 
 export type { Presence } from "@/lib/presence";
 
@@ -357,7 +358,7 @@ export async function enterClassAction(studentId: string): Promise<{ error?: str
     await db
       .update(users)
       .set({
-        classFocus: sql`(coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus'`,
+        classFocus: sql`((coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus') - 'reaction'`,
       })
       .where(eq(users.id, teacher.previousStudentId));
   }
@@ -480,7 +481,7 @@ export async function leaveClassAction(): Promise<{ error?: string }> {
     await db
       .update(users)
       .set({
-        classFocus: sql`(coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus'`,
+        classFocus: sql`((coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus') - 'reaction'`,
       })
       .where(eq(users.id, teacher.studentId));
   }
@@ -732,6 +733,8 @@ export type ClassSync = {
   gameReview: ClassGameReview | null;
   /** Latest visible rating, used for the colourful in-class notification. */
   gameReviewNotice: ClassGameReview | null;
+  /** Latest short-lived reaction sent by the teacher. */
+  reaction: ClassReaction | null;
 };
 
 /**
@@ -767,6 +770,7 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
       vocabularyEvents: [],
       gameReview: null,
       gameReviewNotice: null,
+      reaction: null,
     };
   }
 
@@ -983,6 +987,8 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
     noteFocus,
     gameReview: me.role === "STUDENT" ? visibleGameReview.review : null,
     gameReviewNotice: me.role === "STUDENT" ? visibleGameReview.notice : null,
+    reaction:
+      me.role === "STUDENT" ? normalizeClassReaction(me.classFocus?.reaction) : null,
     vocabularyEvents: vocabularyEvents.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),

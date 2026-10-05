@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, desc, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   classLessonNotes,
@@ -27,6 +27,7 @@ import {
 } from "@/lib/class-timer";
 import { enrichSpellingMistake, type SpellingExample, type SpellingPartOfSpeech } from "@/lib/spelling-mistake";
 import { CLASS_GAME_GRADES, type ClassGameGrade } from "@/lib/class-game-meta";
+import { isClassReactionKind, type ClassReactionKind } from "@/lib/class-reaction";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -232,6 +233,29 @@ async function studentFocus(studentId: string) {
     .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
     .limit(1);
   return student?.classFocus ?? null;
+}
+
+export async function sendClassReactionAction(
+  kind: ClassReactionKind,
+  sound = false,
+): Promise<{ error?: string }> {
+  const { studentId } = await teacherWithStudent();
+  if (!studentId) return { error: "Pick a student first" };
+  if (!isClassReactionKind(kind)) return { error: "Unknown reaction" };
+
+  const reaction = {
+    id: crypto.randomUUID(),
+    kind,
+    sound: sound === true,
+    sentAt: new Date().toISOString(),
+  };
+  await db
+    .update(users)
+    .set({
+      classFocus: sql`jsonb_set(coalesce(${users.classFocus}, '{}'::jsonb), '{reaction}', ${JSON.stringify(reaction)}::jsonb, true)`,
+    })
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")));
+  return {};
 }
 
 async function storeTimerState(studentId: string, timerState: ClassTimerState | null) {
