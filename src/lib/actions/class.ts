@@ -38,7 +38,7 @@ import {
   type ClassGameReview,
 } from "@/lib/class-game-meta";
 import { ensureClassActivityPreferencesTable } from "@/lib/db/ensure-class-activity-preferences";
-import { normalizeClassReaction, type ClassReaction } from "@/lib/class-reaction";
+import { normalizeClassReactions, type ClassReaction } from "@/lib/class-reaction";
 
 export type { Presence } from "@/lib/presence";
 
@@ -358,7 +358,7 @@ export async function enterClassAction(studentId: string): Promise<{ error?: str
     await db
       .update(users)
       .set({
-        classFocus: sql`((coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus') - 'reaction'`,
+        classFocus: sql`(((coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus') - 'reaction') - 'reactions'`,
       })
       .where(eq(users.id, teacher.previousStudentId));
   }
@@ -481,7 +481,7 @@ export async function leaveClassAction(): Promise<{ error?: string }> {
     await db
       .update(users)
       .set({
-        classFocus: sql`((coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus') - 'reaction'`,
+        classFocus: sql`(((coalesce(${users.classFocus}, '{}'::jsonb) - 'timerState') - 'noteFocus') - 'reaction') - 'reactions'`,
       })
       .where(eq(users.id, teacher.studentId));
   }
@@ -733,8 +733,8 @@ export type ClassSync = {
   gameReview: ClassGameReview | null;
   /** Latest visible rating, used for the colourful in-class notification. */
   gameReviewNotice: ClassGameReview | null;
-  /** Latest short-lived reaction sent by the teacher. */
-  reaction: ClassReaction | null;
+  /** Every short-lived reaction sent since the student's previous poll. */
+  reactions: ClassReaction[];
 };
 
 /**
@@ -770,7 +770,7 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
       vocabularyEvents: [],
       gameReview: null,
       gameReviewNotice: null,
-      reaction: null,
+      reactions: [],
     };
   }
 
@@ -947,26 +947,38 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
    * The timestamp guard prevents an older poll from deleting a newer command.
   */
   if (storedView?.target === "LESSON" && me.classFocus) {
-    const consumed = { ...me.classFocus };
-    delete consumed.view;
-    delete consumed.at;
-    delete consumed.boardObjectId;
-    delete consumed.boardCommand;
-    delete consumed.lessonSection;
-    delete consumed.lessonElementId;
-    if (consumed.videoState?.focusAt) {
-      const videoState = { ...consumed.videoState };
-      delete videoState.focusAt;
-      consumed.videoState = videoState;
-    }
     await db
       .update(users)
-      .set({ classFocus: consumed })
+      .set({
+        classFocus: sql`((((((coalesce(${users.classFocus}, '{}'::jsonb) #- '{videoState,focusAt}') - 'view') - 'at') - 'boardObjectId') - 'boardCommand') - 'lessonSection') - 'lessonElementId'`,
+      })
       .where(
         and(
           eq(users.id, session.userId),
           eq(users.role, "STUDENT"),
           sql`${users.classFocus}->>'at' = ${storedView.at}`,
+        ),
+      );
+  }
+
+  const rawReactions = me.role === "STUDENT" ? me.classFocus?.reactions : null;
+  const reactions = normalizeClassReactions(rawReactions);
+  if (Array.isArray(rawReactions) && rawReactions.length > 0) {
+    /*
+     * Consume exactly the queue we read. If a teacher appends another click
+     * while this poll is running, the equality guard keeps the new queue for
+     * the next poll. The client de-duplicates the older events by id.
+     */
+    await db
+      .update(users)
+      .set({
+        classFocus: sql`coalesce(${users.classFocus}, '{}'::jsonb) - 'reactions'`,
+      })
+      .where(
+        and(
+          eq(users.id, session.userId),
+          eq(users.role, "STUDENT"),
+          sql`${users.classFocus}->'reactions' = ${JSON.stringify(rawReactions)}::jsonb`,
         ),
       );
   }
@@ -987,8 +999,7 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
     noteFocus,
     gameReview: me.role === "STUDENT" ? visibleGameReview.review : null,
     gameReviewNotice: me.role === "STUDENT" ? visibleGameReview.notice : null,
-    reaction:
-      me.role === "STUDENT" ? normalizeClassReaction(me.classFocus?.reaction) : null,
+    reactions,
     vocabularyEvents: vocabularyEvents.map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),

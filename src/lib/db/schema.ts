@@ -145,8 +145,8 @@ export const users = pgTable("users", {
     timerState?: ClassTimerState;
     /** Одноразовый показ одной учительской заметки ученику. */
     noteFocus?: { id: string; at: string };
-    /** Крупная анимированная реакция учителя во время живого урока. */
-    reaction?: ClassReaction;
+    /** Очередь реакций: быстрое повторное нажатие не должно потеряться между poll-запросами. */
+    reactions?: ClassReaction[];
   }>(),
   /** Цифры за весь период показывать как приблизительные. */
   statsApproximate: boolean("stats_approximate").notNull().default(false),

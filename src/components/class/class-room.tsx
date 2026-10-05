@@ -160,7 +160,7 @@ export function ClassRoom({
   const [showTimer, setShowTimer] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [timerState, setTimerState] = useState<ClassTimerState | null>(null);
-  const [studentReaction, setStudentReaction] = useState<ClassReaction | null>(null);
+  const [studentReactions, setStudentReactions] = useState<ClassReaction[]>([]);
   const [focusedNote, setFocusedNote] = useState<FocusedClassNote | null>(null);
   const [unreadState, setUnreadState] = useState<{
     conversation: string | null;
@@ -203,7 +203,8 @@ export function ClassRoom({
   const appliedView = useRef<string | null>(null);
   const appliedNote = useRef<string | null>(null);
   const appliedGameReviewNotice = useRef<string | null>(null);
-  const appliedReaction = useRef<string | null>(null);
+  const seenReactionIds = useRef(new Set<string>());
+  const reactionHistoryReady = useRef(false);
   const seenVocabularyEvents = useRef(new Set<string>());
   const vocabularyEventsReady = useRef(false);
   const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -343,8 +344,8 @@ export function ClassRoom({
     setTextSelection(null);
   }, []);
 
-  const closeStudentReaction = useCallback(() => {
-    setStudentReaction(null);
+  const closeStudentReaction = useCallback((id: string) => {
+    setStudentReactions((current) => current.filter((reaction) => reaction.id !== id));
   }, []);
 
   const toggle = (key: PanelKey) => {
@@ -422,17 +423,31 @@ export function ClassRoom({
               chime.current?.();
               window.setTimeout(() => setGameReviewNotice((current) => current?.at === noticeAt ? null : current), 8_000);
             }
-            if (sync.reaction && appliedReaction.current !== sync.reaction.id) {
-              appliedReaction.current = sync.reaction.id;
+            if (!reactionHistoryReady.current) {
               try {
                 const key = `class-reaction-seen:${selfId}`;
-                if (window.sessionStorage.getItem(key) !== sync.reaction.id) {
-                  window.sessionStorage.setItem(key, sync.reaction.id);
-                  setStudentReaction(sync.reaction);
+                const stored = JSON.parse(window.sessionStorage.getItem(key) ?? "[]");
+                if (Array.isArray(stored)) {
+                  stored
+                    .filter((id): id is string => typeof id === "string")
+                    .forEach((id) => seenReactionIds.current.add(id));
                 }
-              } catch {
-                setStudentReaction(sync.reaction);
-              }
+              } catch {}
+              reactionHistoryReady.current = true;
+            }
+            const freshReactions = sync.reactions.filter(
+              (reaction) => !seenReactionIds.current.has(reaction.id),
+            );
+            if (freshReactions.length > 0) {
+              freshReactions.forEach((reaction) => seenReactionIds.current.add(reaction.id));
+              setStudentReactions((current) => [...current, ...freshReactions].slice(-100));
+              try {
+                const key = `class-reaction-seen:${selfId}`;
+                window.sessionStorage.setItem(
+                  key,
+                  JSON.stringify([...seenReactionIds.current].slice(-200)),
+                );
+              } catch {}
             }
           }
           if (!teacher && sync.noteFocus && appliedNote.current !== sync.noteFocus.at) {
@@ -838,6 +853,8 @@ export function ClassRoom({
   const notesTitle = partner
     ? fmt(t.classRoom.notesWith, { name: partner.name })
     : t.classRoom.notes;
+  const floatingReactions = studentReactions.filter((reaction) => reaction.mode === "float");
+  const emergeReaction = studentReactions.find((reaction) => reaction.mode === "emerge") ?? null;
 
   return (
     <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
@@ -1245,12 +1262,19 @@ export function ClassRoom({
       />
 
       {!teacher && <StudentClassTimer state={timerState} />}
-      {!teacher && studentReaction && (
-        <StudentClassReaction
-          key={studentReaction.id}
-          reaction={studentReaction}
-          onDone={closeStudentReaction}
-        />
+      {!teacher && floatingReactions.map((reaction) => (
+          <StudentClassReaction
+            key={reaction.id}
+            reaction={reaction}
+            onDone={closeStudentReaction}
+          />
+        ))}
+      {!teacher && emergeReaction && (
+          <StudentClassReaction
+            key={emergeReaction.id}
+            reaction={emergeReaction}
+            onDone={closeStudentReaction}
+          />
       )}
       {!teacher && (
         <StudentFocusedNote note={focusedNote} onClose={() => setFocusedNote(null)} />

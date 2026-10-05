@@ -1456,11 +1456,38 @@ body {
   100% { opacity: 0; transform: translateY(-85px) scale(0.4) rotate(220deg); }
 }
 
+@keyframes class-reaction-float {
+  0% {
+    opacity: 0;
+    transform: translate3d(calc(-50% + var(--reaction-start-x)), 7rem, 0)
+      scale(0.22) rotate(var(--reaction-tilt));
+  }
+  14% { opacity: 1; }
+  62% {
+    opacity: 1;
+    transform: translate3d(calc(-50% + var(--reaction-end-x)), -48vh, 0)
+      scale(var(--reaction-scale)) rotate(0deg);
+  }
+  82% {
+    opacity: 1;
+    transform: translate3d(calc(-50% + var(--reaction-end-x)), -51vh, 0)
+      scale(var(--reaction-scale)) rotate(-4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -53vh, 0) scale(0.68) rotate(5deg);
+  }
+}
+
 .class-reaction-backdrop { animation: class-reaction-backdrop 4.2s ease-out both; }
 .class-reaction-card { animation: class-reaction-card 4.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .class-reaction-emoji { animation: class-reaction-emoji 1.15s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .class-reaction-title { animation: class-reaction-title 1.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .class-reaction-particle { animation: class-reaction-particle 2.1s ease-out 2 both; }
+.class-reaction-float-emoji {
+  animation: class-reaction-float 2.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .pop-emoji,
@@ -1476,9 +1503,14 @@ body {
   .class-reaction-card,
   .class-reaction-emoji,
   .class-reaction-title,
-  .class-reaction-particle {
+  .class-reaction-particle,
+  .class-reaction-float-emoji {
     animation: none;
     opacity: 1;
+  }
+
+  .class-reaction-float-emoji {
+    transform: translate3d(-50%, -50vh, 0);
   }
 
   .word-deck-shake {
