@@ -273,7 +273,7 @@ function ActivityLessonEditor({
           <button
             type="button"
             disabled={busy || !title.trim()}
-            onClick={saveTitle}
+            onClick={save}
             className="h-14 shrink-0 rounded-2xl bg-accent px-4 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-50"
           >
             {busy ? t.lessonUnits.saving : t.lessonUnits.save}
