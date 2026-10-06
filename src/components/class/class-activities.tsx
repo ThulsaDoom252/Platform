@@ -18,6 +18,7 @@ import {
   pauseGameAction,
   playGameAction,
   removeGameAction,
+  copyGuessPictureBetweenClassAndHomeworkAction,
   updateClassGuessPictureGameAction,
   type GameMode,
   type GuessPicturePreset,
@@ -35,8 +36,10 @@ import { WordDeckForm } from "@/components/game/word-deck-studio";
 import { ClassActivityPicker } from "@/components/class/class-activity-picker";
 import {
   listClassWordDeckActivitiesAction,
+  copyWordDeckBetweenClassAndHomeworkAction,
   removeWordDeckFromClassAction,
   updateClassWordDeckActivityAction,
+  uploadTransferredWordDeckBackgroundAction,
   uploadClassWordDeckBackgroundAction,
   type ClassWordDeckActivity,
   type WordDeckActivity,
@@ -83,6 +86,8 @@ export function ClassActivities({ studentId }: { studentId: string }) {
   const [editingDeck, setEditingDeck] = useState<ClassWordDeckActivity | null>(null);
   const [editingGame, setEditingGame] = useState<QueuedGame | null>(null);
   const [editingRevision, setEditingRevision] = useState<RevisionCard | null>(null);
+  const [copyingToHomework, setCopyingToHomework] = useState<ActivityItem | null>(null);
+  const [copyRevisionSources, setCopyRevisionSources] = useState<RevisionVocabularySource[]>([]);
   const [revisionSources, setRevisionSources] = useState<RevisionVocabularySource[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
   const [focusedDeckId, setFocusedDeckId] = useState<string | null>(null);
@@ -263,6 +268,111 @@ export function ClassActivities({ studentId }: { studentId: string }) {
           setEditingDeck(null);
           await reload();
         })}
+      />
+    );
+  }
+
+  if (copyingToHomework?.kind === "DECK") {
+    const source = copyingToHomework.deck;
+    const editable: WordDeckActivity = {
+      id: source.id,
+      title: source.title,
+      nodeId: source.cards.find((card) => card.nodeId)?.nodeId ?? null,
+      cards: source.cards,
+      settings: source.settings,
+      backgroundImageUrl: source.backgroundImageUrl,
+      createdAt: source.createdAt,
+      updatedAt: source.createdAt,
+    };
+    return (
+      <WordDeckForm
+        activity={editable}
+        busy={busy}
+        externalError={editError}
+        heading={t.activityTransfer.toHomeworkTitle}
+        submitLabel={t.activityTransfer.copyToHomework}
+        footerHint={t.activityTransfer.editCopyHint}
+        forcedGameType={source.settings.gameType === "SPELLING" ? "SPELLING" : undefined}
+        onCancel={() => { setCopyingToHomework(null); setEditError(null); }}
+        onSave={(payload, image) => startBusy(async () => {
+          setEditError(null);
+          const result = await copyWordDeckBetweenClassAndHomeworkAction(source.id, "HOMEWORK", payload);
+          if (result.error || !result.id) return setEditError(result.error ?? t.wordDeck.saveFailed);
+          if (image) {
+            const form = new FormData();
+            form.set("activityId", result.id);
+            form.set("image", image);
+            const uploaded = await uploadTransferredWordDeckBackgroundAction(form);
+            if (uploaded.error || uploaded.reason) return setEditError(uploaded.error ?? t.wordDeck.saveFailed);
+          }
+          setCopyingToHomework(null);
+          await reload();
+        })}
+      />
+    );
+  }
+
+  if (copyingToHomework?.kind === "PICTURE") {
+    const source = copyingToHomework.game;
+    const preset: GuessPicturePreset = {
+      id: source.id,
+      title: source.title ?? t.game.title,
+      cards: source.cards,
+      mode: source.mode,
+      shuffleWords: source.shuffleWords,
+      shuffleDecks: source.shuffleDecks,
+      seconds: source.seconds,
+      createdAt: source.createdAt,
+      updatedAt: source.createdAt,
+    };
+    return (
+      <GuessPicturePresetForm
+        preset={preset}
+        busy={busy}
+        externalError={editError}
+        heading={t.activityTransfer.toHomeworkTitle}
+        submitLabel={t.activityTransfer.copyToHomework}
+        footerHint={t.activityTransfer.editCopyHint}
+        onCancel={() => { setCopyingToHomework(null); setEditError(null); }}
+        onSave={(payload) => startBusy(async () => {
+          setEditError(null);
+          const result = await copyGuessPictureBetweenClassAndHomeworkAction(source.id, "HOMEWORK", payload);
+          if (result.error) return setEditError(result.error);
+          setCopyingToHomework(null);
+          await reload();
+        })}
+      />
+    );
+  }
+
+  if (copyingToHomework?.kind === "REVISION" && copyRevisionSources.length > 0) {
+    const source = copyingToHomework.revision;
+    return (
+      <RevisionSetup
+        purpose="COPY"
+        copySourceId={source.id}
+        copyDestination="HOMEWORK"
+        initial={{
+          id: source.id,
+          title: source.title,
+          phraseIds: source.phraseIds,
+          modes: source.modes,
+          modeWords: source.modeWords,
+          show: source.show,
+          answerSeconds: source.answerSeconds,
+          totalSeconds: source.totalSeconds,
+        }}
+        studentId={studentId}
+        studentName=""
+        nodeId={copyRevisionSources[0].id}
+        nodeName={copyRevisionSources[0].name}
+        sources={copyRevisionSources}
+        onClose={() => { setCopyingToHomework(null); setCopyRevisionSources([]); }}
+        onDone={async () => {
+          setCopyingToHomework(null);
+          setCopyRevisionSources([]);
+          await reload();
+        }}
       />
     );
   }
@@ -528,6 +638,14 @@ export function ClassActivities({ studentId }: { studentId: string }) {
                       if (nextSources.length === 0) return setShowError(t.wordDeck.saveFailed);
                       setRevisionSources(nextSources); setEditingRevision(item.revision);
                     })} title={t.wordDeck.edit} className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint transition hover:border-emerald-500 hover:text-emerald-500 disabled:opacity-50"><IconPencil className="h-4 w-4" /></button>
+                    <button type="button" disabled={busy} onClick={() => startBusy(async () => {
+                      const found = await revisionSourcesForPhrasesAction(item.revision.phraseIds);
+                      const fallback = item.revision.nodeId ? [{ id: item.revision.nodeId, name: item.revision.nodeName ?? item.revision.title, path: item.revision.nodeName ?? item.revision.title }] : [];
+                      const nextSources = found.length > 0 ? found : fallback;
+                      if (nextSources.length === 0) return setShowError(t.wordDeck.saveFailed);
+                      setCopyRevisionSources(nextSources);
+                      setCopyingToHomework(item);
+                    })} title={t.activityTransfer.copyToHomework} className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-bold text-muted transition hover:border-emerald-500 hover:text-emerald-500 disabled:opacity-50">🏠 <span className="hidden lg:inline">{t.activityTransfer.homework}</span></button>
                     <button type="button" disabled={busy || !item.revision.open} onClick={() => startBusy(async () => {
                       const result = await showRevisionToStudentAction(item.revision.id); setShowError(result.error ?? null); if (!result.error) setFocusedRevisionId(item.revision.id);
                     })} className={cn("flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition disabled:opacity-50", focusedRevisionId === item.revision.id ? "bg-amber-400 text-slate-950" : "bg-emerald-500 text-white hover:bg-emerald-400")}>
@@ -543,6 +661,7 @@ export function ClassActivities({ studentId }: { studentId: string }) {
                     </button>
                     <button type="button" onClick={() => setOpenDeck(item.deck)} className="h-9 rounded-xl bg-accent-soft px-3 text-xs font-bold text-accent">{t.wordDeck.play}</button>
                     <button type="button" disabled={busy} onClick={() => { setEditError(null); setEditingDeck(item.deck); }} title={t.wordDeck.edit} className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint transition hover:border-accent hover:text-accent disabled:opacity-50"><IconPencil className="h-4 w-4" /></button>
+                    <button type="button" disabled={busy} onClick={() => { setEditError(null); setCopyingToHomework(item); }} title={t.activityTransfer.copyToHomework} className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-bold text-muted transition hover:border-accent hover:text-accent disabled:opacity-50">🏠 <span className="hidden lg:inline">{t.activityTransfer.homework}</span></button>
                     <button type="button" disabled={busy} onClick={() => { if (!confirm(t.wordDeck.removeFromClassConfirm)) return; startBusy(async () => { await removeWordDeckFromClassAction(item.deck.id); await reload(); }); }} title={t.wordDeck.removeFromClass} className="flex h-9 w-9 items-center justify-center rounded-xl text-faint hover:bg-surface-2 hover:text-rose-500 disabled:opacity-50"><IconTrash className="h-4 w-4" /></button>
                   </>
                 ) : (
@@ -557,6 +676,7 @@ export function ClassActivities({ studentId }: { studentId: string }) {
                       await (item.game.status === "RUNNING" && !item.game.paused ? pauseGameAction(item.game.id) : playGameAction(item.game.id)); await reload(); if (item.game.paused || item.game.status !== "RUNNING") setOpenId(item.game.id);
                     })} title={item.game.status === "RUNNING" && !item.game.paused ? t.game.pause : t.game.play} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent transition hover:opacity-90 disabled:opacity-50">{item.game.status === "RUNNING" && !item.game.paused ? "❚❚" : "▶"}</button>}
                     <button type="button" disabled={busy} onClick={() => { setEditError(null); setEditingGame(item.game); }} title={t.wordDeck.edit} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line text-faint transition hover:border-accent hover:text-accent disabled:opacity-50"><IconPencil className="h-4 w-4" /></button>
+                    <button type="button" disabled={busy} onClick={() => { setEditError(null); setCopyingToHomework(item); }} title={t.activityTransfer.copyToHomework} className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-xs font-bold text-muted transition hover:border-accent hover:text-accent disabled:opacity-50">🏠 <span className="hidden lg:inline">{t.activityTransfer.homework}</span></button>
                     <button type="button" disabled={busy} onClick={() => { if (!confirm(t.game.removeConfirm)) return; startBusy(async () => { await removeGameAction(item.game.id); await reload(); }); }} title={t.game.remove} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-faint transition hover:bg-surface-2 hover:text-rose-500 disabled:opacity-50"><IconTrash className="h-4 w-4" /></button>
                   </>
                 )}

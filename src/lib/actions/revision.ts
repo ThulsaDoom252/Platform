@@ -434,6 +434,81 @@ export async function assignRevisionPresetAction(
   return { ok: true, id: created?.id };
 }
 
+/** Copy an edited Words revision between class and homework with clean progress. */
+export async function copyRevisionBetweenClassAndHomeworkAction(
+  sourceId: string,
+  destination: "CLASS" | "HOMEWORK",
+  setup: RevisionPresetSetup,
+): Promise<RevisionState> {
+  const session = await requireTeacher();
+  const [source] = await db.select().from(wordRevisions)
+    .where(eq(wordRevisions.id, String(sourceId ?? "")))
+    .limit(1);
+  if (!source) return { error: "Активность не найдена" };
+
+  if (destination === "HOMEWORK") {
+    const [teacher] = await db.select({ classWithId: users.classWithId }).from(users)
+      .where(eq(users.id, session.userId)).limit(1);
+    if (source.placement !== "CLASS" || teacher?.classWithId !== source.studentId) {
+      return { error: "Игра в текущем классе не найдена" };
+    }
+  } else if (
+    source.placement !== "HOMEWORK" ||
+    (source.assignedByTeacherId && source.assignedByTeacherId !== session.userId)
+  ) {
+    return { error: "Домашняя активность не найдена" };
+  }
+
+  const nodeId = String(setup?.nodeId ?? "");
+  const title = String(setup?.title ?? "").trim().slice(0, 120);
+  const phraseIds = [...new Set((setup?.phraseIds ?? []).map(String).filter(Boolean))];
+  const modes = (setup?.modes ?? []).filter((mode): mode is RevisionMode =>
+    REVISION_MODES.includes(mode as RevisionMode));
+  const inTask = new Set(phraseIds);
+  const modeWords: Record<string, string[]> = {};
+  for (const mode of modes) {
+    const own = (setup?.modeWords?.[mode] ?? [])
+      .map(String)
+      .filter((phraseId) => inTask.has(phraseId));
+    if (own.length > 0) modeWords[mode] = own;
+  }
+  if (!nodeId) return { error: "Не выбран словник" };
+  if (!title) return { error: "Дай игре название" };
+  if (phraseIds.length === 0) return { error: "Не выбрано ни одного слова" };
+  if (modes.length === 0) return { error: "Не выбран ни один режим" };
+
+  const [created] = await db.insert(wordRevisions).values({
+    studentId: source.studentId,
+    assignedByTeacherId: session.userId,
+    nodeId,
+    title,
+    phraseIds,
+    modes,
+    modeWords,
+    show: setup?.show ?? {},
+    answerSeconds: setup?.answerSeconds ?? null,
+    totalSeconds: setup?.totalSeconds ?? null,
+    dueAt: null,
+    placement: destination,
+    reopened: false,
+  }).returning({ id: wordRevisions.id });
+
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: source.studentId,
+    event: destination === "HOMEWORK" ? "revisionAssigned" : "activityAssigned",
+    title,
+    href: destination === "HOMEWORK"
+      ? `/student/homework/revision/${created?.id ?? ""}`
+      : "/student/class",
+  });
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/homework");
+  return { ok: true, id: created?.id };
+}
+
 export type RevisionCard = {
   id: string;
   title: string;
@@ -1022,6 +1097,11 @@ export type TeacherRevisionHomeworkCard = {
   nextLessonAt: string | null;
 };
 
+export type TeacherRevisionHomeworkDetail = TeacherRevisionHomeworkCard & Pick<
+  RevisionCard,
+  "nodeId" | "nodeName" | "phraseIds" | "modeWords" | "show" | "answerSeconds" | "totalSeconds"
+>;
+
 /** Практика слов в общих папках домашек учителя. */
 export async function teacherRevisionHomeworkAssignmentsAction(): Promise<TeacherRevisionHomeworkCard[]> {
   const session = await requireTeacher();
@@ -1099,9 +1179,23 @@ export async function teacherRevisionHomeworkAssignmentsAction(): Promise<Teache
 
 export async function teacherRevisionHomeworkAction(
   id: string,
-): Promise<TeacherRevisionHomeworkCard | null> {
+): Promise<TeacherRevisionHomeworkDetail | null> {
   const rows = await teacherRevisionHomeworkAssignmentsAction();
-  return rows.find((row) => row.id === String(id ?? "")) ?? null;
+  const summary = rows.find((row) => row.id === String(id ?? "")) ?? null;
+  if (!summary) return null;
+  const detail = (await cardsFor(summary.studentId, "HOMEWORK"))
+    .find((row) => row.id === summary.id);
+  if (!detail) return null;
+  return {
+    ...summary,
+    nodeId: detail.nodeId,
+    nodeName: detail.nodeName,
+    phraseIds: detail.phraseIds,
+    modeWords: detail.modeWords,
+    show: detail.show,
+    answerSeconds: detail.answerSeconds,
+    totalSeconds: detail.totalSeconds,
+  };
 }
 
 function attemptSummary(

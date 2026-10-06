@@ -755,6 +755,15 @@ export const ru: Dict = {
     addedNotice: "Добавлено в словник ученика",
   },
 
+  activityTransfer: {
+    copyToHomework: "Дублировать в домашку",
+    copyToClass: "Дублировать в класс",
+    toHomeworkTitle: "Отредактировать копию для домашки",
+    toClassTitle: "Отредактировать копию для класса",
+    editCopyHint: "Ты редактируешь новую копию. Оригинальная активность и её прогресс не изменятся.",
+    homework: "Домашка",
+    copiedToClass: "Добавлено в активности класса ученика",
+  },
   wordDeck: {
     eyebrow: "Карточки со словами",
     title: "Колода слов",

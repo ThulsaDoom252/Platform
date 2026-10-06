@@ -610,6 +610,135 @@ export async function teacherWordDeckHomeworkAction(id: string): Promise<Teacher
   } : null;
 }
 
+/**
+ * Copy an already assigned word-deck snapshot between the live class and
+ * independent homework. The form sends a freshly edited setup, so neither the
+ * source snapshot nor its progress is changed or reused.
+ */
+export async function copyWordDeckBetweenClassAndHomeworkAction(
+  sourceId: string,
+  destination: "CLASS" | "HOMEWORK",
+  input: SaveWordDeckInput,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const targetSourceId = String(sourceId ?? "");
+  const [row] = await db.select({
+    game: activityGames,
+    templateAuthorId: wordDeckActivities.authorId,
+  }).from(activityGames)
+    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+    .where(eq(activityGames.id, targetSourceId))
+    .limit(1);
+  if (!row?.game.wordDeck) return { error: "Активность не найдена" };
+
+  if (destination === "HOMEWORK") {
+    const [teacher] = await db.select({ classWithId: users.classWithId }).from(users)
+      .where(eq(users.id, session.userId)).limit(1);
+    if (
+      row.game.kind !== "WORD_DECK" ||
+      teacher?.classWithId !== row.game.studentId
+    ) return { error: "Игра в текущем классе не найдена" };
+  } else {
+    const legacyOwnerId = await soleTeacherId();
+    if (
+      row.game.kind !== "WORD_DECK_HOMEWORK" ||
+      !teacherOwnsWordDeckHomework(session.userId, row, legacyOwnerId)
+    ) return { error: "Домашняя активность не найдена" };
+  }
+  if (normalizeWordDeckSettings(row.game.wordDeck.settings).gameType === "GUESS_PICTURE") {
+    return { error: "Для этой игры используется отдельный редактор" };
+  }
+
+  const prepared = await prepareWordDeck(session.userId, { ...input, id: undefined });
+  if ("error" in prepared) return prepared;
+  const [created] = await db.insert(activityGames).values({
+    studentId: row.game.studentId,
+    kind: destination === "CLASS" ? "WORD_DECK" : "WORD_DECK_HOMEWORK",
+    templateId: row.game.templateId,
+    wordDeck: {
+      settings: prepared.settings,
+      backgroundImageUrl: row.game.wordDeck.backgroundImageUrl ?? null,
+      cards: prepared.cards,
+      ...(destination === "HOMEWORK"
+        ? { assignedByTeacherId: session.userId, attempts: [] }
+        : {}),
+    },
+    mode: "WORD_DECK",
+    title: prepared.title,
+    status: "LOBBY",
+    cards: [],
+    verdicts: [],
+    timings: [],
+    at: 0,
+    revealed: false,
+    paused: true,
+    pausedLeftMs: 0,
+    deadline: null,
+  }).returning({ id: activityGames.id });
+
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: row.game.studentId,
+    event: "activityAssigned",
+    title: prepared.title,
+    href: destination === "CLASS"
+      ? "/student/class"
+      : `/student/homework/games/${created?.id ?? ""}`,
+  });
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/homework");
+  return { id: created?.id };
+}
+
+/** Upload a custom background only to the newly transferred snapshot. */
+export async function uploadTransferredWordDeckBackgroundAction(
+  formData: FormData,
+): Promise<{ url?: string; error?: string; reason?: StoreFailure }> {
+  const session = await requireTeacher();
+  const activityId = String(formData.get("activityId") ?? "");
+  const file = formData.get("image");
+  if (!(file instanceof File) || file.size === 0) return { reason: "failed" };
+  const [row] = await db.select({
+    game: activityGames,
+    templateAuthorId: wordDeckActivities.authorId,
+  }).from(activityGames)
+    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+    .where(eq(activityGames.id, activityId))
+    .limit(1);
+  if (!row?.game.wordDeck) return { error: "Активность не найдена" };
+
+  let allowed = false;
+  if (row.game.kind === "WORD_DECK") {
+    const [teacher] = await db.select({ classWithId: users.classWithId }).from(users)
+      .where(eq(users.id, session.userId)).limit(1);
+    allowed = teacher?.classWithId === row.game.studentId;
+  } else if (row.game.kind === "WORD_DECK_HOMEWORK") {
+    allowed = teacherOwnsWordDeckHomework(session.userId, row, await soleTeacherId());
+  }
+  if (!allowed) return { error: "Активность не найдена" };
+
+  const stored = await storeUploadedImage(file, "activities");
+  if ("error" in stored) return { reason: stored.error };
+  await db.update(activityGames).set({
+    wordDeck: {
+      ...row.game.wordDeck,
+      backgroundImageUrl: stored.url,
+      settings: {
+        ...normalizeWordDeckSettings(row.game.wordDeck.settings),
+        background: "CUSTOM",
+      },
+    },
+    updatedAt: new Date(),
+  }).where(eq(activityGames.id, row.game.id));
+  revalidatePath("/teacher/class");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/class");
+  revalidatePath("/student/homework");
+  return { url: stored.url };
+}
+
 export async function deleteWordDeckHomeworkAction(id: string): Promise<{ error?: string }> {
   const session = await requireTeacher();
   const [[row], legacyOwnerId] = await Promise.all([

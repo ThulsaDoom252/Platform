@@ -19,6 +19,7 @@ import { Modal } from "@/components/modal";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
+  copyRevisionBetweenClassAndHomeworkAction,
   createRevisionAction,
   revisionWordGroupsAction,
   saveRevisionPresetAction,
@@ -78,6 +79,8 @@ export function RevisionSetup({
   onClose,
   onDone,
   purpose = "ASSIGN",
+  copySourceId,
+  copyDestination,
 }: {
   studentId: string;
   studentName: string;
@@ -88,7 +91,9 @@ export function RevisionSetup({
   initial?: RevisionSetupInitial;
   onClose: () => void;
   onDone?: (id?: string) => void;
-  purpose?: "ASSIGN" | "PRESET" | "CLASS_EDIT";
+  purpose?: "ASSIGN" | "PRESET" | "CLASS_EDIT" | "COPY";
+  copySourceId?: string;
+  copyDestination?: "CLASS" | "HOMEWORK";
 }) {
   const { t } = useT();
   const sourceList = useMemo<RevisionVocabularySource[]>(
@@ -295,6 +300,12 @@ export function RevisionSetup({
         ? await saveRevisionPresetAction(common)
         : purpose === "CLASS_EDIT" && initial?.id
           ? await updateClassRevisionAction(initial.id, common)
+        : purpose === "COPY" && copySourceId && copyDestination
+          ? await copyRevisionBetweenClassAndHomeworkAction(
+              copySourceId,
+              copyDestination,
+              common,
+            )
         : await createRevisionAction({
             ...common,
             studentId,
@@ -328,6 +339,10 @@ export function RevisionSetup({
         ? (initial ? t.game.editPreset : t.revision.newPreset)
         : purpose === "CLASS_EDIT"
           ? t.wordDeck.edit
+        : purpose === "COPY"
+          ? (copyDestination === "CLASS"
+              ? t.activityTransfer.toClassTitle
+              : t.activityTransfer.toHomeworkTitle)
         : `${t.revision.assign} — ${studentName}`}
     >
       <div className="flex flex-col gap-4">

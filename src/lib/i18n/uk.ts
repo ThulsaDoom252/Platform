@@ -755,6 +755,15 @@ export const uk: Dict = {
     addedNotice: "Додано до словника учня",
   },
 
+  activityTransfer: {
+    copyToHomework: "Дублювати в домашнє",
+    copyToClass: "Дублювати в клас",
+    toHomeworkTitle: "Відредагувати копію для домашнього завдання",
+    toClassTitle: "Відредагувати копію для класу",
+    editCopyHint: "Ти редагуєш нову копію. Початкова активність та її прогрес не зміняться.",
+    homework: "Домашнє",
+    copiedToClass: "Додано до активностей класу учня",
+  },
   wordDeck: {
     eyebrow: "Картки зі словами",
     title: "Колода слів",

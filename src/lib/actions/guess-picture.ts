@@ -351,6 +351,11 @@ export async function addGuessPicturePresetToClassAction(
     studentId: targetStudent,
     kind: "GUESS_PICTURE",
     templateId: targetPreset,
+    wordDeck: {
+      settings: normalizeWordDeckSettings(row.settings),
+      backgroundImageUrl: row.backgroundImageUrl,
+      cards: row.cards ?? [],
+    },
     mode: preset.mode,
     title: preset.title,
     status: "LOBBY",
@@ -388,7 +393,7 @@ export async function updateClassGuessPictureGameAction(
   if (!title) return { error: "Назови игру" };
   if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
 
-  const [game] = await db.select({ id: activityGames.id }).from(activityGames).where(and(
+  const [game] = await db.select({ id: activityGames.id, wordDeck: activityGames.wordDeck }).from(activityGames).where(and(
     eq(activityGames.id, targetId),
     eq(activityGames.studentId, teacher.classWithId),
     eq(activityGames.kind, "GUESS_PICTURE"),
@@ -435,6 +440,20 @@ export async function updateClassGuessPictureGameAction(
     paused: true,
     pausedLeftMs: seconds * 1000,
     deadline: null,
+    wordDeck: {
+      ...game.wordDeck,
+      settings: normalizeWordDeckSettings({
+        ...DEFAULT_WORD_DECK_SETTINGS,
+        gameType: "GUESS_PICTURE",
+        guessMode: mode,
+        shuffleWords: input?.shuffleWords !== false,
+        shuffleDecks: input?.shuffleDecks === true,
+        timerMode: "CARD",
+        cardSeconds: seconds,
+      }),
+      backgroundImageUrl: game.wordDeck?.backgroundImageUrl ?? null,
+      cards: sourceCards,
+    },
     updatedAt: new Date(),
   }).where(eq(activityGames.id, targetId));
   revalidatePath("/teacher/class");
@@ -498,6 +517,167 @@ export async function assignGuessPicturePresetHomeworkAction(
   revalidatePath("/student/homework");
   revalidatePath("/teacher/homeworks");
   return { id: created?.id };
+}
+
+/**
+ * Copy an edited Guess by picture snapshot between class and homework.
+ * Student progress is intentionally not copied.
+ */
+export async function copyGuessPictureBetweenClassAndHomeworkAction(
+  sourceId: string,
+  destination: "CLASS" | "HOMEWORK",
+  input: SaveGuessPicturePresetInput,
+): Promise<{ id?: string; error?: string }> {
+  const session = await requireTeacher();
+  const [row] = await db.select({
+    game: activityGames,
+    templateAuthorId: wordDeckActivities.authorId,
+  }).from(activityGames)
+    .leftJoin(wordDeckActivities, eq(wordDeckActivities.id, activityGames.templateId))
+    .where(eq(activityGames.id, String(sourceId ?? "")))
+    .limit(1);
+  if (!row) return { error: "Активность не найдена" };
+
+  if (destination === "HOMEWORK") {
+    const [teacher] = await db.select({ classWithId: users.classWithId }).from(users)
+      .where(eq(users.id, session.userId)).limit(1);
+    if (row.game.kind !== "GUESS_PICTURE" || teacher?.classWithId !== row.game.studentId) {
+      return { error: "Игра в текущем классе не найдена" };
+    }
+  } else {
+    const explicitOwner = row.game.wordDeck?.assignedByTeacherId;
+    let legacyOwned = false;
+    if (!explicitOwner && !row.templateAuthorId) {
+      const teachers = await db.select({ id: users.id }).from(users)
+        .where(eq(users.role, "TEACHER")).limit(2);
+      legacyOwned = teachers.length === 1 && teachers[0].id === session.userId;
+    }
+    if (
+      row.game.kind !== "WORD_DECK_HOMEWORK" ||
+      normalizeWordDeckSettings(row.game.wordDeck?.settings).gameType !== "GUESS_PICTURE" ||
+      !(explicitOwner === session.userId || row.templateAuthorId === session.userId || legacyOwned)
+    ) return { error: "Домашняя активность не найдена" };
+  }
+
+  const title = String(input?.title ?? "").trim().slice(0, 120);
+  const nodeIds = [...new Set((input?.nodeIds ?? []).map(String).filter(Boolean))];
+  const mode: GameMode = input?.mode === "TRANSLATION" || input?.mode === "MIXED"
+    ? input.mode
+    : "PICTURE";
+  const seconds = Math.min(120, Math.max(3, Number(input?.seconds) || 10));
+  if (!title) return { error: "Назови игру" };
+  if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
+  const groups = await guessPresetGroups(session.userId, nodeIds);
+  if (groups.length !== nodeIds.length) return { error: "Один из словников больше недоступен" };
+  const chosen = new Set((input?.phraseIds ?? []).map(String));
+  const sourceCards = groups.flatMap((group) => group.words
+    .filter((word) => chosen.size === 0 || chosen.has(word.phraseId))
+    .filter((word) => mode === "TRANSLATION" ? Boolean(word.translation?.trim()) : Boolean(word.imageUrl))
+    .filter((word) => mode !== "MIXED" || Boolean(word.translation?.trim()))
+    .map((word): WordDeckSourceCard => ({
+      phraseId: word.phraseId,
+      word: word.word,
+      translation: word.translation,
+      imageUrl: word.imageUrl,
+      nodeId: group.id,
+      vocabName: group.name,
+      vocabIcon: group.icon,
+    })));
+  if (sourceCards.length === 0) {
+    return { error: mode === "TRANSLATION" ? "У выбранных слов нет перевода" : "У выбранных слов нет картинок" };
+  }
+  const settings = normalizeWordDeckSettings({
+    ...DEFAULT_WORD_DECK_SETTINGS,
+    gameType: "GUESS_PICTURE",
+    guessMode: mode,
+    shuffleWords: input?.shuffleWords !== false,
+    shuffleDecks: input?.shuffleDecks === true,
+    timerMode: "CARD",
+    cardSeconds: seconds,
+  });
+
+  let createdId: string | undefined;
+  if (destination === "HOMEWORK") {
+    const homeworkCards = mode === "MIXED"
+      ? sourceCards.flatMap((card) => [
+          { ...card, phraseId: `${card.phraseId}:picture`, promptFace: "PICTURE" as const },
+          { ...card, phraseId: `${card.phraseId}:translation`, promptFace: "TRANSLATION" as const },
+        ])
+      : sourceCards.map((card) => ({
+          ...card,
+          promptFace: mode === "TRANSLATION" ? "TRANSLATION" as const : "PICTURE" as const,
+        }));
+    const [created] = await db.insert(activityGames).values({
+      studentId: row.game.studentId,
+      kind: "WORD_DECK_HOMEWORK",
+      templateId: row.game.templateId,
+      wordDeck: {
+        settings,
+        backgroundImageUrl: row.game.wordDeck?.backgroundImageUrl ?? null,
+        cards: homeworkCards,
+        assignedByTeacherId: session.userId,
+        attempts: [],
+      },
+      mode: "WORD_DECK",
+      title,
+      status: "LOBBY",
+      cards: [], verdicts: [], timings: [], paused: true, pausedLeftMs: 0, deadline: null,
+    }).returning({ id: activityGames.id });
+    createdId = created?.id;
+  } else {
+    const sources: DeckSource[] = nodeIds.map((nodeId) => ({
+      nodeId,
+      cards: sourceCards.filter((card) => card.nodeId === nodeId).map((card): GameCard => ({
+        phraseId: card.phraseId,
+        nodeId,
+        word: card.word,
+        translation: card.translation ?? null,
+        imageUrl: card.imageUrl ?? "",
+        face: mode === "TRANSLATION" ? "TRANSLATION" : "PICTURE",
+      })),
+    }));
+    const deck = buildDeck(sources, {
+      shuffleWords: input?.shuffleWords !== false,
+      shuffleDecks: input?.shuffleDecks === true,
+      mixFaces: mode === "MIXED",
+    });
+    const [created] = await db.insert(activityGames).values({
+      studentId: row.game.studentId,
+      kind: "GUESS_PICTURE",
+      templateId: row.game.templateId,
+      wordDeck: {
+        settings,
+        backgroundImageUrl: row.game.wordDeck?.backgroundImageUrl ?? null,
+        cards: sourceCards,
+      },
+      mode,
+      title,
+      status: "LOBBY",
+      cards: deck,
+      verdicts: deck.map(() => null),
+      timings: deck.map(() => null),
+      at: 0,
+      revealed: false,
+      seconds,
+      paused: true,
+      pausedLeftMs: seconds * 1000,
+      deadline: null,
+    }).returning({ id: activityGames.id });
+    createdId = created?.id;
+  }
+
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: row.game.studentId,
+    event: "activityAssigned",
+    title,
+    href: destination === "CLASS" ? "/student/class" : `/student/homework/games/${createdId ?? ""}`,
+  });
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/homework");
+  return { id: createdId };
 }
 
 export async function deleteGuessPicturePresetAction(id: string): Promise<{ error?: string }> {
@@ -898,7 +1078,11 @@ export async function listGamesAction(studentId: string): Promise<QueuedGame[]> 
         imageUrl: card.imageUrl || null,
       }];
     });
-    const presetSettings = templateSettings ? normalizeWordDeckSettings(templateSettings) : null;
+    const presetSettings = row.wordDeck?.settings
+      ? normalizeWordDeckSettings(row.wordDeck.settings)
+      : templateSettings
+        ? normalizeWordDeckSettings(templateSettings)
+        : null;
     return {
       id: row.id,
       title: row.title,

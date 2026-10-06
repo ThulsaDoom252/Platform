@@ -5,6 +5,7 @@ import { teacherWordDeckHomeworkAction } from "@/lib/actions/word-deck";
 import { getDict } from "@/lib/i18n/server";
 import { StudentPresence } from "@/components/student-presence";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
+import { HomeworkActivityTransfer } from "@/components/teacher/homework-activity-transfer";
 
 export default async function TeacherActivityHomeworkPage({
   params,
@@ -28,6 +29,7 @@ export default async function TeacherActivityHomeworkPage({
           ← {t.teacherHomeworks.backToFolders}
         </Link>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <HomeworkActivityTransfer kind="GAME" activity={activity} />
           {(activity.status !== "LOBBY" || activity.attempts.length > 0) && (
             <ResetStudentHomeworkButton assignmentId={activity.id} kind="ACTIVITY" labels={t.teacherHomeworks} showLabel />
           )}

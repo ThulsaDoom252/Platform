@@ -682,6 +682,15 @@ export const en = {
     addedNotice: "Added to the student's vocabulary",
   },
 
+  activityTransfer: {
+    copyToHomework: "Copy to homework",
+    copyToClass: "Copy to class",
+    toHomeworkTitle: "Edit a copy for homework",
+    toClassTitle: "Edit a copy for class",
+    editCopyHint: "You are editing a new copy. The original activity and its progress will not change.",
+    homework: "Homework",
+    copiedToClass: "Added to the student's class activities",
+  },
   wordDeck: {
     eyebrow: "Word cards",
     title: "Word deck",
