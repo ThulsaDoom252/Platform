@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, max } from "drizzle-orm";
 import { db } from "../src/lib/db";
 import { lessonUnits, users } from "../src/lib/db/schema";
 import { cleanScriptHtml } from "../src/lib/script-html";
@@ -60,9 +60,9 @@ function parseSections(source: string): ParsedSection[] {
 }
 
 async function main() {
-  const [studentPath, teacherPath] = process.argv.slice(2);
+  const [studentPath, teacherPath, titleArg, descriptionArg] = process.argv.slice(2);
   if (!studentPath || !teacherPath) {
-    throw new Error("Usage: npm run lesson:import-html -- STUDENT.html TEACHER.html");
+    throw new Error("Usage: npm run lesson:import-html -- STUDENT.html TEACHER.html [TITLE] [DESCRIPTION]");
   }
 
   const [studentSource, teacherSource] = await Promise.all([
@@ -111,24 +111,32 @@ async function main() {
     .limit(1);
   if (!author) throw new Error("No teacher account found");
 
-  const title = "Meat & Fish";
-  const description =
-    "Food · Reflexive pronouns · Conditionals 0 / 1 / 2 · can / should / will · Tenses review";
+  const inferredHeading = text(studentSource.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "");
+  const title = String(titleArg ?? inferredHeading ?? "Imported lesson").trim().slice(0, 160);
+  const description = String(descriptionArg ?? sections.map((section) => section.title).join(" · "))
+    .trim()
+    .slice(0, 500);
+  if (!title) throw new Error("The lesson title is empty");
   const [existing] = await db
-    .select({ id: lessonUnits.id })
+    .select({ id: lessonUnits.id, sortOrder: lessonUnits.sortOrder })
     .from(lessonUnits)
     .where(and(eq(lessonUnits.authorId, author.id), eq(lessonUnits.title, title)))
     .limit(1);
+  const [lastOrder] = await db
+    .select({ value: max(lessonUnits.sortOrder) })
+    .from(lessonUnits)
+    .where(and(eq(lessonUnits.authorId, author.id), isNull(lessonUnits.folderId)));
+  const sortOrder = existing?.sortOrder ?? Number(lastOrder?.value ?? 0) + 10;
 
   const id = existing?.id
     ? (await db
         .update(lessonUnits)
-        .set({ kind: "REGULAR", description, sections: normalized, updatedAt: new Date() })
+        .set({ kind: "REGULAR", description, sections: normalized, folderId: null, sortOrder, updatedAt: new Date() })
         .where(eq(lessonUnits.id, existing.id))
         .returning({ id: lessonUnits.id }))[0]?.id
     : (await db
         .insert(lessonUnits)
-        .values({ authorId: author.id, kind: "REGULAR", title, description, sections: normalized })
+        .values({ authorId: author.id, kind: "REGULAR", title, description, sections: normalized, sortOrder })
         .returning({ id: lessonUnits.id }))[0]?.id;
 
   console.log(JSON.stringify({ id, title, author: author.name, sections: normalized.length, source: [basename(studentPath), basename(teacherPath)] }));
