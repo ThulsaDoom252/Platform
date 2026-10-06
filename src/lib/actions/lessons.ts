@@ -3,10 +3,9 @@
 /**
  * Уроки: заготовки учителя и их копии у учеников.
  *
- * Заготовка (lesson_units) не меняется никогда: что бы ни происходило на
- * занятии, правится только закрепление за учеником
- * (lesson_assignments). Поэтому один урок раздаётся скольким угодно
- * ученикам, у каждого своя история, а исходник остаётся исходником.
+ * Во время занятия учитель может сохранить личную версию в закреплении
+ * ученика либо осознанно обновить исходный шаблон и все выданные копии.
+ * Ответы, прогресс и подсветки при этом остаются в lesson_assignments.
  *
  * Словник урока наполняется разовой копией из материалов. Поэтому его
  * можно перестроить под занятие, не меняя исходный словник ученика.
@@ -103,8 +102,10 @@ import {
   interactiveHomeworkFromEntries,
   legacyHomeworkFromEntries,
   normalizeHomeworkAnswer,
+  normalizeInteractiveHomework,
   withoutHomeworkExerciseState,
   type InteractiveHomeworkPlan,
+  type LessonHomeworkEntry,
 } from "@/lib/lesson-homework";
 import { installNewDerekLesson } from "@/lib/bundled-lessons/new-derek";
 import { installGrammarCheckLesson } from "@/lib/bundled-lessons/grammar-check";
@@ -690,6 +691,169 @@ export type LessonView = {
   regularSections: RegularLessonSection[];
 };
 
+export type LessonEditScope = "STUDENT" | "GLOBAL";
+
+/**
+ * Editable lesson payload used by the in-class editor.
+ *
+ * Games are referenced by id: their own cards/settings keep living in the
+ * activity tables. Everything else is a self-contained lesson snapshot, so a
+ * single student's version cannot leak into the reusable template.
+ */
+export type AssignedLessonContentDraft = {
+  title: string;
+  description: string | null;
+  words: LessonWord[];
+  lexis: LessonLexisGroup[];
+  videoUrl: string | null;
+  videoTitle: string | null;
+  transcript: TranscriptLine[];
+  questions: { afterVideo: string[]; afterReading: string[] };
+  homework: { title: string; text: string }[];
+  interactiveHomework: InteractiveHomeworkPlan | null;
+  activityIds: string[];
+  regularSections: RegularLessonSection[];
+};
+
+const MAX_INLINE_WORDS = 600;
+const MAX_INLINE_TRANSCRIPT_LINES = 2_000;
+const MAX_INLINE_QUESTIONS = 500;
+
+function cleanNullable(value: unknown, limit: number): string | null {
+  const text = String(value ?? "").trim().slice(0, limit);
+  return text || null;
+}
+
+function cleanLines(value: unknown, limit = MAX_INLINE_QUESTIONS): string[] {
+  return (Array.isArray(value) ? value : [])
+    .map((entry) => String(entry ?? "").trim().slice(0, 2_000))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function normalizeAssignedWords(value: unknown): LessonWord[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, MAX_INLINE_WORDS).flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    const word = String(item.word ?? "").trim().slice(0, 500);
+    if (!word) return [];
+    const examples = (Array.isArray(item.examples) ? item.examples : [])
+      .slice(0, 20)
+      .flatMap((example) => {
+        if (!example || typeof example !== "object") return [];
+        const row = example as Record<string, unknown>;
+        const en = String(row.en ?? "").trim().slice(0, 1_000);
+        const tr = String(row.tr ?? "").trim().slice(0, 1_000);
+        return en || tr ? [{ en, tr }] : [];
+      });
+    const id = String(item.id ?? "").trim().slice(0, 100) || `local-word-${index + 1}`;
+    return [{
+      id,
+      category: String(item.category ?? "").trim().slice(0, 180),
+      icon: cleanNullable(item.icon, 40),
+      word,
+      ipaUs: cleanNullable(item.ipaUs, 180),
+      ipaUk: cleanNullable(item.ipaUk, 180),
+      translation: cleanNullable(item.translation, 1_500),
+      description: cleanNullable(item.description, 3_000),
+      note: cleanNullable(item.note, 3_000),
+      examples,
+      sectionColor: cleanNullable(item.sectionColor, 80),
+      imageUrl: cleanNullable(item.imageUrl, 2_000),
+    }];
+  });
+}
+
+function normalizeAssignedLexis(value: unknown): LessonLexisGroup[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 30).flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    const source = String(item.source ?? "").trim().slice(0, 200_000);
+    const parsed = source ? parseLexisDocuments(source)[0] : null;
+    const blocks = parsed?.blocks ?? (Array.isArray(item.blocks) ? item.blocks : []);
+    const safeBlocks = sanitizeBlocks(blocks);
+    if (!safeBlocks.some((block) => block.type === "word")) return [];
+    return [{
+      id: String(item.id ?? "").trim().slice(0, 100) || `local-lexis-${index + 1}`,
+      source: parsed?.source ?? source,
+      title:
+        cleanNullable(item.title, 180) ??
+        cleanNullable(parsed?.title, 180) ??
+        "Lexis",
+      intro:
+        cleanNullable(item.intro, 2_000) ?? cleanNullable(parsed?.subtitle, 2_000),
+      blocks: safeBlocks,
+      warnings: parsed?.warnings ?? (Array.isArray(item.warnings)
+        ? item.warnings.map(String).slice(0, 100)
+        : []),
+      sourceNodeId: cleanNullable(item.sourceNodeId, 100),
+    }];
+  });
+}
+
+function normalizeAssignedLessonDraft(
+  value: unknown,
+  fallbackTitle: string,
+): AssignedLessonContentDraft | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const title = String(item.title ?? fallbackTitle).trim().slice(0, 160);
+  if (!title) return null;
+  const rawTranscript = Array.isArray(item.transcript) ? item.transcript : [];
+  const transcript = rawTranscript.slice(0, MAX_INLINE_TRANSCRIPT_LINES).flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const speaker = String(row.speaker ?? "").trim().slice(0, 180);
+    const text = String(row.text ?? "").trim().slice(0, 12_000);
+    return text ? [{ speaker, text }] : [];
+  });
+  const rawQuestions = item.questions && typeof item.questions === "object"
+    ? item.questions as Record<string, unknown>
+    : {};
+  const legacyHomework = (Array.isArray(item.homework) ? item.homework : [])
+    .slice(0, 200)
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const row = entry as Record<string, unknown>;
+      const taskTitle = String(row.title ?? "").trim().slice(0, 500);
+      const text = String(row.text ?? "").trim().slice(0, 12_000);
+      return taskTitle || text ? [{ title: taskTitle, text }] : [];
+    });
+  const interactiveHomework = item.interactiveHomework
+    ? normalizeInteractiveHomework(item.interactiveHomework, { allowEmpty: true })
+    : null;
+  return {
+    title,
+    description: cleanNullable(item.description, 5_000),
+    words: normalizeAssignedWords(item.words),
+    lexis: normalizeAssignedLexis(item.lexis),
+    videoUrl: cleanNullable(item.videoUrl, 4_000),
+    videoTitle: cleanNullable(item.videoTitle, 500),
+    transcript,
+    questions: {
+      afterVideo: cleanLines(rawQuestions.afterVideo),
+      afterReading: cleanLines(rawQuestions.afterReading),
+    },
+    homework: legacyHomework,
+    interactiveHomework,
+    activityIds: [...new Set((Array.isArray(item.activityIds) ? item.activityIds : [])
+      .map(String)
+      .map((id) => id.trim())
+      .filter(Boolean))].slice(0, 100),
+    regularSections: normalizeRegularLessonSections(item.regularSections),
+  };
+}
+
+function assignmentRegularSections(
+  template: unknown,
+  override: unknown,
+): RegularLessonSection[] {
+  const draft = normalizeAssignedLessonDraft(override, "Lesson");
+  return draft ? draft.regularSections : normalizeRegularLessonSections(template);
+}
+
 /** Словник урока — свой, не ссылка на материалы. */
 async function wordsOfUnit(unitId: string): Promise<LessonWord[]> {
   const rows = await db
@@ -1059,6 +1223,57 @@ export async function deleteWordAction(wordId: string): Promise<{ error?: string
   return {};
 }
 
+async function lessonActivitiesByIds(ids: string[]): Promise<LessonView["activities"]> {
+  const activityIds = [...new Set(ids.map(String).filter(Boolean))];
+  if (activityIds.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(wordDeckActivities)
+    .where(inArray(wordDeckActivities.id, activityIds));
+  const activityOf = new Map(rows
+    .filter((activity) => normalizeWordDeckSettings(activity.settings).gameType !== "GUESS_PICTURE")
+    .map((activity) => [activity.id, activity]));
+  return activityIds.flatMap((id) => {
+    const activity = activityOf.get(id);
+    return activity
+      ? [{
+          id: activity.id,
+          title: activity.title,
+          cards: activity.cards ?? [],
+          settings: normalizeWordDeckSettings(activity.settings),
+          backgroundImageUrl: activity.backgroundImageUrl,
+        }]
+      : [];
+  });
+}
+
+async function applyAssignedLessonContent(
+  lesson: LessonView,
+  rawOverride: unknown,
+  includeTeacher: boolean,
+): Promise<LessonView> {
+  const draft = normalizeAssignedLessonDraft(rawOverride, lesson.title);
+  if (!draft) return lesson;
+  const regularSections = includeTeacher
+    ? draft.regularSections
+    : publicRegularLessonSections(draft.regularSections);
+  return {
+    ...lesson,
+    title: draft.title,
+    description: draft.description,
+    words: draft.words,
+    lexis: draft.lexis,
+    videoUrl: draft.videoUrl,
+    videoTitle: draft.videoTitle,
+    transcript: draft.transcript,
+    questions: draft.questions,
+    homework: draft.homework,
+    interactiveHomework: draft.interactiveHomework,
+    activities: await lessonActivitiesByIds(draft.activityIds),
+    regularSections,
+  };
+}
+
 async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonView | null> {
   const [row] = await db
     .select({ unit: lessonUnits, vocabName: materialNodes.name })
@@ -1071,15 +1286,6 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
   const { unit } = row;
   const questions = unit.questions ?? { afterVideo: [], afterReading: [] };
   const activityIds = unit.activityIds ?? [];
-  const activityRows = activityIds.length
-    ? await db
-        .select()
-        .from(wordDeckActivities)
-        .where(inArray(wordDeckActivities.id, activityIds))
-    : [];
-  const activityOf = new Map(activityRows
-    .filter((activity) => normalizeWordDeckSettings(activity.settings).gameType !== "GUESS_PICTURE")
-    .map((activity) => [activity.id, activity]));
 
   return {
     id: unit.id,
@@ -1099,18 +1305,7 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
     },
     homework: legacyHomeworkFromEntries(unit.homework),
     interactiveHomework: interactiveHomeworkFromEntries(unit.homework),
-    activities: activityIds.flatMap((id) => {
-      const activity = activityOf.get(id);
-      return activity
-        ? [{
-            id: activity.id,
-            title: activity.title,
-            cards: activity.cards ?? [],
-            settings: normalizeWordDeckSettings(activity.settings),
-            backgroundImageUrl: activity.backgroundImageUrl,
-          }]
-        : [];
-    }),
+    activities: await lessonActivitiesByIds(activityIds),
     regularSections: includeTeacher
       ? normalizeRegularLessonSections(unit.sections)
       : publicRegularLessonSections(unit.sections),
@@ -1121,6 +1316,153 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
 export async function lessonAction(id: string): Promise<LessonView | null> {
   await requireTeacher();
   return loadUnit(String(id ?? ""), true);
+}
+
+/**
+ * Save an edit made while the assigned lesson is open.
+ *
+ * STUDENT stores a full private snapshot on that assignment. GLOBAL writes
+ * the reusable lesson and deliberately clears every private snapshot so all
+ * already assigned copies receive the same new version. Student answers,
+ * attempts, notes, highlights and homework progress are never replaced.
+ */
+export async function saveAssignedLessonContentAction(
+  assignmentId: string,
+  candidate: AssignedLessonContentDraft,
+  scope: LessonEditScope,
+): Promise<{ error?: string; scope?: LessonEditScope }> {
+  const session = await requireTeacher();
+  const id = String(assignmentId ?? "");
+  const [row] = await db
+    .select({
+      assignment: lessonAssignments,
+      unit: lessonUnits,
+    })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(
+      and(
+        eq(lessonAssignments.id, id),
+        eq(lessonUnits.authorId, session.userId),
+      ),
+    )
+    .limit(1);
+  if (!row) return { error: "Урок ученика не найден" };
+
+  const draft = normalizeAssignedLessonDraft(candidate, row.unit.title);
+  if (!draft) return { error: "Добавь название урока" };
+
+  if (draft.activityIds.length > 0) {
+    const ownedActivities = await db
+      .select({ id: wordDeckActivities.id, settings: wordDeckActivities.settings })
+      .from(wordDeckActivities)
+      .where(
+        and(
+          eq(wordDeckActivities.authorId, session.userId),
+          inArray(wordDeckActivities.id, draft.activityIds),
+        ),
+      );
+    const allowed = new Set(ownedActivities
+      .filter((activity) => normalizeWordDeckSettings(activity.settings).gameType !== "GUESS_PICTURE")
+      .map((activity) => activity.id));
+    draft.activityIds = draft.activityIds.filter((activityId) => allowed.has(activityId));
+  }
+
+  const homeworkAvailable = draft.homework.length > 0 || Boolean(draft.interactiveHomework);
+  const now = new Date();
+  if (scope === "STUDENT") {
+    const open = new Set(row.assignment.openSections ?? []);
+    if (homeworkAvailable) open.add("homework");
+    else open.delete("homework");
+    await db
+      .update(lessonAssignments)
+      .set({ contentOverride: draft, openSections: [...open], updatedAt: now })
+      .where(eq(lessonAssignments.id, id));
+  } else {
+    const homework: LessonHomeworkEntry[] = [
+      ...draft.homework,
+      ...(draft.interactiveHomework ? [draft.interactiveHomework] : []),
+    ];
+    await db.transaction(async (tx) => {
+      await tx
+        .update(lessonUnits)
+        .set({
+          title: draft.title,
+          description: draft.description,
+          lexis: draft.lexis,
+          videoUrl: draft.videoUrl,
+          videoTitle: draft.videoTitle,
+          transcript: draft.transcript,
+          questions: draft.questions,
+          homework,
+          activityIds: draft.activityIds,
+          sections: draft.regularSections,
+          updatedAt: now,
+        })
+        .where(eq(lessonUnits.id, row.unit.id));
+
+      const existingWords = await tx
+        .select({ id: lessonWords.id })
+        .from(lessonWords)
+        .where(eq(lessonWords.unitId, row.unit.id));
+      const existingIds = new Set(existingWords.map((word) => word.id));
+      const keptIds = new Set<string>();
+      for (const [sortOrder, word] of draft.words.entries()) {
+        const values = {
+          category: word.category,
+          icon: word.icon,
+          word: word.word,
+          ipaUs: word.ipaUs,
+          ipaUk: word.ipaUk,
+          translation: word.translation,
+          description: word.description,
+          note: word.note,
+          examples: word.examples,
+          sectionColor: word.sectionColor,
+          imageUrl: word.imageUrl,
+          sortOrder,
+        };
+        if (existingIds.has(word.id)) {
+          keptIds.add(word.id);
+          await tx.update(lessonWords).set(values).where(eq(lessonWords.id, word.id));
+        } else {
+          const [created] = await tx
+            .insert(lessonWords)
+            .values({ unitId: row.unit.id, ...values })
+            .returning({ id: lessonWords.id });
+          if (created) keptIds.add(created.id);
+        }
+      }
+      const removed = existingWords.map((word) => word.id).filter((wordId) => !keptIds.has(wordId));
+      if (removed.length > 0) {
+        await tx.delete(lessonWords).where(inArray(lessonWords.id, removed));
+      }
+
+      const assignments = await tx
+        .select({ id: lessonAssignments.id, openSections: lessonAssignments.openSections })
+        .from(lessonAssignments)
+        .where(eq(lessonAssignments.unitId, row.unit.id));
+      for (const assignment of assignments) {
+        const open = new Set(assignment.openSections ?? []);
+        if (homeworkAvailable) open.add("homework");
+        else open.delete("homework");
+        await tx
+          .update(lessonAssignments)
+          .set({ contentOverride: null, openSections: [...open], updatedAt: now })
+          .where(eq(lessonAssignments.id, assignment.id));
+      }
+    });
+  }
+
+  revalidatePath("/teacher/lessons");
+  revalidatePath(`/teacher/lessons/${row.unit.id}`);
+  revalidatePath(`/teacher/lessons/given/${id}`);
+  revalidatePath(`/student/lessons/${id}`);
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/homework");
+  return { scope: scope === "STUDENT" ? "STUDENT" : "GLOBAL" };
 }
 
 /** Словники из материалов — на выбор для секции Vocabulary. */
@@ -1527,7 +1869,7 @@ async function cardsFor(studentId: string): Promise<LessonAssignmentCard[]> {
   return rows.map(({ a, title, name }) => ({
     id: a.id,
     unitId: a.unitId,
-    title,
+    title: normalizeAssignedLessonDraft(a.contentOverride, title)?.title ?? title,
     studentId: a.studentId,
     studentName: name,
     openSections: a.openSections ?? [],
@@ -1555,6 +1897,7 @@ export async function openSectionAction(
   const [row] = await db
     .select({
       openSections: lessonAssignments.openSections,
+      contentOverride: lessonAssignments.contentOverride,
       kind: lessonUnits.kind,
       sections: lessonUnits.sections,
     })
@@ -1565,7 +1908,10 @@ export async function openSectionAction(
   if (!row) return { error: "Урок не закреплён" };
 
   if (row.kind === "REGULAR") {
-    const target = regularLessonSection(section, row.sections);
+    const target = regularLessonSection(
+      section,
+      assignmentRegularSections(row.sections, row.contentOverride),
+    );
     if (!target || target.teacherOnly) return { error: "Неизвестная секция" };
   } else {
     if (!isSection(section)) return { error: "Неизвестная секция" };
@@ -1614,6 +1960,7 @@ export async function focusLessonSectionAction(
         classFocus: users.classFocus,
         kind: lessonUnits.kind,
         sections: lessonUnits.sections,
+        contentOverride: lessonAssignments.contentOverride,
       })
       .from(lessonAssignments)
       .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -1633,8 +1980,14 @@ export async function focusLessonSectionAction(
   }
   if (
     target.kind === "REGULAR"
-      ? !regularLessonSection(section, target.sections) ||
-        regularLessonSection(section, target.sections)?.teacherOnly
+      ? !regularLessonSection(
+          section,
+          assignmentRegularSections(target.sections, target.contentOverride),
+        ) ||
+        regularLessonSection(
+          section,
+          assignmentRegularSections(target.sections, target.contentOverride),
+        )?.teacherOnly
       : !isSection(section) || !lessonSectionsForKind(target.kind).includes(section)
   ) {
     return { error: "Неизвестная секция" };
@@ -1680,6 +2033,7 @@ export async function focusRegularLessonElementAction(
         classFocus: users.classFocus,
         kind: lessonUnits.kind,
         sections: lessonUnits.sections,
+        contentOverride: lessonAssignments.contentOverride,
       })
       .from(lessonAssignments)
       .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -1698,7 +2052,12 @@ export async function focusRegularLessonElementAction(
     return { error: "Этот ученик сейчас не в классе" };
   }
   const regularSection =
-    target.kind === "REGULAR" ? regularLessonSection(section, target.sections) : null;
+    target.kind === "REGULAR"
+      ? regularLessonSection(
+          section,
+          assignmentRegularSections(target.sections, target.contentOverride),
+        )
+      : null;
   if (
     !regularSection ||
     regularSection.teacherOnly ||
@@ -2313,7 +2672,14 @@ async function regularAssignmentForUser(id: string) {
   if (!row) return null;
   const isStudent = session.role === "STUDENT" && row.assignment.studentId === session.userId;
   const isTeacher = session.role === "TEACHER" && row.authorId === session.userId;
-  return isStudent || isTeacher ? { ...row, session } : null;
+  return isStudent || isTeacher
+    ? {
+        ...row,
+        templateSections: row.sections,
+        sections: assignmentRegularSections(row.sections, row.assignment.contentOverride),
+        session,
+      }
+    : null;
 }
 
 /** Three-attempt checking for exercises inside a regular lesson. */
@@ -2569,6 +2935,7 @@ export async function saveRegularLessonExerciseAction(
   sectionId: string,
   listIndex: number,
   candidate: RegularExerciseOverride,
+  scope: LessonEditScope = "STUDENT",
 ): Promise<{
   error?: string;
   exercise?: RegularExerciseOverride;
@@ -2598,7 +2965,7 @@ export async function saveRegularLessonExerciseAction(
     )
   ) return { error: "Количество пропусков ___ должно совпадать с количеством ответов" };
 
-  const state = { ...(row.assignment.answers ?? {}), [overrideKey]: JSON.stringify(normalized) };
+  let state = { ...(row.assignment.answers ?? {}), [overrideKey]: JSON.stringify(normalized) };
   const prefix = regularResponseKey(section.id, `list-${at}-`);
   for (const key of Object.keys(state)) {
     if (
@@ -2607,12 +2974,62 @@ export async function saveRegularLessonExerciseAction(
       key.startsWith(`regular-status:${prefix}`)
     ) delete state[key];
   }
-  await db
-    .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
-    .where(eq(lessonAssignments.id, row.assignment.id));
+  const now = new Date();
+  if (scope === "GLOBAL") {
+    const applyOverride = (source: unknown) => {
+      const sections = normalizeRegularLessonSections(source);
+      const atSection = sections.findIndex((item) => item.id === section.id);
+      const updated = {
+        ...section,
+        exerciseOverrides: {
+          ...(atSection >= 0 ? sections[atSection].exerciseOverrides : section.exerciseOverrides),
+          [String(at)]: normalized,
+        },
+      } satisfies RegularLessonSection;
+      if (atSection >= 0) sections[atSection] = { ...sections[atSection], ...updated };
+      else sections.push(updated);
+      return sections;
+    };
+    const templateSections = applyOverride(row.templateSections);
+    const assignments = await db
+      .select()
+      .from(lessonAssignments)
+      .where(eq(lessonAssignments.unitId, row.assignment.unitId));
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(lessonUnits)
+        .set({ sections: templateSections, updatedAt: now })
+        .where(eq(lessonUnits.id, row.assignment.unitId));
+
+      for (const assignment of assignments) {
+        const nextAnswers = { ...(assignment.answers ?? {}) };
+        delete nextAnswers[overrideKey];
+        const currentOverride = assignment.contentOverride &&
+          typeof assignment.contentOverride === "object"
+          ? { ...assignment.contentOverride }
+          : null;
+        const contentOverride = currentOverride && Array.isArray(currentOverride.regularSections)
+          ? { ...currentOverride, regularSections: applyOverride(currentOverride.regularSections) }
+          : currentOverride;
+        await tx
+          .update(lessonAssignments)
+          .set({ answers: nextAnswers, contentOverride, updatedAt: now })
+          .where(eq(lessonAssignments.id, assignment.id));
+        if (assignment.id === row.assignment.id) state = nextAnswers;
+      }
+    });
+  } else {
+    await db
+      .update(lessonAssignments)
+      .set({ answers: state, updatedAt: now })
+      .where(eq(lessonAssignments.id, row.assignment.id));
+  }
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/${row.assignment.unitId}`);
+  revalidatePath("/teacher/class");
+  revalidatePath("/student/class");
   return { exercise: normalized, state };
 }
 
@@ -2725,7 +3142,14 @@ export async function assignedLessonAction(
   // Своё закрепление видит ученик, любое — учитель.
   if (session.role !== "TEACHER" && row.a.studentId !== session.userId) return null;
 
-  const lesson = await loadUnit(row.a.unitId, session.role === "TEACHER");
+  const baseLesson = await loadUnit(row.a.unitId, session.role === "TEACHER");
+  const lesson = baseLesson
+    ? await applyAssignedLessonContent(
+        baseLesson,
+        row.a.contentOverride,
+        session.role === "TEACHER",
+      )
+    : null;
   if (!lesson) return null;
   lesson.interactiveHomework = homeworkPlanForAssignment(
     lesson.interactiveHomework,
@@ -2758,7 +3182,7 @@ export async function assignedLessonAction(
     assignment: {
       id: row.a.id,
       unitId: row.a.unitId,
-      title: row.title,
+      title: lesson.title,
       studentId: row.a.studentId,
       studentName: row.name,
       openSections: stored,

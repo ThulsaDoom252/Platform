@@ -95,6 +95,7 @@ export function StudentHomeworkExerciseEditor({
     original ? homeworkTranslationLanguage(original, locale === "uk" ? "UK" : "RU") : locale === "uk" ? "UK" : "RU",
   );
   const [rows, setRows] = useState<EditorRow[]>(() => rowsFromExercise(original, initialKind));
+  const [scope, setScope] = useState<"STUDENT" | "GLOBAL">("STUDENT");
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, startSave] = useTransition();
@@ -200,7 +201,7 @@ export function StudentHomeworkExerciseEditor({
   const persist = (nextPlan: InteractiveHomeworkPlan) => {
     setError(null);
     startSave(async () => {
-      const result = await saveStudentHomeworkPlanAction(assignmentId, nextPlan);
+      const result = await saveStudentHomeworkPlanAction(assignmentId, nextPlan, scope);
       if (result.error || !result.plan || !result.state) {
         setError(result.error ?? t.interactiveHomework.assignmentFailed);
         return;
@@ -245,7 +246,13 @@ export function StudentHomeworkExerciseEditor({
             <h2 className="mt-1 text-xl font-black text-content">
               {original ? t.interactiveHomework.editExercise : t.interactiveHomework.addExercise}
             </h2>
-            <p className="mt-1 text-sm text-muted">{t.interactiveHomework.individualCopyHint}</p>
+            <p className="mt-1 text-sm text-muted">
+              {locale === "ru"
+                ? "Измените задание и выберите, где сохранить новую версию."
+                : locale === "uk"
+                  ? "Змініть завдання та виберіть, де зберегти нову версію."
+                  : "Edit the exercise and choose where to save the new version."}
+            </p>
           </div>
           <button
             type="button"
@@ -408,6 +415,52 @@ export function StudentHomeworkExerciseEditor({
         </div>
 
         {error && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-600">{error}</p>}
+
+        <fieldset className="mt-5 grid gap-2 sm:grid-cols-2">
+          <legend className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-muted">
+            {locale === "ru" ? "Сохранить изменения" : locale === "uk" ? "Зберегти зміни" : "Save changes"}
+          </legend>
+          <label className={`cursor-pointer rounded-2xl border p-3 transition ${scope === "STUDENT" ? "border-accent bg-accent-soft" : "border-line bg-surface-2 hover:border-accent/40"}`}>
+            <span className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="homework-edit-scope"
+                value="STUDENT"
+                checked={scope === "STUDENT"}
+                onChange={() => setScope("STUDENT")}
+                className="mt-1 h-4 w-4 accent-[var(--accent)]"
+              />
+              <span>
+                <span className="block text-sm font-black text-content">
+                  {locale === "ru" ? "Только этому ученику" : locale === "uk" ? "Лише цьому учневі" : "This student only"}
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted">
+                  {locale === "ru" ? "Остальные копии и шаблон не изменятся." : locale === "uk" ? "Інші копії та шаблон не зміняться." : "Other copies and the template stay unchanged."}
+                </span>
+              </span>
+            </span>
+          </label>
+          <label className={`cursor-pointer rounded-2xl border p-3 transition ${scope === "GLOBAL" ? "border-accent bg-accent-soft" : "border-line bg-surface-2 hover:border-accent/40"}`}>
+            <span className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="homework-edit-scope"
+                value="GLOBAL"
+                checked={scope === "GLOBAL"}
+                onChange={() => setScope("GLOBAL")}
+                className="mt-1 h-4 w-4 accent-[var(--accent)]"
+              />
+              <span>
+                <span className="block text-sm font-black text-content">
+                  {locale === "ru" ? "Сохранить везде" : locale === "uk" ? "Зберегти всюди" : "Save everywhere"}
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted">
+                  {locale === "ru" ? "Обновит шаблон и все назначенные копии урока." : locale === "uk" ? "Оновить шаблон і всі призначені копії уроку." : "Updates the template and every assigned copy."}
+                </span>
+              </span>
+            </span>
+          </label>
+        </fieldset>
 
         <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4">
           {original && !deleteArmed && (

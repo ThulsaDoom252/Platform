@@ -1279,6 +1279,16 @@ export const lessonAssignments = pgTable("lesson_assignments", {
   highlights: jsonb("highlights").$type<Record<string, string>>().default({}).notNull(),
   /** Ответы ученика по домашке этого урока — его собственная копия. */
   answers: jsonb("answers").$type<Record<string, string>>().default({}).notNull(),
+  /**
+   * Персональная версия содержимого урока.
+   *
+   * null означает «показывать живой основной шаблон». Учитель может
+   * сохранить правку только этому ученику — тогда здесь лежит полный
+   * безопасно нормализованный снимок содержимого, а ответы и прогресс
+   * по-прежнему остаются в answers. При общем сохранении снимки всех
+   * назначений очищаются, поэтому они снова получают обновлённый шаблон.
+   */
+  contentOverride: jsonb("content_override").$type<Record<string, unknown>>(),
   /** Урок пройден: остаётся в истории в том виде, в каком закончили. */
   finishedAt: timestamp("finished_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -38,7 +38,8 @@ import {
 import { LessonView } from "@/components/lessons/lesson-view";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { LessonTextHighlighter } from "@/components/lessons/lesson-text-highlighter";
-import { IconReset, IconTrash, IconVolume } from "@/components/icons";
+import { LiveLessonEditor } from "@/components/lessons/live-lesson-editor";
+import { IconPencil, IconReset, IconTrash, IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
 
@@ -51,6 +52,7 @@ export function AssignedLesson({
   onSectionVisibilityChange,
   liveClass = false,
   initialSection,
+  onLessonSaved,
 }: {
   data: {
     assignment: LessonAssignmentCard;
@@ -69,6 +71,7 @@ export function AssignedLesson({
   onSectionVisibilityChange?: (section: string, open: boolean) => void;
   liveClass?: boolean;
   initialSection?: (typeof LESSON_SECTIONS)[number];
+  onLessonSaved?: () => void | Promise<void>;
 }) {
   const { t } = useT();
   const [marks, setMarks] = useState(data.assignment.highlights);
@@ -77,6 +80,7 @@ export function AssignedLesson({
   const [highlightColor, setHighlightColor] = useState<HighlightColor>("yellow");
   const [highlightHistorySize, setHighlightHistorySize] = useState(0);
   const [vocabularyReveal, setVocabularyReveal] = useState(data.vocabularyReveal);
+  const [editingLesson, setEditingLesson] = useState(false);
   const [busy, startBusy] = useTransition();
   const revealQueue = useRef(Promise.resolve());
   const marksRef = useRef<Record<string, string>>(data.assignment.highlights);
@@ -214,11 +218,32 @@ export function AssignedLesson({
       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">
         {t.lessonUnits.topic}
       </p>
-      <h1 className="mt-1 text-xl font-black leading-tight text-content sm:text-2xl">
-        {data.lesson.title}
-      </h1>
+      <div className="mt-1 flex items-center gap-3">
+        <h1 className="min-w-0 flex-1 text-xl font-black leading-tight text-content sm:text-2xl">
+          {data.lesson.title}
+        </h1>
+        {teacher && (
+          <button
+            type="button"
+            onClick={() => setEditingLesson(true)}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-black text-white shadow-sm transition hover:brightness-95"
+          >
+            <IconPencil className="h-3.5 w-3.5" />
+            Edit lesson
+          </button>
+        )}
+      </div>
     </header>
   );
+  const liveEditor = teacher && editingLesson ? (
+    <LiveLessonEditor
+      assignmentId={data.assignment.id}
+      studentName={data.assignment.studentName}
+      lesson={data.lesson}
+      onClose={() => setEditingLesson(false)}
+      onSaved={onLessonSaved}
+    />
+  ) : null;
   const highlightToolbar = teacher ? (
     <div
       data-no-lesson-highlight
@@ -331,6 +356,7 @@ export function AssignedLesson({
         <div className="flex flex-col gap-4">
           {topic}
           {highlightToolbar}
+          {liveEditor}
           <RegularLessonView
           sections={data.lesson.regularSections}
           teacher={teacher}
@@ -411,6 +437,7 @@ export function AssignedLesson({
       <div className="flex flex-col gap-4">
         {topic}
         {highlightToolbar}
+        {liveEditor}
 
       {/* В классе ученик видит все вкладки, но сам открывает только разрешённые. */}
       <LessonView

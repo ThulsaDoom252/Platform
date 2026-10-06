@@ -263,6 +263,7 @@ export function ClassLesson({
                     });
                   }
                 : undefined}
+              onLessonSaved={teacher ? reload : undefined}
             />
           </div>
         </>

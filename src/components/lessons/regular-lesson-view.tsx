@@ -26,8 +26,8 @@ import {
 } from "@/lib/actions/lessons";
 import {
   regularAttempts,
+  effectiveRegularExerciseOverride,
   regularExerciseDeleted,
-  regularExerciseOverride,
   regularHomeworkExerciseId,
   regularNoteKey,
   regularNoteVisibleKey,
@@ -86,6 +86,7 @@ const regularSectionSignature = (section: RegularLessonSection | undefined) =>
         section.defaultOpen,
         section.teacherOnly ?? false,
         section.voiceExercise ?? null,
+        section.exerciseOverrides ?? null,
       ])
     : "";
 
@@ -185,7 +186,7 @@ function homeworkCandidates(
     const auto = (hasBlank || hasTrueFalse) && parsed.every(
       (item) => item.answer && item.answerCount === 1 && item.blankCount === 1,
     );
-    const storedOverride = regularExerciseOverride(state, section.id, listIndex + 1);
+    const storedOverride = effectiveRegularExerciseOverride(section, state, listIndex + 1);
     const title = storedOverride?.title || heading || section.title;
     const instruction = homeworkInstruction(storedOverride?.instruction || instructionBefore(list) || (
       kind === "true-false"
@@ -340,7 +341,7 @@ export function RegularLessonView({
   homeworkSession?: InteractiveHomeworkSession;
   onFocusHomework?: (elementId: string) => void;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const router = useRouter();
   const [busy, startBusy] = useTransition();
   const available = useMemo(
@@ -365,6 +366,7 @@ export function RegularLessonView({
     listIndex: number;
     value: RegularExerciseOverride;
   } | null>(null);
+  const [exerciseEditScope, setExerciseEditScope] = useState<"STUDENT" | "GLOBAL">("STUDENT");
   const [exerciseError, setExerciseError] = useState<string | null>(null);
   const [homeworkMessage, setHomeworkMessage] = useState<string | null>(null);
   const [localHomeworkPlan, setLocalHomeworkPlan] = useState(homeworkPlan ?? null);
@@ -679,7 +681,7 @@ export function RegularLessonView({
     [...root.querySelectorAll<HTMLOListElement>("ol")].forEach((list, listIndex) => {
       if (regularExerciseDeleted(responseRef.current, active.id, listIndex + 1)) return;
       let items = [...list.querySelectorAll<HTMLElement>(":scope > li")];
-      const override = regularExerciseOverride(responseRef.current, active.id, listIndex + 1);
+      const override = effectiveRegularExerciseOverride(active, responseRef.current, listIndex + 1);
       if (override) {
         const heading = (() => {
           let node: Element | null = list.previousElementSibling;
@@ -1036,6 +1038,7 @@ export function RegularLessonView({
     if (!selectedCandidate) return;
     setExerciseError(null);
     setExerciseMenu(false);
+    setExerciseEditScope("STUDENT");
     setEditingExercise({
       listIndex: selectedCandidate.listIndex,
       value: {
@@ -1057,6 +1060,7 @@ export function RegularLessonView({
         active.id,
         editingExercise.listIndex,
         editingExercise.value,
+        exerciseEditScope,
       );
       if (result.error || !result.state) {
         setExerciseError(result.error ?? "Не удалось сохранить упражнение");
@@ -1391,7 +1395,7 @@ export function RegularLessonView({
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-accent">
-                  Personalized for this student
+                  {locale === "ru" ? "Редактор упражнения" : locale === "uk" ? "Редактор вправи" : "Exercise editor"}
                 </p>
                 <h3 className="mt-1 text-xl font-black text-content">Edit exercise</h3>
               </div>
@@ -1497,6 +1501,55 @@ export function RegularLessonView({
                 {exerciseError}
               </p>
             )}
+            <fieldset className="mt-5 grid gap-2 sm:grid-cols-2">
+              <legend className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-muted">
+                {locale === "ru" ? "Сохранить изменения" : locale === "uk" ? "Зберегти зміни" : "Save changes"}
+              </legend>
+              <label className={cn(
+                "cursor-pointer rounded-2xl border p-3 transition",
+                exerciseEditScope === "STUDENT" ? "border-accent bg-accent-soft" : "border-line bg-surface-2",
+              )}>
+                <span className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name="regular-exercise-edit-scope"
+                    checked={exerciseEditScope === "STUDENT"}
+                    onChange={() => setExerciseEditScope("STUDENT")}
+                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span>
+                    <span className="block text-sm font-black text-content">
+                      {locale === "ru" ? "Только этому ученику" : locale === "uk" ? "Лише цьому учневі" : "This student only"}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted">
+                      {locale === "ru" ? "Личная копия урока." : locale === "uk" ? "Особиста копія уроку." : "Only this assigned copy."}
+                    </span>
+                  </span>
+                </span>
+              </label>
+              <label className={cn(
+                "cursor-pointer rounded-2xl border p-3 transition",
+                exerciseEditScope === "GLOBAL" ? "border-accent bg-accent-soft" : "border-line bg-surface-2",
+              )}>
+                <span className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name="regular-exercise-edit-scope"
+                    checked={exerciseEditScope === "GLOBAL"}
+                    onChange={() => setExerciseEditScope("GLOBAL")}
+                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <span>
+                    <span className="block text-sm font-black text-content">
+                      {locale === "ru" ? "Сохранить везде" : locale === "uk" ? "Зберегти всюди" : "Save everywhere"}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted">
+                      {locale === "ru" ? "Шаблон и все копии учеников." : locale === "uk" ? "Шаблон і всі копії учнів." : "Template and every assigned copy."}
+                    </span>
+                  </span>
+                </span>
+              </label>
+            </fieldset>
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"

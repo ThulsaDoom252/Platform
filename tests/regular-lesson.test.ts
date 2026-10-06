@@ -154,6 +154,31 @@ test("a personalized exercise override replaces the checked answer", () => {
   assert.equal(regularAnswerMap(section, state).get("list-1-item-1-blank-1")?.answer, "like");
 });
 
+test("a template exercise override is checked and student payload hides its answers", () => {
+  const raw = [{
+    id: "practice",
+    title: "Practice",
+    tone: "exercise",
+    defaultOpen: true,
+    studentHtml: '<ol><li>I <span class="blank"></span> fish.</li></ol>',
+    teacherHtml: '<ol><li>I <span class="ans">eat</span> fish.</li></ol>',
+    exerciseOverrides: {
+      "1": {
+        title: "Edited for everyone",
+        instruction: "Complete it.",
+        kind: "fill",
+        items: [{ prompt: "I ___ salmon.", answers: ["like"] }],
+      },
+    },
+  }];
+  const teacherSection = normalizeRegularLessonSections(raw)[0];
+  const studentSection = publicRegularLessonSections(raw)[0];
+
+  assert.equal(regularAnswerMap(teacherSection).get("list-1-item-1-blank-1")?.answer, "like");
+  assert.deepEqual(studentSection.exerciseOverrides?.["1"].items[0].answers, []);
+  assert.equal(studentSection.exerciseOverrides?.["1"].items[0].prompt, "I ___ salmon.");
+});
+
 test("a deleted exercise is hidden only by assignment state", () => {
   const section = normalizeRegularLessonSections([{
     id: "practice section",

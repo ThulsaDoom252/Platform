@@ -76,6 +76,7 @@ async function assignmentWithOptionalPlan(id: string) {
     .select({
       assignment: lessonAssignments,
       authorId: lessonUnits.authorId,
+      unitId: lessonUnits.id,
       title: lessonUnits.title,
       homework: lessonUnits.homework,
     })
@@ -84,8 +85,14 @@ async function assignmentWithOptionalPlan(id: string) {
     .where(eq(lessonAssignments.id, id))
     .limit(1);
   if (!row) return null;
+  const overriddenPlan = row.assignment.contentOverride &&
+    typeof row.assignment.contentOverride === "object"
+      ? normalizeInteractiveHomework(row.assignment.contentOverride.interactiveHomework, {
+          allowEmpty: true,
+        })
+      : null;
   const plan = homeworkPlanForAssignment(
-    interactiveHomeworkFromEntries(row.homework),
+    overriddenPlan ?? interactiveHomeworkFromEntries(row.homework),
     row.assignment.answers ?? {},
   );
   return { ...row, plan };
@@ -506,35 +513,13 @@ export async function resetStudentHomeworkAssignmentAction(
   return {};
 }
 
-/** Сохранить отдельную версию домашки только для этого закрепления ученика. */
-export async function saveStudentHomeworkPlanAction(
-  assignmentId: string,
-  candidate: InteractiveHomeworkPlan,
-): Promise<{ error?: string; plan?: InteractiveHomeworkPlan; state?: HomeworkStoredState }> {
-  const session = await requireUser();
-  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
-  const row = await assignmentWithOptionalPlan(String(assignmentId ?? ""));
-  if (!row || row.authorId !== session.userId) return { error: "Урок ученика не найден" };
-
-  const plan = normalizeInteractiveHomework(candidate, { allowEmpty: true });
-  if (!plan) return { error: "Не удалось прочитать домашку" };
-  const previousPlan: InteractiveHomeworkPlan = row.plan ?? {
-    kind: "INTERACTIVE_HOMEWORK_V1",
-    title: plan.title || `${row.title} · Homework`,
-    exercises: [],
-  };
-  const editIssue = homeworkPlanEditIssue(previousPlan, plan);
-  if (editIssue === "empty-exercise") {
-    return { error: "В изменённом упражнении должно быть хотя бы одно задание" };
-  }
-  if (editIssue === "invalid-fill") {
-    return { error: "В предложении для вставки отметь ответ двойными звёздочками" };
-  }
-  if (editIssue === "missing-translation") {
-    return { error: "Добавь правильный перевод к каждому изменённому предложению" };
-  }
-
-  let state = { ...(row.assignment.answers ?? {}) };
+function homeworkStateAfterPlanEdit(
+  previousPlan: InteractiveHomeworkPlan,
+  plan: InteractiveHomeworkPlan,
+  source: HomeworkStoredState,
+  keepOverride: boolean,
+): HomeworkStoredState {
+  let state = { ...source };
   const oldExercises = new Map(previousPlan.exercises.map((exercise) => [exercise.id, exercise]));
   const oldItems = new Map(
     previousPlan.exercises.flatMap((exercise) =>
@@ -563,7 +548,8 @@ export async function saveStudentHomeworkPlanAction(
     }
   }
 
-  state[homeworkPlanOverrideKey()] = JSON.stringify(plan);
+  if (keepOverride) state[homeworkPlanOverrideKey()] = JSON.stringify(plan);
+  else delete state[homeworkPlanOverrideKey()];
   if (homeworkAssignedAt(state)) {
     const previouslySelected = new Set(homeworkAssignedExerciseIds(previousPlan, state));
     const selected = plan.exercises
@@ -573,11 +559,98 @@ export async function saveStudentHomeworkPlanAction(
   }
   delete state[homeworkSubmittedAtKey()];
   delete state[homeworkReviewedAtKey()];
+  return state;
+}
 
-  await db
-    .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
-    .where(eq(lessonAssignments.id, row.assignment.id));
+/** Сохранить отдельную версию домашки или обновить шаблон и все копии. */
+export async function saveStudentHomeworkPlanAction(
+  assignmentId: string,
+  candidate: InteractiveHomeworkPlan,
+  scope: "STUDENT" | "GLOBAL" = "STUDENT",
+): Promise<{ error?: string; plan?: InteractiveHomeworkPlan; state?: HomeworkStoredState }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithOptionalPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Урок ученика не найден" };
+
+  const plan = normalizeInteractiveHomework(candidate, { allowEmpty: true });
+  if (!plan) return { error: "Не удалось прочитать домашку" };
+  const previousPlan: InteractiveHomeworkPlan = row.plan ?? {
+    kind: "INTERACTIVE_HOMEWORK_V1",
+    title: plan.title || `${row.title} · Homework`,
+    exercises: [],
+  };
+  const editIssue = homeworkPlanEditIssue(previousPlan, plan);
+  if (editIssue === "empty-exercise") {
+    return { error: "В изменённом упражнении должно быть хотя бы одно задание" };
+  }
+  if (editIssue === "invalid-fill") {
+    return { error: "В предложении для вставки отметь ответ двойными звёздочками" };
+  }
+  if (editIssue === "missing-translation") {
+    return { error: "Добавь правильный перевод к каждому изменённому предложению" };
+  }
+
+  let state = homeworkStateAfterPlanEdit(
+    previousPlan,
+    plan,
+    row.assignment.answers ?? {},
+    scope !== "GLOBAL",
+  );
+
+  if (scope === "GLOBAL") {
+    const basePlan = interactiveHomeworkFromEntries(row.homework) ?? {
+      kind: "INTERACTIVE_HOMEWORK_V1" as const,
+      title: plan.title || `${row.title} · Homework`,
+      exercises: [],
+    };
+    const assignments = await db
+      .select()
+      .from(lessonAssignments)
+      .where(eq(lessonAssignments.unitId, row.unitId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(lessonUnits)
+        .set({
+          homework: [...legacyHomeworkFromEntries(row.homework), plan],
+          updatedAt: new Date(),
+        })
+        .where(eq(lessonUnits.id, row.unitId));
+
+      for (const assignment of assignments) {
+        const privatePlan = assignment.contentOverride &&
+          typeof assignment.contentOverride === "object"
+            ? normalizeInteractiveHomework(assignment.contentOverride.interactiveHomework, {
+                allowEmpty: true,
+              })
+            : null;
+        const prior = homeworkPlanForAssignment(
+          privatePlan ?? basePlan,
+          assignment.answers ?? {},
+        ) ?? basePlan;
+        const nextState = homeworkStateAfterPlanEdit(
+          prior,
+          plan,
+          assignment.answers ?? {},
+          false,
+        );
+        const contentOverride = assignment.contentOverride &&
+          typeof assignment.contentOverride === "object"
+            ? { ...assignment.contentOverride, interactiveHomework: plan }
+            : null;
+        await tx
+          .update(lessonAssignments)
+          .set({ answers: nextState, contentOverride, updatedAt: new Date() })
+          .where(eq(lessonAssignments.id, assignment.id));
+        if (assignment.id === row.assignment.id) state = nextState;
+      }
+    });
+  } else {
+    await db
+      .update(lessonAssignments)
+      .set({ answers: state, updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, row.assignment.id));
+  }
 
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");

@@ -59,6 +59,8 @@ export type RegularLessonSection = {
   defaultOpen: boolean;
   teacherOnly?: boolean;
   voiceExercise?: RegularVoiceExercise;
+  /** Template-level edits for numbered exercises, keyed by their 1-based list index. */
+  exerciseOverrides?: Record<string, RegularExerciseOverride>;
 };
 
 const TONES = new Set<RegularLessonTone>([
@@ -151,17 +153,13 @@ export function regularStatus(
   return value === "correct" || value === "locked" ? value : null;
 }
 
-export function regularExerciseOverride(
-  state: Record<string, string>,
-  sectionId: string,
-  listIndex: number,
-): RegularExerciseOverride | null {
+function normalizeRegularExerciseOverrideValue(value: unknown): RegularExerciseOverride | null {
   try {
-    const value = JSON.parse(state[regularExerciseOverrideKey(sectionId, listIndex)] ?? "null");
-    if (!value || typeof value !== "object" || !Array.isArray(value.items)) return null;
+    if (!value || typeof value !== "object") return null;
     const raw = value as Record<string, unknown>;
+    if (!Array.isArray(raw.items)) return null;
     const kind = raw.kind === "true-false" || raw.kind === "open" ? raw.kind : "fill";
-    const items = value.items.slice(0, 100).flatMap((entry: unknown) => {
+    const items = raw.items.slice(0, 100).flatMap((entry: unknown) => {
       if (!entry || typeof entry !== "object") return [];
       const item = entry as Record<string, unknown>;
       const prompt = String(item.prompt ?? "").trim().slice(0, 1_500);
@@ -183,6 +181,30 @@ export function regularExerciseOverride(
   } catch {
     return null;
   }
+}
+
+export function regularExerciseOverride(
+  state: Record<string, string>,
+  sectionId: string,
+  listIndex: number,
+): RegularExerciseOverride | null {
+  try {
+    return normalizeRegularExerciseOverrideValue(
+      JSON.parse(state[regularExerciseOverrideKey(sectionId, listIndex)] ?? "null"),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** A student's private exercise edit wins over the lesson-template edit. */
+export function effectiveRegularExerciseOverride(
+  section: RegularLessonSection,
+  state: Record<string, string>,
+  listIndex: number,
+): RegularExerciseOverride | null {
+  return regularExerciseOverride(state, section.id, listIndex) ??
+    section.exerciseOverrides?.[String(listIndex)] ?? null;
 }
 
 const textOfHtml = (value: string) =>
@@ -241,7 +263,7 @@ export function regularAnswerMap(
     if (regularExerciseDeleted(state, section.id, listIndex + 1)) return;
     const studentItems = listItems(studentList);
     const teacherItems = listItems(teacherLists[listIndex] ?? "");
-    const override = regularExerciseOverride(state, section.id, listIndex + 1);
+    const override = effectiveRegularExerciseOverride(section, state, listIndex + 1);
 
     studentItems.forEach((studentItem, itemIndex) => {
       const overrideItem = override?.items[itemIndex];
@@ -325,6 +347,15 @@ export function normalizeRegularLessonSections(value: unknown): RegularLessonSec
           } satisfies RegularVoiceExercise;
         })()
       : undefined;
+    const exerciseOverrides = item.exerciseOverrides && typeof item.exerciseOverrides === "object"
+      ? Object.fromEntries(
+          Object.entries(item.exerciseOverrides as Record<string, unknown>).flatMap(([key, rawOverride]) => {
+            if (!/^\d{1,3}$/.test(key)) return [];
+            const exercise = normalizeRegularExerciseOverrideValue(rawOverride);
+            return exercise ? [[String(Number(key)), exercise]] : [];
+          }),
+        )
+      : {};
     sections.push({
       id,
       title,
@@ -334,6 +365,7 @@ export function normalizeRegularLessonSections(value: unknown): RegularLessonSec
       defaultOpen: item.defaultOpen === true,
       ...(item.teacherOnly === true ? { teacherOnly: true } : {}),
       ...(voiceExercise ? { voiceExercise } : {}),
+      ...(Object.keys(exerciseOverrides).length > 0 ? { exerciseOverrides } : {}),
     });
   }
 
@@ -345,7 +377,23 @@ export function publicRegularLessonSections(
 ): RegularLessonSection[] {
   return normalizeRegularLessonSections(value)
     .filter((section) => !section.teacherOnly)
-    .map((section) => ({ ...section, teacherHtml: "" }));
+    .map((section) => ({
+      ...section,
+      teacherHtml: "",
+      ...(section.exerciseOverrides
+        ? {
+            exerciseOverrides: Object.fromEntries(
+              Object.entries(section.exerciseOverrides).map(([key, exercise]) => [
+                key,
+                {
+                  ...exercise,
+                  items: exercise.items.map((item) => ({ ...item, answers: [] })),
+                },
+              ]),
+            ),
+          }
+        : {}),
+    }));
 }
 
 export function defaultRegularOpenSections(value: unknown): string[] {
