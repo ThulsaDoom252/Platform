@@ -764,6 +764,36 @@ export function homeworkAnswerMatches(item: HomeworkItem, supplied: string): boo
     .includes(value);
 }
 
+/**
+ * Words that still have to be used in a fill/definition exercise.
+ * A correctly answered item consumes one matching bank entry. Keeping this as
+ * a multiset makes the helper safe for legacy plans that contain duplicates.
+ */
+export function homeworkRemainingWordBank(
+  exercise: HomeworkExercise,
+  state: HomeworkStoredState,
+): string[] {
+  const remaining = [...(exercise.wordBank ?? [])];
+
+  for (const item of exercise.items) {
+    if (homeworkStatus(state, item.id) !== "correct") continue;
+
+    const accepted = [
+      state[homeworkValueKey(item.id)] ?? "",
+      item.answer ?? "",
+      ...(item.accepted ?? []),
+    ]
+      .map(normalizeHomeworkAnswer)
+      .filter(Boolean);
+    const index = remaining.findIndex((word) =>
+      accepted.includes(normalizeHomeworkAnswer(word)),
+    );
+    if (index >= 0) remaining.splice(index, 1);
+  }
+
+  return remaining;
+}
+
 export function homeworkProgress(plan: InteractiveHomeworkPlan, state: HomeworkStoredState) {
   const required = plan.exercises
     .filter((exercise) => !exercise.optional && !homeworkExerciseHidden(state, exercise.id))

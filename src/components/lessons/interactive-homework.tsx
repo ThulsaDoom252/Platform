@@ -45,6 +45,7 @@ import {
   homeworkNoteKey,
   homeworkNoteVisibleKey,
   homeworkReaction,
+  homeworkRemainingWordBank,
   homeworkStatus,
   homeworkStatusKey,
   homeworkSubmittedAt,
@@ -72,6 +73,8 @@ import {
 import {
   IconCheck,
   IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
   IconDots,
   IconEye,
   IconEyeOff,
@@ -763,6 +766,121 @@ function HomeworkAssignmentPanel({
   );
 }
 
+function HomeworkWordBank({
+  words,
+  total,
+  collapsed,
+  detached,
+  side,
+  onToggleCollapsed,
+  onToggleDetached,
+  onToggleSide,
+}: {
+  words: string[];
+  total: number;
+  collapsed: boolean;
+  detached: boolean;
+  side: "left" | "right";
+  onToggleCollapsed: () => void;
+  onToggleDetached: () => void;
+  onToggleSide: () => void;
+}) {
+  const { t } = useT();
+  const used = Math.max(0, total - words.length);
+
+  return (
+    <aside
+      className={cn(
+        "overflow-hidden rounded-xl bg-accent-soft/80 ring-1 ring-accent/20 shadow-sm transition-all",
+        detached && "shadow-lg ring-accent/35",
+      )}
+    >
+      <div className="flex min-h-10 items-center gap-1.5 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[10px] font-black uppercase tracking-wide text-accent">
+            {t.interactiveHomework.useWords}
+          </p>
+          <p className="text-[10px] font-bold text-muted">
+            {t.interactiveHomework.wordsRemaining.replace("{remaining}", String(words.length)).replace("{total}", String(total))}
+          </p>
+        </div>
+        {detached && (
+          <button
+            type="button"
+            onClick={onToggleSide}
+            title={side === "left" ? t.interactiveHomework.moveWordBankRight : t.interactiveHomework.moveWordBankLeft}
+            aria-label={side === "left" ? t.interactiveHomework.moveWordBankRight : t.interactiveHomework.moveWordBankLeft}
+            className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg text-accent transition hover:bg-surface/80 lg:flex"
+          >
+            {side === "left"
+              ? <IconChevronRight className="h-3.5 w-3.5" />
+              : <IconChevronLeft className="h-3.5 w-3.5" />}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onToggleDetached}
+          title={detached ? t.interactiveHomework.attachWordBank : t.interactiveHomework.detachWordBank}
+          aria-label={detached ? t.interactiveHomework.attachWordBank : t.interactiveHomework.detachWordBank}
+          className={cn(
+            "flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[10px] font-black transition",
+            detached ? "bg-accent text-white" : "bg-surface/80 text-accent hover:bg-surface",
+          )}
+        >
+          <span aria-hidden="true">{detached ? "↙" : "↗"}</span>
+          <span className="hidden sm:inline">
+            {detached ? t.interactiveHomework.attach : t.interactiveHomework.detach}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          title={collapsed ? t.interactiveHomework.expandWordBank : t.interactiveHomework.collapseWordBank}
+          aria-label={collapsed ? t.interactiveHomework.expandWordBank : t.interactiveHomework.collapseWordBank}
+          aria-expanded={!collapsed}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface/80 text-accent transition hover:bg-surface"
+        >
+          <IconChevronDown className={cn("h-3.5 w-3.5 transition-transform", collapsed && "-rotate-90")} />
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div className={cn("border-t border-accent/15 px-3 py-2", detached && "max-h-72 overflow-y-auto overscroll-contain")}>
+          {words.length > 0 ? (
+            <ul className="flex flex-col gap-1">
+              {words.map((word, index) => (
+                <li
+                  key={`${normalizeWordBankKey(word)}-${index}`}
+                  className="rounded-lg bg-surface/55 px-2 py-1 text-[13px] font-semibold leading-snug text-content"
+                >
+                  {word}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-2.5 py-2 text-xs font-bold text-emerald-700">
+              <IconCheck className="h-4 w-4 shrink-0" />
+              {t.interactiveHomework.allWordsUsed}
+            </div>
+          )}
+          {used > 0 && words.length > 0 && (
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface/70" aria-hidden="true">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-[width] duration-300"
+                style={{ width: `${Math.min(100, Math.round((used / Math.max(total, 1)) * 100))}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function normalizeWordBankKey(value: string) {
+  return value.normalize("NFKC").toLocaleLowerCase("en").replace(/\s+/g, "-");
+}
+
 function HomeworkExerciseView({
   exercise,
   number,
@@ -794,6 +912,9 @@ function HomeworkExerciseView({
   const interaction = useContext(HomeworkInteractionContext);
   const [resetKey, setResetKey] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [wordBankCollapsed, setWordBankCollapsed] = useState(false);
+  const [wordBankDetached, setWordBankDetached] = useState(false);
+  const [wordBankSide, setWordBankSide] = useState<"left" | "right">("right");
   const [busy, startAction] = useTransition();
   const hidden = homeworkExerciseHidden(state, exercise.id);
   const exerciseFocusId = homeworkExerciseFocusId(exercise.id);
@@ -835,6 +956,39 @@ function HomeworkExerciseView({
                 ? t.interactiveHomework.instructions.questionAudio
                 : t.interactiveHomework.instructions.questionText;
   const instruction = exercise.instruction.trim() || fallbackInstruction;
+  const hasWordBank = Boolean(
+    exercise.wordBank?.length && exercise.kind !== "drag" && exercise.kind !== "describe",
+  );
+  const remainingWords = useMemo(
+    () => exercise.kind === "fill" || exercise.kind === "definition"
+      ? homeworkRemainingWordBank(exercise, state)
+      : [...(exercise.wordBank ?? [])],
+    [exercise, state],
+  );
+  const wordBank = hasWordBank ? (
+    <HomeworkWordBank
+      words={remainingWords}
+      total={exercise.wordBank?.length ?? 0}
+      collapsed={wordBankCollapsed}
+      detached={wordBankDetached}
+      side={wordBankSide}
+      onToggleCollapsed={() => setWordBankCollapsed((current) => !current)}
+      onToggleDetached={() => setWordBankDetached((current) => !current)}
+      onToggleSide={() => setWordBankSide((current) => current === "left" ? "right" : "left")}
+    />
+  ) : null;
+  const exerciseItems = (
+    <ExerciseItems
+      key={resetKey}
+      exercise={exercise}
+      session={session}
+      state={state}
+      setState={setState}
+      showAnswers={showAnswers}
+      focusId={focusId}
+      onFocus={onFocus}
+    />
+  );
   const body = (
     <div className="mt-4">
       {actionError && (
@@ -842,30 +996,30 @@ function HomeworkExerciseView({
           {actionError}
         </p>
       )}
-      {exercise.wordBank && exercise.wordBank.length > 0 && exercise.kind !== "drag" && exercise.kind !== "describe" && (
-        <div className="mb-4 rounded-xl bg-accent-soft/70 p-3 ring-1 ring-accent/15">
-          <p className="text-[10px] font-black uppercase tracking-wide text-accent">
-            {t.interactiveHomework.useWords}
-          </p>
-          <ul className="mt-2 flex flex-col gap-1.5">
-            {exercise.wordBank.map((word) => (
-              <li key={word} className="text-[13px] font-semibold leading-relaxed text-content">
-                {word}
-              </li>
-            ))}
-          </ul>
+      {wordBankDetached && wordBank ? (
+        <div className={cn(
+          "grid items-start gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]",
+          wordBankSide === "right" && "lg:grid-cols-[minmax(0,1fr)_15rem]",
+        )}>
+          <div className={cn(
+            "relative ml-auto w-full max-w-xs self-start lg:sticky lg:top-20 lg:z-10 lg:ml-0 lg:max-w-none",
+            wordBankSide === "right" && "lg:col-start-2",
+          )}>
+            {wordBank}
+          </div>
+          <div className={cn(
+            "min-w-0",
+            wordBankSide === "left" ? "lg:col-start-2 lg:row-start-1" : "lg:col-start-1 lg:row-start-1",
+          )}>
+            {exerciseItems}
+          </div>
         </div>
+      ) : (
+        <>
+          {wordBank && <div className="mb-3">{wordBank}</div>}
+          {exerciseItems}
+        </>
       )}
-      <ExerciseItems
-        key={resetKey}
-        exercise={exercise}
-        session={session}
-        state={state}
-        setState={setState}
-        showAnswers={showAnswers}
-        focusId={focusId}
-        onFocus={onFocus}
-      />
     </div>
   );
 
@@ -1263,7 +1417,7 @@ function AutoTextExercise({
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       {exercise.items.map((item, index) => {
         const status = homeworkStatus(state, item.id);
         return (
@@ -2084,7 +2238,7 @@ function HomeworkItemShell({
     <article
       data-homework-focus={itemFocusId}
       className={cn(
-        "rounded-2xl border bg-surface p-3 transition sm:p-4",
+        "rounded-2xl border bg-surface p-2.5 transition sm:p-3",
         status === "correct"
           ? "border-emerald-400"
           : status === "locked"
@@ -2093,11 +2247,28 @@ function HomeworkItemShell({
         focusId === itemFocusId && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-[11px] font-black text-faint">
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">{children}</div>
+        {session.teacher && (
+          <button
+            type="button"
+            onClick={() => setNoteOpen((open) => !open)}
+            title={note ? t.interactiveHomework.editNote : t.interactiveHomework.addNote}
+            aria-label={note ? t.interactiveHomework.editNote : t.interactiveHomework.addNote}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-bold text-accent transition hover:bg-accent-soft",
+              noteOpen && "bg-accent-soft",
+            )}
+          >
+            <IconPencil className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">
+              {note ? t.interactiveHomework.editNote : t.interactiveHomework.addNote}
+            </span>
+          </button>
+        )}
         <HomeworkReactionControl
           target="item"
           targetId={item.id}
@@ -2126,18 +2297,8 @@ function HomeworkItemShell({
         </div>
       )}
 
-      {session.teacher && (
-        <div className="ml-10 mt-3">
-          <button
-            type="button"
-            onClick={() => setNoteOpen((open) => !open)}
-            className="flex items-center gap-1.5 text-[11px] font-bold text-accent hover:opacity-80"
-          >
-            <IconPencil className="h-3.5 w-3.5" />
-            {note ? t.interactiveHomework.editNote : t.interactiveHomework.addNote}
-          </button>
-          {noteOpen && (
-            <div className="mt-2 rounded-xl bg-accent-soft/50 p-3 ring-1 ring-accent/20">
+      {session.teacher && noteOpen && (
+        <div className="ml-9 mt-2 rounded-xl bg-accent-soft/50 p-3 ring-1 ring-accent/20">
               <textarea
                 value={noteDraft}
                 onChange={(event) => setNoteDraft(event.target.value)}
@@ -2184,8 +2345,6 @@ function HomeworkItemShell({
                   <IconX className="h-3.5 w-3.5" /> {t.common.cancel}
                 </button>
               </div>
-            </div>
-          )}
         </div>
       )}
 

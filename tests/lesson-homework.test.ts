@@ -18,6 +18,7 @@ import {
   homeworkItemFocusId,
   homeworkProgress,
   homeworkReaction,
+  homeworkRemainingWordBank,
   homeworkRevisionRequestedAt,
   homeworkRevisionRequestedAtKey,
   homeworkRemovedAt,
@@ -96,6 +97,31 @@ test("домашка сохраняет направление перевода 
     normalized?.exercises.find((exercise) => exercise.id === "bonus")?.translationDirection,
     "from-english",
   );
+});
+
+test("банк слов скрывает только правильно использованные ответы", () => {
+  const exercise = {
+    id: "bank",
+    title: "Fill",
+    instruction: "",
+    kind: "fill" as const,
+    wordBank: ["to wonder", "to face", "to face"],
+    items: [
+      { id: "bank-one", prompt: "I ___ why.", answer: "to wonder" },
+      { id: "bank-two", prompt: "We need ___ it.", answer: "to face" },
+      { id: "bank-three", prompt: "They had ___ it.", answer: "to face" },
+    ],
+  };
+  const state = {
+    [homeworkStatusKey("bank-one")]: "correct",
+    [homeworkValueKey("bank-one")]: "To wonder!",
+    [homeworkStatusKey("bank-two")]: "locked",
+    [homeworkValueKey("bank-two")]: "to phase",
+    [homeworkStatusKey("bank-three")]: "correct",
+    [homeworkValueKey("bank-three")]: "to face",
+  };
+
+  assert.deepEqual(homeworkRemainingWordBank(exercise, state), ["to face"]);
 });
 
 test("домашка сохраняет и определяет персональный язык упражнения на перевод", () => {
