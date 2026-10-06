@@ -56,6 +56,13 @@ export type LegacyHomeworkTask = { title: string; text: string };
 export type LessonHomeworkEntry = LegacyHomeworkTask | InteractiveHomeworkPlan;
 export type HomeworkStoredState = Record<string, string>;
 export type HomeworkAutoStatus = "correct" | "locked" | null;
+export type HomeworkTeacherVoiceMessage = {
+  id: string;
+  url: string;
+  durationSeconds: number;
+  mimeType: string;
+  publishedAt: string;
+};
 
 const EXERCISE_FOCUS = "homework:exercise:";
 const ITEM_FOCUS = "homework:item:";
@@ -190,10 +197,12 @@ const NOTE_VISIBLE = "hw:note-visible:";
 const EXERCISE_HIDDEN = "hw:exercise-hidden:";
 const SUBMITTED_AT = "hw:submitted-at";
 const REVIEWED_AT = "hw:reviewed-at";
+const REVISION_REQUESTED_AT = "hw:revision-requested-at";
 const ASSIGNED_AT = "hw:assigned-at";
 const ASSIGNED_EXERCISES = "hw:assigned-exercises";
 const PLAN_OVERRIDE = "hw:plan-override";
 const REMOVED_AT = "hw:removed-at";
+const TEACHER_VOICE_MESSAGES = "hw:teacher-voice-messages";
 const HOMEWORK_VOICE_TARGET_PREFIX = "homework:";
 
 export const homeworkValueKey = (id: string) => `${VALUE}${id}`;
@@ -204,10 +213,12 @@ export const homeworkNoteVisibleKey = (id: string) => `${NOTE_VISIBLE}${id}`;
 export const homeworkExerciseHiddenKey = (id: string) => `${EXERCISE_HIDDEN}${id}`;
 export const homeworkSubmittedAtKey = () => SUBMITTED_AT;
 export const homeworkReviewedAtKey = () => REVIEWED_AT;
+export const homeworkRevisionRequestedAtKey = () => REVISION_REQUESTED_AT;
 export const homeworkAssignedAtKey = () => ASSIGNED_AT;
 export const homeworkAssignedExercisesKey = () => ASSIGNED_EXERCISES;
 export const homeworkPlanOverrideKey = () => PLAN_OVERRIDE;
 export const homeworkRemovedAtKey = () => REMOVED_AT;
+export const homeworkTeacherVoiceMessagesKey = () => TEACHER_VOICE_MESSAGES;
 export const homeworkVoiceRecordingTarget = (itemId: string) =>
   `${HOMEWORK_VOICE_TARGET_PREFIX}${itemId}`;
 
@@ -227,6 +238,36 @@ export function homeworkSubmittedAt(state: HomeworkStoredState) {
 
 export function homeworkReviewedAt(state: HomeworkStoredState) {
   return state[REVIEWED_AT] || null;
+}
+
+export function homeworkRevisionRequestedAt(state: HomeworkStoredState) {
+  return state[REVISION_REQUESTED_AT] || null;
+}
+
+export function homeworkTeacherVoiceMessages(
+  state: HomeworkStoredState,
+): HomeworkTeacherVoiceMessage[] {
+  try {
+    const raw = JSON.parse(state[TEACHER_VOICE_MESSAGES] ?? "[]") as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw.slice(-20).flatMap((entry): HomeworkTeacherVoiceMessage[] => {
+      if (!entry || typeof entry !== "object") return [];
+      const item = entry as Record<string, unknown>;
+      const id = cleanId(item.id);
+      const url = String(item.url ?? "").trim().slice(0, 2_000);
+      const mimeType = String(item.mimeType ?? "audio/webm").trim().slice(0, 80);
+      const publishedAt = String(item.publishedAt ?? "").trim().slice(0, 80);
+      const durationSeconds = Math.max(1, Math.min(600, Math.round(Number(item.durationSeconds) || 0)));
+      if (
+        !id ||
+        (!url.startsWith("/uploads/") && !/^https:\/\//i.test(url)) ||
+        !/^audio\/(?:webm|ogg|mp4|mpeg|wav|x-m4a)(?:;|$)/i.test(mimeType)
+      ) return [];
+      return [{ id, url, durationSeconds, mimeType, publishedAt }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function homeworkAssignedAt(state: HomeworkStoredState) {
@@ -418,6 +459,7 @@ export function withoutHomeworkProgressState(
   }
   delete next[homeworkSubmittedAtKey()];
   delete next[homeworkReviewedAtKey()];
+  delete next[homeworkRevisionRequestedAtKey()];
   return next;
 }
 

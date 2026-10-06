@@ -17,6 +17,7 @@ import {
   assignInteractiveHomeworkAction,
   highlightHomeworkTextAction,
   removeHomeworkQuestionAction,
+  returnInteractiveHomeworkForRevisionAction,
   reviewInteractiveHomeworkAction,
   resetHomeworkExerciseAnswersAction,
   shuffleHomeworkExerciseItemsAction,
@@ -50,6 +51,8 @@ import {
   homeworkSubmittedAtKey,
   homeworkReviewedAt,
   homeworkReviewedAtKey,
+  homeworkRevisionRequestedAt,
+  homeworkRevisionRequestedAtKey,
   homeworkTextHighlight,
   homeworkTextTokens,
   homeworkTranslationLanguage,
@@ -81,6 +84,7 @@ import {
 import { cn } from "@/lib/utils";
 import { StudentHomeworkExerciseEditor } from "@/components/lessons/student-homework-editor";
 import { RegularVoiceRecorder } from "@/components/lessons/regular-voice-recorder";
+import { HomeworkTeacherVoiceMessages } from "@/components/lessons/homework-teacher-voice-messages";
 
 export type InteractiveHomeworkSession = {
   assignmentId: string;
@@ -136,6 +140,7 @@ export function InteractiveHomework({
   const [showAnswers, setShowAnswers] = useState(false);
   const [reviewBusy, startReview] = useTransition();
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [revisionArmed, setRevisionArmed] = useState(false);
   const [highlightMode, setHighlightMode] = useState(false);
   const [highlightColor, setHighlightColor] = useState<HomeworkHighlightColor>("yellow");
   const [interactionError, setInteractionError] = useState<string | null>(null);
@@ -144,6 +149,7 @@ export function InteractiveHomework({
   const progress = homeworkExerciseProgress(currentPlan, state);
   const submittedAt = homeworkSubmittedAt(state);
   const reviewedAt = homeworkReviewedAt(state);
+  const revisionRequestedAt = homeworkRevisionRequestedAt(state);
   const assignedAt = homeworkAssignedAt(state);
   const exercises = currentPlan.exercises.filter(
     (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
@@ -256,6 +262,21 @@ export function InteractiveHomework({
                 {t.interactiveHomework.sentForReview}
               </span>
             ) : null}
+            {revisionRequestedAt && !submittedAt && !reviewedAt && (
+              <span className="rounded-xl bg-orange-50 px-3 py-2 text-xs font-black text-orange-700 ring-1 ring-orange-200">
+                {t.interactiveHomework.returnedForRevision}
+              </span>
+            )}
+            {session.teacher && session.canEdit && (
+              <button
+                type="button"
+                onClick={() => setEditingExerciseId(currentPlan.exercises[0]?.id ?? null)}
+                className="flex h-10 items-center gap-2 rounded-xl bg-accent-soft px-3 text-xs font-black text-accent ring-1 ring-accent/20 transition hover:bg-accent hover:text-white"
+              >
+                <IconPencil className="h-4 w-4" />
+                {t.interactiveHomework.editHomework}
+              </button>
+            )}
             {session.teacher && teacherReviewTools && submittedAt && (
               <button
                 type="button"
@@ -280,6 +301,39 @@ export function InteractiveHomework({
                 {reviewedAt
                   ? t.interactiveHomework.reviewed
                   : t.interactiveHomework.markReviewed}
+              </button>
+            )}
+            {session.teacher && teacherReviewTools && (submittedAt || reviewedAt) && (
+              <button
+                type="button"
+                disabled={reviewBusy}
+                onClick={() => {
+                  if (!revisionArmed) {
+                    setRevisionArmed(true);
+                    return;
+                  }
+                  setReviewError(null);
+                  startReview(async () => {
+                    const result = await returnInteractiveHomeworkForRevisionAction(session.assignmentId);
+                    if (result.error || !result.state) {
+                      setReviewError(result.error ?? t.interactiveHomework.revisionFailed);
+                      return;
+                    }
+                    setRevisionArmed(false);
+                    setState(result.state);
+                  });
+                }}
+                className={cn(
+                  "flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-black transition disabled:opacity-50",
+                  revisionArmed
+                    ? "bg-orange-500 text-white shadow-sm hover:bg-orange-600"
+                    : "bg-orange-50 text-orange-700 ring-1 ring-orange-200 hover:bg-orange-100",
+                )}
+              >
+                <span aria-hidden>↩</span>
+                {revisionArmed
+                  ? t.interactiveHomework.confirmRevision
+                  : t.interactiveHomework.sendToRevision}
               </button>
             )}
             <div className="rounded-xl bg-surface px-3 py-2 text-right ring-1 ring-line">
@@ -310,6 +364,13 @@ export function InteractiveHomework({
           <p className="mt-3 text-xs font-bold text-rose-600">{reviewError}</p>
         )}
       </section>
+
+      <HomeworkTeacherVoiceMessages
+        assignmentId={session.assignmentId}
+        teacher={session.teacher && teacherReviewTools}
+        state={state}
+        onStateChange={setState}
+      />
 
       {session.teacher && teacherReviewTools && (
         <div className="sticky top-20 z-30 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/95 px-3 py-2 shadow-lg backdrop-blur-md">
@@ -388,6 +449,7 @@ export function InteractiveHomework({
               };
               delete next[homeworkSubmittedAtKey()];
               delete next[homeworkReviewedAtKey()];
+              delete next[homeworkRevisionRequestedAtKey()];
               return next;
             });
           }}

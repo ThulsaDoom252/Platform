@@ -7,6 +7,7 @@ import {
   homeworkPlanForAssignment,
   homeworkVoiceRecordingItemId,
   interactiveHomeworkFromEntries,
+  normalizeInteractiveHomework,
 } from "@/lib/lesson-homework";
 import { normalizeRegularLessonSections } from "@/lib/regular-lesson";
 import { managedUploadPath } from "@/lib/public-file-store";
@@ -50,6 +51,7 @@ async function accessibleVoiceSection(assignmentId: string, sectionId: string) {
       sections: lessonUnits.sections,
       homework: lessonUnits.homework,
       answers: lessonAssignments.answers,
+      contentOverride: lessonAssignments.contentOverride,
     })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -60,6 +62,9 @@ async function accessibleVoiceSection(assignmentId: string, sectionId: string) {
     ? row.studentId === session.userId
     : session.role === "TEACHER" && row.authorId === session.userId;
   if (!allowed) return null;
+  if (sectionId === "teacher-feedback") {
+    return session.role === "TEACHER" && row.authorId === session.userId ? row : null;
+  }
   const section = row.kind === "REGULAR"
     ? normalizeRegularLessonSections(row.sections)
         .find((item) => item.id === sectionId && item.voiceExercise)
@@ -67,8 +72,11 @@ async function accessibleVoiceSection(assignmentId: string, sectionId: string) {
   if (section) return row;
 
   const homeworkItemId = homeworkVoiceRecordingItemId(sectionId);
+  const contentPlan = row.contentOverride && typeof row.contentOverride === "object"
+    ? normalizeInteractiveHomework(row.contentOverride.interactiveHomework, { allowEmpty: true })
+    : null;
   const plan = homeworkPlanForAssignment(
-    interactiveHomeworkFromEntries(row.homework),
+    contentPlan ?? interactiveHomeworkFromEntries(row.homework),
     row.answers ?? {},
   );
   const item = homeworkItemId && plan ? findHomeworkItem(plan, homeworkItemId) : null;

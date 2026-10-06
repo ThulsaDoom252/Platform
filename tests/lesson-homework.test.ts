@@ -18,6 +18,8 @@ import {
   homeworkItemFocusId,
   homeworkProgress,
   homeworkReaction,
+  homeworkRevisionRequestedAt,
+  homeworkRevisionRequestedAtKey,
   homeworkRemovedAt,
   homeworkRemovedAtKey,
   homeworkReviewedAt,
@@ -29,6 +31,8 @@ import {
   homeworkStatusKey,
   homeworkTextHighlight,
   homeworkTextTokens,
+  homeworkTeacherVoiceMessages,
+  homeworkTeacherVoiceMessagesKey,
   homeworkTranslationLanguage,
   homeworkValueKey,
   normalizeInteractiveHomework,
@@ -415,6 +419,14 @@ test("сброс домашки очищает прогресс, но сохра
     [homeworkStatusKey("fill-one")]: "correct",
     [homeworkAttemptsKey("fill-one")]: JSON.stringify(["go"]),
     [homeworkReviewedAtKey()]: "2026-10-04T12:00:00.000Z",
+    [homeworkRevisionRequestedAtKey()]: "2026-10-04T12:30:00.000Z",
+    [homeworkTeacherVoiceMessagesKey()]: JSON.stringify([{
+      id: "feedback-one",
+      url: "/uploads/lesson-audio/feedback-one.webm",
+      durationSeconds: 12,
+      mimeType: "audio/webm",
+      publishedAt: "2026-10-04T12:20:00.000Z",
+    }]),
     "hw:submitted-at": "2026-10-04T11:00:00.000Z",
     "hw:note:fill-one": "Teacher note",
     "hw:text-highlight:fill-one:answer:0": "yellow",
@@ -426,11 +438,45 @@ test("сброс домашки очищает прогресс, но сохра
   assert.equal(next[homeworkStatusKey("fill-one")], undefined);
   assert.equal(next[homeworkAttemptsKey("fill-one")], undefined);
   assert.equal(next[homeworkReviewedAtKey()], undefined);
+  assert.equal(next[homeworkRevisionRequestedAtKey()], undefined);
   assert.equal(next["hw:submitted-at"], undefined);
   assert.equal(next["hw:text-highlight:fill-one:answer:0"], undefined);
   assert.equal(next[homeworkAssignedAtKey()], assignedAt);
   assert.equal(next["hw:note:fill-one"], "Teacher note");
   assert.equal(next["hw:text-highlight:fill-one:prompt:0"], "green");
+  assert.equal(homeworkTeacherVoiceMessages(next).length, 1);
+});
+
+test("возврат на ревизию и голосовые сообщения учителя безопасно читаются из состояния", () => {
+  const requestedAt = "2026-10-05T09:15:00.000Z";
+  const state = {
+    [homeworkRevisionRequestedAtKey()]: requestedAt,
+    [homeworkTeacherVoiceMessagesKey()]: JSON.stringify([
+      {
+        id: "feedback-valid",
+        url: "/uploads/lesson-audio/feedback-valid.webm",
+        durationSeconds: 18.4,
+        mimeType: "audio/webm",
+        publishedAt: "2026-10-05T09:10:00.000Z",
+      },
+      {
+        id: "bad id",
+        url: "javascript:alert(1)",
+        durationSeconds: -1,
+        mimeType: "text/html",
+        publishedAt: "yesterday",
+      },
+    ]),
+  };
+
+  assert.equal(homeworkRevisionRequestedAt(state), requestedAt);
+  assert.deepEqual(homeworkTeacherVoiceMessages(state), [{
+    id: "feedback-valid",
+    url: "/uploads/lesson-audio/feedback-valid.webm",
+    durationSeconds: 18,
+    mimeType: "audio/webm",
+    publishedAt: "2026-10-05T09:10:00.000Z",
+  }]);
 });
 
 test("правка вопросов не блокируется неполными переводами из старой домашки", () => {

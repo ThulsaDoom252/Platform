@@ -8,7 +8,7 @@ import { lessonAssignments, lessons, lessonUnits, notifications, users } from "@
 import { getSession } from "@/lib/session";
 import { scheduleNow } from "@/lib/schedule-time";
 import { translateShortTexts, type MaterialTranslationLang } from "@/lib/material-translation";
-import { removePublicFile } from "@/lib/public-file-store";
+import { managedUploadPath, removePublicFile } from "@/lib/public-file-store";
 import { queueStudentNotification } from "@/lib/notifications";
 import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-lesson";
 import {
@@ -36,12 +36,15 @@ import {
   homeworkPlanOverrideKey,
   homeworkReviewedAt,
   homeworkReviewedAtKey,
+  homeworkRevisionRequestedAtKey,
   homeworkStatus,
   homeworkStatusKey,
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
   homeworkTextSourceValue,
   homeworkTextTokens,
+  homeworkTeacherVoiceMessages,
+  homeworkTeacherVoiceMessagesKey,
   homeworkTranslationLanguage,
   homeworkVoiceRecordingTarget,
   homeworkStarted,
@@ -63,6 +66,7 @@ import {
   type InteractiveHomeworkPlan,
   type HomeworkExerciseKind,
   type HomeworkStoredState,
+  type HomeworkTeacherVoiceMessage,
 } from "@/lib/lesson-homework";
 
 async function requireUser() {
@@ -245,6 +249,7 @@ export async function assignInteractiveHomeworkAction(
   delete state[homeworkRemovedAtKey()];
   delete state[homeworkSubmittedAtKey()];
   delete state[homeworkReviewedAtKey()];
+  delete state[homeworkRevisionRequestedAtKey()];
 
   await db
     .update(lessonAssignments)
@@ -380,6 +385,7 @@ export async function assignHomeworkFromLessonSourceAction(input: {
   delete state[homeworkRemovedAtKey()];
   delete state[homeworkSubmittedAtKey()];
   delete state[homeworkReviewedAtKey()];
+  delete state[homeworkRevisionRequestedAtKey()];
 
   let assignmentId = existing?.id ?? null;
   if (existing) {
@@ -519,6 +525,7 @@ function homeworkStateAfterPlanEdit(
   source: HomeworkStoredState,
   keepOverride: boolean,
 ): HomeworkStoredState {
+  const needsRevision = Boolean(homeworkSubmittedAt(source) || homeworkReviewedAt(source));
   let state = { ...source };
   const oldExercises = new Map(previousPlan.exercises.map((exercise) => [exercise.id, exercise]));
   const oldItems = new Map(
@@ -559,6 +566,7 @@ function homeworkStateAfterPlanEdit(
   }
   delete state[homeworkSubmittedAtKey()];
   delete state[homeworkReviewedAtKey()];
+  if (needsRevision) state[homeworkRevisionRequestedAtKey()] = new Date().toISOString();
   return state;
 }
 
@@ -1040,6 +1048,8 @@ export async function submitInteractiveHomeworkForReviewAction(
   if (alreadySubmitted) return { submittedAt: alreadySubmitted };
   const submittedAt = new Date().toISOString();
   state[homeworkSubmittedAtKey()] = submittedAt;
+  delete state[homeworkReviewedAtKey()];
+  delete state[homeworkRevisionRequestedAtKey()];
 
   await db.transaction(async (tx) => {
     await tx
@@ -1076,6 +1086,7 @@ export async function reviewInteractiveHomeworkAction(
   if (alreadyReviewed) return { reviewedAt: alreadyReviewed };
   const reviewedAt = new Date().toISOString();
   state[homeworkReviewedAtKey()] = reviewedAt;
+  delete state[homeworkRevisionRequestedAtKey()];
 
   await db
     .update(lessonAssignments)
@@ -1095,6 +1106,129 @@ export async function reviewInteractiveHomeworkAction(
   revalidatePath("/student/homework");
   revalidatePath("/student");
   return { reviewedAt };
+}
+
+/** Вернуть уже отправленную или проверенную домашку ученику на доработку. */
+export async function returnInteractiveHomeworkForRevisionAction(
+  assignmentId: string,
+): Promise<{ error?: string; revisionRequestedAt?: string; state?: HomeworkStoredState }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  if (!homeworkSubmittedAt(state) && !homeworkReviewedAt(state)) {
+    return { error: "Ученик ещё не отправил эту домашнюю работу" };
+  }
+  const revisionRequestedAt = new Date().toISOString();
+  delete state[homeworkSubmittedAtKey()];
+  delete state[homeworkReviewedAtKey()];
+  state[homeworkRevisionRequestedAtKey()] = revisionRequestedAt;
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  await queueStudentNotification({
+    teacherId: session.userId,
+    studentId: row.assignment.studentId,
+    event: "homeworkRevisionRequested",
+    title: row.title,
+    href: `/student/lessons/${row.assignment.id}?section=homework`,
+  });
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/teacher/homeworks");
+  revalidatePath("/student/homework");
+  revalidatePath("/student");
+  return { revisionRequestedAt, state };
+}
+
+/** Сохранить голосовой комментарий учителя к домашней работе. */
+export async function saveHomeworkTeacherVoiceMessageAction(
+  assignmentId: string,
+  raw: {
+    id: string;
+    url: string;
+    durationSeconds: number;
+    mimeType: string;
+  },
+): Promise<{ error?: string; state?: HomeworkStoredState; message?: HomeworkTeacherVoiceMessage }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+
+  const id = String(raw?.id ?? "").trim();
+  const url = String(raw?.url ?? "").trim();
+  const pathname = managedUploadPath(url);
+  const durationSeconds = Math.round(Number(raw?.durationSeconds));
+  const mimeType = String(raw?.mimeType ?? "audio/webm").trim().slice(0, 80);
+  if (!/^[a-z0-9][a-z0-9-]{0,79}$/i.test(id)) return { error: "Некорректная запись" };
+  if (!pathname?.startsWith(`uploads/lesson-audio/${row.assignment.id}-teacher-feedback-${id}`)) {
+    return { error: "Некорректная ссылка на запись" };
+  }
+  if (!Number.isFinite(durationSeconds) || durationSeconds < 1 || durationSeconds > 600) {
+    return { error: "Некорректная длительность записи" };
+  }
+  if (!/^audio\/(?:webm|ogg|mp4|mpeg|wav|x-m4a)(?:;|$)/i.test(mimeType)) {
+    return { error: "Неподдерживаемый формат записи" };
+  }
+
+  const state = { ...(row.assignment.answers ?? {}) };
+  const messages = homeworkTeacherVoiceMessages(state);
+  const message: HomeworkTeacherVoiceMessage = {
+    id,
+    url,
+    durationSeconds,
+    mimeType,
+    publishedAt: new Date().toISOString(),
+  };
+  state[homeworkTeacherVoiceMessagesKey()] = JSON.stringify([
+    ...messages.filter((item) => item.id !== id),
+    message,
+  ].slice(-20));
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  return { state, message };
+}
+
+/** Удалить один голосовой комментарий, не затрагивая ответы ученика. */
+export async function removeHomeworkTeacherVoiceMessageAction(
+  assignmentId: string,
+  messageId: string,
+): Promise<{ error?: string; state?: HomeworkStoredState }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const id = String(messageId ?? "").trim();
+  const state = { ...(row.assignment.answers ?? {}) };
+  const messages = homeworkTeacherVoiceMessages(state);
+  const removed = messages.find((message) => message.id === id);
+  if (!removed) return { state };
+  const kept = messages.filter((message) => message.id !== id);
+  if (kept.length > 0) state[homeworkTeacherVoiceMessagesKey()] = JSON.stringify(kept);
+  else delete state[homeworkTeacherVoiceMessagesKey()];
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  await removePublicFile(removed.url, "lesson-audio").catch(() => undefined);
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  return { state };
 }
 
 /** Заметка учителя к конкретному предложению и её видимость ученику. */
@@ -1255,7 +1389,10 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
   return rows.flatMap((row): TeacherHomeworkAssignmentCard[] => {
     const state = row.assignment.answers ?? {};
     if (homeworkRemovedAt(state)) return [];
-    const plan = homeworkPlanForAssignment(interactiveHomeworkFromEntries(row.homework), state);
+    const contentPlan = row.assignment.contentOverride && typeof row.assignment.contentOverride === "object"
+      ? normalizeInteractiveHomework(row.assignment.contentOverride.interactiveHomework, { allowEmpty: true })
+      : null;
+    const plan = homeworkPlanForAssignment(contentPlan ?? interactiveHomeworkFromEntries(row.homework), state);
     const legacy = legacyHomeworkFromEntries(row.homework);
     if (!plan && legacy.length === 0) return [];
     const assignedPlan = plan ? assignedInteractiveHomework(plan, state) : null;
@@ -1308,7 +1445,10 @@ export async function myInteractiveHomeworkAction(): Promise<HomeworkAssignmentC
   return rows.flatMap((row): HomeworkAssignmentCard[] => {
     const state = row.assignment.answers ?? {};
     if (homeworkRemovedAt(state)) return [];
-    const plan = homeworkPlanForAssignment(interactiveHomeworkFromEntries(row.homework), state);
+    const contentPlan = row.assignment.contentOverride && typeof row.assignment.contentOverride === "object"
+      ? normalizeInteractiveHomework(row.assignment.contentOverride.interactiveHomework, { allowEmpty: true })
+      : null;
+    const plan = homeworkPlanForAssignment(contentPlan ?? interactiveHomeworkFromEntries(row.homework), state);
     const legacy = legacyHomeworkFromEntries(row.homework);
     if (!plan && legacy.length === 0) return [];
     const assignedPlan = plan ? assignedInteractiveHomework(plan, state) : null;
