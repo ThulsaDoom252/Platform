@@ -83,6 +83,16 @@ test("interactive manual result participates in reaction synchronization/reset b
   assert.equal(lessonHomeworkFeedback({ [HOMEWORK_OVERALL_REACTION_KEY]: "bogus" }).manualReaction, null);
 });
 
+test("generic lesson responses cannot forge teacher reactions and voice saves retain current feedback", () => {
+  const source = readFileSync("src/lib/actions/lessons.ts", "utf8");
+  const answer = source.split("export async function answerAction(")[1].split("async function regularAssignmentForUser")[0];
+  assert.match(answer, /if \(isStudent && responseKey\.startsWith\(HOMEWORK_REACTION_PREFIX\)\)/);
+  assert.match(answer, /answers: sql`coalesce\(/);
+  const voice = source.split("export async function saveRegularVoiceRecordingAction(")[1].split("export async function resetRegularLessonExerciseAction(")[0];
+  assert.match(voice, /homeworkStateWithCurrentResultSql/);
+  assert.match(voice, /return \{ state: persisted\?\.answers \?\? state \}/);
+});
+
 test("result badges render large smileys with captions underneath, semantic strength and no percentages", () => {
   for (const item of HOMEWORK_RESULT_REACTIONS) {
     const html = renderToStaticMarkup(createElement(HomeworkResultReactionBadge, { reaction: item.id }));

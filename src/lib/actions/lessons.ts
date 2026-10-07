@@ -27,6 +27,7 @@ import {
   wordDeckActivities,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
 import { lessonContentVersion } from "@/lib/lesson-content-version";
 import { queueStudentNotification } from "@/lib/notifications";
 import { publishClassRealtime } from "@/lib/realtime-server";
@@ -88,8 +89,8 @@ import {
 } from "@/lib/regular-lesson";
 import {
   assignedInteractiveHomework,
+  HOMEWORK_REACTION_PREFIX,
   findHomeworkItem,
-  homeworkExerciseHidden,
   homeworkAssignedAt,
   homeworkAssignedExerciseIds,
   homeworkAssignedExercisesKey,
@@ -2717,13 +2718,15 @@ export async function answerAction(
   const isTeacher = session.role === "TEACHER" && row.authorId === session.userId;
   if (!isStudent && !isTeacher) return { error: "Это чужой урок" };
 
+  const responseKey = String(key ?? "").slice(0, 240);
+  if (isStudent && responseKey.startsWith(HOMEWORK_REACTION_PREFIX)) {
+    return { error: "Эту реакцию устанавливает учитель" };
+  }
+
   await db
     .update(lessonAssignments)
     .set({
-      answers: {
-        ...(row.answers ?? {}),
-        [String(key ?? "").slice(0, 240)]: String(text ?? "").slice(0, 8_000),
-      },
+      answers: sql`coalesce(${lessonAssignments.answers}, '{}'::jsonb) || jsonb_build_object(${responseKey}::text, ${String(text ?? "").slice(0, 8_000)}::text)`,
       updatedAt: new Date(),
     })
     .where(eq(lessonAssignments.id, id));
@@ -2826,7 +2829,7 @@ export async function submitRegularLessonAnswerAction(
 
   await db
     .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
+    .set({ answers: homeworkStateWithCurrentResultSql(lessonAssignments.answers, state), updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
@@ -2886,10 +2889,11 @@ export async function saveRegularVoiceRecordingAction(
     publishedAt: new Date().toISOString(),
   });
   if (homeworkItemId) state[homeworkValueKey(homeworkItemId)] = url;
-  await db
+  const [persisted] = await db
     .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
-    .where(eq(lessonAssignments.id, row.assignment.id));
+    .set({ answers: homeworkStateWithCurrentResultSql(lessonAssignments.answers, state), updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id))
+    .returning({ answers: lessonAssignments.answers });
 
   if (previous?.url && previous.url !== url) {
     await removePublicFile(previous.url, "lesson-audio").catch(() => undefined);
@@ -2900,7 +2904,7 @@ export async function saveRegularVoiceRecordingAction(
   revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
-  return { state };
+  return { state: persisted?.answers ?? state };
 }
 
 /** Reset attempts and answers for one exercise while preserving teacher notes. */
