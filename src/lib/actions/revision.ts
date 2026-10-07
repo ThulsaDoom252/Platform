@@ -34,6 +34,8 @@ import {
 import { scoreRevision, type RevisionAnswer } from "@/lib/revision-score";
 import { scheduleNow } from "@/lib/schedule-time";
 import { queueStudentNotification } from "@/lib/notifications";
+import { readHomeworkFeedback, type HomeworkFeedbackSettings, type HomeworkResultScore } from "@/lib/homework-feedback";
+import { revisionHomeworkScoreSql } from "@/lib/homework-feedback-persistence";
 
 export type RevisionState = { ok?: boolean; error?: string; id?: string };
 
@@ -511,6 +513,9 @@ export async function copyRevisionBetweenClassAndHomeworkAction(
 
 export type RevisionCard = {
   id: string;
+  studentId?: string;
+  homeworkFeedback?: HomeworkFeedbackSettings;
+  lastCompletedScore?: HomeworkResultScore | null;
   title: string;
   /** Откуда выдано: название словника и ссылка на него. */
   nodeId: string | null;
@@ -559,6 +564,7 @@ async function cardsFor(
     .select({
       revisionId: wordRevisionAttempts.revisionId,
       finishedAt: wordRevisionAttempts.finishedAt,
+      result: revisionHomeworkScoreSql(wordRevisionAttempts.answers),
     })
     .from(wordRevisionAttempts)
     .where(
@@ -568,12 +574,13 @@ async function cardsFor(
   return rows.map(({ revision, nodeName }) => {
     const mine = attempts.filter((a) => a.revisionId === revision.id);
     const done = mine.filter((a) => a.finishedAt);
-    const last = done
-      .map((a) => a.finishedAt!)
-      .sort((a, b) => b.getTime() - a.getTime())[0];
+    const last = done.sort((a, b) => b.finishedAt!.getTime() - a.finishedAt!.getTime())[0];
 
     return {
       id: revision.id,
+      studentId: revision.studentId,
+      homeworkFeedback: readHomeworkFeedback(revision.homeworkFeedback),
+      lastCompletedScore: last?.result ?? null,
       title: revision.title,
       nodeId: revision.nodeId,
       nodeName,
@@ -587,7 +594,7 @@ async function cardsFor(
       totalSeconds: revision.totalSeconds,
       words: (revision.phraseIds ?? []).length,
       attempts: done.length,
-      lastFinishedAt: last?.toISOString() ?? null,
+      lastFinishedAt: last?.finishedAt?.toISOString() ?? null,
       // Сдано — закрыто, пока учитель не откроет заново.
       open: done.length === 0 || revision.reopened,
       placement: revision.placement === "CLASS" ? "CLASS" : "HOMEWORK",
@@ -1080,6 +1087,7 @@ export async function attemptsAction(revisionId: string): Promise<AttemptSummary
 
 export type TeacherRevisionHomeworkCard = {
   kind: "REVISION";
+  homeworkFeedback?: HomeworkFeedbackSettings;
   id: string;
   title: string;
   homeworkTitle: string;
@@ -1158,6 +1166,7 @@ export async function teacherRevisionHomeworkAssignmentsAction(): Promise<Teache
     const running = mine.some((attempt) => !attempt.finishedAt);
     return {
       kind: "REVISION" as const,
+      homeworkFeedback: readHomeworkFeedback(revision.homeworkFeedback),
       id: revision.id,
       title: revision.title,
       homeworkTitle: "Words practice",

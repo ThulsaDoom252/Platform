@@ -11,6 +11,7 @@ import { assignedInteractiveHomework } from "@/lib/lesson-homework";
 import { StudentPresence } from "@/components/student-presence";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { teacherHomeworkOverviewState } from "@/lib/teacher-homework-order";
+import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
 
 export default async function TeacherHomeworkReviewPage({
   params,
@@ -70,6 +71,7 @@ export default async function TeacherHomeworkReviewPage({
         />
       ) : (
         <div className="flex flex-col gap-3">
+          <HomeworkFeedbackPanel kind="LESSON" id={item.id} settings={item.homeworkFeedback} teacher />
           {data.lesson.homework.map((task, index) => (
             <section key={index} className="rounded-2xl bg-surface p-5 ring-1 ring-line">
               {task.title && <h2 className="text-sm font-black text-content">{task.title}</h2>}

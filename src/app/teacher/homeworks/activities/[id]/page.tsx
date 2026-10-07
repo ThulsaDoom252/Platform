@@ -6,6 +6,7 @@ import { getDict } from "@/lib/i18n/server";
 import { StudentPresence } from "@/components/student-presence";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { HomeworkActivityTransfer } from "@/components/teacher/homework-activity-transfer";
+import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
 
 export default async function TeacherActivityHomeworkPage({
   params,
@@ -61,6 +62,7 @@ export default async function TeacherActivityHomeworkPage({
       </section>
 
       <WordDeckBoard activity={activity} />
+      <HomeworkFeedbackPanel kind="ACTIVITY" id={activity.id} settings={activity.homeworkFeedback} teacher />
     </div>
   );
 }

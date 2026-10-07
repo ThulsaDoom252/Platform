@@ -109,6 +109,8 @@ import { HomeworkTeacherVoiceMessages } from "@/components/lessons/homework-teac
 import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { focusHomeworkElementAction } from "@/lib/actions/lessons";
 import { revealHomeworkFocusTarget } from "@/lib/homework-focus";
+import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
+import { HOMEWORK_OVERALL_REACTION_KEY, lessonHomeworkFeedback } from "@/lib/homework-feedback";
 
 export type InteractiveHomeworkSession = {
   assignmentId: string;
@@ -590,6 +592,15 @@ export function InteractiveHomework({
       )) && (
         <HomeworkOverallGrade exercises={exercises} state={state} />
       )}
+
+      <HomeworkFeedbackPanel kind="LESSON" id={session.assignmentId}
+        settings={lessonHomeworkFeedback(state)} teacher={session.teacher}
+        onChange={(feedback) => setState((current) => {
+          const next = { ...current };
+          if (feedback.manualReaction) next[HOMEWORK_OVERALL_REACTION_KEY] = feedback.manualReaction;
+          else delete next[HOMEWORK_OVERALL_REACTION_KEY];
+          return next;
+        })} />
 
       {session.teacher && session.canEdit && (
         <button

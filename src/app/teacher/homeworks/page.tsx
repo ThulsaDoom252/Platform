@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { HomeworkResultReactionBadge } from "@/components/homework-result-reaction";
+import { latestCompletedHomeworkScore, resolveHomeworkFeedback } from "@/lib/homework-feedback";
 import { Avatar } from "@/components/avatar";
 import { StudentPresence } from "@/components/student-presence";
 import {
@@ -498,6 +500,8 @@ function RevisionHomeworkCard({
                 )}>{status}</span>
               </div>
               <p className="truncate text-xs font-semibold text-muted">{revisionLabels.activityEyebrow}</p>
+              <HomeworkResultReactionBadge compact reaction={resolveHomeworkFeedback(item.homeworkFeedback,
+                latestCompletedHomeworkScore(item.attempts), item.modes.some((mode) => mode !== "flashcards"))} />
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-faint">
                 <span className="inline-flex items-center gap-1"><IconCalendar className="h-3.5 w-3.5" />{labels.assigned}: {assignedDateFormat.format(new Date(item.assignedAt))}</span>
                 <span className="inline-flex items-center gap-1"><IconClock className="h-3.5 w-3.5" />{labels.nextLesson}: {item.nextLessonAt ? lessonDateFormat.format(new Date(item.nextLessonAt)) : labels.noNextLesson}</span>
@@ -616,6 +620,7 @@ function HomeworkCard({
               <p className="truncate text-xs font-semibold text-muted">
                 {activity ? `${activityLabels.homeworkActivities} · ${activityName}` : item.homeworkTitle}
               </p>
+              <HomeworkResultReactionBadge compact reaction={resolveHomeworkFeedback(item.homeworkFeedback, null, false)} />
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-faint">
                 <span className="inline-flex items-center gap-1">
                   <IconCalendar className="h-3.5 w-3.5" />

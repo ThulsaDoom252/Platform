@@ -33,6 +33,7 @@ import type { RevisionMode } from "@/lib/revision-modes";
 import { RevisionStepScreen } from "@/components/revision/revision-steps";
 import { IconCheck, IconChevronLeft, IconClock } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
 
 type Phase = "intro" | "play" | "between" | "done";
 
@@ -137,6 +138,7 @@ export function RevisionRunner({
         timeUp={timeUp}
         labels={MODE_LABEL}
         embedded={embedded}
+        homeworkCard={!preview && card.placement === "HOMEWORK" ? card : undefined}
       />
     );
   }
@@ -201,6 +203,9 @@ export function RevisionRunner({
           )}
 
           {error && <p className="mt-3 text-sm text-rose-500">{error}</p>}
+          {!preview && card.placement === "HOMEWORK" && <HomeworkFeedbackPanel
+            kind="REVISION" id={card.id} settings={card.homeworkFeedback} score={card.lastCompletedScore}
+            canAuto={card.modes.some((mode) => mode !== "flashcards")} studentId={card.studentId} />}
           </div>
         </div>
       </div>
@@ -439,12 +444,14 @@ function Result({
   timeUp,
   labels,
   embedded,
+  homeworkCard,
 }: {
   title: string;
   answers: RevisionAnswer[];
   timeUp: boolean;
   labels: Record<RevisionMode, string>;
   embedded: boolean;
+  homeworkCard?: RevisionCard;
 }) {
   const { t } = useT();
   const result = scoreRevision(answers);
@@ -485,6 +492,10 @@ function Result({
         <p className="mt-3 text-[12px] text-faint">
           {t.revision.timeSpent}: {clock(result.totalMs)}
         </p>
+
+        {homeworkCard && <HomeworkFeedbackPanel kind="REVISION" id={homeworkCard.id}
+          settings={homeworkCard.homeworkFeedback} score={result}
+          canAuto={result.total > 0} studentId={homeworkCard.studentId} />}
 
         <div className="mt-4 flex flex-col gap-1.5 text-left">
           {result.sections.map((s) => (

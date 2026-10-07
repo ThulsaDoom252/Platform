@@ -24,6 +24,8 @@ import {
 import type { RevisionMode } from "@/lib/revision-modes";
 import { IconChevronDown, IconTrash } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { HomeworkResultReactionBadge } from "@/components/homework-result-reaction";
+import { readHomeworkFeedback, resolveHomeworkFeedback, type HomeworkFeedbackSettings } from "@/lib/homework-feedback";
 
 export function RevisionTeacherList({ studentId }: { studentId: string }) {
   const { t } = useT();
@@ -134,7 +136,7 @@ export function RevisionTeacherList({ studentId }: { studentId: string }) {
 }
 
 /** Разбор попыток: подряд, чтобы видеть, меняется ли что-нибудь. */
-export function RevisionAttempts({ revisionId }: { revisionId: string }) {
+export function RevisionAttempts({ revisionId, homeworkFeedback }: { revisionId: string; homeworkFeedback?: HomeworkFeedbackSettings }) {
   const { t } = useT();
   const [rows, setRows] = useState<AttemptSummary[] | null>(null);
 
@@ -167,6 +169,9 @@ export function RevisionAttempts({ revisionId }: { revisionId: string }) {
 
         return (
           <div key={row.id} className="rounded-lg bg-surface p-2.5">
+            {homeworkFeedback && readHomeworkFeedback(homeworkFeedback).autoEnabled && row.finishedAt && (
+              <HomeworkResultReactionBadge compact reaction={resolveHomeworkFeedback(homeworkFeedback, r)} />
+            )}
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="text-[12px] font-bold text-content">
                 {fmt(t.revision.attemptNo, { n: i + 1 })}

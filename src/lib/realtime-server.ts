@@ -15,6 +15,7 @@ export type RealtimeEvent =
   | "class-sync"
   | "game-state"
   | "homework-review"
+  | "homework-feedback"
   | "lesson"
   | "notification"
   | "presence"

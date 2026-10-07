@@ -15,6 +15,8 @@ import type { RevisionCard } from "@/lib/actions/revision";
 import type { RevisionMode } from "@/lib/revision-modes";
 import { IconCap, IconChevronRight, IconCheck } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { HomeworkResultReactionBadge } from "@/components/homework-result-reaction";
+import { resolveHomeworkFeedback } from "@/lib/homework-feedback";
 
 export function RevisionList({ items }: { items: RevisionCard[] }) {
   const { t, locale } = useT();
@@ -132,6 +134,9 @@ export function RevisionList({ items }: { items: RevisionCard[] }) {
                     {t.revision.showResult} <IconChevronRight className="h-4 w-4" />
                   </Link>
                 )}
+                <HomeworkResultReactionBadge compact reaction={resolveHomeworkFeedback(
+                  item.homeworkFeedback, item.lastCompletedScore, item.modes.some((mode) => mode !== "flashcards"),
+                )} />
               </div>
             </div>
           </div>

@@ -45,6 +45,8 @@ import {
   type InteractiveHomeworkSession,
 } from "@/components/lessons/interactive-homework";
 import { homeworkExerciseProgress } from "@/lib/lesson-homework";
+import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
+import { lessonHomeworkFeedback } from "@/lib/homework-feedback";
 
 export type LessonViewProps = {
   lesson: Lesson;
@@ -860,6 +862,10 @@ function Homework({
           )}
         </section>
       ))}
+      {!lesson.interactiveHomework && lesson.homework.length > 0 && session && (
+        <HomeworkFeedbackPanel kind="LESSON" id={session.assignmentId}
+          settings={lessonHomeworkFeedback(session.state)} teacher={session.teacher} studentId={session.studentId} />
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
 import { wordDeckHomeworkAction } from "@/lib/actions/word-deck";
 import { getDict } from "@/lib/i18n/server";
+import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
 
 export default async function StudentGameHomeworkPage({ params }: { params: Promise<{ id: string }> }) {
   const [{ id }, { t }] = await Promise.all([params, getDict()]);
@@ -20,6 +21,7 @@ export default async function StudentGameHomeworkPage({ params }: { params: Prom
         </span>
       </div>
       <WordDeckBoard activity={activity} homework />
+      <HomeworkFeedbackPanel kind="ACTIVITY" id={activity.id} settings={activity.homeworkFeedback} studentId={activity.studentId} />
     </div>
   );
 }

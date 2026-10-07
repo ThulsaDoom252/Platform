@@ -2,7 +2,8 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { readHomeworkFeedback, type HomeworkFeedbackSettings } from "@/lib/homework-feedback";
 import { db } from "@/lib/db";
 import {
   activityGames,
@@ -440,6 +441,8 @@ export async function assignWordDeckHomeworkAction(
 }
 
 export type WordDeckHomework = ClassWordDeckActivity & {
+  homeworkFeedback?: HomeworkFeedbackSettings;
+  studentId?: string;
   status: "LOBBY" | "RUNNING" | "DONE";
   assignedAt: string;
   attempts: WordDeckHomeworkAttempt[];
@@ -447,6 +450,7 @@ export type WordDeckHomework = ClassWordDeckActivity & {
 
 export type TeacherWordDeckHomeworkCard = {
   kind: "ACTIVITY";
+  homeworkFeedback?: HomeworkFeedbackSettings;
   id: string;
   title: string;
   homeworkTitle: string;
@@ -474,6 +478,8 @@ function homeworkWordDeckOf(row: typeof activityGames.$inferSelect): WordDeckHom
   if (!activity) return null;
   return {
     ...activity,
+    homeworkFeedback: readHomeworkFeedback(row.wordDeck?.homeworkFeedback),
+    studentId: row.studentId,
     status: row.status === "DONE" ? "DONE" : row.status === "RUNNING" ? "RUNNING" : "LOBBY",
     assignedAt: row.createdAt.toISOString(),
     attempts: row.wordDeck?.attempts ?? [],
@@ -565,6 +571,7 @@ export async function teacherWordDeckHomeworkAssignmentsAction(): Promise<Teache
     const latest = item.attempts.at(-1)?.finishedAt ?? (item.status === "DONE" ? row.game.updatedAt.toISOString() : null);
     return [{
       kind: "ACTIVITY" as const,
+      homeworkFeedback: item.homeworkFeedback,
       id: item.id,
       title: item.title,
       homeworkTitle: "Activity",
@@ -842,13 +849,14 @@ export async function saveWordDeckHomeworkStateAction(
     wasFinished: row.status === "DONE",
   }, now);
   await db.update(activityGames).set({
-    wordDeck: {
-      ...row.wordDeck,
+    // Merge runtime fields into the current value so a simultaneous teacher
+    // reaction is never overwritten by the student's card navigation.
+    wordDeck: sql`${activityGames.wordDeck} || ${JSON.stringify({
       liveState: state,
-      attemptStartedAt: tracking.attemptStartedAt,
-      lastCompletedAttemptStartedAt: tracking.lastCompletedAttemptStartedAt,
-      attempts: tracking.attempts,
-    },
+      attemptStartedAt: tracking.attemptStartedAt ?? null,
+      lastCompletedAttemptStartedAt: tracking.lastCompletedAttemptStartedAt ?? null,
+      attempts: tracking.attempts ?? [],
+    })}::jsonb`,
     status: finished ? "DONE" : state.at >= 0 ? "RUNNING" : "LOBBY",
     updatedAt: now,
   }).where(eq(activityGames.id, row.id));

@@ -5,6 +5,7 @@ import type { ClassTimerState } from "@/lib/class-timer";
 import type { ClassReaction } from "@/lib/class-reaction";
 import type { RegularLessonSection } from "@/lib/regular-lesson";
 import type { LessonHomeworkEntry } from "@/lib/lesson-homework";
+import type { HomeworkFeedbackSettings } from "@/lib/homework-feedback";
 import type {
   WordDeckLiveState,
   WordDeckHomeworkAttempt,
@@ -961,11 +962,12 @@ export const activityGames = pgTable("activity_games", {
     /** Кто назначил домашнюю активность; живому классу это поле не нужно. */
     assignedByTeacherId?: string;
     /** Серверное начало текущего прохождения для точного времени. */
-    attemptStartedAt?: string;
+    attemptStartedAt?: string | null;
     /** Не даёт повторно записать уже завершённое прохождение. */
-    lastCompletedAttemptStartedAt?: string;
+    lastCompletedAttemptStartedAt?: string | null;
     /** Независимая история всех завершённых прохождений. */
     attempts?: WordDeckHomeworkAttempt[];
+    homeworkFeedback?: HomeworkFeedbackSettings;
   }>(),
   /**
    * Чем спрашиваем.
@@ -1024,6 +1026,8 @@ export const activityGamesRelations = relations(activityGames, ({ one }) => ({
  */
 export const wordRevisions = pgTable("word_revisions", {
   id: uuid("id").primaryKey().defaultRandom(),
+  /** Null in older assignments means automatic result reactions are enabled. */
+  homeworkFeedback: jsonb("homework_feedback").$type<HomeworkFeedbackSettings>(),
   studentId: uuid("student_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),

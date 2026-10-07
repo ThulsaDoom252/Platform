@@ -5,6 +5,8 @@ import { myRevisionsAction } from "@/lib/actions/revision";
 import { getDict } from "@/lib/i18n/server";
 import { IconCheckCircle } from "@/components/icons";
 import { RevisionList } from "@/components/revision/revision-list";
+import { HomeworkResultReactionBadge } from "@/components/homework-result-reaction";
+import { resolveHomeworkFeedback } from "@/lib/homework-feedback";
 
 export default async function StudentHomeworkPage() {
   const [items, games, revisions, { t }] = await Promise.all([
@@ -27,6 +29,7 @@ export default async function StudentHomeworkPage() {
             <Link key={item.id} href={`/student/lessons/${item.id}?section=homework`} className="rounded-2xl bg-surface p-5 ring-1 ring-line transition hover:-translate-y-0.5 hover:ring-accent">
               <p className="text-[10px] font-black uppercase tracking-[.16em] text-accent">{t.interactiveHomework.eyebrow}</p>
               <p className="mt-1 font-black text-content">{item.title}</p>
+              <HomeworkResultReactionBadge compact reaction={resolveHomeworkFeedback(item.homeworkFeedback, null, false)} />
               <p className="mt-3 text-xs font-bold text-muted">{t.wordDeck.openHomework} →</p>
             </Link>
           ))}
@@ -72,6 +75,7 @@ export default async function StudentHomeworkPage() {
                     </div>
                   )}
                   <p className="mt-4 text-xs font-black text-accent">{t.wordDeck.openHomework} →</p>
+                  <HomeworkResultReactionBadge compact reaction={resolveHomeworkFeedback(game.homeworkFeedback, null, false)} />
                 </Link>
               );
             })}

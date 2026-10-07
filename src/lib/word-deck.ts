@@ -82,8 +82,8 @@ export function remainingWordDeckSeconds(state: WordDeckLiveState, settings: Pic
 
 export type WordDeckHomeworkTracking = {
   assignedByTeacherId?: string;
-  attemptStartedAt?: string;
-  lastCompletedAttemptStartedAt?: string;
+  attemptStartedAt?: string | null;
+  lastCompletedAttemptStartedAt?: string | null;
   attempts?: WordDeckHomeworkAttempt[];
 };
 

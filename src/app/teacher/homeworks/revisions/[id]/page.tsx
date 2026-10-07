@@ -6,6 +6,8 @@ import { getDict } from "@/lib/i18n/server";
 import { StudentPresence } from "@/components/student-presence";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { HomeworkActivityTransfer } from "@/components/teacher/homework-activity-transfer";
+import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
+import { latestCompletedHomeworkScore, readHomeworkFeedback } from "@/lib/homework-feedback";
 
 export default async function TeacherRevisionHomeworkPage({
   params,
@@ -51,12 +53,15 @@ export default async function TeacherRevisionHomeworkPage({
         </div>
         <div className="mt-4 border-t border-line pt-2">
           {activity.attempts.length > 0 ? (
-            <RevisionAttempts revisionId={activity.id} />
+            <RevisionAttempts revisionId={activity.id} homeworkFeedback={readHomeworkFeedback(activity.homeworkFeedback)} />
           ) : (
             <p className="py-6 text-center text-sm text-faint">{t.revision.notDone}</p>
           )}
         </div>
       </section>
+      <HomeworkFeedbackPanel kind="REVISION" id={activity.id} settings={activity.homeworkFeedback}
+        score={latestCompletedHomeworkScore(activity.attempts)} teacher
+        canAuto={activity.modes.some((mode) => mode !== "flashcards")} />
     </div>
   );
 }

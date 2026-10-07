@@ -13,6 +13,8 @@ import { queueStudentNotification } from "@/lib/notifications";
 import { publishClassRealtime, publishUserRealtime } from "@/lib/realtime-server";
 import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-lesson";
 import { homeworkReactionPatchSql, homeworkReactionsResetSql } from "@/lib/homework-reaction-persistence";
+import { lessonHomeworkFeedback, type HomeworkFeedbackSettings } from "@/lib/homework-feedback";
+import { homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
 import {
   findHomeworkItem,
   assignedInteractiveHomework,
@@ -1089,7 +1091,7 @@ export async function submitHomeworkAutoAnswerAction(
 
   await db
     .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
+    .set({ answers: homeworkStateWithCurrentResultSql(lessonAssignments.answers, state), updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/student/homework`);
@@ -1123,7 +1125,7 @@ export async function resetHomeworkExerciseAnswersAction(
   }
   await db
     .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
+    .set({ answers: homeworkStateWithCurrentResultSql(lessonAssignments.answers, state), updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/student/homework`);
@@ -1162,7 +1164,7 @@ export async function saveHomeworkResponseAction(
   }
   await db
     .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
+    .set({ answers: homeworkStateWithCurrentResultSql(lessonAssignments.answers, state), updatedAt: new Date() })
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath(`/student/homework`);
@@ -1219,7 +1221,7 @@ export async function submitInteractiveHomeworkForReviewAction(
   await db.transaction(async (tx) => {
     await tx
       .update(lessonAssignments)
-      .set({ answers: state, updatedAt: new Date() })
+      .set({ answers: homeworkStateWithCurrentResultSql(lessonAssignments.answers, state), updatedAt: new Date() })
       .where(eq(lessonAssignments.id, row.assignment.id));
     await tx.insert(notifications).values({
       recipientId: row.authorId,
@@ -1491,6 +1493,7 @@ export async function removeHomeworkQuestionAction(
 
 export type HomeworkAssignmentCard = {
   id: string;
+  homeworkFeedback?: HomeworkFeedbackSettings;
   title: string;
   homeworkTitle: string;
   done: number;
@@ -1579,6 +1582,7 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
       id: row.assignment.id,
       title: row.title,
       homeworkTitle: plan?.title || legacy[0]?.title || "Homework",
+      homeworkFeedback: lessonHomeworkFeedback(state),
       ...progress,
       requiredDone: exerciseProgress.required.done,
       requiredTotal: exerciseProgress.required.total,
@@ -1638,6 +1642,7 @@ export async function myInteractiveHomeworkAction(): Promise<HomeworkAssignmentC
       bonusDone: exerciseProgress.bonuses.done,
       bonusTotal: exerciseProgress.bonuses.total,
       updatedAt: row.assignment.updatedAt.toISOString(),
+      homeworkFeedback: lessonHomeworkFeedback(state),
     }];
   });
 }
