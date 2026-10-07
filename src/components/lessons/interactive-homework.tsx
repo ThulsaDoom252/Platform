@@ -1313,23 +1313,23 @@ function gradePresentation(score: number) {
   return {
     label,
     className: label === "great"
-      ? "text-emerald-600"
+      ? "text-emerald-600 dark:text-emerald-300"
       : label === "good"
-        ? "text-lime-600"
+        ? "text-lime-600 dark:text-lime-300"
         : label === "not-bad"
-          ? "text-amber-500"
+          ? "text-amber-500 dark:text-amber-300"
           : label === "could-be-better"
-            ? "text-orange-500"
-            : "text-rose-600",
+            ? "text-orange-500 dark:text-orange-300"
+            : "text-rose-600 dark:text-rose-300",
     panelClassName: label === "great"
-      ? "border-emerald-300 bg-emerald-50/70"
+      ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-700 dark:bg-emerald-950/30"
       : label === "good"
-        ? "border-lime-300 bg-lime-50/70"
+        ? "border-lime-300 bg-lime-50/70 dark:border-lime-700 dark:bg-lime-950/30"
         : label === "not-bad"
-          ? "border-amber-300 bg-amber-50/70"
+          ? "border-amber-300 bg-amber-50/70 dark:border-amber-700 dark:bg-amber-950/30"
           : label === "could-be-better"
-            ? "border-orange-300 bg-orange-50/70"
-            : "border-rose-300 bg-rose-50/70",
+            ? "border-orange-300 bg-orange-50/70 dark:border-orange-700 dark:bg-orange-950/30"
+            : "border-rose-300 bg-rose-50/70 dark:border-rose-700 dark:bg-rose-950/30",
   };
 }
 

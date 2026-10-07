@@ -176,6 +176,7 @@ test("оценка упражнения и словесный результат
       { id: "score-two", prompt: "Two ___", answer: "two" },
     ],
   };
+  assert.equal(homeworkExerciseScore(exercise, {}), null);
   assert.equal(homeworkExerciseScore(exercise, {
     [homeworkStatusKey("score-one")]: "correct",
     [homeworkStatusKey("score-two")]: "locked",

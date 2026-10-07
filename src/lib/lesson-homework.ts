@@ -880,6 +880,7 @@ export function homeworkExerciseScore(
   const teacherScore = homeworkExerciseTeacherScore(state, exercise.id);
   if (teacherScore !== null) return teacherScore;
   if (!isHomeworkAutoKind(exercise.kind) || exercise.items.length === 0) return null;
+  if (!exercise.items.some((item) => homeworkStatus(state, item.id) !== null)) return null;
   const correct = exercise.items.filter(
     (item) => homeworkStatus(state, item.id) === "correct",
   ).length;
