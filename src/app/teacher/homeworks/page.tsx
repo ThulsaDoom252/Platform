@@ -8,6 +8,7 @@ import {
 import { DeleteStudentHomeworkButton } from "@/components/teacher/delete-student-homework-button";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { HomeworkSourceAssigner } from "@/components/teacher/homework-source-assigner";
+import { HomeworkGroupedList } from "@/components/teacher/homework-grouped-list";
 import {
   IconCalendar,
   IconCap,
@@ -188,20 +189,42 @@ export default async function TeacherHomeworksPage({
 
           <StudentFolderHeader group={selectedGroup} labels={t.teacherHomeworks} />
 
-          <section className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-line sm:px-4">
-            <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
-              {t.teacherHomeworks.sortFolderBy}
-            </span>
-            {sortButton("status", t.teacherHomeworks.sortStatus)}
-            {sortButton("assigned", t.teacherHomeworks.sortAssigned)}
-            <HomeworkBackgroundToggle
-              showLabel={t.teacherHomeworks.showColors}
-              hideLabel={t.teacherHomeworks.hideColors}
-            />
-          </section>
-
-          <div className="flex flex-col gap-3">
-            {sorted.map((item) => item.kind === "REVISION" ? (
+          <HomeworkGroupedList
+            locale={localeName}
+            dateDescending={sort === "assigned" ? desc : true}
+            labels={{
+              grouping: t.teacherHomeworks.grouping,
+              groupByAssignedDate: t.teacherHomeworks.groupByAssignedDate,
+              groupByHomeworkType: t.teacherHomeworks.groupByHomeworkType,
+              interactiveHomeworks: t.teacherHomeworks.interactiveHomeworks,
+              activities: t.wordDeck.homeworkActivities,
+              unknownAssignedDate: t.teacherHomeworks.unknownAssignedDate,
+              activityTypes: {
+                WORDS: t.wordDeck.title,
+                GUESS_DESCRIPTION: t.wordDeck.guessByDescription,
+                GUESS_PICTURE: t.wordDeck.guessByPicture,
+                SPELLING: t.wordDeck.spellingTitle,
+                REVISION: t.revision.title,
+                OTHER: t.teacherHomeworks.otherActivities,
+              },
+            }}
+            sortControls={<>
+              <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
+                {t.teacherHomeworks.sortFolderBy}
+              </span>
+              {sortButton("status", t.teacherHomeworks.sortStatus)}
+              {sortButton("assigned", t.teacherHomeworks.sortAssigned)}
+              <HomeworkBackgroundToggle
+                showLabel={t.teacherHomeworks.showColors}
+                hideLabel={t.teacherHomeworks.hideColors}
+              />
+            </>}
+            cards={sorted.map((item) => ({
+              id: item.id,
+              kind: item.kind,
+              assignedAt: item.assignedAt,
+              activityType: item.kind === "ACTIVITY" ? item.activityType : undefined,
+              card: item.kind === "REVISION" ? (
               <RevisionHomeworkCard
                 key={item.id}
                 item={item}
@@ -220,8 +243,9 @@ export default async function TeacherHomeworksPage({
                 assignedDateFormat={assignedDateFormat}
                 lessonDateFormat={lessonDateFormat}
               />
-            ))}
-          </div>
+              ),
+            }))}
+          />
         </>
       ) : (
         <>
@@ -548,6 +572,7 @@ function HomeworkCard({
     viewActivity: string;
     spellingTitle: string;
     guessByPicture: string;
+    guessByDescription: string;
     title: string;
   };
   assignedDateFormat: Intl.DateTimeFormat;
@@ -560,7 +585,9 @@ function HomeworkCard({
       ? activityLabels.spellingTitle
       : item.activityType === "GUESS_PICTURE"
         ? activityLabels.guessByPicture
-        : activityLabels.title
+        : item.activityType === "GUESS_DESCRIPTION"
+          ? activityLabels.guessByDescription
+          : activityLabels.title
     : "";
   const href = activity
     ? `/teacher/homeworks/activities/${item.id}`
