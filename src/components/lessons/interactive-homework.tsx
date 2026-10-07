@@ -15,6 +15,7 @@ import { useT } from "@/components/i18n-provider";
 import {
   addHomeworkQuestionAction,
   assignInteractiveHomeworkAction,
+  clearHomeworkReactionsAction,
   highlightHomeworkTextRangeAction,
   homeworkReviewStateAction,
   removeHomeworkQuestionAction,
@@ -54,6 +55,8 @@ import {
   homeworkNoteVisibleKey,
   homeworkReaction,
   homeworkReactionColor,
+  homeworkHasReactions,
+  mergeHomeworkReactions,
   homeworkRemainingWordBank,
   homeworkStatus,
   homeworkStatusKey,
@@ -73,6 +76,7 @@ import {
   homeworkVisibleExercises,
   homeworkVoiceRecordingTarget,
   setHomeworkReaction,
+  withoutHomeworkReactions,
   toggleHomeworkTextHighlightRange,
   type HomeworkHighlightColor,
   type HomeworkReaction,
@@ -93,6 +97,7 @@ import {
   IconEyeOff,
   IconPencil,
   IconPlus,
+  IconReset,
   IconShuffle,
   IconTrash,
   IconX,
@@ -170,6 +175,7 @@ export function InteractiveHomework({
   const [highlightColor, setHighlightColor] = useState<HomeworkHighlightColor>("yellow");
   const [interactionError, setInteractionError] = useState<string | null>(null);
   const [interactionBusy, startInteraction] = useTransition();
+  const [reactionResetBusy, startReactionReset] = useTransition();
   const [teacherFocusId, setTeacherFocusId] = useState<string | null>(null);
   const activeFocusId = session.teacher ? teacherFocusId ?? focusId : focusId;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -179,6 +185,22 @@ export function InteractiveHomework({
   const revisionRequestedAt = homeworkRevisionRequestedAt(state);
   const assignedAt = homeworkAssignedAt(state);
   const exercises = homeworkVisibleExercises(currentPlan, state, session.teacher, activeFocusId);
+
+  const clearAllReactions = () => {
+    setInteractionError(null);
+    startReactionReset(async () => {
+      try {
+        const result = await clearHomeworkReactionsAction(session.assignmentId);
+        if (result.error || !result.cleared) {
+          setInteractionError(t.interactiveHomework.clearReactionsFailed);
+          return;
+        }
+        setState((current) => withoutHomeworkReactions(current));
+      } catch {
+        setInteractionError(t.interactiveHomework.clearReactionsFailed);
+      }
+    });
+  };
 
   // Focus is an explicit teacher control in both the lesson and homework review.
   // It never edits a student's answer, review status or saved highlighting.
@@ -255,6 +277,16 @@ export function InteractiveHomework({
     onStateChange?.(state);
   }, [onStateChange, state]);
 
+  // The class already refreshes the assignment. Apply its feedback without
+  // extra requests or replacing an answer the student is currently typing.
+  useEffect(() => {
+    if (session.teacher || !session.liveClass) return;
+    const frame = requestAnimationFrame(() => {
+      setState((current) => mergeHomeworkReactions(current, session.state));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [session.liveClass, session.state, session.teacher]);
+
   const pullReviewState = async () => {
     const next = await homeworkReviewStateAction(session.assignmentId);
     if (next) setState(next);
@@ -286,7 +318,7 @@ export function InteractiveHomework({
       reviewTools: teacherReviewTools,
       highlightMode,
       highlightColor,
-      busy: interactionBusy,
+      busy: interactionBusy || reactionResetBusy,
       onHighlightText: highlightText,
     }}>
     <div ref={rootRef} className="flex flex-col gap-4">
@@ -310,6 +342,18 @@ export function InteractiveHomework({
                 {showAnswers
                   ? t.interactiveHomework.hideAnswers
                   : t.interactiveHomework.showAnswers}
+              </button>
+            )}
+            {session.teacher && (
+              <button
+                type="button"
+                disabled={reactionResetBusy || !homeworkHasReactions(state)}
+                onClick={clearAllReactions}
+                title={t.interactiveHomework.clearAllReactionsHint}
+                className="flex h-10 items-center gap-2 rounded-xl bg-accent-soft px-3 text-xs font-black text-accent ring-1 ring-accent/25 transition hover:bg-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <IconReset className={cn("h-4 w-4", reactionResetBusy && "animate-spin")} />
+                {t.interactiveHomework.clearAllReactions}
               </button>
             )}
             {reviewedAt ? (
@@ -1105,6 +1149,22 @@ function HomeworkExerciseView({
     setResetKey((key) => key + 1);
   });
 
+  const clearReactions = () => {
+    setActionError(null);
+    startAction(async () => {
+      try {
+        const result = await clearHomeworkReactionsAction(session.assignmentId, exercise.id);
+        if (result.error || !result.cleared) {
+          setActionError(t.interactiveHomework.clearReactionsFailed);
+          return;
+        }
+        setState((current) => withoutHomeworkReactions(current, exercise));
+      } catch {
+        setActionError(t.interactiveHomework.clearReactionsFailed);
+      }
+    });
+  };
+
   const toggleHidden = () => startAction(async () => {
     const result = await setHomeworkExerciseHiddenAction(session.assignmentId, exercise.id, !hidden);
     if (result.error) return;
@@ -1119,12 +1179,9 @@ function HomeworkExerciseView({
 
   if (exercise.optional) {
     return (
-      <section className={cn(
-        "flex items-start gap-2 rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm",
+      <section data-homework-reaction={reactionColor ?? undefined} className={cn(
+        "homework-reaction-block flex items-start gap-2 rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm",
         hidden && "border-faint/40 opacity-70",
-        reactionColor === "green" && "border-emerald-500 bg-emerald-50/40",
-        reactionColor === "yellow" && "border-yellow-400 bg-yellow-50/40",
-        reactionColor === "red" && "border-rose-500 bg-rose-50/40",
         focusId === exerciseFocusId && "border-accent ring-2 ring-accent/40",
       )}>
         <details data-homework-focus={exerciseFocusId} className="group min-w-0 flex-1">
@@ -1198,6 +1255,8 @@ function HomeworkExerciseView({
           teacher={session.teacher}
           hidden={hidden}
           onReset={reset}
+          onClearReactions={clearReactions}
+          hasReactions={homeworkHasReactions(state, exercise)}
           onToggleHidden={toggleHidden}
           onDelete={onDelete}
         />
@@ -1206,12 +1265,9 @@ function HomeworkExerciseView({
   }
 
   return (
-    <section className={cn(
-      "rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5",
+    <section data-homework-reaction={reactionColor ?? undefined} className={cn(
+      "homework-reaction-block rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5",
       hidden && "opacity-70 ring-faint/40",
-      reactionColor === "green" && "bg-emerald-50/40 ring-2 ring-emerald-500",
-      reactionColor === "yellow" && "bg-yellow-50/40 ring-2 ring-yellow-400",
-      reactionColor === "red" && "bg-rose-50/40 ring-2 ring-rose-500",
       focusId === exerciseFocusId && "ring-2 ring-accent",
     )}>
       <div data-homework-focus={exerciseFocusId} className="flex items-start gap-3">
@@ -1284,6 +1340,8 @@ function HomeworkExerciseView({
           teacher={session.teacher}
           hidden={hidden}
           onReset={reset}
+          onClearReactions={clearReactions}
+          hasReactions={homeworkHasReactions(state, exercise)}
           onToggleHidden={toggleHidden}
           onDelete={onDelete}
         />
@@ -1523,6 +1581,8 @@ function ExerciseOptionsMenu({
   teacher,
   hidden,
   onReset,
+  onClearReactions,
+  hasReactions,
   onToggleHidden,
   onDelete,
 }: {
@@ -1530,6 +1590,8 @@ function ExerciseOptionsMenu({
   teacher: boolean;
   hidden: boolean;
   onReset: () => void;
+  onClearReactions: () => void;
+  hasReactions: boolean;
   onToggleHidden: () => void;
   onDelete?: () => void;
 }) {
@@ -1554,6 +1616,21 @@ function ExerciseOptionsMenu({
         >
           {t.interactiveHomework.resetAnswer}
         </button>
+        {teacher && (
+          <button
+            type="button"
+            disabled={busy || !hasReactions}
+            onClick={(event) => {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+              onClearReactions();
+            }}
+            title={t.interactiveHomework.clearExerciseReactionsHint}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-bold text-accent transition hover:bg-accent-soft disabled:opacity-50"
+          >
+            <IconReset className="h-3.5 w-3.5 shrink-0" />
+            {t.interactiveHomework.clearExerciseReactions}
+          </button>
+        )}
         {teacher && (
           <button
             type="button"
@@ -2417,7 +2494,7 @@ function HomeworkReactionControl({
   const [busy, startBusy] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const current = homeworkReaction(state, target, targetId);
-  const editable = session.teacher && interaction.reviewTools;
+  const editable = session.teacher;
   const label = (reaction: HomeworkReaction) => {
     if (reaction === "thumbs-up") return t.interactiveHomework.reactionThumbsUp;
     if (reaction === "happy") return t.interactiveHomework.reactionHappy;
@@ -2427,6 +2504,26 @@ function HomeworkReactionControl({
     return t.interactiveHomework.reactionCross;
   };
 
+  const sendReaction = (reaction: HomeworkReaction | null) => {
+    setError(null);
+    startBusy(async () => {
+      try {
+        const result = await setHomeworkReactionAction(
+          session.assignmentId, target, targetId, reaction,
+        );
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setState((value) =>
+          setHomeworkReaction(value, target, targetId, result.reaction ?? null));
+        setOpen(false);
+      } catch {
+        setError(t.interactiveHomework.reactionFailed);
+      }
+    });
+  };
+
   if (!editable && !current) return null;
 
   return (
@@ -2434,26 +2531,26 @@ function HomeworkReactionControl({
       {editable ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || interaction.busy}
           onClick={() => setOpen((value) => !value)}
           title={current ? label(current) : t.interactiveHomework.addReaction}
           aria-label={current ? label(current) : t.interactiveHomework.addReaction}
           aria-expanded={open}
           className={cn(
-            "flex h-8 min-w-8 items-center justify-center rounded-lg transition hover:bg-accent-soft disabled:opacity-50",
-            current ? "bg-surface-2 ring-1 ring-line" : "text-faint",
+            "flex min-w-8 items-center justify-center transition hover:bg-accent-soft disabled:opacity-50",
+            current ? "rounded-xl" : "h-8 rounded-lg text-faint",
           )}
         >
           {current
-            ? <HomeworkReactionBadge reaction={current} label={label(current)} compact />
+            ? <HomeworkReactionBadge key={current} reaction={current} label={label(current)} variant={target} />
             : <span className="text-base leading-none">🙂</span>}
         </button>
       ) : (
-        <HomeworkReactionBadge reaction={current!} label={label(current!)} />
+        <HomeworkReactionBadge key={current} reaction={current!} label={label(current!)} variant={target} />
       )}
 
       {editable && open && (
-        <div className="absolute right-0 top-10 z-40 w-56 rounded-2xl bg-surface p-2 shadow-xl ring-1 ring-line">
+        <div className="absolute right-0 top-full z-40 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-2xl bg-surface p-2 shadow-xl ring-1 ring-line">
           <p className="px-2 pb-2 pt-1 text-[10px] font-black uppercase tracking-wide text-faint">
             {t.interactiveHomework.chooseReaction}
           </p>
@@ -2462,26 +2559,8 @@ function HomeworkReactionControl({
               <button
                 key={reaction}
                 type="button"
-                disabled={busy}
-                onClick={() => {
-                  setError(null);
-                  startBusy(async () => {
-                    const result = await setHomeworkReactionAction(
-                      session.assignmentId,
-                      target,
-                      targetId,
-                      reaction,
-                    );
-                    if (result.error) {
-                      setError(result.error);
-                      return;
-                    }
-                    const nextReaction = result.reaction ?? null;
-                    setState((value) =>
-                      setHomeworkReaction(value, target, targetId, nextReaction));
-                    setOpen(false);
-                  });
-                }}
+                disabled={busy || interaction.busy}
+                onClick={() => sendReaction(reaction)}
                 aria-label={label(reaction)}
                 aria-pressed={current === reaction}
                 title={current === reaction
@@ -2492,10 +2571,21 @@ function HomeworkReactionControl({
                   current === reaction && "bg-accent-soft ring-1 ring-accent/30",
                 )}
               >
-                <HomeworkReactionBadge reaction={reaction} label={label(reaction)} />
+                <HomeworkReactionBadge reaction={reaction} label={label(reaction)} variant="picker" />
               </button>
             ))}
           </div>
+          {current && (
+            <button
+              type="button"
+              disabled={busy || interaction.busy}
+              onClick={() => sendReaction(null)}
+              className="mt-2 flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-accent-soft px-2 text-xs font-bold text-accent transition hover:bg-accent hover:text-white disabled:opacity-50"
+            >
+              <IconX className="h-3.5 w-3.5" />
+              {t.interactiveHomework.clearReaction}
+            </button>
+          )}
           {error && (
             <p className="px-2 pt-2 text-[10px] font-bold text-rose-600">
               {t.interactiveHomework.reactionFailed}
@@ -2510,11 +2600,11 @@ function HomeworkReactionControl({
 function HomeworkReactionBadge({
   reaction,
   label,
-  compact = false,
+  variant = "item",
 }: {
   reaction: HomeworkReaction;
   label: string;
-  compact?: boolean;
+  variant?: HomeworkReactionTarget | "picker";
 }) {
   const symbol = reaction === "thumbs-up"
     ? "👍"
@@ -2532,15 +2622,13 @@ function HomeworkReactionBadge({
       role="img"
       aria-label={label}
       title={label}
+      data-homework-reaction={homeworkReactionColor(reaction) ?? undefined}
       className={cn(
-        "inline-flex items-center justify-center font-black leading-none",
-        compact ? "h-6 w-6 text-base" : "h-8 w-8 text-lg",
-        reaction === "thumbs-up" && "rounded-full bg-sky-100",
-        reaction === "happy" && "rounded-full bg-amber-100",
-        reaction === "angry" && "rounded-full bg-orange-100",
-        reaction === "check" && "rounded-full bg-emerald-500 text-white",
-        reaction === "warning" && "rounded-full bg-yellow-300 text-yellow-950",
-        reaction === "cross" && "rounded-full bg-rose-500 text-white",
+        "homework-reaction-badge inline-flex shrink-0 items-center justify-center rounded-xl border-2 font-black leading-none",
+        variant !== "picker" && "homework-reaction-visible",
+        variant === "exercise" ? "h-12 w-12 text-[30px] sm:h-14 sm:w-14 sm:text-[34px]"
+          : variant === "picker" ? "h-9 w-9 text-[23px]"
+            : "h-10 w-10 text-[26px] sm:h-11 sm:w-11 sm:text-[28px]",
       )}
     >
       {symbol}
@@ -2584,15 +2672,10 @@ function HomeworkItemShell({
   return (
     <article
       data-homework-focus={itemFocusId}
+      data-homework-reaction={reactionColor ?? undefined}
       className={cn(
-        "rounded-2xl border bg-surface p-2.5 transition sm:p-3",
-        reactionColor === "green"
-          ? "border-emerald-500 bg-emerald-50/50"
-          : reactionColor === "yellow"
-            ? "border-yellow-400 bg-yellow-50/50"
-            : reactionColor === "red"
-              ? "border-rose-500 bg-rose-50/50"
-              : status === "correct"
+        "homework-reaction-block rounded-2xl border bg-surface p-2.5 transition sm:p-3",
+        status === "correct"
           ? "border-emerald-400"
           : status === "locked"
             ? "border-rose-500"

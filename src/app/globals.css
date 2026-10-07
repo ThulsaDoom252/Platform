@@ -1328,6 +1328,58 @@ body {
   animation: homework-correct-pop 0.72s ease-out;
 }
 
+/* Teacher feedback keeps its green/yellow/red meaning in every account palette.
+   Blend with the active surface, never a hard-coded pale background. */
+.homework-reaction-block[data-homework-reaction="green"],
+.homework-reaction-badge[data-homework-reaction="green"] {
+  --homework-feedback: var(--t-green);
+}
+
+.homework-reaction-block[data-homework-reaction="yellow"],
+.homework-reaction-badge[data-homework-reaction="yellow"] {
+  --homework-feedback: var(--t-amber);
+}
+
+.homework-reaction-block[data-homework-reaction="red"],
+.homework-reaction-badge[data-homework-reaction="red"] {
+  --homework-feedback: var(--t-rose);
+}
+
+.homework-reaction-block[data-homework-reaction] {
+  border-color: color-mix(in srgb, var(--homework-feedback) 75%, var(--line));
+  background: linear-gradient(115deg,
+    color-mix(in srgb, var(--homework-feedback) 17%, var(--surface)),
+    color-mix(in srgb, var(--homework-feedback) 7%, var(--surface)));
+  /* Keep the existing teacher-focus ring alongside the reaction's colour bar. */
+  box-shadow: inset 5px 0 0 var(--homework-feedback),
+    inset 0 0 0 1px color-mix(in srgb, var(--homework-feedback) 65%, var(--line)),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    0 4px 18px color-mix(in srgb, var(--homework-feedback) 12%, transparent);
+}
+
+.homework-reaction-badge {
+  border-color: color-mix(in srgb, var(--homework-feedback) 80%, var(--line));
+  background: color-mix(in srgb, var(--homework-feedback) 22%, var(--surface));
+  color: color-mix(in srgb, var(--homework-feedback) 82%, var(--content));
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--homework-feedback) 22%, transparent);
+}
+
+@keyframes homework-reaction-appear {
+  from { transform: scale(0.82); opacity: 0.5; }
+  65% { transform: scale(1.08); opacity: 1; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.homework-reaction-visible {
+  animation: homework-reaction-appear 280ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .homework-reaction-visible {
+    animation: none;
+  }
+}
+
 .shake {
   animation: revision-shake 0.42s ease-in-out;
 }

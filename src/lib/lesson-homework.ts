@@ -72,7 +72,7 @@ const ITEM_FOCUS = "homework:item:";
 const HIGHLIGHT = "hw:highlight:";
 const TEXT_HIGHLIGHT = "hw:text-highlight:";
 const TEXT_RANGE_HIGHLIGHT = "hw:text-range-highlight:";
-const REACTION = "hw:reaction:";
+export const HOMEWORK_REACTION_PREFIX = "hw:reaction:";
 const EXERCISE_SCORE = "hw:exercise-score:";
 const EXERCISE_COMMENT = "hw:exercise-comment:";
 
@@ -119,10 +119,10 @@ const HOMEWORK_REACTIONS = new Set<HomeworkReaction>([
   "cross",
 ]);
 
-const homeworkReactionKey = (
+export const homeworkReactionKey = (
   target: HomeworkReactionTarget,
   id: string,
-) => `${REACTION}${target}:${id}`;
+) => `${HOMEWORK_REACTION_PREFIX}${target}:${id}`;
 
 export function homeworkReaction(
   state: HomeworkStoredState,
@@ -146,6 +146,46 @@ export function setHomeworkReaction(
   if (!reaction) delete next[key];
   else if (HOMEWORK_REACTIONS.has(reaction)) next[key] = reaction;
   return next;
+}
+
+export function homeworkExerciseReactionKeys(exercise: HomeworkExercise): string[] {
+  return [
+    homeworkReactionKey("exercise", exercise.id),
+    ...exercise.items.map((item) => homeworkReactionKey("item", item.id)),
+  ];
+}
+
+export function homeworkHasReactions(
+  state: HomeworkStoredState,
+  exercise?: HomeworkExercise,
+): boolean {
+  return exercise
+    ? homeworkExerciseReactionKeys(exercise).some((key) => Object.hasOwn(state, key))
+    : Object.keys(state).some((key) => key.startsWith(HOMEWORK_REACTION_PREFIX));
+}
+
+/** Reset only feedback reactions, never answers, grades, notes or highlighting. */
+export function withoutHomeworkReactions(
+  state: HomeworkStoredState,
+  exercise?: HomeworkExercise,
+): HomeworkStoredState {
+  const keys = exercise ? new Set(homeworkExerciseReactionKeys(exercise)) : null;
+  return Object.fromEntries(Object.entries(state).filter(([key]) =>
+    keys ? !keys.has(key) : !key.startsWith(HOMEWORK_REACTION_PREFIX)));
+}
+
+/** Live class updates must not replace the student's unsaved answer drafts. */
+export function mergeHomeworkReactions(
+  state: HomeworkStoredState,
+  incoming: HomeworkStoredState,
+): HomeworkStoredState {
+  const entries = Object.entries(incoming).filter(([key]) =>
+    key.startsWith(HOMEWORK_REACTION_PREFIX));
+  const currentKeys = Object.keys(state).filter((key) =>
+    key.startsWith(HOMEWORK_REACTION_PREFIX));
+  if (entries.length === currentKeys.length && entries.every(([key, value]) =>
+    state[key] === value)) return state;
+  return { ...withoutHomeworkReactions(state), ...Object.fromEntries(entries) };
 }
 
 /** A reaction doubles as visual feedback for the entire reviewed block. */

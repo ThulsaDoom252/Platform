@@ -12,6 +12,7 @@ import { managedUploadPath, removePublicFile } from "@/lib/public-file-store";
 import { queueStudentNotification } from "@/lib/notifications";
 import { publishClassRealtime, publishUserRealtime } from "@/lib/realtime-server";
 import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-lesson";
+import { homeworkReactionPatchSql, homeworkReactionsResetSql } from "@/lib/homework-reaction-persistence";
 import {
   findHomeworkItem,
   assignedInteractiveHomework,
@@ -32,6 +33,8 @@ import {
   homeworkNoteVisibleKey,
   homeworkProgress,
   homeworkReaction,
+  homeworkReactionKey,
+  homeworkExerciseReactionKeys,
   homeworkRemovedAt,
   homeworkRemovedAtKey,
   homeworkPlanForAssignment,
@@ -57,7 +60,6 @@ import {
   legacyHomeworkFromEntries,
   isHomeworkAutoKind,
   normalizeInteractiveHomework,
-  setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
   toggleHomeworkTextHighlightRange,
@@ -274,10 +276,12 @@ export async function setHomeworkReactionAction(
 
   const current = row.assignment.answers ?? {};
   const nextReaction = homeworkReaction(current, target, id) === reaction ? null : reaction;
-  const state = setHomeworkReaction(current, target, id, nextReaction);
   await db
     .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
+    .set({
+      answers: homeworkReactionPatchSql(lessonAssignments.answers, homeworkReactionKey(target, id), nextReaction),
+      updatedAt: new Date(),
+    })
     .where(eq(lessonAssignments.id, row.assignment.id));
 
   revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
@@ -286,6 +290,40 @@ export async function setHomeworkReactionAction(
   revalidatePath("/student/homework");
   await publishHomeworkReviewRealtime(row.assignment.studentId);
   return { reaction: nextReaction };
+}
+
+/** Clear all reactions, or one exercise and its sentences, at any review status. */
+export async function clearHomeworkReactionsAction(
+  assignmentId: string,
+  exerciseId: string | null = null,
+): Promise<{ error?: string; cleared?: boolean }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  if (typeof assignmentId !== "string" ||
+    !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(assignmentId)) {
+    return { error: "Домашняя работа не найдена" };
+  }
+  const row = await assignmentWithPlan(assignmentId);
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const exercise = exerciseId === null
+    ? undefined
+    : row.plan.exercises.find((entry) => entry.id === exerciseId);
+  if (exerciseId !== null && !exercise) return { error: "Упражнение не найдено" };
+
+  await db.update(lessonAssignments).set({
+    answers: homeworkReactionsResetSql(
+      lessonAssignments.answers,
+      exercise ? homeworkExerciseReactionKeys(exercise) : undefined,
+    ),
+    updatedAt: new Date(),
+  }).where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
+  return { cleared: true };
 }
 
 /** Teacher score and public feedback for one exercise. */
