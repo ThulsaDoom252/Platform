@@ -13,6 +13,7 @@ import {
   focusHomeworkElementAction,
   focusLessonWordAction,
   focusRegularLessonElementAction,
+  lessonPresentationStateAction,
   lessonVocabularyRevealAction,
   selectLessonLexisGroupAction,
   setLessonHighlightsAction,
@@ -102,16 +103,20 @@ export function AssignedLesson({
     return () => cancelAnimationFrame(frame);
   }, [data.assignment.highlights, data.showBritish, data.vocabularyReveal, teacher]);
 
-  const pullVocabularyReveal = async () => {
-    const next = await lessonVocabularyRevealAction(data.assignment.id);
-    if (next) setVocabularyReveal(next);
+  const pullPresentationState = async () => {
+    const next = await lessonPresentationStateAction(data.assignment.id);
+    if (!next) return;
+    marksRef.current = next.highlights;
+    setMarks(next.highlights);
+    setVocabularyReveal(next.vocabularyReveal);
+    setBritish(next.showBritish);
   };
 
   useRealtimeSubscription({
     channel: !teacher && liveClass ? `class:${data.assignment.studentId}` : null,
     events: "lesson",
-    onMessage: pullVocabularyReveal,
-    onFallback: pullVocabularyReveal,
+    onMessage: pullPresentationState,
+    onFallback: pullPresentationState,
     fallbackMs: 30_000,
     enabled: !teacher && liveClass,
   });
@@ -153,9 +158,21 @@ export function AssignedLesson({
     persistHighlights(next);
   };
 
-  const highlight = (key: string) => {
+  const highlight = (key: string | string[]) => {
+    const keys = Array.isArray(key) ? key : [key];
+    if (keys.length === 0) return;
     const previousLayer = dialogueHighlights(marksRef.current);
-    const next = toggleLessonHighlight(marksRef.current, key, highlightColor);
+    const remove = keys.every((entry) => previousLayer[entry] === highlightColor);
+    let next = marksRef.current;
+    for (const entry of keys) {
+      if (remove) {
+        const layer = dialogueHighlights(next);
+        delete layer[entry];
+        next = replaceLessonHighlights(next, layer);
+      } else if (dialogueHighlights(next)[entry] !== highlightColor) {
+        next = toggleLessonHighlight(next, entry, highlightColor);
+      }
+    }
     if (JSON.stringify(previousLayer) === JSON.stringify(dialogueHighlights(next))) return;
     highlightHistory.current.push(previousLayer);
     setHighlightHistorySize(highlightHistory.current.length);
@@ -402,6 +419,8 @@ export function AssignedLesson({
             state: data.answers,
             canAssign: teacher,
             canEdit: teacher,
+            liveClass,
+            studentId: data.assignment.studentId,
           }}
           onFocusHomework={teacher && liveClass
             ? (elementId) => {
@@ -479,6 +498,8 @@ export function AssignedLesson({
           state: data.answers,
           canAssign: teacher,
           canEdit: teacher,
+          liveClass,
+          studentId: data.assignment.studentId,
         }}
         videoSession={
           liveClass

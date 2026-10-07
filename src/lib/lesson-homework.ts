@@ -68,7 +68,10 @@ const EXERCISE_FOCUS = "homework:exercise:";
 const ITEM_FOCUS = "homework:item:";
 const HIGHLIGHT = "hw:highlight:";
 const TEXT_HIGHLIGHT = "hw:text-highlight:";
+const TEXT_RANGE_HIGHLIGHT = "hw:text-range-highlight:";
 const REACTION = "hw:reaction:";
+const EXERCISE_SCORE = "hw:exercise-score:";
+const EXERCISE_COMMENT = "hw:exercise-comment:";
 
 export type HomeworkHighlightColor = "yellow" | "green" | "red";
 export type HomeworkReaction =
@@ -90,6 +93,19 @@ export type HomeworkTextToken = {
   text: string;
   highlightable: boolean;
 };
+
+export type HomeworkTextHighlightRange = {
+  start: number;
+  end: number;
+  color: HomeworkHighlightColor;
+};
+
+export type HomeworkGradeLabel =
+  | "great"
+  | "good"
+  | "not-bad"
+  | "could-be-better"
+  | "bad";
 
 const HOMEWORK_REACTIONS = new Set<HomeworkReaction>([
   "thumbs-up",
@@ -127,6 +143,18 @@ export function setHomeworkReaction(
   if (!reaction) delete next[key];
   else if (HOMEWORK_REACTIONS.has(reaction)) next[key] = reaction;
   return next;
+}
+
+/** A reaction doubles as visual feedback for the entire reviewed block. */
+export function homeworkReactionColor(
+  reaction: HomeworkReaction | null,
+): HomeworkHighlightColor | null {
+  if (reaction === "cross" || reaction === "angry") return "red";
+  if (reaction === "warning") return "yellow";
+  if (reaction === "check" || reaction === "thumbs-up" || reaction === "happy") {
+    return "green";
+  }
+  return null;
 }
 
 export const homeworkExerciseFocusId = (exerciseId: string) =>
@@ -211,6 +239,8 @@ export const homeworkAttemptsKey = (id: string) => `${ATTEMPTS}${id}`;
 export const homeworkNoteKey = (id: string) => `${NOTE}${id}`;
 export const homeworkNoteVisibleKey = (id: string) => `${NOTE_VISIBLE}${id}`;
 export const homeworkExerciseHiddenKey = (id: string) => `${EXERCISE_HIDDEN}${id}`;
+export const homeworkExerciseScoreKey = (id: string) => `${EXERCISE_SCORE}${id}`;
+export const homeworkExerciseCommentKey = (id: string) => `${EXERCISE_COMMENT}${id}`;
 export const homeworkSubmittedAtKey = () => SUBMITTED_AT;
 export const homeworkReviewedAtKey = () => REVIEWED_AT;
 export const homeworkRevisionRequestedAtKey = () => REVISION_REQUESTED_AT;
@@ -336,6 +366,8 @@ export function withoutHomeworkExerciseState(
   delete next[homeworkExerciseHiddenKey(exercise.id)];
   delete next[homeworkHighlightKey(exerciseFocusId)];
   delete next[homeworkReactionKey("exercise", exercise.id)];
+  delete next[homeworkExerciseScoreKey(exercise.id)];
+  delete next[homeworkExerciseCommentKey(exercise.id)];
 
   for (const item of exercise.items) {
     const itemFocusId = homeworkItemFocusId(item.id);
@@ -348,6 +380,7 @@ export function withoutHomeworkExerciseState(
     delete next[homeworkReactionKey("item", item.id)];
     for (const key of Object.keys(next)) {
       if (key.startsWith(`${TEXT_HIGHLIGHT}${item.id}:`)) delete next[key];
+      if (key.startsWith(`${TEXT_RANGE_HIGHLIGHT}${item.id}:`)) delete next[key];
     }
   }
 
@@ -507,6 +540,13 @@ const homeworkTextHighlightKey = (
   tokenIndex: number,
 ) => `${TEXT_HIGHLIGHT}${itemId}:${source}:${tokenIndex}`;
 
+const homeworkTextRangeHighlightKey = (
+  itemId: string,
+  source: HomeworkTextHighlightSource,
+  start: number,
+  end: number,
+) => `${TEXT_RANGE_HIGHLIGHT}${itemId}:${source}:${start}:${end}`;
+
 export function homeworkTextHighlight(
   state: HomeworkStoredState,
   itemId: string,
@@ -543,6 +583,68 @@ export function toggleHomeworkTextHighlight(
   return next;
 }
 
+/** Saved arbitrary-length text ranges. Legacy per-word marks remain readable. */
+export function homeworkTextHighlightRanges(
+  state: HomeworkStoredState,
+  itemId: string,
+  source: HomeworkTextHighlightSource,
+  textLength = 8_000,
+): HomeworkTextHighlightRange[] {
+  if (!cleanId(itemId) || !TEXT_HIGHLIGHT_SOURCES.has(source)) return [];
+  const prefix = `${TEXT_RANGE_HIGHLIGHT}${itemId}:${source}:`;
+  return Object.entries(state).flatMap(([key, value]) => {
+    if (!key.startsWith(prefix)) return [];
+    const [startRaw, endRaw] = key.slice(prefix.length).split(":");
+    const start = Number(startRaw);
+    const end = Number(endRaw);
+    if (
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < 0 ||
+      end <= start ||
+      end > textLength ||
+      (value !== "yellow" && value !== "green" && value !== "red")
+    ) return [];
+    return [{ start, end, color: value as HomeworkHighlightColor }];
+  }).sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+export function toggleHomeworkTextHighlightRange(
+  state: HomeworkStoredState,
+  item: HomeworkItem,
+  source: HomeworkTextHighlightSource,
+  start: number,
+  end: number,
+  color: HomeworkHighlightColor,
+): HomeworkStoredState {
+  const next = { ...state };
+  const value = homeworkTextSourceValue(item, state, source);
+  if (
+    !cleanId(item.id) ||
+    !TEXT_HIGHLIGHT_SOURCES.has(source) ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end <= start ||
+    end > value.length ||
+    !value.slice(start, end).trim() ||
+    (color !== "yellow" && color !== "green" && color !== "red")
+  ) return next;
+
+  const exact = homeworkTextRangeHighlightKey(item.id, source, start, end);
+  const removeExact = next[exact] === color;
+  const prefix = `${TEXT_RANGE_HIGHLIGHT}${item.id}:${source}:`;
+  for (const key of Object.keys(next)) {
+    if (!key.startsWith(prefix)) continue;
+    const [rangeStartRaw, rangeEndRaw] = key.slice(prefix.length).split(":");
+    const rangeStart = Number(rangeStartRaw);
+    const rangeEnd = Number(rangeEndRaw);
+    if (rangeStart < end && rangeEnd > start) delete next[key];
+  }
+  if (!removeExact) next[exact] = color;
+  return next;
+}
+
 export function clearHomeworkTextHighlights(
   state: HomeworkStoredState,
   itemId: string,
@@ -552,6 +654,8 @@ export function clearHomeworkTextHighlights(
   const prefix = `${TEXT_HIGHLIGHT}${itemId}:${source ? `${source}:` : ""}`;
   for (const key of Object.keys(next)) {
     if (key.startsWith(prefix)) delete next[key];
+    const rangePrefix = `${TEXT_RANGE_HIGHLIGHT}${itemId}:${source ? `${source}:` : ""}`;
+    if (key.startsWith(rangePrefix)) delete next[key];
   }
   return next;
 }
@@ -744,6 +848,71 @@ export function homeworkStatus(
 ): HomeworkAutoStatus {
   const value = state[homeworkStatusKey(itemId)];
   return value === "correct" || value === "locked" ? value : null;
+}
+
+export function homeworkExerciseTeacherScore(
+  state: HomeworkStoredState,
+  exerciseId: string,
+): number | null {
+  if (!cleanId(exerciseId)) return null;
+  const raw = state[homeworkExerciseScoreKey(exerciseId)];
+  if (raw === undefined) return null;
+  const score = Number(raw);
+  return Number.isInteger(score) && score >= 0 && score <= 100 ? score : null;
+}
+
+export function homeworkExerciseComment(
+  state: HomeworkStoredState,
+  exerciseId: string,
+): string {
+  if (!cleanId(exerciseId)) return "";
+  return state[homeworkExerciseCommentKey(exerciseId)] ?? "";
+}
+
+export function homeworkExerciseNeedsTeacherScore(exercise: HomeworkExercise): boolean {
+  return !isHomeworkAutoKind(exercise.kind);
+}
+
+export function homeworkExerciseScore(
+  exercise: HomeworkExercise,
+  state: HomeworkStoredState,
+): number | null {
+  const teacherScore = homeworkExerciseTeacherScore(state, exercise.id);
+  if (teacherScore !== null) return teacherScore;
+  if (!isHomeworkAutoKind(exercise.kind) || exercise.items.length === 0) return null;
+  const correct = exercise.items.filter(
+    (item) => homeworkStatus(state, item.id) === "correct",
+  ).length;
+  return Math.round((correct / exercise.items.length) * 100);
+}
+
+export function homeworkGradeLabel(score: number): HomeworkGradeLabel {
+  const normalized = Math.max(0, Math.min(100, Math.round(score)));
+  if (normalized === 100) return "great";
+  if (normalized >= 80) return "good";
+  if (normalized >= 60) return "not-bad";
+  if (normalized >= 50) return "could-be-better";
+  return "bad";
+}
+
+export function homeworkOverallScore(
+  exercises: readonly HomeworkExercise[],
+  state: HomeworkStoredState,
+): { score: number | null; graded: number; total: number } {
+  const visible = exercises.filter(
+    (exercise) => !homeworkExerciseHidden(state, exercise.id) && exercise.items.length > 0,
+  );
+  const scores = visible.flatMap((exercise) => {
+    const score = homeworkExerciseScore(exercise, state);
+    return score === null ? [] : [score];
+  });
+  return {
+    score: scores.length > 0
+      ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+      : null,
+    graded: scores.length,
+    total: visible.length,
+  };
 }
 
 export function normalizeHomeworkAnswer(value: string): string {

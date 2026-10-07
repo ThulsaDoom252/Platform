@@ -2594,6 +2594,37 @@ export async function lessonVocabularyRevealAction(
   return lessonVocabularyReveal(row.openSections);
 }
 
+/** Small realtime payload for persistent teacher marks in an active lesson. */
+export async function lessonPresentationStateAction(
+  assignmentId: string,
+): Promise<{
+  highlights: Record<string, string>;
+  vocabularyReveal: LessonVocabularyReveal;
+  showBritish: boolean;
+} | null> {
+  const session = await requireUser();
+  const id = String(assignmentId ?? "");
+  const [row] = await db
+    .select({
+      studentId: lessonAssignments.studentId,
+      authorId: lessonUnits.authorId,
+      highlights: lessonAssignments.highlights,
+      openSections: lessonAssignments.openSections,
+    })
+    .from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(eq(lessonAssignments.id, id))
+    .limit(1);
+  if (!row) return null;
+  if (session.role === "STUDENT" && row.studentId !== session.userId) return null;
+  if (session.role === "TEACHER" && row.authorId !== session.userId) return null;
+  return {
+    highlights: normalizeLessonHighlights(row.highlights),
+    vocabularyReveal: lessonVocabularyReveal(row.openSections),
+    showBritish: (row.openSections ?? []).includes(BRITISH_OPTION),
+  };
+}
+
 /** Учитель открывает перевод или описание сразу для ученика в классе. */
 export async function setLessonVocabularyRevealAction(
   assignmentId: string,

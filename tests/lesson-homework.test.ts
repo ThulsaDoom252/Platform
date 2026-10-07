@@ -9,15 +9,21 @@ import {
   homeworkAttemptsKey,
   homeworkExerciseHidden,
   homeworkExerciseHiddenKey,
+  homeworkExerciseComment,
+  homeworkExerciseCommentKey,
   homeworkExerciseFocusId,
   homeworkExerciseProgress,
+  homeworkExerciseScore,
+  homeworkExerciseScoreKey,
   homeworkFillEditorLine,
   homeworkFillItemFromEditorLine,
   homeworkFocusTarget,
   homeworkHighlight,
+  homeworkGradeLabel,
   homeworkItemFocusId,
   homeworkProgress,
   homeworkReaction,
+  homeworkReactionColor,
   homeworkRemainingWordBank,
   homeworkRevisionRequestedAt,
   homeworkRevisionRequestedAtKey,
@@ -32,6 +38,7 @@ import {
   homeworkStateAfterTeacherAutoAnswerEdit,
   homeworkStatusKey,
   homeworkTextHighlight,
+  homeworkTextHighlightRanges,
   homeworkTextTokens,
   homeworkTeacherVoiceMessages,
   homeworkTeacherVoiceMessagesKey,
@@ -41,6 +48,7 @@ import {
   setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
+  toggleHomeworkTextHighlightRange,
   withoutAssignedHomeworkState,
   withoutHomeworkExerciseState,
   withoutHomeworkProgressState,
@@ -123,6 +131,70 @@ test("банк слов скрывает только правильно исп�
   };
 
   assert.deepEqual(homeworkRemainingWordBank(exercise, state), ["to face"]);
+});
+
+test("подсветка хранит произвольный фрагмент текста и повторным выбором снимается", () => {
+  const item = plan.exercises[1].items[0];
+  const selected = toggleHomeworkTextHighlightRange(
+    {},
+    item,
+    "prompt",
+    0,
+    8,
+    "green",
+  );
+  assert.deepEqual(homeworkTextHighlightRanges(selected, item.id, "prompt", item.prompt.length), [
+    { start: 0, end: 8, color: "green" },
+  ]);
+  assert.deepEqual(
+    homeworkTextHighlightRanges(
+      toggleHomeworkTextHighlightRange(selected, item, "prompt", 0, 8, "green"),
+      item.id,
+      "prompt",
+      item.prompt.length,
+    ),
+    [],
+  );
+});
+
+test("реакции окрашивают проверяемый блок ожидаемым цветом", () => {
+  assert.equal(homeworkReactionColor("check"), "green");
+  assert.equal(homeworkReactionColor("thumbs-up"), "green");
+  assert.equal(homeworkReactionColor("warning"), "yellow");
+  assert.equal(homeworkReactionColor("cross"), "red");
+  assert.equal(homeworkReactionColor("angry"), "red");
+});
+
+test("оценка упражнения и словесный результат считаются по правильным ответам", () => {
+  const exercise = {
+    id: "score-auto",
+    title: "Auto",
+    instruction: "",
+    kind: "fill" as const,
+    items: [
+      { id: "score-one", prompt: "One ___", answer: "one" },
+      { id: "score-two", prompt: "Two ___", answer: "two" },
+    ],
+  };
+  assert.equal(homeworkExerciseScore(exercise, {
+    [homeworkStatusKey("score-one")]: "correct",
+    [homeworkStatusKey("score-two")]: "locked",
+  }), 50);
+  assert.equal(homeworkGradeLabel(100), "great");
+  assert.equal(homeworkGradeLabel(89), "good");
+  assert.equal(homeworkGradeLabel(70), "not-bad");
+  assert.equal(homeworkGradeLabel(55), "could-be-better");
+  assert.equal(homeworkGradeLabel(49), "bad");
+});
+
+test("ручной балл и комментарий доступны для перевода и описания", () => {
+  const exercise = plan.exercises[1];
+  const state = {
+    [homeworkExerciseScoreKey(exercise.id)]: "86",
+    [homeworkExerciseCommentKey(exercise.id)]: "Clear explanation.",
+  };
+  assert.equal(homeworkExerciseScore(exercise, state), 86);
+  assert.equal(homeworkExerciseComment(state, exercise.id), "Clear explanation.");
 });
 
 test("учитель исправляет автоматический ответ при любом статусе без новой попытки", () => {

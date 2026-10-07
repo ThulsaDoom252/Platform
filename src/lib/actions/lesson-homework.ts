@@ -10,6 +10,7 @@ import { scheduleNow } from "@/lib/schedule-time";
 import { translateShortTexts, type MaterialTranslationLang } from "@/lib/material-translation";
 import { managedUploadPath, removePublicFile } from "@/lib/public-file-store";
 import { queueStudentNotification } from "@/lib/notifications";
+import { publishClassRealtime, publishUserRealtime } from "@/lib/realtime-server";
 import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-lesson";
 import {
   findHomeworkItem,
@@ -23,6 +24,8 @@ import {
   homeworkAttempts,
   homeworkAttemptsKey,
   homeworkExerciseHiddenKey,
+  homeworkExerciseCommentKey,
+  homeworkExerciseScoreKey,
   homeworkExerciseProgress,
   homeworkFocusTarget,
   homeworkNoteKey,
@@ -57,6 +60,7 @@ import {
   setHomeworkReaction,
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
+  toggleHomeworkTextHighlightRange,
   withoutAssignedHomeworkState,
   withoutHomeworkExerciseState,
   withoutHomeworkProgressState,
@@ -74,6 +78,13 @@ async function requireUser() {
   const session = await getSession();
   if (!session) throw new Error("Нужно войти");
   return session;
+}
+
+function publishHomeworkReviewRealtime(studentId: string) {
+  return Promise.all([
+    publishClassRealtime(studentId, "homework-review"),
+    publishUserRealtime(studentId, "homework-review"),
+  ]).then(() => undefined);
 }
 
 async function assignmentWithOptionalPlan(id: string) {
@@ -177,7 +188,58 @@ export async function highlightHomeworkTextAction(
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
   return {};
+}
+
+/** Highlight any selected text fragment, including several words or a full sentence. */
+export async function highlightHomeworkTextRangeAction(
+  assignmentId: string,
+  itemId: string,
+  source: HomeworkTextHighlightSource,
+  start: number,
+  end: number,
+  color: HomeworkHighlightColor,
+): Promise<{ error?: string; state?: HomeworkStoredState }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  if (color !== "yellow" && color !== "green" && color !== "red") {
+    return { error: "Неизвестный цвет" };
+  }
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const found = findHomeworkItem(row.plan, String(itemId ?? ""));
+  if (!found) return { error: "Предложение не найдено" };
+  const current = row.assignment.answers ?? {};
+  const text = homeworkTextSourceValue(found.item, current, source);
+  if (
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end <= start ||
+    end > text.length ||
+    !text.slice(start, end).trim()
+  ) return { error: "Выдели текст в предложении" };
+
+  const state = toggleHomeworkTextHighlightRange(
+    current,
+    found.item,
+    source,
+    start,
+    end,
+    color,
+  );
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
+  return { state };
 }
 
 /** Учитель отправляет одну реакцию на всё упражнение или конкретное предложение. */
@@ -222,7 +284,56 @@ export async function setHomeworkReactionAction(
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
   return { reaction: nextReaction };
+}
+
+/** Teacher score and public feedback for one exercise. */
+export async function saveHomeworkExerciseGradeAction(
+  assignmentId: string,
+  exerciseId: string,
+  suppliedScore: number,
+  suppliedComment: string,
+): Promise<{ error?: string; state?: HomeworkStoredState }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const exercise = row.plan.exercises.find((item) => item.id === String(exerciseId ?? ""));
+  if (!exercise) return { error: "Упражнение не найдено" };
+  const score = Math.round(Number(suppliedScore));
+  if (!Number.isFinite(score) || score < 0 || score > 100) {
+    return { error: "Оценка должна быть от 0 до 100" };
+  }
+  const comment = String(suppliedComment ?? "").trim().slice(0, 4_000);
+  const state = { ...(row.assignment.answers ?? {}) };
+  state[homeworkExerciseScoreKey(exercise.id)] = String(score);
+  if (comment) state[homeworkExerciseCommentKey(exercise.id)] = comment;
+  else delete state[homeworkExerciseCommentKey(exercise.id)];
+
+  await db
+    .update(lessonAssignments)
+    .set({ answers: state, updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id));
+  revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+  revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+  revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
+  return { state };
+}
+
+/** Lightweight state refresh for review marks in an active class. */
+export async function homeworkReviewStateAction(
+  assignmentId: string,
+): Promise<HomeworkStoredState | null> {
+  const session = await requireUser();
+  const row = await assignmentWithOptionalPlan(String(assignmentId ?? ""));
+  if (!row) return null;
+  const allowed = session.role === "STUDENT"
+    ? row.assignment.studentId === session.userId
+    : row.authorId === session.userId;
+  return allowed ? (row.assignment.answers ?? {}) : null;
 }
 
 /** Учитель назначает выбранные упражнения; ответы, уже сделанные в классе, остаются. */
@@ -1121,6 +1232,7 @@ export async function reviewInteractiveHomeworkAction(
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");
   revalidatePath("/student");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
   return { reviewedAt };
 }
 
@@ -1160,6 +1272,7 @@ export async function returnInteractiveHomeworkForRevisionAction(
   revalidatePath("/teacher/homeworks");
   revalidatePath("/student/homework");
   revalidatePath("/student");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
   return { revisionRequestedAt, state };
 }
 
@@ -1274,6 +1387,8 @@ export async function saveHomeworkTeacherNoteAction(
     .where(eq(lessonAssignments.id, row.assignment.id));
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   revalidatePath(`/student/lessons/${row.assignment.id}`);
+  revalidatePath("/student/homework");
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
   return {};
 }
 

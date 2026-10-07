@@ -148,10 +148,11 @@ export function LessonTextHighlighter({
   marks: Record<string, string>;
   enabled: boolean;
   color: HighlightColor;
-  onHighlight?: (key: string) => void;
+  onHighlight?: (key: string | string[]) => void;
   className?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const selectedRangeHandled = useRef(false);
 
   const paint = useCallback(() => {
     const root = rootRef.current;
@@ -204,6 +205,11 @@ export function LessonTextHighlighter({
 
   const chooseWord = (event: MouseEvent<HTMLDivElement>) => {
     if (!enabled || !onHighlight) return;
+    if (selectedRangeHandled.current) {
+      selectedRangeHandled.current = false;
+      event.preventDefault();
+      return;
+    }
     const target = event.target instanceof Element ? event.target : null;
     const scope = target?.closest("[data-lesson-highlight-scope]");
     if (!scope || target?.closest("[data-no-lesson-highlight]")) return;
@@ -235,10 +241,36 @@ export function LessonTextHighlighter({
     onHighlight(word.key);
   };
 
+  const chooseSelection = (event: MouseEvent<HTMLDivElement>) => {
+    if (!enabled || !onHighlight || !rootRef.current) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const selected = selection.getRangeAt(0);
+    if (
+      !rootRef.current.contains(selected.startContainer) ||
+      !rootRef.current.contains(selected.endContainer)
+    ) return;
+    const keys = collectWordRanges(rootRef.current)
+      .filter((word) => {
+        const scope = word.node.parentElement?.closest("[data-lesson-highlight-scope]");
+        if (!scope) return false;
+        return selected.compareBoundaryPoints(Range.END_TO_START, word.range) > 0 &&
+          selected.compareBoundaryPoints(Range.START_TO_END, word.range) < 0;
+      })
+      .map((word) => word.key);
+    if (keys.length === 0) return;
+    selectedRangeHandled.current = true;
+    event.preventDefault();
+    event.stopPropagation();
+    onHighlight([...new Set(keys)]);
+    selection.removeAllRanges();
+  };
+
   return (
     <div
       ref={rootRef}
       onClickCapture={chooseWord}
+      onMouseUpCapture={chooseSelection}
       data-highlight-color={enabled ? color : undefined}
       className={cn(enabled && "lesson-word-highlight-active", className)}
     >

@@ -14,6 +14,7 @@ export type RealtimeEvent =
   | "class-people"
   | "class-sync"
   | "game-state"
+  | "homework-review"
   | "lesson"
   | "notification"
   | "presence"
