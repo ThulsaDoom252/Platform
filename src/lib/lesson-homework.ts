@@ -765,6 +765,29 @@ export function homeworkAnswerMatches(item: HomeworkItem, supplied: string): boo
 }
 
 /**
+ * A teacher may correct an automatic answer after any student/homework status.
+ * The edit does not count as another student attempt and does not change the
+ * submission/review status of the whole homework.
+ */
+export function homeworkStateAfterTeacherAutoAnswerEdit(
+  state: HomeworkStoredState,
+  item: HomeworkItem,
+  supplied: string,
+): HomeworkStoredState {
+  const value = String(supplied ?? "").trim().slice(0, 300);
+  const next = clearHomeworkTextHighlights({ ...state }, item.id, "answer");
+  if (value) next[homeworkValueKey(item.id)] = value;
+  else delete next[homeworkValueKey(item.id)];
+
+  if (value && homeworkAnswerMatches(item, value)) {
+    next[homeworkStatusKey(item.id)] = "correct";
+  } else {
+    delete next[homeworkStatusKey(item.id)];
+  }
+  return next;
+}
+
+/**
  * Words that still have to be used in a fill/definition exercise.
  * A correctly answered item consumes one matching bank entry. Keeping this as
  * a multiset makes the helper safe for legacy plans that contain duplicates.

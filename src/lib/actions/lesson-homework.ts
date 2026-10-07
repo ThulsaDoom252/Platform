@@ -39,6 +39,7 @@ import {
   homeworkRevisionRequestedAtKey,
   homeworkStatus,
   homeworkStatusKey,
+  homeworkStateAfterTeacherAutoAnswerEdit,
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
   homeworkTextSourceValue,
@@ -896,6 +897,18 @@ export async function submitHomeworkAutoAnswerAction(
   }
 
   let state = { ...(row.assignment.answers ?? {}) };
+  if (isTeacher) {
+    state = homeworkStateAfterTeacherAutoAnswerEdit(state, found.item, supplied);
+    await db
+      .update(lessonAssignments)
+      .set({ answers: state, updatedAt: new Date() })
+      .where(eq(lessonAssignments.id, row.assignment.id));
+    revalidatePath(`/student/lessons/${row.assignment.id}`);
+    revalidatePath("/student/homework");
+    revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
+    revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
+    return publicItemState(state, found.item.id);
+  }
   if (homeworkStatus(state, found.item.id)) {
     return publicItemState(state, found.item.id);
   }
@@ -988,10 +1001,13 @@ export async function saveHomeworkResponseAction(
   }
 
   const value = String(supplied ?? "").trim().slice(0, 8_000);
-  let state = { ...(row.assignment.answers ?? {}) };
+  const state = clearHomeworkTextHighlights(
+    { ...(row.assignment.answers ?? {}) },
+    found.item.id,
+    "answer",
+  );
   state[homeworkValueKey(found.item.id)] = value;
   if (isStudent) {
-    state = clearHomeworkTextHighlights(state, found.item.id, "answer");
     delete state[homeworkSubmittedAtKey()];
     delete state[homeworkReviewedAtKey()];
   }

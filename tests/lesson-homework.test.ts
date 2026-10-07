@@ -29,6 +29,7 @@ import {
   homeworkPlanEditIssue,
   homeworkPlanOverrideKey,
   homeworkStarted,
+  homeworkStateAfterTeacherAutoAnswerEdit,
   homeworkStatusKey,
   homeworkTextHighlight,
   homeworkTextTokens,
@@ -122,6 +123,28 @@ test("банк слов скрывает только правильно исп�
   };
 
   assert.deepEqual(homeworkRemainingWordBank(exercise, state), ["to face"]);
+});
+
+test("учитель исправляет автоматический ответ при любом статусе без новой попытки", () => {
+  const item = { id: "answer-edit", prompt: "I ___ why.", answer: "wonder" };
+  const reviewed = "2026-10-07T08:00:00.000Z";
+  const state = {
+    [homeworkValueKey(item.id)]: "wander",
+    [homeworkStatusKey(item.id)]: "locked",
+    [homeworkAttemptsKey(item.id)]: JSON.stringify(["one", "two", "wander"]),
+    [homeworkReviewedAtKey()]: reviewed,
+  };
+
+  const corrected = homeworkStateAfterTeacherAutoAnswerEdit(state, item, "Wonder!");
+  assert.equal(corrected[homeworkValueKey(item.id)], "Wonder!");
+  assert.equal(corrected[homeworkStatusKey(item.id)], "correct");
+  assert.equal(corrected[homeworkAttemptsKey(item.id)], state[homeworkAttemptsKey(item.id)]);
+  assert.equal(corrected[homeworkReviewedAtKey()], reviewed);
+
+  const cleared = homeworkStateAfterTeacherAutoAnswerEdit(corrected, item, "");
+  assert.equal(cleared[homeworkValueKey(item.id)], undefined);
+  assert.equal(cleared[homeworkStatusKey(item.id)], undefined);
+  assert.equal(cleared[homeworkReviewedAtKey()], reviewed);
 });
 
 test("домашка сохраняет и определяет персональный язык упражнения на перевод", () => {

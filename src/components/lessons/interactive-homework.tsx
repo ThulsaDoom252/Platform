@@ -31,6 +31,7 @@ import {
   translateHomeworkExerciseLanguageAction,
 } from "@/lib/actions/lesson-homework";
 import {
+  clearHomeworkTextHighlights,
   homeworkAttempts,
   homeworkAttemptsKey,
   homeworkAssignedAt,
@@ -48,6 +49,7 @@ import {
   homeworkRemainingWordBank,
   homeworkStatus,
   homeworkStatusKey,
+  homeworkStateAfterTeacherAutoAnswerEdit,
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
   homeworkReviewedAt,
@@ -1383,12 +1385,15 @@ function AutoTextExercise({
   const submit = (item: HomeworkItem) => {
     const value = drafts[item.id] ?? "";
     const savedValue = state[homeworkValueKey(item.id)] ?? "";
-    if (!value.trim() || busy || value.trim() === savedValue.trim()) return;
+    if (busy || value.trim() === savedValue.trim() || (!session.teacher && !value.trim())) return;
     startBusy(async () => {
       const result = await submitHomeworkAutoAnswerAction(session.assignmentId, item.id, value);
       if ("error" in result && result.error) return;
       const next = result as { value: string; status: "correct" | "locked" | null; attempts: string[] };
       setState((current) => {
+        if (session.teacher) {
+          return homeworkStateAfterTeacherAutoAnswerEdit(current, item, next.value);
+        }
         const updated = {
           ...current,
           [homeworkValueKey(item.id)]: next.value,
@@ -1406,6 +1411,10 @@ function AutoTextExercise({
         ...current,
         [item.id]: next.value,
       }));
+      if (session.teacher) {
+        setFeedback((current) => ({ ...current, [item.id]: undefined }));
+        return;
+      }
       const tone = next.status === "correct" ? "right" : "wrong";
       setFeedback((current) => ({ ...current, [item.id]: undefined }));
       requestAnimationFrame(() => setFeedback((current) => ({ ...current, [item.id]: tone })));
@@ -1437,7 +1446,8 @@ function AutoTextExercise({
               value={drafts[item.id] ?? ""}
               state={state}
               feedback={feedback[item.id]}
-              disabled={Boolean(status) || busy}
+              disabled={busy || (!session.teacher && Boolean(status))}
+              editable={session.teacher}
               placeholder={t.interactiveHomework.answerPlaceholder}
               onChange={(value) => setDrafts((current) => ({ ...current, [item.id]: value }))}
               onCommit={() => submit(item)}
@@ -1483,12 +1493,15 @@ function DragExercise({
   );
 
   const drop = (item: HomeworkItem, answer: string | null) => {
-    if (!answer || homeworkStatus(state, item.id)) return;
+    if (!answer || (!session.teacher && homeworkStatus(state, item.id))) return;
     startBusy(async () => {
       const result = await submitHomeworkAutoAnswerAction(session.assignmentId, item.id, answer);
       if ("error" in result && result.error) return;
       const next = result as { value: string; status: "correct" | "locked" | null; attempts: string[] };
       setState((current) => {
+        if (session.teacher) {
+          return homeworkStateAfterTeacherAutoAnswerEdit(current, item, next.value);
+        }
         const updated = {
           ...current,
           [homeworkValueKey(item.id)]: next.value,
@@ -1503,6 +1516,10 @@ function DragExercise({
         return updated;
       });
       setSelected(null);
+      if (session.teacher) {
+        setFeedback((current) => ({ ...current, [item.id]: undefined }));
+        return;
+      }
       const tone = next.status === "correct" ? "right" : "wrong";
       setFeedback((current) => ({ ...current, [item.id]: undefined }));
       requestAnimationFrame(() => setFeedback((current) => ({ ...current, [item.id]: tone })));
@@ -1550,7 +1567,9 @@ function DragExercise({
           const blankAt = item.prompt.indexOf("___");
           const before = blankAt >= 0 ? item.prompt.slice(0, blankAt) : item.prompt;
           const after = blankAt >= 0 ? item.prompt.slice(blankAt + 3) : "";
-          const showAsText = interaction.reviewTools || Boolean(homeworkReviewedAt(state));
+          const showAsText = interaction.highlightMode || (
+            !session.teacher && (interaction.reviewTools || Boolean(homeworkReviewedAt(state)))
+          );
           return (
             <HomeworkItemShell
               key={item.id}
@@ -1594,7 +1613,7 @@ function DragExercise({
                   ) : (
                     <button
                       type="button"
-                      disabled={Boolean(status) || busy}
+                      disabled={busy || (!session.teacher && Boolean(status))}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={(event) => onDrop(event, item)}
                       onClick={() => drop(item, selected)}
@@ -1676,7 +1695,10 @@ function ManualExercise({
         return;
       }
       setState((current) => {
-        const updated = { ...current, [homeworkValueKey(item.id)]: value.trim() };
+        const updated = clearHomeworkTextHighlights({
+          ...current,
+          [homeworkValueKey(item.id)]: value.trim(),
+        }, item.id, "answer");
         if (!session.teacher) {
           delete updated[homeworkSubmittedAtKey()];
           delete updated[homeworkReviewedAtKey()];
@@ -1789,7 +1811,9 @@ function ManualExercise({
               />
             ) : (
               <div className="mt-2">
-                {interaction.reviewTools || homeworkReviewedAt(state) ? (
+                {interaction.highlightMode || (
+                  !session.teacher && (interaction.reviewTools || Boolean(homeworkReviewedAt(state)))
+                ) ? (
                   <div className="min-h-24 w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed text-content">
                     {(drafts[item.id] ?? "") ? (
                       <HomeworkHighlightableText
@@ -1908,6 +1932,7 @@ function InlineHomeworkAnswer({
   state,
   feedback,
   disabled,
+  editable,
   placeholder,
   onChange,
   onCommit,
@@ -1917,6 +1942,7 @@ function InlineHomeworkAnswer({
   state: HomeworkStoredState;
   feedback?: "wrong" | "right";
   disabled: boolean;
+  editable: boolean;
   placeholder: string;
   onChange: (value: string) => void;
   onCommit: () => void;
@@ -1924,7 +1950,9 @@ function InlineHomeworkAnswer({
   const interaction = useContext(HomeworkInteractionContext);
   const status = homeworkStatus(state, item.id);
   const reviewed = Boolean(homeworkReviewedAt(state));
-  const showAsText = interaction.reviewTools || reviewed;
+  const showAsText = interaction.highlightMode || (
+    !editable && (interaction.reviewTools || reviewed)
+  );
   const blankAt = item.prompt.indexOf("___");
   const before = blankAt >= 0 ? item.prompt.slice(0, blankAt) : item.prompt;
   const after = blankAt >= 0 ? item.prompt.slice(blankAt + 3) : "";
