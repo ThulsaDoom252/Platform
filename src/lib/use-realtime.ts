@@ -25,7 +25,7 @@ type Options = {
   events: string | string[];
   onMessage: (message: Ably.Message) => void | Promise<void>;
   enabled?: boolean;
-  /** A slow safety net used only while WebSocket is unavailable. */
+  /** A safety net used only while WebSocket is unavailable. */
   fallbackMs?: number;
   onFallback?: () => void | Promise<void>;
 };
@@ -84,11 +84,37 @@ export function useRealtimeSubscription({
 
   useEffect(() => {
     if (!enabled || status === "connected" || !hasFallback) return;
-    const timer = window.setInterval(
-      () => void runFallback(),
-      Math.max(10_000, fallbackMs),
-    );
-    return () => window.clearInterval(timer);
+    let alive = true;
+    let running = false;
+
+    const poll = async () => {
+      if (!alive || running || document.visibilityState === "hidden") return;
+      running = true;
+      try {
+        await runFallback();
+      } catch {
+        // A transient request failure must not stop the next recovery poll.
+      } finally {
+        running = false;
+      }
+    };
+    const wake = () => {
+      if (document.visibilityState !== "hidden") void poll();
+    };
+
+    // Do not leave the UI stale until the first interval. This is especially
+    // important on deployments where the realtime provider is not configured.
+    void poll();
+    const timer = window.setInterval(() => void poll(), Math.max(750, fallbackMs));
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+    };
   }, [enabled, fallbackMs, hasFallback, status]);
 
   return status;

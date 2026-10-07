@@ -266,7 +266,9 @@ export function WordDeckBoard({
       applyRemoteState(data.state ?? null);
     },
     onFallback: pullRemoteState,
-    fallbackMs: 30_000,
+    // Card dealing is the most visible shared-class interaction. Keep the
+    // observer close to the teacher even during a realtime outage.
+    fallbackMs: 750,
     enabled: observer,
   });
 

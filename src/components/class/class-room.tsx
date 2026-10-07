@@ -562,7 +562,9 @@ export function ClassRoom({
     events: ["class-sync", "vocabulary"],
     onMessage: () => classSyncRef.current(),
     onFallback: () => classSyncRef.current(),
-    fallbackMs: 30_000,
+    // Class navigation, focus and teacher reactions must remain live even
+    // when the realtime provider is temporarily unavailable.
+    fallbackMs: 1_000,
   });
 
   /*

@@ -3,10 +3,8 @@
 /**
  * Класс: присутствие, вход в урок и переписка.
  *
- * Постоянного соединения в проекте нет, поэтому живость держится
- * опросом: браузер раз в полминуты отмечается, и по свежести отметки
- * считается «онлайн». Это проще сокетов и достаточно для двоих
- * человек в уроке.
+ * Основной транспорт — realtime-события. Короткий опрос остаётся
+ * резервом, чтобы живой урок не ломался при недоступности провайдера.
  */
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -768,10 +766,19 @@ export type ClassSync = {
 export async function classSyncAction(onBoard = false): Promise<ClassSync> {
   const session = await requireUser();
 
+  // The disconnected fallback can run once a second. Presence has its own
+  // heartbeat, so avoid turning every sync read into a database write.
+  const presenceCutoff = new Date(Date.now() - 15_000);
+  const classWhere = onBoard ? "board" : null;
   await db
     .update(users)
-    .set({ classWhere: onBoard ? "board" : null, lastSeenAt: new Date() })
-    .where(eq(users.id, session.userId));
+    .set({ classWhere, lastSeenAt: new Date() })
+    .where(
+      and(
+        eq(users.id, session.userId),
+        sql`(${users.classWhere} is distinct from ${classWhere} or ${users.lastSeenAt} is null or ${users.lastSeenAt} < ${presenceCutoff})`,
+      ),
+    );
 
   const [me] = await db
     .select({

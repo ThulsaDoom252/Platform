@@ -89,7 +89,7 @@ export function ClassLesson({
     events: "lesson",
     onMessage: reload,
     onFallback: reload,
-    fallbackMs: 30_000,
+    fallbackMs: 1_000,
   });
 
   // Focus по видео приходит быстрым тактом класса. Не ждём следующего

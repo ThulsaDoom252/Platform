@@ -146,7 +146,7 @@ export function TwisterViewer({
     events: "twister",
     onMessage: syncSession,
     onFallback: syncSession,
-    fallbackMs: 30_000,
+    fallbackMs: 1_000,
     enabled: !!sessionId,
   });
 

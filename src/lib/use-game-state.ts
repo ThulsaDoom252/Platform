@@ -56,7 +56,7 @@ export function useGameState(
       if (!realtime?.gameId || !changed || changed === realtime.gameId) void refresh();
     },
     onFallback: refresh,
-    fallbackMs: 30_000,
+    fallbackMs: 1_000,
     enabled: !!realtime?.channel,
   });
 

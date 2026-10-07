@@ -117,7 +117,7 @@ export function AssignedLesson({
     events: "lesson",
     onMessage: pullPresentationState,
     onFallback: pullPresentationState,
-    fallbackMs: 30_000,
+    fallbackMs: 1_000,
     enabled: !teacher && liveClass,
   });
 

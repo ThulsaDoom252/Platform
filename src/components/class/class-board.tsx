@@ -205,7 +205,7 @@ export function ClassBoard({
     events: "board",
     onMessage: () => refreshBoard.current(),
     onFallback: () => refreshBoard.current(),
-    fallbackMs: 30_000,
+    fallbackMs: 1_000,
     enabled: !teacher,
   });
 
