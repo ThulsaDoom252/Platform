@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { notifications, lessons, users } from "@/lib/db/schema";
 import { fmt, getDictFor, type Dict } from "@/lib/i18n";
+import { publishUserRealtime } from "@/lib/realtime-server";
 
 export type FeedKind =
   | "reminder"
@@ -78,6 +79,7 @@ export async function queueStudentNotification(input: {
       message,
       href: input.href,
     });
+    await publishUserRealtime(input.studentId, "notification");
     return;
   }
 
@@ -95,6 +97,7 @@ export async function queueStudentNotification(input: {
       href: input.href,
     },
   });
+  await publishUserRealtime(input.teacherId, "notification");
 }
 
 const dayFmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" });

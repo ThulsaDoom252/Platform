@@ -16,14 +16,15 @@ import {
 } from "@/lib/actions/class-vocabulary";
 import { cleanClassVocabularyText, type ClassVocabularyLang } from "@/lib/class-vocabulary";
 import { cn } from "@/lib/utils";
-
-const POLL_MS = 4_000;
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 export function ClassVocabulary({
+  studentId,
   ready,
   onAdded,
   compact = false,
 }: {
+  studentId: string | null;
   ready: boolean;
   onAdded: (word: ClassVocabularyWord) => void;
   /** Панель уже имеет общий заголовок и собственную фиксированную высоту. */
@@ -71,13 +72,17 @@ export function ClassVocabulary({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => void load());
-    if (!ready) return () => window.cancelAnimationFrame(frame);
-    const timer = window.setInterval(() => void load(), POLL_MS);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearInterval(timer);
-    };
+    return () => window.cancelAnimationFrame(frame);
   }, [load, ready]);
+
+  useRealtimeSubscription({
+    channel: studentId ? `class:${studentId}` : null,
+    events: "vocabulary",
+    onMessage: load,
+    onFallback: load,
+    fallbackMs: 30_000,
+    enabled: ready,
+  });
 
   const translate = useCallback((raw: string, target: ClassVocabularyLang = lang) => {
     const text = cleanClassVocabularyText(raw);

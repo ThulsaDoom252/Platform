@@ -26,10 +26,9 @@ import {
 } from "@/lib/actions/board";
 import type { BoardScene } from "@/lib/board-scene";
 import { cn } from "@/lib/utils";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 const CHANNEL = "lingora-whiteboard";
-const BOARD_POLL_MS = 1_500;
-
 type FrameMessage = {
   channel?: string;
   type?: string;
@@ -46,6 +45,7 @@ type BoardFocus = {
 
 export function ClassBoard({
   teacher,
+  studentId,
   studentName,
   studentHere,
   focus,
@@ -53,6 +53,7 @@ export function ClassBoard({
   onClose,
 }: {
   teacher: boolean;
+  studentId: string | null;
   studentName: string | null;
   studentHere: boolean;
   focus: BoardFocus;
@@ -66,6 +67,7 @@ export function ClassBoard({
   const latestScene = useRef<BoardScene | null>(null);
   const latestUpdatedAt = useRef<string | null>(null);
   const latestFocus = useRef<BoardFocus>(focus);
+  const refreshBoard = useRef<() => void>(() => {});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveChain = useRef<Promise<boolean>>(Promise.resolve(true));
   const [selected, setSelected] = useState<{ id: number; label: string } | null>(null);
@@ -180,15 +182,14 @@ export function ClassBoard({
         if (alive) setError(t.classRoom.boardSyncError);
       }
     };
+    refreshBoard.current = () => void refresh();
 
     window.addEventListener("message", receive);
     void refresh(true);
-    const poll = teacher ? null : setInterval(() => void refresh(), BOARD_POLL_MS);
 
     return () => {
       alive = false;
       window.removeEventListener("message", receive);
-      if (poll) clearInterval(poll);
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
         if (teacher && initialLoaded.current && latestScene.current) {
@@ -198,6 +199,15 @@ export function ClassBoard({
       }
     };
   }, [applyBoardCommand, post, queueSave, t.classRoom.boardSyncError, teacher]);
+
+  useRealtimeSubscription({
+    channel: studentId ? `class:${studentId}` : null,
+    events: "board",
+    onMessage: () => refreshBoard.current(),
+    onFallback: () => refreshBoard.current(),
+    fallbackMs: 30_000,
+    enabled: !teacher,
+  });
 
   // Escape закрывает доску, если фокус находится вне iframe.
   useEffect(() => {

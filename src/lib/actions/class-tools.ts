@@ -33,6 +33,7 @@ import {
   type ClassReactionKind,
   type ClassReactionMode,
 } from "@/lib/class-reaction";
+import { publishClassRealtime } from "@/lib/realtime-server";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -274,6 +275,7 @@ export async function sendClassReactionAction(
       )`,
     })
     .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")));
+  await publishClassRealtime(studentId, "class-sync");
   return {};
 }
 
@@ -283,6 +285,7 @@ async function storeTimerState(studentId: string, timerState: ClassTimerState | 
   if (timerState) next.timerState = timerState;
   else delete next.timerState;
   await db.update(users).set({ classFocus: next }).where(eq(users.id, studentId));
+  await publishClassRealtime(studentId, "class-sync");
 }
 
 export async function prepareClassTimerAction(
@@ -764,5 +767,6 @@ export async function focusClassLessonNoteAction(
       },
     })
     .where(eq(users.id, studentId));
+  await publishClassRealtime(studentId, "class-sync");
   return {};
 }

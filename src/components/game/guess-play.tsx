@@ -54,7 +54,10 @@ export function GuessPlay({
     () => gameStateAction(studentId, gameId),
     [studentId, gameId],
   );
-  const { state, loaded, leftMs, refresh } = useGameState(load);
+  const { state, loaded, leftMs, refresh } = useGameState(load, {
+    channel: `class:${studentId}`,
+    gameId,
+  });
   const [busy, startBusy] = useTransition();
   const [focusError, setFocusError] = useState<string | null>(null);
 

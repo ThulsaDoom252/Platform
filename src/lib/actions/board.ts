@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { studentBoards, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { sanitizeBoardScene, type BoardScene } from "@/lib/board-scene";
+import { publishClassRealtime } from "@/lib/realtime-server";
 
 async function requireUser() {
   const session = await getSession();
@@ -64,6 +65,7 @@ export async function saveClassBoardAction(
       target: studentBoards.studentId,
       set: { scene, updatedAt: now },
     });
+  await publishClassRealtime(studentId, "board");
   return { updatedAt: now.toISOString() };
 }
 
@@ -110,6 +112,7 @@ async function commandBoard(objectId: number | null, boardCommand: BoardCommand)
       },
     })
     .where(eq(users.id, studentId));
+  await publishClassRealtime(studentId, "class-sync");
   return {};
 }
 

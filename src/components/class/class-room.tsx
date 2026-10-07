@@ -8,8 +8,8 @@
  * по умолчанию и у учителя работают даже вне класса: переписку можно
  * вести и между уроками.
  *
- * Присутствие держится опросом: раз в полминуты браузер отмечается и
- * заодно узнаёт, на месте ли собеседник.
+ * Изменения класса приходят по WebSocket. Серверные чтения выполняются
+ * только после события или как редкая страховка при недоступном realtime.
  */
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
@@ -39,7 +39,7 @@ import {
   type ClassPartnerProfile,
   type Presence,
 } from "@/lib/actions/class";
-import { PresenceIndicator } from "@/components/student-presence";
+import { PresenceIndicator, usePresenceMap } from "@/components/student-presence";
 import { ClassChat } from "./class-chat";
 import { QuickVerbs } from "./quick-verbs";
 import {
@@ -103,15 +103,7 @@ import {
   StudentClassReaction,
   TeacherReactionPanel,
 } from "./class-reactions";
-
-const BEAT_MS = 30_000;
-const CHAT_UNREAD_MS = 4_000;
-/*
- * «Перейди на доску» не должно ждать полминуты до отметки о живости,
- * поэтому у команд свой такт — короткий и с двумя полями в ответе.
- */
-const SYNC_MS = 4_000;
-const STUDENT_FOCUS_SYNC_MS = 1_000;
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "script" | "notes";
 
@@ -128,6 +120,7 @@ export function ClassRoom({
   selfName: string;
 }) {
   const teacher = role === "TEACHER";
+  const livePresences = usePresenceMap();
 
   const [people, setPeople] = useState<ClassPerson[] | null>(null);
   const [partner, setPartner] = useState<{
@@ -208,6 +201,9 @@ export function ClassRoom({
   const seenVocabularyEvents = useRef(new Set<string>());
   const vocabularyEventsReady = useRef(false);
   const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatRef = useRef<() => void>(() => {});
+  const unreadRefreshRef = useRef<() => void>(() => {});
+  const classSyncRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     boardOpen.current = open.board;
@@ -256,9 +252,9 @@ export function ClassRoom({
           /* следующий такт подхватит */
         });
     };
+    heartbeatRef.current = beat;
 
     beat();
-    const t = setInterval(beat, BEAT_MS);
 
     /*
      * Правку расписания подхватываем сразу по возвращении на вкладку.
@@ -275,11 +271,18 @@ export function ClassRoom({
 
     return () => {
       alive = false;
-      clearInterval(t);
       document.removeEventListener("visibilitychange", wake);
       window.removeEventListener("focus", wake);
     };
   }, [teacher, nonce]);
+
+  useRealtimeSubscription({
+    channel: `user:${selfId}`,
+    events: "class-people",
+    onMessage: () => heartbeatRef.current(),
+    onFallback: () => heartbeatRef.current(),
+    fallbackMs: 60_000,
+  });
 
   // У учителя разговор принадлежит ученику, у ученика — ему самому.
   const conversation = teacher ? (partner?.id ?? null) : selfId;
@@ -307,14 +310,22 @@ export function ClassRoom({
           /* следующий такт подхватит */
         });
     };
+    unreadRefreshRef.current = loadUnread;
 
     loadUnread();
-    const timer = setInterval(loadUnread, CHAT_UNREAD_MS);
     return () => {
       alive = false;
-      clearInterval(timer);
     };
   }, [conversation, open.chat]);
+
+  useRealtimeSubscription({
+    channel: conversation ? `class:${conversation}` : null,
+    events: "chat",
+    onMessage: () => unreadRefreshRef.current(),
+    onFallback: () => unreadRefreshRef.current(),
+    fallbackMs: 30_000,
+    enabled: !open.chat,
+  });
 
   useEffect(() => {
     seenVocabularyEvents.current.clear();
@@ -538,16 +549,21 @@ export function ClassRoom({
           /* следующий такт подхватит */
         });
     };
+    classSyncRef.current = tick;
 
     tick();
-    // Учителю достаточно редкой проверки положения ученика, а ученик
-    // должен получать явную команду фокусировки почти сразу.
-    const id = setInterval(tick, teacher ? SYNC_MS : STUDENT_FOCUS_SYNC_MS);
     return () => {
       alive = false;
-      clearInterval(id);
     };
-  }, [selfId, showVocabularyNotice, teacher]);
+  }, [conversation, open.board, selfId, showVocabularyNotice, teacher]);
+
+  useRealtimeSubscription({
+    channel: conversation ? `class:${conversation}` : null,
+    events: ["class-sync", "vocabulary"],
+    onMessage: () => classSyncRef.current(),
+    onFallback: () => classSyncRef.current(),
+    fallbackMs: 30_000,
+  });
 
   /*
    * Сегодня и завтра называем словами, остальные дни — днём недели: на
@@ -580,7 +596,14 @@ export function ClassRoom({
     return weekday.format(day);
   };
 
-  const groups = orderClassPeople(people ?? [], sort, sortDesc);
+  const groups = orderClassPeople(
+    (people ?? []).map((person) => ({
+      ...person,
+      presence: livePresences[person.id] ?? person.presence,
+    })),
+    sort,
+    sortDesc,
+  );
 
   const tabBtn = (key: PanelKey, icon: React.ReactNode, label: string, badge?: number) => {
     return (
@@ -648,6 +671,7 @@ export function ClassRoom({
         {lessonTab === "lesson" && partner ? (
           <ClassLesson
             teacher
+            studentId={partner.id}
             assignmentId={activeLessonId}
             videoSync={videoSync}
             onAssigned={setActiveLessonId}
@@ -1017,6 +1041,7 @@ export function ClassRoom({
           >
             <ClassVocabulary
               key={conversation ?? "no-student"}
+              studentId={conversation}
               ready={!!conversation}
               compact
               onAdded={(word: ClassVocabularyWord) => {
@@ -1045,12 +1070,15 @@ export function ClassRoom({
                 activity={focusedWordDeck}
                 live
                 observer
+                realtimeChannel={conversation ? `class:${conversation}` : null}
               />
             ) : (
               <StudentGuess
+                studentId={selfId}
                 fallback={(
                   <ClassLesson
                     teacher={false}
+                    studentId={selfId}
                     assignmentId={activeLessonId}
                     videoSync={videoSync}
                     sectionFocus={lessonSectionFocus}
@@ -1155,6 +1183,7 @@ export function ClassRoom({
       {open.board && (
         <ClassBoard
           teacher={teacher}
+          studentId={conversation}
           studentName={partner?.name ?? null}
           studentHere={partnerOnBoard}
           focus={teacher ? null : boardFocus}
@@ -1168,6 +1197,7 @@ export function ClassRoom({
           items={[twisterSession.twister]}
           startId={twisterSession.twisterId}
           initialSession={twisterSession}
+          realtimeChannel={`class:${selfId}`}
           onClose={() => setTwisterSession(null)}
         />
       )}

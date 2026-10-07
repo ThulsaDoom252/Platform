@@ -12,6 +12,7 @@ import {
   type ClassVocabularyLang,
 } from "@/lib/class-vocabulary";
 import { translateShortText, translateShortTexts } from "@/lib/material-translation";
+import { publishClassRealtime } from "@/lib/realtime-server";
 
 export type ClassVocabularyWord = {
   id: string;
@@ -169,6 +170,7 @@ export async function translateClassVocabularyLanguageAction(
     });
     revalidatePath("/teacher/class");
     revalidatePath("/student/class");
+    await publishClassRealtime(current.studentId, "vocabulary");
     return { words: translatedRows.map(wordOf) };
   } catch (error) {
     return {
@@ -200,6 +202,7 @@ export async function addClassVocabularyAction(input: {
     .returning();
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
+  await publishClassRealtime(current.studentId, "vocabulary");
   return created ? { word: wordOf(created) } : { error: "Не удалось добавить слово" };
 }
 
@@ -226,6 +229,7 @@ export async function updateClassVocabularyAction(
   if (!updated) return { error: "Запись не найдена" };
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
+  await publishClassRealtime(current.studentId, "vocabulary");
   return { word: wordOf(updated) };
 }
 
@@ -248,5 +252,6 @@ export async function deleteClassVocabularyAction(
 
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
+  await publishClassRealtime(current.studentId, "vocabulary");
   return { deleted: deleted.id };
 }

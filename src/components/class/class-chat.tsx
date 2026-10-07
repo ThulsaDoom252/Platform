@@ -4,10 +4,10 @@
  * Чат урока.
  *
  * Переписка привязана к ученику и живёт между уроками. Новые сообщения
- * приходят опросом раз в несколько секунд: постоянного соединения в
- * проекте нет, а для разговора двоих этого хватает.
+ * приходят по WebSocket; редкий опрос остаётся только резервом на случай
+ * недоступности realtime-транспорта.
  */
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   listMessagesAction,
   sendMessageAction,
@@ -19,8 +19,7 @@ import {
 import { IconX, IconPencil, IconTrash, IconMessage } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n-provider";
-
-const POLL_MS = 4000;
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 export function ClassChat({
   studentId,
@@ -43,29 +42,27 @@ export function ClassChat({
   const [busy, startBusy] = useTransition();
   const feed = useRef<HTMLDivElement>(null);
 
+  const load = useCallback(async () => {
+    if (!studentId) return;
+    const list = await listMessagesAction(studentId, withArchived);
+    setMessages(list);
+  }, [studentId, withArchived]);
+
   useEffect(() => {
     // Чужую переписку чистить незачем: при смене ученика родитель
     // пересоздаёт компонент, и состояние уходит вместе с ним.
     if (!studentId) return;
-    let alive = true;
+    const frame = window.requestAnimationFrame(() => void load().catch(() => {}));
+    return () => window.cancelAnimationFrame(frame);
+  }, [load, studentId]);
 
-    const load = async () => {
-      try {
-        const list = await listMessagesAction(studentId, withArchived);
-        if (!alive) return;
-        setMessages(list);
-      } catch {
-        /* сеть моргнула — следующий опрос подхватит */
-      }
-    };
-
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [studentId, withArchived]);
+  useRealtimeSubscription({
+    channel: studentId ? `class:${studentId}` : null,
+    events: "chat",
+    onMessage: load,
+    onFallback: load,
+    fallbackMs: 30_000,
+  });
 
   // Лента всегда показывает последнее сообщение.
   useEffect(() => {

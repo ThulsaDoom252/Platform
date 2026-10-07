@@ -14,10 +14,18 @@ import { useGameState } from "@/lib/use-game-state";
 import { GuessCard } from "./guess-card";
 import { GameStatsCard } from "./game-stats";
 
-export function StudentGuess({ fallback }: { fallback?: ReactNode }) {
+export function StudentGuess({
+  studentId,
+  fallback,
+}: {
+  studentId: string;
+  fallback?: ReactNode;
+}) {
   const { t } = useT();
   const load = useCallback(() => myGameStateAction(), []);
-  const { state, loaded, leftMs } = useGameState(load);
+  const { state, loaded, leftMs } = useGameState(load, {
+    channel: `class:${studentId}`,
+  });
 
   if (!loaded) {
     return <p className="p-4 text-sm text-faint">{t.common.loading}</p>;

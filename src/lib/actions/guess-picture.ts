@@ -38,6 +38,7 @@ import {
   normalizeWordDeckSettings,
   type WordDeckSourceCard,
 } from "@/lib/word-deck";
+import { publishClassRealtime } from "@/lib/realtime-server";
 
 /** Чем спрашиваем. MIXED — обоими способами, по две карты на слово. */
 export type GameMode = "PICTURE" | "TRANSLATION" | "MIXED";
@@ -810,6 +811,10 @@ async function requireTeacher() {
   return session;
 }
 
+async function signalGame(studentId: string, gameId?: string) {
+  await publishClassRealtime(studentId, "game-state", gameId ? { gameId } : {});
+}
+
 /** Собрать колоду и начать партию. */
 export async function startGameAction(setup: GameSetup): Promise<GameActionState> {
   await requireTeacher();
@@ -932,6 +937,7 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
     })
     .returning({ id: activityGames.id });
 
+  await signalGame(studentId, created?.id);
   return { ok: true, gameId: created?.id };
 }
 
@@ -1162,6 +1168,10 @@ export async function playGameAction(gameId: string): Promise<GameActionState> {
     })
     .where(eq(users.id, row.studentId));
 
+  await Promise.all([
+    signalGame(row.studentId, row.id),
+    publishClassRealtime(row.studentId, "class-sync"),
+  ]);
   return { ok: true };
 }
 
@@ -1180,6 +1190,7 @@ export async function pauseGameAction(gameId: string): Promise<GameActionState> 
     .set({ paused: true, pausedLeftMs: left, deadline: null, updatedAt: new Date() })
     .where(eq(activityGames.id, row.id));
 
+  await signalGame(row.studentId, row.id);
   return { ok: true };
 }
 
@@ -1189,9 +1200,13 @@ export async function removeGameAction(gameId: string): Promise<GameActionState>
   const id = String(gameId ?? "");
   if (!id) return { error: "Не выбрана активность" };
 
+  const row = await gameById(id);
+  if (!row) return { error: "Партия не найдена" };
+
   await db
     .delete(activityGames)
     .where(and(eq(activityGames.id, id), eq(activityGames.kind, "GUESS_PICTURE")));
+  await signalGame(row.studentId, row.id);
   return { ok: true };
 }
 
@@ -1237,6 +1252,7 @@ export async function answerCardAction(
     })
     .where(eq(activityGames.id, row.id));
 
+  await signalGame(row.studentId, row.id);
   return { ok: true };
 }
 
@@ -1267,6 +1283,7 @@ export async function nextCardAction(studentId: string): Promise<GameActionState
         updatedAt: new Date(),
       })
       .where(eq(activityGames.id, row.id));
+    await signalGame(row.studentId, row.id);
     return { ok: true };
   }
 
@@ -1284,6 +1301,7 @@ export async function nextCardAction(studentId: string): Promise<GameActionState
     })
     .where(eq(activityGames.id, row.id));
 
+  await signalGame(row.studentId, row.id);
   return { ok: true };
 }
 
@@ -1304,6 +1322,7 @@ export async function stopGameAction(studentId: string): Promise<GameActionState
       ),
     );
 
+  await signalGame(id);
   return { ok: true };
 }
 

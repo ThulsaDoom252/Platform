@@ -39,6 +39,10 @@ import {
 } from "@/lib/class-game-meta";
 import { ensureClassActivityPreferencesTable } from "@/lib/db/ensure-class-activity-preferences";
 import { normalizeClassReactions, type ClassReaction } from "@/lib/class-reaction";
+import {
+  publishClassRealtime,
+  publishUserRealtime,
+} from "@/lib/realtime-server";
 
 export type { Presence } from "@/lib/presence";
 
@@ -364,6 +368,13 @@ export async function enterClassAction(studentId: string): Promise<{ error?: str
   }
 
   await db.update(users).set({ classWithId: id }).where(eq(users.id, session.userId));
+  await Promise.all([
+    publishClassRealtime(id, "class-sync"),
+    publishUserRealtime(id, "class-people"),
+    teacher?.previousStudentId && teacher.previousStudentId !== id
+      ? publishClassRealtime(teacher.previousStudentId, "class-sync")
+      : Promise.resolve(),
+  ]);
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
   return {};
@@ -407,6 +418,8 @@ export async function summonStudentToClassAction(): Promise<{ error?: string }> 
       },
     })
     .where(and(eq(users.id, teacher.studentId), eq(users.role, "STUDENT")));
+
+  await publishUserRealtime(teacher.studentId, "summon");
 
   return {};
 }
@@ -486,6 +499,9 @@ export async function leaveClassAction(): Promise<{ error?: string }> {
       .where(eq(users.id, teacher.studentId));
   }
   await db.update(users).set({ classWithId: null }).where(eq(users.id, session.userId));
+  if (teacher?.studentId) {
+    await publishClassRealtime(teacher.studentId, "class-sync");
+  }
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
   return {};
@@ -566,13 +582,18 @@ export async function sendMessageAction(
     authorId: session.userId,
     text: body,
   });
+  await publishClassRealtime(conversation, "chat");
   return {};
 }
 
 /** Правка, удаление и архивация — только своего сообщения либо учителем. */
 async function ownMessage(id: string, userId: string, role: string) {
   const [row] = await db
-    .select({ id: classMessages.id, authorId: classMessages.authorId })
+    .select({
+      id: classMessages.id,
+      authorId: classMessages.authorId,
+      studentId: classMessages.studentId,
+    })
     .from(classMessages)
     .where(eq(classMessages.id, id))
     .limit(1);
@@ -596,6 +617,7 @@ export async function editMessageAction(
     .update(classMessages)
     .set({ text: body, editedAt: new Date() })
     .where(eq(classMessages.id, row.id));
+  await publishClassRealtime(row.studentId, "chat");
   return {};
 }
 
@@ -608,6 +630,7 @@ export async function deleteMessageAction(id: string): Promise<{ error?: string 
     .update(classMessages)
     .set({ deletedAt: new Date() })
     .where(eq(classMessages.id, row.id));
+  await publishClassRealtime(row.studentId, "chat");
   return {};
 }
 
@@ -619,7 +642,7 @@ export async function archiveMessageAction(
   if (session.role !== "TEACHER") return { error: "Архив ведёт учитель" };
 
   const [row] = await db
-    .select({ id: classMessages.id })
+    .select({ id: classMessages.id, studentId: classMessages.studentId })
     .from(classMessages)
     .where(eq(classMessages.id, String(id ?? "")))
     .limit(1);
@@ -629,6 +652,7 @@ export async function archiveMessageAction(
     .update(classMessages)
     .set({ archivedAt: archived ? new Date() : null })
     .where(eq(classMessages.id, row.id));
+  await publishClassRealtime(row.studentId, "chat");
   return {};
 }
 
@@ -1093,6 +1117,8 @@ export async function showGameToStudentAction(gameId?: string): Promise<{ error?
       },
     })
     .where(eq(users.id, me.classWithId));
+
+  await publishClassRealtime(me.classWithId, "class-sync");
 
   return {};
 }

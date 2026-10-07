@@ -19,6 +19,7 @@ import {
   saveWordDeckHomeworkStateAction,
 } from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 export type WordDeckPlayable = {
   id: string;
@@ -105,6 +106,7 @@ export function WordDeckBoard({
   compact = false,
   live = false,
   observer = false,
+  realtimeChannel = null,
   homework = false,
   teacherSeesAnswers = false,
   reviewEditor,
@@ -115,6 +117,7 @@ export function WordDeckBoard({
   live?: boolean;
   /** Ученик видит общий стол, но не может им управлять. */
   observer?: boolean;
+  realtimeChannel?: string | null;
   /** Student owns controls and progress is saved into the assigned homework snapshot. */
   homework?: boolean;
   /** Private teacher-only answer/example rail. Never pass this in an observer/student view. */
@@ -231,37 +234,41 @@ export function WordDeckBoard({
     return () => window.clearTimeout(timer);
   }, [current?.instanceId, current?.word, settings.allowUsAudio, settings.autoPronounce, settings.autoPronounceUk, spellingGame, started]);
 
-  useEffect(() => {
+  const applyRemoteState = useCallback((state: WordDeckLiveState | null) => {
+    if (!state || state.updatedAt === lastRemoteAt.current) return;
+    lastRemoteAt.current = state.updatedAt;
+    setDeck(state.deck);
+    setAt(state.at);
+    setFaceUp(state.faceUp);
+    setSound(state.sound);
+    setTime(state.time);
+    setExpired(state.expired);
+    setReadDescriptions(state.readDescriptions);
+    setVerdict(state.verdict);
+    setFeedback(state.feedback);
+  }, []);
+
+  const pullRemoteState = useCallback(async () => {
     if (!observer) return;
-    let alive = true;
-    let pulling = false;
-    const pull = async () => {
-      if (pulling) return;
-      pulling = true;
-      try {
-        const state = await classWordDeckLiveStateAction(activity.id);
-        if (!alive || !state || state.updatedAt === lastRemoteAt.current) return;
-        lastRemoteAt.current = state.updatedAt;
-        setDeck(state.deck);
-        setAt(state.at);
-        setFaceUp(state.faceUp);
-        setSound(state.sound);
-        setTime(state.time);
-        setExpired(state.expired);
-        setReadDescriptions(state.readDescriptions);
-        setVerdict(state.verdict);
-        setFeedback(state.feedback);
-      } finally {
-        pulling = false;
-      }
-    };
-    void pull();
-    const timer = window.setInterval(() => void pull(), 250);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [activity.id, observer]);
+    applyRemoteState(await classWordDeckLiveStateAction(activity.id));
+  }, [activity.id, applyRemoteState, observer]);
+
+  useEffect(() => {
+    if (observer) void pullRemoteState().catch(() => {});
+  }, [observer, pullRemoteState]);
+
+  useRealtimeSubscription({
+    channel: observer ? realtimeChannel : null,
+    events: "word-deck",
+    onMessage: (message) => {
+      const data = message.data as { gameId?: string; state?: WordDeckLiveState } | undefined;
+      if (data?.gameId !== activity.id) return;
+      applyRemoteState(data.state ?? null);
+    },
+    onFallback: pullRemoteState,
+    fallbackMs: 30_000,
+    enabled: observer,
+  });
 
   useEffect(() => {
     if (!live || observer) return;

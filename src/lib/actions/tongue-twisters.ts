@@ -14,6 +14,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tongueTwisters, tongueTwisterAssignments, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { publishClassRealtime } from "@/lib/realtime-server";
 import { isStoredImage, removeStoredImage } from "@/lib/image-store";
 import { storePublicFile } from "@/lib/public-file-store";
 import {
@@ -657,6 +658,10 @@ export async function focusTwisterInClassAction(
     })
     .where(eq(users.id, target.id));
 
+  await Promise.all([
+    publishClassRealtime(target.id, "twister"),
+    publishClassRealtime(target.id, "class-sync"),
+  ]);
   return { session: (await twisterSessionAction()) ?? undefined };
 }
 
@@ -696,6 +701,10 @@ export async function closeTwisterInClassAction(sessionId: string): Promise<void
       },
     })
     .where(eq(users.id, target.id));
+  await Promise.all([
+    publishClassRealtime(target.id, "twister"),
+    publishClassRealtime(target.id, "class-sync"),
+  ]);
 }
 
 export async function addTwisterStrokeAction(
@@ -739,6 +748,7 @@ export async function addTwisterStrokeAction(
     .update(tongueTwisterAssignments)
     .set({ drawingStrokes: mergeTwisterStrokes(assignment.strokes ?? [], [clean]) })
     .where(eq(tongueTwisterAssignments.id, assignment.id));
+  if (shared) await publishClassRealtime(target.id, "twister");
   return {};
 }
 
@@ -778,6 +788,7 @@ export async function undoTwisterStrokeAction(
     .update(tongueTwisterAssignments)
     .set({ drawingStrokes: strokes.filter((stroke) => stroke.twisterId === twisterId) })
     .where(eq(tongueTwisterAssignments.id, assignment.id));
+  if (shared) await publishClassRealtime(target.id, "twister");
 }
 
 export async function clearTwisterStrokesAction(
@@ -812,6 +823,7 @@ export async function clearTwisterStrokesAction(
         eq(tongueTwisterAssignments.pinned, true),
       ),
     );
+  if (shared) await publishClassRealtime(target.id, "twister");
 }
 
 export async function setStudentTwisterDrawingAction(
@@ -829,4 +841,5 @@ export async function setStudentTwisterDrawingAction(
       classFocus: { ...focus, twisterStudentDrawingAllowed: Boolean(allowed) },
     })
     .where(eq(users.id, target.id));
+  await publishClassRealtime(target.id, "twister");
 }

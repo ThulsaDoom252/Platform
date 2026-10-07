@@ -28,6 +28,7 @@ import {
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { queueStudentNotification } from "@/lib/notifications";
+import { publishClassRealtime } from "@/lib/realtime-server";
 import { parseLexisDocuments } from "@/lib/keyed-parser";
 import { sanitizeBlocks, type RuleBlock } from "@/lib/rule-blocks";
 import {
@@ -1833,6 +1834,10 @@ export async function addLessonToClassAction(
 
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
+  await Promise.all([
+    publishClassRealtime(me.studentId, "lesson"),
+    publishClassRealtime(me.studentId, "class-sync"),
+  ]);
   return { id: result.id };
 }
 
@@ -1896,6 +1901,7 @@ export async function openSectionAction(
   const id = String(assignmentId ?? "");
   const [row] = await db
     .select({
+      studentId: lessonAssignments.studentId,
       openSections: lessonAssignments.openSections,
       contentOverride: lessonAssignments.contentOverride,
       kind: lessonUnits.kind,
@@ -1934,6 +1940,7 @@ export async function openSectionAction(
     .where(eq(lessonAssignments.id, id));
 
   revalidatePath("/student/class");
+  await publishClassRealtime(row.studentId, "lesson");
   return {};
 }
 
@@ -2008,6 +2015,7 @@ export async function focusLessonSectionAction(
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
+  await publishClassRealtime(target.studentId, "class-sync");
   return {};
 }
 
@@ -2081,6 +2089,7 @@ export async function focusRegularLessonElementAction(
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
+  await publishClassRealtime(target.studentId, "class-sync");
   return {};
 }
 
@@ -2145,6 +2154,7 @@ export async function focusHomeworkElementAction(
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
+  await publishClassRealtime(target.studentId, "class-sync");
   return {};
 }
 
@@ -2226,6 +2236,7 @@ export async function syncLessonVideoAction(
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
+  await publishClassRealtime(target.studentId, "class-sync");
   return {};
 }
 
@@ -2300,6 +2311,7 @@ export async function focusLessonVideoAction(
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
   revalidatePath("/student/class");
+  await publishClassRealtime(target.studentId, "class-sync");
   return {};
 }
 
@@ -2389,6 +2401,10 @@ export async function focusLessonWordAction(
   }
 
   revalidatePath("/student/class");
+  await Promise.all([
+    publishClassRealtime(row.studentId, "lesson"),
+    publishClassRealtime(row.studentId, "class-sync"),
+  ]);
   return {};
 }
 
@@ -2444,6 +2460,10 @@ export async function selectLessonLexisGroupAction(
       .where(and(eq(users.id, row.studentId), eq(users.role, "STUDENT")));
   }
   revalidatePath("/student/class");
+  await Promise.all([
+    publishClassRealtime(row.studentId, "lesson"),
+    publishClassRealtime(row.studentId, "class-sync"),
+  ]);
   return {};
 }
 
@@ -2462,7 +2482,10 @@ export async function highlightLessonTextAction(
 
   const id = String(assignmentId ?? "");
   const [row] = await db
-    .select({ highlights: lessonAssignments.highlights })
+    .select({
+      studentId: lessonAssignments.studentId,
+      highlights: lessonAssignments.highlights,
+    })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
     .where(
@@ -2480,6 +2503,7 @@ export async function highlightLessonTextAction(
     .where(eq(lessonAssignments.id, id));
 
   revalidatePath("/student/class");
+  await publishClassRealtime(row.studentId, "lesson");
   return {};
 }
 
@@ -2491,7 +2515,10 @@ export async function setLessonHighlightsAction(
   const session = await requireTeacher();
   const id = String(assignmentId ?? "");
   const [row] = await db
-    .select({ highlights: lessonAssignments.highlights })
+    .select({
+      studentId: lessonAssignments.studentId,
+      highlights: lessonAssignments.highlights,
+    })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
     .where(and(eq(lessonAssignments.id, id), eq(lessonUnits.authorId, session.userId)))
@@ -2506,6 +2533,7 @@ export async function setLessonHighlightsAction(
 
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
+  await publishClassRealtime(row.studentId, "lesson");
   return { highlights: next };
 }
 
@@ -2518,7 +2546,10 @@ export async function showBritishAction(
   if (typeof show !== "boolean") return { error: "Неизвестная настройка" };
   const id = String(assignmentId ?? "");
   const [row] = await db
-    .select({ openSections: lessonAssignments.openSections })
+    .select({
+      studentId: lessonAssignments.studentId,
+      openSections: lessonAssignments.openSections,
+    })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
     .where(
@@ -2537,6 +2568,7 @@ export async function showBritishAction(
     .where(eq(lessonAssignments.id, id));
 
   revalidatePath("/student/class");
+  await publishClassRealtime(row.studentId, "lesson");
   return {};
 }
 
@@ -2614,6 +2646,7 @@ export async function setLessonVocabularyRevealAction(
     .where(eq(lessonAssignments.id, id));
 
   revalidatePath("/student/class");
+  await publishClassRealtime(row.studentId, "lesson");
   return {};
 }
 
@@ -2653,6 +2686,7 @@ export async function answerAction(
     })
     .where(eq(lessonAssignments.id, id));
 
+  await publishClassRealtime(row.studentId, "lesson");
   return {};
 }
 

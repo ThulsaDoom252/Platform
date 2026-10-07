@@ -45,8 +45,11 @@ export default async function TeacherLayout({
 
   return (
     <I18nProvider locale={locale}>
-      <StudentPresenceProvider initial={presences}>
-        <NotificationToastHost />
+      <StudentPresenceProvider
+        initial={presences}
+        self={{ id: session.userId, name: me.name, role: "TEACHER" }}
+      >
+        <NotificationToastHost userId={session.userId} />
         <div className="min-h-screen bg-page">
           <div className="mx-auto flex w-full max-w-[1920px]">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}

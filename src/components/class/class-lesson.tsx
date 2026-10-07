@@ -15,13 +15,13 @@ import {
 import { IconPencil, IconPlus, IconX } from "@/components/icons";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTextSelection } from "./selection-translation-popover";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 type Assigned = NonNullable<Awaited<ReturnType<typeof assignedLessonAction>>>;
 
-const POLL_MS = 4_000;
-
 export function ClassLesson({
   teacher,
+  studentId,
   assignmentId,
   videoSync,
   sectionFocus,
@@ -29,6 +29,7 @@ export function ClassLesson({
   onTextSelect,
 }: {
   teacher: boolean;
+  studentId: string | null;
   assignmentId: string | null;
   videoSync: ClassVideoState | null;
   sectionFocus?: {
@@ -77,16 +78,19 @@ export function ClassLesson({
   }, [assignmentId, teacher]);
 
   useEffect(() => {
-    let alive = true;
-    const load = () =>
-      reload().catch(() => alive && setError(t.lessonUnits.classLessonFailed));
-    void load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
+    const frame = window.requestAnimationFrame(() => {
+      void reload().catch(() => setError(t.lessonUnits.classLessonFailed));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [reload, t.lessonUnits.classLessonFailed]);
+
+  useRealtimeSubscription({
+    channel: studentId ? `class:${studentId}` : null,
+    events: "lesson",
+    onMessage: reload,
+    onFallback: reload,
+    fallbackMs: 30_000,
+  });
 
   // Focus по видео приходит быстрым тактом класса. Не ждём следующего
   // четырёхсекундного обновления, если этим же действием секцию только открыли.

@@ -9,41 +9,38 @@ import {
   type NotificationToastItem,
 } from "@/lib/actions/profile";
 import { useT } from "@/components/i18n-provider";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 /** Yellow live message: it only exists while the recipient is online. */
-export function NotificationToastHost() {
+export function NotificationToastHost({ userId }: { userId: string }) {
   const { t } = useT();
   const router = useRouter();
   const cursor = useRef(new Date().toISOString());
   const [items, setItems] = useState<NotificationToastItem[]>([]);
   const [busy, startAction] = useTransition();
 
+  const pull = async () => {
+    const result = await pollMyNotificationsAction(cursor.current);
+    cursor.current = result.cursor;
+    if (result.items.length > 0) {
+      setItems((current) => {
+        const known = new Set(current.map((item) => item.id));
+        return [...current, ...result.items.filter((item) => !known.has(item.id))].slice(-3);
+      });
+    }
+  };
+
   useEffect(() => {
-    let alive = true;
-    let pulling = false;
-    const pull = async () => {
-      if (pulling) return;
-      pulling = true;
-      try {
-        const result = await pollMyNotificationsAction(cursor.current);
-        cursor.current = result.cursor;
-        if (alive && result.items.length > 0) {
-          setItems((current) => {
-            const known = new Set(current.map((item) => item.id));
-            return [...current, ...result.items.filter((item) => !known.has(item.id))].slice(-3);
-          });
-        }
-      } finally {
-        pulling = false;
-      }
-    };
-    void pull();
-    const timer = window.setInterval(() => void pull(), 4_000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
+    void pull().catch(() => {});
   }, []);
+
+  useRealtimeSubscription({
+    channel: `user:${userId}`,
+    events: "notification",
+    onMessage: pull,
+    onFallback: pull,
+    fallbackMs: 30_000,
+  });
 
   const remove = (id: string) => setItems((current) => current.filter((item) => item.id !== id));
   const read = (item: NotificationToastItem, navigate: boolean) => startAction(async () => {

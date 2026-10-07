@@ -9,6 +9,7 @@ import type { Locale } from "@/lib/i18n";
 import { storePublicFile } from "@/lib/public-file-store";
 import { fmt, getDictFor } from "@/lib/i18n";
 import { notificationPolicy } from "@/lib/notifications";
+import { publishUserRealtime } from "@/lib/realtime-server";
 
 const ALLOWED_LOCALES: Locale[] = ["en", "ru", "uk"];
 
@@ -70,6 +71,7 @@ export async function markMyNotificationReadAction(id: string) {
           title: read.message,
         }),
       });
+      await publishUserRealtime(read.senderId, "notification");
     }
   }
   revalidatePath("/", "layout");
@@ -100,6 +102,7 @@ export async function resolveNotificationPromptAction(id: string, send: boolean)
     }
     await tx.delete(notifications).where(eq(notifications.id, prompt.id));
   });
+  if (send) await publishUserRealtime(data.studentId, "notification");
   revalidatePath("/", "layout");
 }
 
@@ -140,6 +143,7 @@ export async function sendManualNotificationAction(
     message,
     href: "/student",
   });
+  await publishUserRealtime(student.id, "notification");
   revalidatePath("/", "layout");
   return { ok: true };
 }

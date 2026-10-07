@@ -24,6 +24,7 @@ import {
 import { completeFinishedLessons } from "@/lib/lesson-completion";
 import { StudentClassSummons } from "@/components/student/student-class-summons";
 import { NotificationToastHost } from "@/components/notification-toast-host";
+import { RealtimePresenceBeacon } from "@/components/student-presence";
 
 export default async function StudentLayout({
   children,
@@ -50,8 +51,9 @@ export default async function StudentLayout({
 
   return (
     <I18nProvider locale={locale}>
-      <StudentClassSummons />
-      <NotificationToastHost />
+      <RealtimePresenceBeacon name={me.name} />
+      <StudentClassSummons userId={session.userId} />
+      <NotificationToastHost userId={session.userId} />
       <div className="min-h-screen bg-page">
         <div className="mx-auto flex w-full max-w-[1440px]">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}

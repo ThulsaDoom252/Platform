@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * Состояние партии, которое два экрана читают опросом.
+ * Состояние партии, которое два экрана получают по WebSocket.
  *
- * Постоянного соединения в проекте нет, поэтому оба браузера спрашивают
- * сервер раз в секунду. Между опросами остаток времени отсчитывается на
+ * Между серверными событиями остаток времени отсчитывается на
  * месте: иначе цифра дёргалась бы раз в секунду скачками, а полоса
  * стояла бы на месте.
  *
@@ -13,11 +12,14 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameState } from "@/lib/actions/guess-picture";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
-const POLL_MS = 1000;
 const TICK_MS = 100;
 
-export function useGameState(load: () => Promise<GameState | null>) {
+export function useGameState(
+  load: () => Promise<GameState | null>,
+  realtime?: { channel: string; gameId?: string },
+) {
   const [state, setState] = useState<GameState | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [leftMs, setLeftMs] = useState(0);
@@ -43,19 +45,20 @@ export function useGameState(load: () => Promise<GameState | null>) {
   }, []);
 
   useEffect(() => {
-    let alive = true;
-
-    const poll = () => {
-      if (alive) void refresh();
-    };
-
-    poll();
-    const timer = setInterval(poll, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
+    void refresh();
   }, [refresh]);
+
+  useRealtimeSubscription({
+    channel: realtime?.channel,
+    events: "game-state",
+    onMessage: (message) => {
+      const changed = (message.data as { gameId?: string } | undefined)?.gameId;
+      if (!realtime?.gameId || !changed || changed === realtime.gameId) void refresh();
+    },
+    onFallback: refresh,
+    fallbackMs: 30_000,
+    enabled: !!realtime?.channel,
+  });
 
   useEffect(() => {
     const tick = setInterval(() => {

@@ -32,6 +32,7 @@ import {
 import { scheduleNow } from "@/lib/schedule-time";
 import { enrichSpellingMistake } from "@/lib/spelling-mistake";
 import { queueStudentNotification } from "@/lib/notifications";
+import { publishClassRealtime } from "@/lib/realtime-server";
 import {
   removeStoredImage,
   storeUploadedImage,
@@ -1057,6 +1058,10 @@ export async function saveClassWordDeckLiveStateAction(
     .update(activityGames)
     .set({ wordDeck: { ...row.wordDeck, liveState: state }, updatedAt: new Date() })
     .where(eq(activityGames.id, row.id));
+  await publishClassRealtime(teacher.classWithId, "word-deck", {
+    gameId: row.id,
+    state,
+  });
   return { state };
 }
 

@@ -240,7 +240,13 @@ export function ClassTwister({
       )}
 
       {focusAt && (
-        <TwisterViewer items={pinned} startId={focusAt} teacher onClose={() => setFocusAt(null)} />
+        <TwisterViewer
+          items={pinned}
+          startId={focusAt}
+          teacher
+          realtimeChannel={`class:${studentId}`}
+          onClose={() => setFocusAt(null)}
+        />
       )}
     </div>
   );

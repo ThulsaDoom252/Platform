@@ -24,6 +24,7 @@ import {
 } from "@/lib/class-game-meta";
 import { normalizeWordDeckSettings } from "@/lib/word-deck";
 import { ensureClassActivityPreferencesTable } from "@/lib/db/ensure-class-activity-preferences";
+import { publishClassRealtime, publishUserRealtime } from "@/lib/realtime-server";
 
 async function teacherForStudent(studentId: string) {
   const session = await getSession();
@@ -282,8 +283,10 @@ export async function saveClassGameReviewAction(input: {
       href: "/student/class",
       relatedStudentId: studentId,
     });
+    await publishUserRealtime(studentId, "notification");
   }
   revalidatePath("/teacher/class");
   revalidatePath("/student/class");
+  await publishClassRealtime(studentId, "class-sync");
   return { review };
 }

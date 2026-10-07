@@ -39,6 +39,7 @@ import {
   IconX,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 const COLORS = ["#facc15", "#ef4444", "#3b82f6", "#22c55e", "#a855f7", "#111827", "#ffffff"];
 const TOOLS: { id: TwisterDrawTool; symbol: string }[] = [
@@ -62,12 +63,14 @@ export function TwisterViewer({
   startId,
   teacher = false,
   initialSession = null,
+  realtimeChannel = null,
   onClose,
 }: {
   items: Twister[];
   startId: string;
   teacher?: boolean;
   initialSession?: ClassTwisterSession | null;
+  realtimeChannel?: string | null;
   onClose: () => void;
 }) {
   const { t } = useT();
@@ -123,32 +126,29 @@ export function TwisterViewer({
   );
 
   const sessionId = session?.id;
-  useEffect(() => {
+  const syncSession = useCallback(async () => {
     if (!sessionId) return;
-    let alive = true;
-    const sync = () => {
-      twisterSessionAction()
-        .then((next) => {
-          if (!alive) return;
-          if (!next) {
-            setSession(null);
-            if (!teacher) closeRef.current();
-            return;
-          }
-          setSession(next);
-          if (teacher) {
-            const index = items.findIndex((item) => item.id === next.twisterId);
-            if (index >= 0) setAt(index);
-          }
-        })
-        .catch(() => {});
-    };
-    const id = setInterval(sync, 900);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
+    const next = await twisterSessionAction();
+    if (!next) {
+      setSession(null);
+      if (!teacher) closeRef.current();
+      return;
+    }
+    setSession(next);
+    if (teacher) {
+      const index = items.findIndex((item) => item.id === next.twisterId);
+      if (index >= 0) setAt(index);
+    }
   }, [items, sessionId, teacher]);
+
+  useRealtimeSubscription({
+    channel: sessionId ? realtimeChannel : null,
+    events: "twister",
+    onMessage: syncSession,
+    onFallback: syncSession,
+    fallbackMs: 30_000,
+    enabled: !!sessionId,
+  });
 
   useEffect(() => {
     if (!teacher || !session || !current || session.twisterId === current.id) return;

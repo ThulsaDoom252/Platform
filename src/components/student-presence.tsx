@@ -14,9 +14,10 @@ import {
 import { useT } from "@/components/i18n-provider";
 import { cn } from "@/lib/utils";
 import type { Presence } from "@/lib/presence";
+import { useSchoolPresence } from "@/lib/use-realtime";
 
 const PresenceContext = createContext<Record<string, Presence>>({});
-const REFRESH_MS = 10_000;
+const FALLBACK_REFRESH_MS = 30_000;
 
 function asMap(rows: StudentPresenceSnapshot[]) {
   return Object.fromEntries(rows.map((row) => [row.id, row.presence]));
@@ -25,14 +26,25 @@ function asMap(rows: StudentPresenceSnapshot[]) {
 /** Все точки статуса используют один опрос, независимо от их количества. */
 export function StudentPresenceProvider({
   initial,
+  self,
   children,
 }: {
   initial: StudentPresenceSnapshot[];
+  self: { id: string; name: string; role: "TEACHER" | "STUDENT" };
   children: ReactNode;
 }) {
   const [presences, setPresences] = useState<Record<string, Presence>>(() => asMap(initial));
+  const status = useSchoolPresence({
+    data: { role: self.role, name: self.name },
+    onMembers: (online) => {
+      setPresences((current) => Object.fromEntries(
+        Object.keys(current).map((id) => [id, online.has(id) ? "online" : "offline"]),
+      ));
+    },
+  });
 
   useEffect(() => {
+    if (status === "connected") return;
     let alive = true;
     let loading = false;
     const refresh = async () => {
@@ -45,7 +57,7 @@ export function StudentPresenceProvider({
         loading = false;
       }
     };
-    const timer = window.setInterval(() => void refresh(), REFRESH_MS);
+    const timer = window.setInterval(() => void refresh(), FALLBACK_REFRESH_MS);
     const visible = () => document.visibilityState === "visible" && void refresh();
     document.addEventListener("visibilitychange", visible);
     return () => {
@@ -53,14 +65,28 @@ export function StudentPresenceProvider({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, []);
+  }, [status]);
 
   return <PresenceContext.Provider value={presences}>{children}</PresenceContext.Provider>;
+}
+
+/** Keeps a student visible online even outside the class page. */
+export function RealtimePresenceBeacon({
+  name,
+}: {
+  name: string;
+}) {
+  useSchoolPresence({ data: { role: "STUDENT", name } });
+  return null;
 }
 
 export function useStudentPresence(studentId: string): Presence {
   const presences = useContext(PresenceContext);
   return presences[studentId] ?? "offline";
+}
+
+export function usePresenceMap() {
+  return useContext(PresenceContext);
 }
 
 export function PresenceIndicator({

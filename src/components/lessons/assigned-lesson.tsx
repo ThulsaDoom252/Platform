@@ -42,6 +42,7 @@ import { LiveLessonEditor } from "@/components/lessons/live-lesson-editor";
 import { IconPencil, IconReset, IconTrash, IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
 export function AssignedLesson({
   data,
@@ -101,26 +102,19 @@ export function AssignedLesson({
     return () => cancelAnimationFrame(frame);
   }, [data.assignment.highlights, data.showBritish, data.vocabularyReveal, teacher]);
 
-  useEffect(() => {
-    if (teacher || !liveClass) return;
-    let alive = true;
-    let pulling = false;
-    const pull = async () => {
-      if (pulling) return;
-      pulling = true;
-      try {
-        const next = await lessonVocabularyRevealAction(data.assignment.id);
-        if (alive && next) setVocabularyReveal(next);
-      } finally {
-        pulling = false;
-      }
-    };
-    const timer = window.setInterval(() => void pull(), 500);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [data.assignment.id, liveClass, teacher]);
+  const pullVocabularyReveal = async () => {
+    const next = await lessonVocabularyRevealAction(data.assignment.id);
+    if (next) setVocabularyReveal(next);
+  };
+
+  useRealtimeSubscription({
+    channel: !teacher && liveClass ? `class:${data.assignment.studentId}` : null,
+    events: "lesson",
+    onMessage: pullVocabularyReveal,
+    onFallback: pullVocabularyReveal,
+    fallbackMs: 30_000,
+    enabled: !teacher && liveClass,
+  });
 
   const changeVocabularyReveal = (next: LessonVocabularyReveal) => {
     setVocabularyReveal(next);
