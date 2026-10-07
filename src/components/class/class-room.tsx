@@ -12,6 +12,7 @@
  * только после события или как редкая страховка при недоступном realtime.
  */
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
@@ -27,7 +28,6 @@ import {
 } from "@/lib/class-order";
 import { useLocalJson } from "@/lib/use-local-json";
 import {
-  classSyncAction,
   classTeacherProfileAction,
   heartbeatAction,
   unreadMessagesAction,
@@ -40,8 +40,8 @@ import {
   type Presence,
 } from "@/lib/actions/class";
 import { PresenceIndicator, usePresenceMap } from "@/components/student-presence";
-import { ClassChat } from "./class-chat";
-import { QuickVerbs } from "./quick-verbs";
+const ClassChat = dynamic(() => import("./class-chat").then((m) => m.ClassChat));
+const QuickVerbs = dynamic(() => import("./quick-verbs").then((m) => m.QuickVerbs));
 import {
   DEFAULT_CLASS_PANEL_LAYOUT,
   DockablePanel,
@@ -61,40 +61,36 @@ import {
   IconUser,
   IconCap,
 } from "@/components/icons";
-import { ClassScript } from "./class-script";
-import { ClassBoard } from "./class-board";
-import { ClassTwister } from "./class-twister";
-import { TwisterViewer } from "@/components/twisters/twister-viewer";
+const ClassScript = dynamic(() => import("./class-script").then((m) => m.ClassScript));
+const ClassBoard = dynamic(() => import("./class-board").then((m) => m.ClassBoard));
+const ClassTwister = dynamic(() => import("./class-twister").then((m) => m.ClassTwister));
+const TwisterViewer = dynamic(() => import("@/components/twisters/twister-viewer").then((m) => m.TwisterViewer));
 import {
   twisterSessionAction,
   type ClassTwisterSession,
 } from "@/lib/actions/tongue-twisters";
-import { ClassActivities } from "./class-activities";
-import { ClassLesson } from "./class-lesson";
-import {
-  ClassVocabulary,
-} from "./class-vocabulary";
+const ClassActivities = dynamic(() => import("./class-activities").then((m) => m.ClassActivities));
+const ClassLesson = dynamic(() => import("./class-lesson").then((m) => m.ClassLesson));
+const ClassVocabulary = dynamic(() => import("./class-vocabulary").then((m) => m.ClassVocabulary));
 import type { ClassVocabularyWord } from "@/lib/actions/class-vocabulary";
 import {
   SelectionTranslationPopover,
   type ClassTextSelection,
 } from "./selection-translation-popover";
-import { StudentGuess } from "@/components/game/student-guess";
-import { WordDeckBoard } from "@/components/game/word-deck-board";
+const StudentGuess = dynamic(() => import("@/components/game/student-guess").then((m) => m.StudentGuess));
+const WordDeckBoard = dynamic(() => import("@/components/game/word-deck-board").then((m) => m.WordDeckBoard));
 import {
   focusedClassWordDeckAction,
   type ClassWordDeckActivity,
 } from "@/lib/actions/word-deck";
-import { RevisionClassRunner } from "@/components/revision/revision-class-runner";
+const RevisionClassRunner = dynamic(() => import("@/components/revision/revision-class-runner").then((m) => m.RevisionClassRunner));
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTimerState } from "@/lib/class-timer";
 import { ClassTimerManager, StudentClassTimer } from "./class-timer";
-import {
-  ClassNotes,
-  StudentFocusedNote,
-  type FocusedClassNote,
-} from "./class-notes";
+import type { FocusedClassNote } from "./class-notes";
+const ClassNotes = dynamic(() => import("./class-notes").then((m) => m.ClassNotes));
+const StudentFocusedNote = dynamic(() => import("./class-notes").then((m) => m.StudentFocusedNote));
 import { ClassGameReviewBanner } from "./class-game-review";
 import type { ClassGameReview } from "@/lib/class-game-meta";
 import type { ClassReaction } from "@/lib/class-reaction";
@@ -104,6 +100,7 @@ import {
   TeacherReactionPanel,
 } from "./class-reactions";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
+import { readClassLive } from "@/lib/class-live-request";
 
 type PanelKey = "chat" | "verbs" | "dictionary" | "board" | "script" | "notes";
 
@@ -203,7 +200,7 @@ export function ClassRoom({
   const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatRef = useRef<() => void>(() => {});
   const unreadRefreshRef = useRef<() => void>(() => {});
-  const classSyncRef = useRef<() => void>(() => {});
+  const classSyncRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     boardOpen.current = open.board;
@@ -411,7 +408,7 @@ export function ClassRoom({
     let alive = true;
 
     const tick = () => {
-      classSyncAction(boardOpen.current)
+      return readClassLive("focus", "", boardOpen.current)
         .then((sync) => {
           if (!alive) return;
           setActiveLessonId(sync.lessonAssignmentId);
@@ -564,7 +561,7 @@ export function ClassRoom({
     onFallback: () => classSyncRef.current(),
     // Class navigation, focus and teacher reactions must remain live even
     // when the realtime provider is temporarily unavailable.
-    fallbackMs: 1_000,
+    fallbackMs: 500,
   });
 
   /*

@@ -33,16 +33,17 @@ export default async function StudentLayout({
 }) {
   const session = await getSession();
   if (!session || session.role !== "STUDENT") redirect("/login");
-  await completeFinishedLessons();
-
-  const [me] = await db
+  const [[me], { t, locale }] = await Promise.all([
+    db
     .select({ name: users.name, avatarUrl: users.avatarUrl, level: users.level })
     .from(users)
     .where(eq(users.id, session.userId))
-    .limit(1);
+    .limit(1),
+    getDict(),
+    completeFinishedLessons(),
+  ]);
   if (!me) redirect("/login");
 
-  const { t, locale } = await getDict();
   const { items, unreadCount } = await getStudentFeed(session.userId, locale);
 
   const roleLine = me.level
@@ -50,7 +51,7 @@ export default async function StudentLayout({
     : t.topbar.roleStudent;
 
   return (
-    <I18nProvider locale={locale}>
+    <I18nProvider locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
       <RealtimePresenceBeacon name={me.name} />
       <StudentClassSummons userId={session.userId} />
       <NotificationToastHost userId={session.userId} />

@@ -27,24 +27,23 @@ export default async function TeacherLayout({
 }) {
   const session = await getSession();
   if (!session || session.role !== "TEACHER") redirect("/login");
-  await completeFinishedLessons();
-
-  const [me] = await db
+  const [[me], { t, locale }, presences] = await Promise.all([
+    db
     .select({ name: users.name, avatarUrl: users.avatarUrl })
     .from(users)
     .where(eq(users.id, session.userId))
-    .limit(1);
+    .limit(1),
+    getDict(),
+    studentPresenceSnapshotAction(),
+    completeFinishedLessons(),
+  ]);
   // Аккаунт удалён (или база пересоздана) — токен больше не действителен.
   if (!me) redirect("/login");
 
-  const [{ t, locale }, presences] = await Promise.all([
-    getDict(),
-    studentPresenceSnapshotAction(),
-  ]);
   const { items, unreadCount } = await getTeacherFeed(session.userId, locale);
 
   return (
-    <I18nProvider locale={locale}>
+    <I18nProvider locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
       <StudentPresenceProvider
         initial={presences}
         self={{ id: session.userId, name: me.name, role: "TEACHER" }}

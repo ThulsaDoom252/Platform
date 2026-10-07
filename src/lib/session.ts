@@ -1,4 +1,6 @@
 import "server-only";
+import { cache } from "react";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
@@ -16,6 +18,12 @@ if (!secretKey) {
   );
 }
 const encodedKey = new TextEncoder().encode(secretKey);
+const requestSession = new AsyncLocalStorage<SessionPayload>();
+
+/** Identity is verified before this request-local scope is entered. */
+export function withRequestSession<T>(session: SessionPayload, task: () => T): T {
+  return requestSession.run(session, task);
+}
 
 export type SessionPayload = {
   userId: string;
@@ -46,7 +54,10 @@ export async function createSession(payload: SessionPayload) {
   });
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+// React's cache is scoped to the render request, never shared across users.
+export const getSession = cache(async (): Promise<SessionPayload | null> => {
+  const verified = requestSession.getStore();
+  if (verified) return verified;
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
@@ -67,7 +78,7 @@ export async function getSession(): Promise<SessionPayload | null> {
   } catch {
     return null;
   }
-}
+});
 
 export async function destroySession() {
   const cookieStore = await cookies();

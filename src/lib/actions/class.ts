@@ -766,25 +766,13 @@ export type ClassSync = {
 export async function classSyncAction(onBoard = false): Promise<ClassSync> {
   const session = await requireUser();
 
-  // The disconnected fallback can run once a second. Presence has its own
-  // heartbeat, so avoid turning every sync read into a database write.
-  const presenceCutoff = new Date(Date.now() - 15_000);
-  const classWhere = onBoard ? "board" : null;
-  await db
-    .update(users)
-    .set({ classWhere, lastSeenAt: new Date() })
-    .where(
-      and(
-        eq(users.id, session.userId),
-        sql`(${users.classWhere} is distinct from ${classWhere} or ${users.lastSeenAt} is null or ${users.lastSeenAt} < ${presenceCutoff})`,
-      ),
-    );
-
   const [me] = await db
     .select({
       role: users.role,
       classWithId: users.classWithId,
       classFocus: users.classFocus,
+      classWhere: users.classWhere,
+      lastSeenAt: users.lastSeenAt,
     })
     .from(users)
     .where(eq(users.id, session.userId))
@@ -806,24 +794,24 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
   }
 
   // У учителя собеседник записан в поле, у ученика — тот, кто выбрал его.
-  const [partner] =
+  const partnerQuery =
     me.role === "TEACHER"
       ? me.classWithId
-        ? await db
+        ? db
             .select({ id: users.id, classWhere: users.classWhere, classFocus: users.classFocus })
             .from(users)
             .where(eq(users.id, me.classWithId))
             .limit(1)
         : []
-      : await db
+      : db
           .select({ id: users.id, classWhere: users.classWhere, classFocus: users.classFocus })
           .from(users)
           .where(and(eq(users.classWithId, session.userId), eq(users.role, "TEACHER")))
           .limit(1);
 
   const studentId = me.role === "TEACHER" ? me.classWithId : session.userId;
-  const vocabularyEvents = studentId
-    ? await db
+  const vocabularyQuery = studentId
+    ? db
         .select({
           id: classVocabularyWords.id,
           english: classVocabularyWords.english,
@@ -835,6 +823,28 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
         .orderBy(desc(classVocabularyWords.createdAt))
         .limit(8)
     : [];
+
+  const reviewQuery = me.role === "STUDENT" && studentId
+    ? ensureClassActivityPreferencesTable().then(() =>
+        db
+          .select({
+            reviews: classActivityPreferences.reviews,
+            notice: classActivityPreferences.reviewNotice,
+          })
+          .from(classActivityPreferences)
+          .where(eq(classActivityPreferences.studentId, studentId))
+          .limit(1),
+      )
+    : [];
+  const classWhere = onBoard ? "board" : null;
+  const cutoff = new Date(Date.now() - 15_000);
+  const updatePresence = me.classWhere !== classWhere || !me.lastSeenAt || me.lastSeenAt < cutoff
+    ? db.update(users).set({ classWhere, lastSeenAt: new Date() })
+        .where(and(eq(users.id, session.userId), sql`(${users.classWhere} is distinct from ${classWhere} or ${users.lastSeenAt} is null or ${users.lastSeenAt} < ${cutoff})`))
+    : Promise.resolve();
+  const [partnerRows, vocabularyEvents, reviewRows] = await Promise.all([partnerQuery, vocabularyQuery, reviewQuery, updatePresence]);
+  const [partner] = partnerRows;
+  const [storedGameReview] = reviewRows;
 
   const storedView: ClassSync["view"] =
     me.role === "STUDENT" &&
@@ -898,18 +908,6 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
           ? classActivityKey("game", me.classFocus.gameId)
           : null
       : null;
-  const [storedGameReview] = me.role === "STUDENT" && studentId
-    ? await ensureClassActivityPreferencesTable().then(() =>
-        db
-          .select({
-            reviews: classActivityPreferences.reviews,
-            notice: classActivityPreferences.reviewNotice,
-          })
-          .from(classActivityPreferences)
-          .where(eq(classActivityPreferences.studentId, studentId))
-          .limit(1),
-      )
-    : [];
   const currentGameReview = focusedActivityKey
     ? normalizeClassGameReview(storedGameReview?.reviews?.[focusedActivityKey])
     : null;

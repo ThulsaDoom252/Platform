@@ -72,6 +72,14 @@ export type WordDeckHomeworkAttempt = {
   durationMs: number;
 };
 
+/** Advance from a saved anchor without persisting each clock tick. */
+export function remainingWordDeckSeconds(state: WordDeckLiveState, settings: Pick<WordDeckSettings, "timerMode">, now = Date.now()) {
+  if (settings.timerMode === "NONE" || state.at < 0 || state.expired || (state.verdict && settings.timerMode === "CARD")) return state.time;
+  const anchor = Date.parse(state.updatedAt);
+  const elapsed = Number.isFinite(anchor) ? Math.max(0, Math.floor((now - anchor) / 1000)) : 0;
+  return Math.max(0, state.time - elapsed);
+}
+
 export type WordDeckHomeworkTracking = {
   assignedByTeacherId?: string;
   attemptStartedAt?: string;

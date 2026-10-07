@@ -15,21 +15,21 @@ const AUTOMATIC_COMPLETION_STARTED_AT = new Date("2026-10-01T00:00:00.000Z");
  */
 export async function completeFinishedLessons(): Promise<number> {
   const now = scheduleNow();
+  const due = and(
+    eq(lessons.status, "SCHEDULED"),
+    gte(lessons.startTime, AUTOMATIC_COMPLETION_STARTED_AT),
+    lte(sql`${lessons.startTime} + (${lessons.durationMinutes} * interval '1 minute')`, now),
+  );
+  // Most page requests have nothing to charge. Avoid a transaction and an
+  // UPDATE on every navigation; the atomic update below still prevents races.
+  const [pending] = await db.select({ id: lessons.id }).from(lessons).where(due).limit(1);
+  if (!pending) return 0;
 
   return db.transaction(async (tx) => {
     const completed = await tx
       .update(lessons)
       .set({ status: "COMPLETED", chargeResolved: true, updatedAt: new Date() })
-      .where(
-        and(
-          eq(lessons.status, "SCHEDULED"),
-          gte(lessons.startTime, AUTOMATIC_COMPLETION_STARTED_AT),
-          lte(
-            sql`${lessons.startTime} + (${lessons.durationMinutes} * interval '1 minute')`,
-            now,
-          ),
-        ),
-      )
+      .where(due)
       .returning({ id: lessons.id, studentId: lessons.studentId });
 
     if (completed.length === 0) return 0;

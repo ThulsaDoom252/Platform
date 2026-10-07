@@ -1,20 +1,27 @@
 "use client";
 
-import * as Ably from "ably";
-import { useEffect, useEffectEvent, useState } from "react";
+import type * as Ably from "ably";
+import { createContext, createElement, useContext, useEffect, useEffectEvent, useState, type ReactNode } from "react";
 
 type RealtimeStatus = "connected" | "connecting" | "unavailable";
+const RealtimeConfigured = createContext(true);
+let singleton: Promise<Ably.Realtime> | null = null;
 
-let singleton: Ably.Realtime | null = null;
+export function RealtimeConfigProvider({ configured, children }: { configured: boolean; children: ReactNode }) {
+  return createElement(RealtimeConfigured.Provider, { value: configured }, children);
+}
 
-function realtimeClient() {
+async function realtimeClient() {
   if (typeof window === "undefined") return null;
   if (!singleton) {
-    singleton = new Ably.Realtime({
+    singleton = import("ably").then((sdk) => new sdk.Realtime({
       authUrl: "/api/realtime/token",
       echoMessages: false,
       disconnectedRetryTimeout: 5_000,
       suspendedRetryTimeout: 15_000,
+    })).catch((error) => {
+      singleton = null;
+      throw error;
     });
   }
   return singleton;
@@ -25,20 +32,15 @@ type Options = {
   events: string | string[];
   onMessage: (message: Ably.Message) => void | Promise<void>;
   enabled?: boolean;
-  /** A safety net used only while WebSocket is unavailable. */
+  /** Used only when this subscription is not attached to realtime. */
   fallbackMs?: number;
   onFallback?: () => void | Promise<void>;
 };
 
-/** Subscribe to invalidation events while keeping polling only as a fallback. */
 export function useRealtimeSubscription({
-  channel,
-  events,
-  onMessage,
-  enabled = true,
-  fallbackMs = 30_000,
-  onFallback,
+  channel, events, onMessage, enabled = true, fallbackMs = 30_000, onFallback,
 }: Options) {
+  const configured = useContext(RealtimeConfigured);
   const [status, setStatus] = useState<RealtimeStatus>("connecting");
   const handleMessage = useEffectEvent(onMessage);
   const runFallback = useEffectEvent(() => onFallback?.());
@@ -46,54 +48,56 @@ export function useRealtimeSubscription({
   const hasFallback = !!onFallback;
 
   useEffect(() => {
-    if (!enabled || !channel) {
+    if (!configured || !enabled || !channel) {
       queueMicrotask(() => setStatus("unavailable"));
       return;
     }
-    const client = realtimeClient();
-    if (!client) {
-      queueMicrotask(() => setStatus("unavailable"));
-      return;
-    }
-
-    const updateStatus = () => {
-      const state = client.connection.state;
-      setStatus(
-        state === "connected"
-          ? "connected"
-          : state === "connecting"
-            ? "connecting"
-            : "unavailable",
-      );
-    };
-    const realtimeChannel = client.channels.get(channel);
-    const names = eventKey.split("\u0000");
-    const handler = (message: Ably.Message) => {
-      void handleMessage(message);
-    };
-
-    updateStatus();
-    client.connection.on(updateStatus);
-    names.forEach((name) => realtimeChannel.subscribe(name, handler));
-
-    return () => {
-      client.connection.off(updateStatus);
-      names.forEach((name) => realtimeChannel.unsubscribe(name, handler));
-    };
-  }, [channel, enabled, eventKey]);
+    let alive = true;
+    let unsubscribe = () => {};
+    void realtimeClient().then((client) => {
+      if (!alive || !client) return;
+      const subscription = client.channels.get(channel);
+      let attached = false;
+      const updateStatus = () => {
+        if (!alive) return;
+        const connected = client.connection.state === "connected" && subscription.state === "attached";
+        setStatus(connected ? "connected" : client.connection.state === "connecting" ? "connecting" : "unavailable");
+        // Recover any missed state after initial attachment or reconnect.
+        if (connected && !attached) void Promise.resolve(runFallback()).catch(() => {});
+        attached = connected;
+      };
+      const names = eventKey.split("\u0000");
+      const handler = (message: Ably.Message) => {
+        void Promise.resolve(handleMessage(message)).catch(() => {});
+      };
+      updateStatus();
+      client.connection.on(updateStatus);
+      subscription.on(updateStatus);
+      names.forEach((name) => void subscription.subscribe(name, handler).catch(() => {
+        if (alive) setStatus("unavailable");
+      }));
+      unsubscribe = () => {
+        client.connection.off(updateStatus);
+        subscription.off(updateStatus);
+        names.forEach((name) => subscription.unsubscribe(name, handler));
+      };
+    }).catch(() => {
+      if (alive) setStatus("unavailable");
+    });
+    return () => { alive = false; unsubscribe(); };
+  }, [channel, configured, enabled, eventKey]);
 
   useEffect(() => {
     if (!enabled || status === "connected" || !hasFallback) return;
     let alive = true;
     let running = false;
-
     const poll = async () => {
       if (!alive || running || document.visibilityState === "hidden") return;
       running = true;
       try {
         await runFallback();
       } catch {
-        // A transient request failure must not stop the next recovery poll.
+        // The next poll recovers a transient request failure.
       } finally {
         running = false;
       }
@@ -101,83 +105,79 @@ export function useRealtimeSubscription({
     const wake = () => {
       if (document.visibilityState !== "hidden") void poll();
     };
-
-    // Do not leave the UI stale until the first interval. This is especially
-    // important on deployments where the realtime provider is not configured.
     void poll();
-    const timer = window.setInterval(() => void poll(), Math.max(750, fallbackMs));
+    const timer = window.setInterval(() => void poll(), Math.max(250, fallbackMs));
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("focus", wake);
-
     return () => {
       alive = false;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", wake);
       window.removeEventListener("focus", wake);
     };
-  }, [enabled, fallbackMs, hasFallback, status]);
+  }, [channel, enabled, fallbackMs, hasFallback, status]);
 
   return status;
 }
 
 export function useSchoolPresence({
-  enabled = true,
-  data,
-  onMembers,
+  enabled = true, data, onMembers,
 }: {
   enabled?: boolean;
   data: Record<string, unknown>;
   onMembers?: (clientIds: Set<string>) => void;
 }) {
+  const configured = useContext(RealtimeConfigured);
   const [status, setStatus] = useState<RealtimeStatus>("connecting");
   const presenceData = useEffectEvent(() => data);
-  const emitMembers = useEffectEvent((clientIds: Set<string>) => onMembers?.(clientIds));
+  const emitMembers = useEffectEvent((ids: Set<string>) => onMembers?.(ids));
 
   useEffect(() => {
-    if (!enabled) return;
-    const client = realtimeClient();
-    if (!client) {
+    if (!enabled || !configured) {
       queueMicrotask(() => setStatus("unavailable"));
       return;
     }
-    const channel = client.channels.get("presence:school");
     let alive = true;
-
-    const refresh = async () => {
-      try {
-        const members = await channel.presence.get();
-        if (alive) {
-          emitMembers(new Set(members.map((member) => member.clientId).filter(Boolean) as string[]));
-        }
-      } catch {
-        if (alive) setStatus("unavailable");
-      }
-    };
-    const presenceChanged = () => void refresh();
-    const connectionChanged = async () => {
-      if (!alive) return;
-      const state = client.connection.state;
-      setStatus(state === "connected" ? "connected" : state === "connecting" ? "connecting" : "unavailable");
-      if (state === "connected") {
+    let unsubscribe = () => {};
+    void realtimeClient().then((client) => {
+      if (!alive || !client) return;
+      const channel = client.channels.get("presence:school");
+      const refresh = async () => {
         try {
-          await channel.presence.enter(presenceData());
-          await refresh();
+          const members = await channel.presence.get();
+          if (alive) emitMembers(new Set(members.map((member) => member.clientId).filter(Boolean) as string[]));
         } catch {
           if (alive) setStatus("unavailable");
         }
-      }
-    };
-
-    client.connection.on(connectionChanged);
-    channel.presence.subscribe(["enter", "leave", "update"], presenceChanged);
-    void connectionChanged();
-    return () => {
-      alive = false;
-      client.connection.off(connectionChanged);
-      channel.presence.unsubscribe(["enter", "leave", "update"], presenceChanged);
-      void channel.presence.leave().catch(() => {});
-    };
-  }, [enabled]);
-
+      };
+      const presenceChanged = () => void refresh();
+      const connectionChanged = async () => {
+        if (!alive) return;
+        const state = client.connection.state;
+        setStatus(state === "connected" ? "connected" : state === "connecting" ? "connecting" : "unavailable");
+        if (state === "connected") {
+          try {
+            await channel.presence.enter(presenceData());
+            await refresh();
+          } catch {
+            if (alive) setStatus("unavailable");
+          }
+        }
+      };
+      client.connection.on(connectionChanged);
+      void channel.presence.subscribe(["enter", "leave", "update"], presenceChanged).catch(() => {
+        if (alive) setStatus("unavailable");
+      });
+      void connectionChanged();
+      unsubscribe = () => {
+        client.connection.off(connectionChanged);
+        channel.presence.unsubscribe(["enter", "leave", "update"], presenceChanged);
+        void channel.presence.leave().catch(() => {});
+      };
+    }).catch(() => {
+      if (alive) setStatus("unavailable");
+    });
+    return () => { alive = false; unsubscribe(); };
+  }, [configured, enabled]);
   return status;
 }

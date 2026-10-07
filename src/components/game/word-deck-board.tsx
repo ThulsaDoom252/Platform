@@ -1,25 +1,26 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
   buildWordDeck,
   canDealNextWordDeckCard,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
+  remainingWordDeckSeconds,
   shuffleWordDeckTail,
   type WordDeckLiveState,
   type WordDeckSettings,
   type WordDeckSourceCard,
 } from "@/lib/word-deck";
 import {
-  classWordDeckLiveStateAction,
   saveClassWordDeckLiveStateAction,
   saveWordDeckHomeworkStateAction,
 } from "@/lib/actions/word-deck";
 import { cn } from "@/lib/utils";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
+import { readClassLive } from "@/lib/class-live-request";
 
 export type WordDeckPlayable = {
   id: string;
@@ -140,7 +141,7 @@ export function WordDeckBoard({
   const [faceUp, setFaceUp] = useState(saved?.faceUp ?? false);
   const [sound, setSound] = useState(saved?.sound ?? settings.sound);
   const [time, setTime] = useState(
-    saved?.time ?? (settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds),
+    saved ? (homework ? saved.time : remainingWordDeckSeconds(saved, settings)) : (settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds),
   );
   const [expired, setExpired] = useState(saved?.expired ?? false);
   const [readDescriptions, setReadDescriptions] = useState(saved?.readDescriptions ?? false);
@@ -186,8 +187,18 @@ export function WordDeckBoard({
   }, []);
 
   useEffect(() => {
+    if (!started || expired || settings.timerMode === "NONE" || time > 0 || (verdict && settings.timerMode === "CARD")) return;
+    const frame = requestAnimationFrame(() => {
+      setExpired(true);
+      if (descriptionGame) setFeedback("TIME_UP");
+      if (pictureGame) setFaceUp(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [descriptionGame, expired, pictureGame, settings.timerMode, started, time, verdict]);
+
+  useEffect(() => {
     if (
-      observer || !started || expired || settings.timerMode === "NONE" || time <= 0 ||
+      !started || expired || settings.timerMode === "NONE" || time <= 0 ||
       (verdict && settings.timerMode === "CARD")
     ) return;
     const timer = window.setTimeout(() => {
@@ -241,16 +252,16 @@ export function WordDeckBoard({
     setAt(state.at);
     setFaceUp(state.faceUp);
     setSound(state.sound);
-    setTime(state.time);
+    setTime(remainingWordDeckSeconds(state, settings));
     setExpired(state.expired);
     setReadDescriptions(state.readDescriptions);
     setVerdict(state.verdict);
     setFeedback(state.feedback);
-  }, []);
+  }, [settings]);
 
   const pullRemoteState = useCallback(async () => {
     if (!observer) return;
-    applyRemoteState(await classWordDeckLiveStateAction(activity.id));
+    applyRemoteState(await readClassLive("deck", activity.id));
   }, [activity.id, applyRemoteState, observer]);
 
   useEffect(() => {
@@ -268,13 +279,11 @@ export function WordDeckBoard({
     onFallback: pullRemoteState,
     // Card dealing is the most visible shared-class interaction. Keep the
     // observer close to the teacher even during a realtime outage.
-    fallbackMs: 750,
+    fallbackMs: 500,
     enabled: observer,
   });
 
-  useEffect(() => {
-    if (!live || observer) return;
-    const state: WordDeckLiveState = {
+  const captureState = useEffectEvent((): WordDeckLiveState => ({
       deck,
       at,
       faceUp,
@@ -285,23 +294,24 @@ export function WordDeckBoard({
       verdict,
       feedback,
       updatedAt: new Date().toISOString(),
-    };
+    }));
+
+  useEffect(() => {
+    if (!live || observer) return;
     const timer = window.setTimeout(() => {
-      publishQueue.current = publishQueue.current.then(async () => {
+      const state = captureState();
+      publishQueue.current = publishQueue.current.catch(() => {}).then(async () => {
         await saveClassWordDeckLiveStateAction(activity.id, state);
       });
     }, 50);
     return () => window.clearTimeout(timer);
-  }, [activity.id, at, deck, expired, faceUp, feedback, live, observer, readDescriptions, sound, time, verdict]);
+  }, [activity.id, at, deck, expired, faceUp, feedback, live, observer, readDescriptions, sound, verdict]);
 
   useEffect(() => {
     if (!homework || observer) return;
-    const state: WordDeckLiveState = {
-      deck, at, faceUp, sound, time, expired, readDescriptions, verdict, feedback,
-      updatedAt: new Date().toISOString(),
-    };
     const timer = window.setTimeout(() => {
-      publishQueue.current = publishQueue.current.then(async () => {
+      const state = captureState();
+      publishQueue.current = publishQueue.current.catch(() => {}).then(async () => {
         await saveWordDeckHomeworkStateAction(activity.id, state);
       });
     }, 180);

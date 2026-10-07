@@ -12,7 +12,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, max, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   lessonAssignments,
@@ -27,6 +27,7 @@ import {
   wordDeckActivities,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { lessonContentVersion } from "@/lib/lesson-content-version";
 import { queueStudentNotification } from "@/lib/notifications";
 import { publishClassRealtime } from "@/lib/realtime-server";
 import { parseLexisDocuments } from "@/lib/keyed-parser";
@@ -226,42 +227,19 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
   const session = await requireTeacher();
 
   const rows = await db
-    .select({ unit: lessonUnits, vocabName: materialNodes.name })
+    .select({
+      unit: lessonUnits,
+      vocabName: materialNodes.name,
+      wordCount: sql<number>`(select count(*)::int from ${materialPhrases} where ${materialPhrases.nodeId} = ${lessonUnits.vocabNodeId})`,
+      assignmentCount: sql<number>`(select count(*)::int from ${lessonAssignments} where ${lessonAssignments.unitId} = ${lessonUnits.id})`,
+    })
     .from(lessonUnits)
     .leftJoin(materialNodes, eq(materialNodes.id, lessonUnits.vocabNodeId))
     .where(eq(lessonUnits.authorId, session.userId))
     .orderBy(asc(lessonUnits.sortOrder), asc(lessonUnits.title));
 
-  if (rows.length === 0) return [];
-
-  const ids = rows.map((r) => r.unit.id);
-
-  // Сколько слов в словнике и скольким ученикам выдан — двумя выборками
-  // на всё, а не по запросу на карточку.
-  const nodeIds = rows.map((r) => r.unit.vocabNodeId).filter((id): id is string => !!id);
-  const words = nodeIds.length
-    ? await db
-        .select({ nodeId: materialPhrases.nodeId })
-        .from(materialPhrases)
-        .where(inArray(materialPhrases.nodeId, nodeIds))
-    : [];
-  const given = await db
-    .select({ unitId: lessonAssignments.unitId })
-    .from(lessonAssignments)
-    .where(inArray(lessonAssignments.unitId, ids));
-
-  const countBy = <T extends string>(list: { [k: string]: T | null }[], key: string) => {
-    const map = new Map<string, number>();
-    for (const row of list) {
-      const id = row[key];
-      if (id) map.set(id, (map.get(id) ?? 0) + 1);
-    }
-    return map;
-  };
-  const wordsOf = countBy(words, "nodeId");
-  const givenOf = countBy(given, "unitId");
-
-  return rows.map(({ unit, vocabName }) => {
+  // Database counts replace two extra round trips and fetching every word ID.
+  return rows.map(({ unit, vocabName, wordCount, assignmentCount }) => {
     const questions = unit.questions ?? { afterVideo: [], afterReading: [] };
     return {
       id: unit.id,
@@ -271,7 +249,7 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
       title: unit.title,
       description: unit.description,
       vocabName,
-      words: unit.vocabNodeId ? (wordsOf.get(unit.vocabNodeId) ?? 0) : 0,
+      words: wordCount,
       hasLexis: lessonLexisGroups(unit.lexis).length > 0,
       hasVideo: !!unit.videoUrl,
       lines: (unit.transcript ?? []).length,
@@ -281,7 +259,7 @@ export async function listLessonsAction(): Promise<LessonCard[]> {
         legacyHomeworkFromEntries(unit.homework).length +
         (interactiveHomeworkFromEntries(unit.homework)?.exercises.length ?? 0),
       sections: normalizeRegularLessonSections(unit.sections).filter((section) => !section.teacherOnly).length,
-      assigned: givenOf.get(unit.id) ?? 0,
+      assigned: assignmentCount,
       createdAt: unit.createdAt.toISOString(),
     };
   });
@@ -1287,6 +1265,7 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
   const { unit } = row;
   const questions = unit.questions ?? { afterVideo: [], afterReading: [] };
   const activityIds = unit.activityIds ?? [];
+  const [words, activities] = await Promise.all([wordsOfUnit(unit.id), lessonActivitiesByIds(activityIds)]);
 
   return {
     id: unit.id,
@@ -1295,7 +1274,7 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
     description: unit.description,
     vocabNodeId: unit.vocabNodeId,
     vocabName: row.vocabName,
-    words: await wordsOfUnit(unit.id),
+    words,
     lexis: lessonLexisGroups(unit.lexis),
     videoUrl: unit.videoUrl,
     videoTitle: unit.videoTitle,
@@ -1306,7 +1285,7 @@ async function loadUnit(unitId: string, includeTeacher = false): Promise<LessonV
     },
     homework: legacyHomeworkFromEntries(unit.homework),
     interactiveHomework: interactiveHomeworkFromEntries(unit.homework),
-    activities: await lessonActivitiesByIds(activityIds),
+    activities,
     regularSections: includeTeacher
       ? normalizeRegularLessonSections(unit.sections)
       : publicRegularLessonSections(unit.sections),
@@ -2595,6 +2574,32 @@ export async function lessonVocabularyRevealAction(
 }
 
 /** Small realtime payload for persistent teacher marks in an active lesson. */
+export async function lessonLiveStateAction(assignmentId: string, expectedStudentId?: string) {
+  const session = await requireUser();
+  const [row] = await db.select({
+    studentId: lessonAssignments.studentId,
+    authorId: lessonUnits.authorId,
+    highlights: lessonAssignments.highlights,
+    answers: lessonAssignments.answers,
+    openSections: lessonAssignments.openSections,
+    contentVersion: lessonContentVersion,
+  }).from(lessonAssignments)
+    .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
+    .where(eq(lessonAssignments.id, String(assignmentId ?? ""))).limit(1);
+  if (!row) return null;
+  if (expectedStudentId && row.studentId !== expectedStudentId) return null;
+  if (session.role === "STUDENT" && row.studentId !== session.userId) return null;
+  if (session.role === "TEACHER" && row.authorId !== session.userId) return null;
+  return {
+    contentVersion: row.contentVersion,
+    highlights: normalizeLessonHighlights(row.highlights),
+    answers: row.answers ?? {},
+    openSections: row.openSections ?? [],
+    vocabularyReveal: lessonVocabularyReveal(row.openSections),
+    showBritish: (row.openSections ?? []).includes(BRITISH_OPTION),
+  };
+}
+
 export async function lessonPresentationStateAction(
   assignmentId: string,
 ): Promise<{
@@ -3189,6 +3194,7 @@ export async function assignedLessonAction(
       open: string[];
       showBritish: boolean;
       vocabularyReveal: LessonVocabularyReveal;
+      contentVersion: string;
     }
   | null
 > {
@@ -3196,7 +3202,7 @@ export async function assignedLessonAction(
   const id = String(assignmentId ?? "");
 
   const [row] = await db
-    .select({ a: lessonAssignments, title: lessonUnits.title, name: users.name })
+    .select({ a: lessonAssignments, title: lessonUnits.title, name: users.name, contentVersion: lessonContentVersion })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
     .innerJoin(users, eq(users.id, lessonAssignments.studentId))
@@ -3244,6 +3250,7 @@ export async function assignedLessonAction(
     ? [...new Set([...stored, "homework"])]
     : stored.filter((section) => section !== "homework");
   return {
+    contentVersion: row.contentVersion,
     assignment: {
       id: row.a.id,
       unitId: row.a.unitId,

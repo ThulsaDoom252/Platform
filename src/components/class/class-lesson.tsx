@@ -1,7 +1,7 @@
 "use client";
 
 /** Активный урок внутри класса: выбор учителя и общий просмотр. */
-import { useCallback, useEffect, useState, useTransition, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
 import { AssignedLesson } from "@/components/lessons/assigned-lesson";
@@ -16,6 +16,9 @@ import { IconPencil, IconPlus, IconX } from "@/components/icons";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTextSelection } from "./selection-translation-popover";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
+import { readClassLive } from "@/lib/class-live-request";
+import { openSections } from "@/lib/lesson-unit";
+import { regularLessonSection } from "@/lib/regular-lesson";
 
 type Assigned = NonNullable<Awaited<ReturnType<typeof assignedLessonAction>>>;
 
@@ -45,10 +48,20 @@ export function ClassLesson({
   const [lessons, setLessons] = useState<LessonCard[]>([]);
   const [selected, setSelected] = useState("");
   const [data, setData] = useState<Assigned | null>(null);
+  const dataRef = useRef<Assigned | null>(null);
+  const currentAssignment = useRef(assignmentId);
+  const reloadGeneration = useRef(0);
+  const lastSnapshot = useRef<unknown>(null);
   const [loaded, setLoaded] = useState(false);
   const [changingLesson, setChangingLesson] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
+
+  useEffect(() => {
+    currentAssignment.current = assignmentId;
+    reloadGeneration.current += 1;
+    lastSnapshot.current = null;
+  }, [assignmentId]);
 
   useEffect(() => {
     if (!teacher) return;
@@ -67,15 +80,44 @@ export function ClassLesson({
 
   const reload = useCallback(async () => {
     if (!assignmentId) {
+      dataRef.current = null;
       setData(null);
       setLoaded(true);
       return;
     }
-    const next = await assignedLessonAction(assignmentId, "class");
+    const generation = ++reloadGeneration.current;
+    const next = await readClassLive("lesson", assignmentId);
+    if (generation !== reloadGeneration.current || currentAssignment.current !== assignmentId) return;
+    dataRef.current = next;
     setData(next);
     setLoaded(true);
     if (next && teacher) setSelected(next.lesson.id);
   }, [assignmentId, teacher]);
+
+  const pullState = useCallback(async () => {
+    if (!assignmentId) return;
+    const next = await readClassLive("lesson-state", assignmentId);
+    if (!next || currentAssignment.current !== assignmentId || next === lastSnapshot.current) return;
+    const current = dataRef.current;
+    if (!current || current.assignment.id !== assignmentId || current.contentVersion !== next.contentVersion) {
+      await reload();
+      lastSnapshot.current = next;
+      return;
+    }
+    lastSnapshot.current = next;
+    const updated: Assigned = {
+      ...current,
+      answers: next.answers,
+      assignment: { ...current.assignment, highlights: next.highlights, openSections: next.openSections },
+      open: current.lesson.kind === "REGULAR"
+        ? next.openSections.filter((key) => Boolean(regularLessonSection(key, current.lesson.regularSections)))
+        : openSections(next.openSections),
+      showBritish: next.showBritish,
+      vocabularyReveal: next.vocabularyReveal,
+    };
+    dataRef.current = updated;
+    setData(updated);
+  }, [assignmentId, reload]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -87,9 +129,10 @@ export function ClassLesson({
   useRealtimeSubscription({
     channel: studentId ? `class:${studentId}` : null,
     events: "lesson",
-    onMessage: reload,
-    onFallback: reload,
+    onMessage: pullState,
+    onFallback: pullState,
     fallbackMs: 1_000,
+    enabled: Boolean(assignmentId),
   });
 
   // Focus по видео приходит быстрым тактом класса. Не ждём следующего
@@ -115,7 +158,8 @@ export function ClassLesson({
         return;
       }
       onAssigned?.(result.id);
-      const next = await assignedLessonAction(result.id, "class");
+      const next = await readClassLive("lesson", result.id);
+      dataRef.current = next;
       setData(next);
       setLoaded(true);
       setChangingLesson(false);
@@ -238,6 +282,7 @@ export function ClassLesson({
               data={data}
               teacher={teacher}
               liveClass
+              presentationManaged
               classVideo={
                 videoSync?.assignmentId === data.assignment.id
                   ? videoSync

@@ -399,7 +399,7 @@ export const materialNodes = pgTable("material_nodes", {
    */
   contentBackup: jsonb("content_backup").$type<ContentBackup>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [index("material_nodes_scope_owner_order_idx").on(table.scope, table.ownerId, table.sortOrder)]);
 
 /** Что именно сохраняется перед перестройкой страницы. */
 export type ContentBackup = {
@@ -471,7 +471,7 @@ export const materialPhrases = pgTable("material_phrases", {
   /** Примеры употребления: [{ en, tr }] */
   examples: jsonb("examples").$type<PhraseExample[]>().default([]).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [index("material_phrases_node_order_idx").on(table.nodeId, table.sortOrder)]);
 
 export const materialPhrasesRelations = relations(materialPhrases, ({ one }) => ({
   node: one(materialNodes, {
@@ -497,7 +497,7 @@ export const materialBlocks = pgTable("material_blocks", {
   /** Содержимое блока — форма зависит от типа (см. RuleBlock). */
   data: jsonb("data").$type<RuleBlock>().notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [index("material_blocks_node_order_idx").on(table.nodeId, table.sortOrder)]);
 
 // ---------- Класс: переписка учителя с учеником ----------
 
@@ -1370,4 +1370,4 @@ export const lessonWords = pgTable("lesson_words", {
   imageUrl: text("image_url"),
   /** Порядок внутри категории на случай ручной раскладки. */
   sortOrder: integer("sort_order").notNull().default(0),
-});
+}, (table) => [index("lesson_words_unit_order_idx").on(table.unitId, table.sortOrder)]);

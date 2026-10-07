@@ -7,6 +7,7 @@
  * фокус в цвете его собственной темы. Правится закрепление, а не урок.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { useT } from "@/components/i18n-provider";
 import {
   answerAction,
@@ -39,7 +40,7 @@ import {
 import { LessonView } from "@/components/lessons/lesson-view";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { LessonTextHighlighter } from "@/components/lessons/lesson-text-highlighter";
-import { LiveLessonEditor } from "@/components/lessons/live-lesson-editor";
+const LiveLessonEditor = dynamic(() => import("@/components/lessons/live-lesson-editor").then((m) => m.LiveLessonEditor));
 import { IconPencil, IconReset, IconTrash, IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import type { ClassVideoState } from "@/lib/class-video";
@@ -53,6 +54,7 @@ export function AssignedLesson({
   sectionVisibilityBusy = false,
   onSectionVisibilityChange,
   liveClass = false,
+  presentationManaged = false,
   initialSection,
   onLessonSaved,
 }: {
@@ -72,6 +74,8 @@ export function AssignedLesson({
   sectionVisibilityBusy?: boolean;
   onSectionVisibilityChange?: (section: string, open: boolean) => void;
   liveClass?: boolean;
+  /** The class parent already refreshes marks together with answers and tabs. */
+  presentationManaged?: boolean;
   initialSection?: (typeof LESSON_SECTIONS)[number];
   onLessonSaved?: () => void | Promise<void>;
 }) {
@@ -118,7 +122,7 @@ export function AssignedLesson({
     onMessage: pullPresentationState,
     onFallback: pullPresentationState,
     fallbackMs: 1_000,
-    enabled: !teacher && liveClass,
+    enabled: !teacher && liveClass && !presentationManaged,
   });
 
   const changeVocabularyReveal = (next: LessonVocabularyReveal) => {

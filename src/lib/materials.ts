@@ -120,28 +120,27 @@ async function buildTree(rows: NodeRow[]): Promise<{
   if (rows.length === 0) return { roots: [], byId: new Map() };
 
   const nodeIds = rows.map((row) => row.id);
-  const phraseRows = await db
+  const [phraseRows, pickedImages, blockRows, verbRows] = await Promise.all([
+    db
     .select()
     .from(materialPhrases)
     .where(inArray(materialPhrases.nodeId, nodeIds))
-    .orderBy(asc(materialPhrases.sortOrder));
+    .orderBy(asc(materialPhrases.sortOrder)),
+    db
+      .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
+      .from(phraseImages)
+      .innerJoin(materialPhrases, eq(phraseImages.phraseId, materialPhrases.id))
+      .where(and(inArray(materialPhrases.nodeId, nodeIds), eq(phraseImages.picked, true))),
+    db.select().from(materialBlocks)
+      .where(inArray(materialBlocks.nodeId, nodeIds)).orderBy(asc(materialBlocks.sortOrder)),
+    db.select().from(irregularVerbs)
+      .where(inArray(irregularVerbs.nodeId, nodeIds)).orderBy(asc(irregularVerbs.sortOrder)),
+  ]);
 
   /*
    * Картинка, выбранная для игры. Ученику она не показывается — по ней
    * его спрашивают, — но учителю нужна, чтобы видеть, что подобрано.
    */
-  const pickedImages =
-    phraseRows.length === 0
-      ? []
-      : await db
-          .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
-          .from(phraseImages)
-          .where(
-            and(
-              inArray(phraseImages.phraseId, phraseRows.map((p) => p.id)),
-              eq(phraseImages.picked, true),
-            ),
-          );
   const gameImageOf = new Map(pickedImages.map((r) => [r.phraseId, r.url]));
 
   const phrasesByNode = new Map<string, MaterialPhrase[]>();
@@ -167,24 +166,12 @@ async function buildTree(rows: NodeRow[]): Promise<{
     phrasesByNode.set(p.nodeId, list);
   }
 
-  const blockRows = await db
-    .select()
-    .from(materialBlocks)
-    .where(inArray(materialBlocks.nodeId, nodeIds))
-    .orderBy(asc(materialBlocks.sortOrder));
-
   const blocksByNode = new Map<string, RuleBlock[]>();
   for (const b of blockRows) {
     const list = blocksByNode.get(b.nodeId) ?? [];
     list.push(b.data as RuleBlock);
     blocksByNode.set(b.nodeId, list);
   }
-
-  const verbRows = await db
-    .select()
-    .from(irregularVerbs)
-    .where(inArray(irregularVerbs.nodeId, nodeIds))
-    .orderBy(asc(irregularVerbs.sortOrder));
 
   const verbsByNode = new Map<string, MaterialVerb[]>();
   for (const v of verbRows) {

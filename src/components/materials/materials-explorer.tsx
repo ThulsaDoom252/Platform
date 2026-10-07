@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ import {
   type TreePreset,
 } from "@/lib/tree-sort";
 import { TreeSorter } from "./tree-sorter";
-import { ImageEditor } from "./image-editor";
+const ImageEditor = dynamic(() => import("./image-editor").then((m) => m.ImageEditor));
 import {
   IconChevronRight,
   IconChevronDown,
@@ -46,24 +47,31 @@ import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
 import type { MaterialVerb } from "@/lib/materials";
 import { RuleReader } from "./rule-reader";
 import type { RuleBlock } from "@/lib/rule-parser";
-import { NodeEditor, type EditorTarget, type TreeScope } from "./node-editor";
-import { NodeCreator } from "./node-creator";
-import { TreeImporter, type ImportTarget } from "./tree-importer";
-import { FillFromDialog, type FillTarget } from "./fill-from-dialog";
+import type { EditorTarget, TreeScope } from "./node-editor";
+const NodeEditor = dynamic(() => import("./node-editor").then((m) => m.NodeEditor));
+const NodeCreator = dynamic(() => import("./node-creator").then((m) => m.NodeCreator));
+import type { ImportTarget } from "./tree-importer";
+const TreeImporter = dynamic(() => import("./tree-importer").then((m) => m.TreeImporter));
+import type { FillTarget } from "./fill-from-dialog";
+const FillFromDialog = dynamic(() => import("./fill-from-dialog").then((m) => m.FillFromDialog));
 import { VerbsReader } from "./verbs-reader";
-import { VerbsShareDialog, type ShareVerbsTarget } from "./verbs-share-dialog";
-import { VerbsFiller, type VerbsTarget } from "./verbs-filler";
-import { ContentImporter } from "./content-importer";
-import { PhraseImagesPanel } from "./phrase-images-panel";
-import { RevisionSetup } from "@/components/revision/revision-setup";
+import type { ShareVerbsTarget } from "./verbs-share-dialog";
+const VerbsShareDialog = dynamic(() => import("./verbs-share-dialog").then((m) => m.VerbsShareDialog));
+import type { VerbsTarget } from "./verbs-filler";
+const VerbsFiller = dynamic(() => import("./verbs-filler").then((m) => m.VerbsFiller));
+const ContentImporter = dynamic(() => import("./content-importer").then((m) => m.ContentImporter));
+const PhraseImagesPanel = dynamic(() => import("./phrase-images-panel").then((m) => m.PhraseImagesPanel));
+const RevisionSetup = dynamic(() => import("@/components/revision/revision-setup").then((m) => m.RevisionSetup));
 import { VocabularyCoverActions } from "./vocabulary-cover";
-import { RuleImporter } from "./rule-importer";
-import { BulkIconEditor } from "./bulk-icon-editor";
-import { WordAdder, PhraseEditor } from "./phrase-form";
-import { RuleEditor } from "./rule-editor";
-import { VocabularyEditor } from "./vocabulary-editor";
-import { ExportDialog } from "./export-dialog";
-import { CopyDialog, type CopySource } from "./copy-dialog";
+const RuleImporter = dynamic(() => import("./rule-importer").then((m) => m.RuleImporter));
+const BulkIconEditor = dynamic(() => import("./bulk-icon-editor").then((m) => m.BulkIconEditor));
+const WordAdder = dynamic(() => import("./phrase-form").then((m) => m.WordAdder));
+const PhraseEditor = dynamic(() => import("./phrase-form").then((m) => m.PhraseEditor));
+const RuleEditor = dynamic(() => import("./rule-editor").then((m) => m.RuleEditor));
+const VocabularyEditor = dynamic(() => import("./vocabulary-editor").then((m) => m.VocabularyEditor));
+const ExportDialog = dynamic(() => import("./export-dialog").then((m) => m.ExportDialog));
+import type { CopySource } from "./copy-dialog";
+const CopyDialog = dynamic(() => import("./copy-dialog").then((m) => m.CopyDialog));
 
 /** Дерево для окна копирования — только то, что ему нужно показать. */
 const toCopySource = (n: MaterialNode): CopySource => ({
