@@ -477,6 +477,7 @@ export function LessonView({
                       : null
                   }
                   onFocus={onFocusHomework}
+                  focusAt={sectionFocus?.section === "homework" ? sectionFocus.at : null}
                 />
               )}
             </div>
@@ -795,12 +796,14 @@ function Homework({
   session,
   onStateChange,
   focusId,
+  focusAt,
   onFocus,
 }: {
   lesson: Lesson;
   session?: InteractiveHomeworkSession;
   onStateChange?: (state: InteractiveHomeworkSession["state"]) => void;
   focusId?: string | null;
+  focusAt?: string | null;
   onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
@@ -841,6 +844,7 @@ function Homework({
           session={session}
           onStateChange={onStateChange}
           focusId={focusId}
+          focusAt={focusAt}
           onFocus={onFocus}
         />
       )}

@@ -19,6 +19,7 @@ import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { readClassLive } from "@/lib/class-live-request";
 import { openSections } from "@/lib/lesson-unit";
 import { regularLessonSection } from "@/lib/regular-lesson";
+import { homeworkFocusTarget } from "@/lib/lesson-homework";
 
 type Assigned = NonNullable<Awaited<ReturnType<typeof assignedLessonAction>>>;
 
@@ -134,6 +135,20 @@ export function ClassLesson({
     fallbackMs: 1_000,
     enabled: Boolean(assignmentId),
   });
+
+  // A focused hidden exercise is fetched only for this explicit command.
+  // Normal focus commands use the already loaded plan without another request.
+  useEffect(() => {
+    if (teacher || sectionFocus?.section !== "homework" ||
+      sectionFocus.assignmentId !== assignmentId || !sectionFocus.elementId) return;
+    const plan = dataRef.current?.lesson.interactiveHomework;
+    if (plan && homeworkFocusTarget(plan, sectionFocus.elementId)) return;
+    const frame = requestAnimationFrame(() => {
+      void reload().catch(() => setError(t.lessonUnits.classLessonFailed));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [assignmentId, reload, sectionFocus?.assignmentId, sectionFocus?.at,
+    sectionFocus?.elementId, sectionFocus?.section, t.lessonUnits.classLessonFailed, teacher]);
 
   // Focus по видео приходит быстрым тактом класса. Не ждём следующего
   // четырёхсекундного обновления, если этим же действием секцию только открыли.

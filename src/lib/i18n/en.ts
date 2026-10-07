@@ -1028,6 +1028,7 @@ export const en = {
     assigning: "Assigning…",
     selectAtLeastOne: "Select at least one exercise.",
     assignmentFailed: "Could not assign the homework.",
+    focusFailed: "Could not focus the student. Please try again.",
     editExercise: "Edit exercise",
     addExercise: "Add exercise",
     editForStudent: "Edit for this student",

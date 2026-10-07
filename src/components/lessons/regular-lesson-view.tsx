@@ -1171,6 +1171,7 @@ export function RegularLessonView({
             plan={localHomeworkPlan}
             session={homeworkSession}
             focusId={sectionFocus?.section === "homework" ? sectionFocus.elementId : null}
+            focusAt={sectionFocus?.section === "homework" ? sectionFocus.at : null}
             onFocus={onFocusHomework}
           />
         </div>

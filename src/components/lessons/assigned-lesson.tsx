@@ -11,7 +11,6 @@ import dynamic from "next/dynamic";
 import { useT } from "@/components/i18n-provider";
 import {
   answerAction,
-  focusHomeworkElementAction,
   focusLessonWordAction,
   focusRegularLessonElementAction,
   lessonPresentationStateAction,
@@ -426,13 +425,6 @@ export function AssignedLesson({
             liveClass,
             studentId: data.assignment.studentId,
           }}
-          onFocusHomework={teacher && liveClass
-            ? (elementId) => {
-                startBusy(() =>
-                  focusHomeworkElementAction(data.assignment.id, elementId).then(() => undefined),
-                );
-              }
-            : undefined}
           />
         </div>
       </LessonTextHighlighter>
@@ -488,13 +480,6 @@ export function AssignedLesson({
         onSelectLexis={teacher ? selectLexis : undefined}
         onPick={teacher ? pick : undefined}
         highlightColor={highlightColor}
-        onFocusHomework={teacher && liveClass
-          ? (elementId) => {
-              startBusy(() =>
-                focusHomeworkElementAction(data.assignment.id, elementId).then(() => undefined),
-              );
-            }
-          : undefined}
         homeworkSession={{
           assignmentId: data.assignment.id,
           unitId: data.assignment.unitId,

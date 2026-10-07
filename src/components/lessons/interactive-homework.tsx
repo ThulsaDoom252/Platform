@@ -70,6 +70,7 @@ import {
   homeworkTextTokens,
   homeworkTranslationLanguage,
   homeworkValueKey,
+  homeworkVisibleExercises,
   homeworkVoiceRecordingTarget,
   setHomeworkReaction,
   toggleHomeworkTextHighlightRange,
@@ -101,6 +102,8 @@ import { StudentHomeworkExerciseEditor } from "@/components/lessons/student-home
 import { RegularVoiceRecorder } from "@/components/lessons/regular-voice-recorder";
 import { HomeworkTeacherVoiceMessages } from "@/components/lessons/homework-teacher-voice-messages";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
+import { focusHomeworkElementAction } from "@/lib/actions/lessons";
+import { revealHomeworkFocusTarget } from "@/lib/homework-focus";
 
 export type InteractiveHomeworkSession = {
   assignmentId: string;
@@ -138,6 +141,7 @@ export function InteractiveHomework({
   session,
   onStateChange,
   focusId,
+  focusAt,
   onFocus,
   teacherReviewTools = false,
 }: {
@@ -145,6 +149,8 @@ export function InteractiveHomework({
   session: InteractiveHomeworkSession;
   onStateChange?: (state: HomeworkStoredState) => void;
   focusId?: string | null;
+  /** A new timestamp makes a repeated focus on the same exercise scroll again. */
+  focusAt?: string | null;
   onFocus?: (elementId: string) => void;
   teacherReviewTools?: boolean;
 }) {
@@ -164,19 +170,39 @@ export function InteractiveHomework({
   const [highlightColor, setHighlightColor] = useState<HomeworkHighlightColor>("yellow");
   const [interactionError, setInteractionError] = useState<string | null>(null);
   const [interactionBusy, startInteraction] = useTransition();
+  const [teacherFocusId, setTeacherFocusId] = useState<string | null>(null);
+  const activeFocusId = session.teacher ? teacherFocusId ?? focusId : focusId;
   const rootRef = useRef<HTMLDivElement>(null);
   const progress = homeworkExerciseProgress(currentPlan, state);
   const submittedAt = homeworkSubmittedAt(state);
   const reviewedAt = homeworkReviewedAt(state);
   const revisionRequestedAt = homeworkRevisionRequestedAt(state);
   const assignedAt = homeworkAssignedAt(state);
-  const exercises = currentPlan.exercises.filter(
-    (exercise) => session.teacher || !homeworkExerciseHidden(state, exercise.id),
-  );
+  const exercises = homeworkVisibleExercises(currentPlan, state, session.teacher, activeFocusId);
 
-  // Homework review has one explicit interaction tool: text highlighting.
-  // Live lessons may still provide their own focus callback outside review.
-  const interactWithElement = teacherReviewTools ? undefined : onFocus;
+  // Focus is an explicit teacher control in both the lesson and homework review.
+  // It never edits a student's answer, review status or saved highlighting.
+  const interactWithElement = session.teacher ? (elementId: string) => {
+    setInteractionError(null);
+    const previousFocus = teacherFocusId;
+    setTeacherFocusId(elementId);
+    startInteraction(async () => {
+      try {
+        if (onFocus) {
+          await onFocus(elementId);
+          return;
+        }
+        const result = await focusHomeworkElementAction(session.assignmentId, elementId);
+        if (result.error) {
+          setInteractionError(result.error);
+          setTeacherFocusId(previousFocus);
+        }
+      } catch {
+        setTeacherFocusId(previousFocus);
+        setInteractionError(t.interactiveHomework.focusFailed);
+      }
+    });
+  } : undefined;
 
   const highlightText = teacherReviewTools && highlightMode
     ? (item: HomeworkItem, source: HomeworkTextHighlightSource, start: number, end: number) => {
@@ -246,17 +272,14 @@ export function InteractiveHomework({
   });
 
   useEffect(() => {
-    if (!focusId || !rootRef.current) return;
-    const target = [...rootRef.current.querySelectorAll<HTMLElement>("[data-homework-focus]")]
-      .find((node) => node.dataset.homeworkFocus === focusId);
+    if (!activeFocusId || !rootRef.current || session.teacher) return;
+    const target = revealHomeworkFocusTarget(rootRef.current, activeFocusId);
     if (!target) return;
-    const details = target.closest("details");
-    if (details) details.open = true;
     const frame = requestAnimationFrame(() => {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [focusId]);
+  }, [activeFocusId, focusAt, session.teacher]);
 
   return (
     <HomeworkInteractionContext.Provider value={{
@@ -464,10 +487,11 @@ export function InteractiveHomework({
               />
             ))}
           </div>
-          {interactionError && (
-            <p className="basis-full text-[11px] font-semibold text-rose-500">{interactionError}</p>
-          )}
         </div>
+      )}
+
+      {session.teacher && interactionError && (
+        <p role="alert" className="text-xs font-semibold text-rose-500">{interactionError}</p>
       )}
 
       {session.teacher && session.canAssign && (
@@ -501,7 +525,7 @@ export function InteractiveHomework({
           state={state}
           setState={setState}
           showAnswers={showAnswers}
-          focusId={focusId}
+          focusId={activeFocusId}
           onFocus={interactWithElement}
           onEdit={session.canEdit ? () => setEditingExerciseId(exercise.id) : undefined}
           onDelete={session.canEdit ? () => {
@@ -1146,7 +1170,7 @@ function HomeworkExerciseView({
             <span className="hidden sm:inline">{t.interactiveHomework.shuffle}</span>
           </button>
         )}
-        {session.teacher && onFocus && !interaction.highlightMode && (
+        {session.teacher && onFocus && (
           <button
             type="button"
             disabled={interaction.busy}
@@ -1232,7 +1256,7 @@ function HomeworkExerciseView({
             <span className="hidden sm:inline">{t.interactiveHomework.shuffle}</span>
           </button>
         )}
-        {session.teacher && onFocus && !interaction.highlightMode && (
+        {session.teacher && onFocus && (
           <button
             type="button"
             disabled={interaction.busy}
@@ -2605,7 +2629,7 @@ function HomeworkItemShell({
           state={state}
           setState={setState}
         />
-        {session.teacher && onFocus && !interaction.highlightMode && (
+        {session.teacher && onFocus && (
           <button
             type="button"
             disabled={interaction.busy}

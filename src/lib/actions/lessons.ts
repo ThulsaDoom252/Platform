@@ -94,6 +94,7 @@ import {
   homeworkAssignedExerciseIds,
   homeworkAssignedExercisesKey,
   homeworkFocusTarget,
+  homeworkVisibleExercises,
   homeworkPlanForAssignment,
   homeworkPlanOverrideKey,
   homeworkRemovedAt,
@@ -2093,6 +2094,7 @@ export async function focusHomeworkElementAction(
         classFocus: users.classFocus,
         homework: lessonUnits.homework,
         answers: lessonAssignments.answers,
+        contentOverride: lessonAssignments.contentOverride,
       })
       .from(lessonAssignments)
       .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -2110,8 +2112,11 @@ export async function focusHomeworkElementAction(
   if (!teacher?.studentId || teacher.studentId !== target?.studentId) {
     return { error: "Этот ученик сейчас не в классе" };
   }
+  const overriddenHomework = target.contentOverride?.interactiveHomework
+    ? normalizeInteractiveHomework(target.contentOverride.interactiveHomework, { allowEmpty: true })
+    : null;
   const homework = homeworkPlanForAssignment(
-    interactiveHomeworkFromEntries(target.homework),
+    overriddenHomework ?? interactiveHomeworkFromEntries(target.homework),
     target.answers ?? {},
   );
   if (!homework || !homeworkFocusTarget(homework, focusId)) {
@@ -2121,15 +2126,16 @@ export async function focusHomeworkElementAction(
   await db
     .update(users)
     .set({
-      classFocus: {
-        ...target.classFocus,
+      // Merge only the navigation command, preserving concurrent timers,
+      // reactions and video updates. Homework answers are not touched.
+      classFocus: sql`coalesce(${users.classFocus}, '{}'::jsonb) || ${JSON.stringify({
         at: new Date().toISOString(),
         view: "LESSON",
         boardObjectId: null,
         lessonAssignmentId: id,
         lessonSection: "homework",
         lessonElementId: focusId,
-      },
+      })}::jsonb`,
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
@@ -3202,7 +3208,7 @@ export async function assignedLessonAction(
   const id = String(assignmentId ?? "");
 
   const [row] = await db
-    .select({ a: lessonAssignments, title: lessonUnits.title, name: users.name, contentVersion: lessonContentVersion })
+    .select({ a: lessonAssignments, title: lessonUnits.title, name: users.name, contentVersion: lessonContentVersion, classFocus: users.classFocus })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
     .innerJoin(users, eq(users.id, lessonAssignments.studentId))
@@ -3233,10 +3239,14 @@ export async function assignedLessonAction(
     lesson.interactiveHomework = null;
     lesson.homework = [];
   } else if (session.role === "STUDENT" && lesson.interactiveHomework) {
+    const focusedHomeworkElement = context === "class" &&
+      row.classFocus?.lessonAssignmentId === id && row.classFocus.lessonSection === "homework"
+      ? row.classFocus.lessonElementId
+      : null;
     const visiblePlan = {
       ...lesson.interactiveHomework,
-      exercises: lesson.interactiveHomework.exercises.filter(
-        (exercise) => !homeworkExerciseHidden(row.a.answers ?? {}, exercise.id),
+      exercises: homeworkVisibleExercises(
+        lesson.interactiveHomework, row.a.answers ?? {}, false, focusedHomeworkElement,
       ),
     };
     lesson.interactiveHomework = context === "class"

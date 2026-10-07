@@ -1101,6 +1101,7 @@ export const uk: Dict = {
     assigning: "Призначаю…",
     selectAtLeastOne: "Вибери хоча б одну вправу.",
     assignmentFailed: "Не вдалося призначити домашню роботу.",
+    focusFailed: "Не вдалося сфокусувати учня. Спробуй ще раз.",
     editExercise: "Редагувати вправу",
     addExercise: "Додати вправу",
     editForStudent: "Редагування для цього учня",

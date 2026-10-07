@@ -220,6 +220,19 @@ export function homeworkFocusTarget(
   return null;
 }
 
+/** A live focus temporarily reveals its exercise without changing saved visibility. */
+export function homeworkVisibleExercises(
+  plan: InteractiveHomeworkPlan,
+  state: HomeworkStoredState,
+  teacher: boolean,
+  focusId?: string | null,
+) {
+  const focused = homeworkFocusTarget(plan, focusId)?.exerciseId;
+  return plan.exercises.filter((exercise) =>
+    teacher || !homeworkExerciseHidden(state, exercise.id) || exercise.id === focused,
+  );
+}
+
 const VALUE = "hw:value:";
 const STATUS = "hw:status:";
 const ATTEMPTS = "hw:attempts:";
