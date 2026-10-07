@@ -16,6 +16,7 @@ import type {
   HomeworkItem,
   InteractiveHomeworkPlan,
 } from "../src/lib/lesson-homework";
+import { organizeVocabularyHomework } from "../src/lib/vocabulary-homework";
 
 const LESSON_TITLE = "Tucker & Mendel — Part 9";
 const FOLDER_NAME = "Tucker & Mendel";
@@ -534,7 +535,7 @@ const splitOrder = shuffled(vocabulary, "part-9-homework-split");
 const mainWords = splitOrder.slice(0, 30);
 const bonusWords = splitOrder.slice(30);
 
-const homework: InteractiveHomeworkPlan = {
+const homework: InteractiveHomeworkPlan = organizeVocabularyHomework({
   kind: "INTERACTIVE_HOMEWORK_V1",
   title: "Tucker & Mendel — Part 9 — Homework",
   intro: "Complete the three required vocabulary exercises. Bonus blocks are optional. Written and voice questions will be added later.",
@@ -560,14 +561,17 @@ const homework: InteractiveHomeworkPlan = {
       items: [],
     },
   ],
-};
+}, vocabulary.map((entry) => ({ ...entry, examples: entry.examples.map(([en]) => ({ en })) })), { includeAllWords: true });
 
 function validateContent() {
   if (vocabulary.length !== 43) throw new Error(`Expected 43 vocabulary entries, got ${vocabulary.length}`);
   if (new Set(vocabulary.map((entry) => entry.word.toLowerCase())).size !== vocabulary.length) {
     throw new Error("Vocabulary contains duplicate headwords");
   }
-  if (mainWords.length !== 30 || bonusWords.length !== 13) throw new Error("Homework split is invalid");
+  const vocabularyHomework = homework.exercises.filter((exercise) => ["fill", "definition", "describe"].includes(exercise.kind));
+  if (vocabularyHomework.some((exercise) => exercise.items.length > 8)) throw new Error("Homework group exceeds eight words");
+  if (vocabularyHomework.filter((exercise) => !exercise.optional).some((exercise) => exercise.items.length !== 8)) throw new Error("Homework split is invalid");
+  if (new Set(vocabularyHomework.flatMap((exercise) => exercise.items.map((item) => item.vocabularyWord))).size !== 43) throw new Error("Homework vocabulary repeats or is incomplete");
   for (const line of transcript) {
     const markers = line.text.match(/\*\*/g)?.length ?? 0;
     if (markers % 2 !== 0) throw new Error(`Broken transcript highlight in: ${line.text.slice(0, 80)}`);
@@ -700,8 +704,8 @@ async function main() {
     transcriptLines: transcript.length,
     video: VIDEO_URL,
     homeworkExercises: homework.exercises.length,
-    mainWords: mainWords.length,
-    bonusWords: bonusWords.length,
+    mainWords: 24,
+    bonusWords: 19,
   }, null, 2));
 }
 

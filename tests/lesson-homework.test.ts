@@ -296,7 +296,7 @@ test("автоматические ответы обычного урока не
   assert.equal(normalized?.exercises[0].items[0].answer, "sets");
 });
 
-test("обычная вставка слов сохраняет предназначенный для неё список", () => {
+test("словарная вставка содержит только слова своего упражнения", () => {
   const normalized = normalizeInteractiveHomework({
     kind: "INTERACTIVE_HOMEWORK_V1",
     title: "Vocabulary homework",
@@ -311,7 +311,7 @@ test("обычная вставка слов сохраняет предназн
       ],
     }],
   });
-  assert.deepEqual(normalized?.exercises[0].wordBank, ["tiny", "huge"]);
+  assert.deepEqual(normalized?.exercises[0].wordBank, ["tiny"]);
 });
 
 test("проверка ответа принимает регистр, знаки и допустимый вариант", () => {

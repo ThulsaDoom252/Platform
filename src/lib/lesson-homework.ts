@@ -1,6 +1,7 @@
 /** Portable definition and state helpers for an interactive lesson homework. */
 
 import { detectTranslationLang, type TranslationLang } from "@/lib/translation-lang";
+import { organizeVocabularyHomework } from "@/lib/vocabulary-homework";
 
 export type HomeworkExerciseKind =
   | "fill"
@@ -21,6 +22,8 @@ export type HomeworkItem = {
   accepted?: string[];
   /** Word shown for an open description task. */
   word?: string;
+  /** Canonical dictionary headword; metadata only, never an answer hint. */
+  vocabularyWord?: string;
   /** Short instruction such as “use slang” or “put though at the end”. */
   hint?: string;
 };
@@ -692,6 +695,9 @@ const cleanItem = (value: unknown): HomeworkItem | null => {
     ...(typeof raw.word === "string" && raw.word.trim()
       ? { word: raw.word.trim().slice(0, 300) }
       : {}),
+    ...(typeof raw.vocabularyWord === "string" && raw.vocabularyWord.trim()
+      ? { vocabularyWord: raw.vocabularyWord.trim().slice(0, 300) }
+      : {}),
     ...(typeof raw.hint === "string" && raw.hint.trim()
       ? { hint: raw.hint.trim().slice(0, 300) }
       : {}),
@@ -725,7 +731,7 @@ export function regularHomeworkShowsWordBank(
 /** Treat stored json as untrusted: old and half-written plans must not break a lesson. */
 export function normalizeInteractiveHomework(
   value: unknown,
-  options: { allowEmpty?: boolean } = {},
+  options: { allowEmpty?: boolean; organizeVocabulary?: boolean } = {},
 ): InteractiveHomeworkPlan | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
@@ -783,7 +789,7 @@ export function normalizeInteractiveHomework(
   });
   if (exercises.length === 0 && !options.allowEmpty) return null;
 
-  return {
+  const plan: InteractiveHomeworkPlan = {
     kind: "INTERACTIVE_HOMEWORK_V1",
     title:
       typeof raw.title === "string" && raw.title.trim()
@@ -794,6 +800,7 @@ export function normalizeInteractiveHomework(
       : {}),
     exercises,
   };
+  return options.organizeVocabulary === false ? plan : organizeVocabularyHomework(plan);
 }
 
 export function interactiveHomeworkFromEntries(value: unknown): InteractiveHomeworkPlan | null {
