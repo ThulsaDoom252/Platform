@@ -298,6 +298,8 @@ export function RegularLessonView({
   vocabularyFocus,
   onPickVocabulary,
   showBritish = false,
+  showBritishBusy = false,
+  onShowBritishChange,
   canRevealVocabulary = true,
   vocabularyReveal,
   onVocabularyRevealChange,
@@ -334,6 +336,8 @@ export function RegularLessonView({
   vocabularyFocus?: string | null;
   onPickVocabulary?: (key: string) => void;
   showBritish?: boolean;
+  showBritishBusy?: boolean;
+  onShowBritishChange?: (show: boolean) => void;
   canRevealVocabulary?: boolean;
   vocabularyReveal?: LessonVocabularyReveal;
   onVocabularyRevealChange?: (next: LessonVocabularyReveal) => void;
@@ -1346,6 +1350,8 @@ export function RegularLessonView({
                 focus={vocabularyFocus}
                 onPick={onPickVocabulary}
                 showBritish={showBritish}
+                showBritishBusy={showBritishBusy}
+                onShowBritishChange={onShowBritishChange}
                 canReveal={canRevealVocabulary}
                 revealState={vocabularyReveal}
                 onRevealStateChange={onVocabularyRevealChange}

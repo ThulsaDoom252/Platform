@@ -41,8 +41,7 @@ import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { LessonTextHighlighter } from "@/components/lessons/lesson-text-highlighter";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools } from "./highlight-tools";
 const LiveLessonEditor = dynamic(() => import("@/components/lessons/live-lesson-editor").then((m) => m.LiveLessonEditor));
-import { IconPencil, IconReset, IconTrash, IconVolume } from "@/components/icons";
-import { cn } from "@/lib/utils";
+import { IconPencil, IconReset, IconTrash } from "@/components/icons";
 import type { ClassVideoState } from "@/lib/class-video";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
 
@@ -214,12 +213,12 @@ export function AssignedLesson({
     commitHighlights(clearLessonHighlights(marksRef.current));
   };
 
-  const toggleBritish = () => {
-    const next = !british;
+  const changeBritish = (next: boolean) => {
+    const previous = british;
     setBritish(next);
     startBusy(async () => {
       const result = await showBritishAction(data.assignment.id, next);
-      if (result.error) setBritish(!next);
+      if (result.error) setBritish(previous);
     });
   };
 
@@ -316,21 +315,6 @@ export function AssignedLesson({
         <IconTrash className="h-3.5 w-3.5" />
         {t.lessonUnits.highlightClear}
       </button>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={toggleBritish}
-        aria-pressed={british}
-        className={cn(
-          "flex h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-semibold transition disabled:opacity-50",
-          british
-            ? "bg-accent text-white"
-            : "bg-surface text-muted ring-1 ring-line hover:text-content",
-        )}
-      >
-        <IconVolume className="h-3.5 w-3.5" />
-        {t.lessonUnits.showBritish}
-      </button>
     </div>
   ) : null;
 
@@ -386,6 +370,8 @@ export function AssignedLesson({
           vocabularyFocus={focus}
           onPickVocabulary={teacher ? pick : undefined}
           showBritish={british}
+          showBritishBusy={busy}
+          onShowBritishChange={teacher ? changeBritish : undefined}
           canRevealVocabulary={teacher || !liveClass}
           vocabularyReveal={liveClass ? vocabularyReveal : undefined}
           onVocabularyRevealChange={
@@ -451,6 +437,8 @@ export function AssignedLesson({
         highlights={dialogueMarks}
         focus={focus}
         showBritish={british}
+        showBritishBusy={busy}
+        onShowBritishChange={teacher ? changeBritish : undefined}
         canRevealVocabulary={teacher || !liveClass}
         vocabularyReveal={liveClass ? vocabularyReveal : undefined}
         onVocabularyRevealChange={

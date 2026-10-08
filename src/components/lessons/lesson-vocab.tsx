@@ -32,7 +32,7 @@ import {
   type LessonVocabularyReveal,
   type LessonWord,
 } from "@/lib/lesson-unit";
-import { IconEye, IconEyeOff, IconSearch } from "@/components/icons";
+import { IconEye, IconEyeOff, IconSearch, IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { translateLessonVocabularyAction } from "@/lib/actions/lessons";
 
@@ -42,6 +42,8 @@ export function LessonVocab({
   focus,
   onPick,
   showBritish = false,
+  showBritishBusy = false,
+  onShowBritishChange,
   canReveal = true,
   revealState,
   onRevealStateChange,
@@ -55,6 +57,9 @@ export function LessonVocab({
   focus?: string | null;
   onPick?: (key: string) => void;
   showBritish?: boolean;
+  showBritishBusy?: boolean;
+  /** Teacher-owned setting for the assigned lesson; students only receive it. */
+  onShowBritishChange?: (show: boolean) => void;
   /** В живом классе ученик видит раскрытие только по решению учителя. */
   canReveal?: boolean;
   /** В классе состояние общее: учитель меняет, ученик только наблюдает. */
@@ -145,7 +150,7 @@ export function LessonVocab({
 
   return (
     <div className="flex h-full flex-col gap-3">
-      {/* Шапка: сколько слов и два переключателя видимости. */}
+      {/* Шапка: сколько слов и общие переключатели видимости. */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12px] font-semibold text-faint">
           {fmt(t.lessonUnits.words, { n: words.length })}
@@ -163,6 +168,24 @@ export function LessonVocab({
               label={reveal.allTranslations && reveal.allDescriptions && reveal.allExamples && reveal.allNotes
                 ? t.lessonUnits.vocabHideAll : t.lessonUnits.vocabRevealAll}
             />
+            {teacher && onShowBritishChange && (
+              <button
+                data-no-lesson-highlight
+                type="button"
+                disabled={showBritishBusy}
+                onClick={() => onShowBritishChange(!showBritish)}
+                aria-pressed={showBritish}
+                className={cn(
+                  "flex h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold transition disabled:cursor-wait disabled:opacity-50",
+                  showBritish
+                    ? "bg-accent text-white"
+                    : "bg-surface-2 text-muted hover:text-content",
+                )}
+              >
+                <IconVolume className="h-3.5 w-3.5" />
+                {t.lessonUnits.showBritish}
+              </button>
+            )}
             {teacher && unitId && lessonTitle && (
               <>
                 <span className="flex rounded-xl bg-surface-2 p-1 ring-1 ring-line">

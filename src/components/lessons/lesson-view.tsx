@@ -85,6 +85,8 @@ export type LessonViewProps = {
   onHighlight?: (key: string) => void;
   /** Показать ученику UK-звук и UK-транскрипцию одиночных слов. */
   showBritish?: boolean;
+  showBritishBusy?: boolean;
+  onShowBritishChange?: (show: boolean) => void;
   /** Может ли этот зритель сам раскрывать перевод и описание слов. */
   canRevealVocabulary?: boolean;
   vocabularyReveal?: LessonVocabularyReveal;
@@ -125,6 +127,8 @@ export function LessonView({
   highlightColor = "yellow",
   onHighlight,
   showBritish = false,
+  showBritishBusy = false,
+  onShowBritishChange,
   canRevealVocabulary = true,
   vocabularyReveal,
   onVocabularyRevealChange,
@@ -414,6 +418,8 @@ export function LessonView({
                   focus={focus}
                   onPick={onPick}
                   showBritish={showBritish}
+                  showBritishBusy={showBritishBusy}
+                  onShowBritishChange={onShowBritishChange}
                   canReveal={canRevealVocabulary}
                   revealState={vocabularyReveal}
                   onRevealStateChange={onVocabularyRevealChange}
