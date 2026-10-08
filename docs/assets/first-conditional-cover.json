@@ -1,0 +1,9 @@
+{
+  "method": "Built-in image_gen edit of the user-provided image",
+  "reference": "codex-clipboard-48488f4e-dbb8-4c9c-8fd9-ac633bca2a48.png",
+  "asset": "public/images/tests/first-conditional-v1.webp",
+  "width": 1200,
+  "height": 600,
+  "bytes": 64770,
+  "prompt": "Use case: style-transfer. Asset type: polished wide 2:1 website test-card cover for a B1 first conditional test. Image 1 is the edit target, not a screenshot to frame. Improve and redraw this low-resolution educational illustration while preserving its subject, composition, green palette, friendly mischievous gray wolf at the left, and the grammar example at the right. Keep a crisp, contemporary hand-drawn cartoon style with clean edges and tasteful shading. Background remains overlapping large forest-green and bright-green circular shapes; not photorealistic or 3D. The full wolf must fit comfortably inside the picture, with no cropped feet, ears or tail. Set the following sentence verbatim, large and extremely readable, with generous margins and balanced line breaks: \"When I find the third little pig's house, I'll have a big barbecue.\" Highlight \"When I find\" and \"I'll have\" in warm yellow; the rest of the sentence is white. Preserve the small blue circular \"B1\" badge in the top-right corner with readable B1 lettering and a clean simple ring, without decorative tiny lettering. Produce a wide landscape composition approximately 2:1. Keep every important element safely inside a 5% margin for responsive card thumbnails. No extra characters, pigs, houses, props, extra slogans, watermarks, clipped corner logos, white framing or UI controls. Finish as a sharp high-resolution illustration suitable for a web thumbnail; fill the canvas to the edges with the green background."
+}

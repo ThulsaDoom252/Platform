@@ -6,6 +6,43 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { TestsLibraryView } from "../src/components/tests/tests-library-view";
 import { dictionaries } from "../src/lib/i18n";
 import { TEST_CATEGORIES, TEST_LEVELS, parseTestLibraryLocation, testLibraryHref } from "../src/lib/test-library";
+import { TEST_CATALOG } from "../src/lib/tests/catalog";
+
+test("every published library test has a complete locally saved lightweight cover", () => {
+  for (const test of TEST_CATALOG) {
+    assert.ok(test.cover.alt.trim());
+    assert.ok(test.cover.width > 0 && test.cover.height > 0);
+    assert.ok(test.cover.src.startsWith("/images/tests/") && !test.cover.src.includes(".."));
+    const bytes = readFileSync(`public${test.cover.src}`);
+    assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
+    assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
+    assert.ok(bytes.byteLength < 200_000);
+  }
+});
+
+test("test cards render covers with responsive lazy loading, reserved space and uncropped text", () => {
+  for (const locale of ["en", "ru", "uk"] as const) {
+    const html = renderToStaticMarkup(createElement(TestsLibraryView, {
+      location: { level: "b1", category: "grammar" }, labels: dictionaries[locale].testsLibrary, locale,
+    }));
+    const tests = TEST_CATALOG.filter((test) => test.level === "b1" && test.category === "grammar");
+    assert.equal((html.match(/data-test-cover=/g) ?? []).length, tests.length);
+    assert.equal((html.match(/loading="lazy"/g) ?? []).length, tests.length);
+    assert.equal((html.match(/<img /g) ?? []).length, tests.length);
+    assert.ok(html.includes("aspect-[2/1]"));
+    assert.ok(html.includes("object-contain"));
+    assert.ok(html.includes("srcSet="));
+    assert.ok(html.includes("sizes="));
+    assert.ok(!html.includes('rel="preload"'));
+    for (const test of tests) {
+      assert.ok(html.includes(encodeURIComponent(test.cover.src)));
+      assert.ok(html.includes(`width="${test.cover.width}"`));
+      assert.ok(html.includes(`height="${test.cover.height}"`));
+      assert.ok(html.includes(test.title));
+      assert.ok(html.includes(`href="/teacher/tests/${test.id}"`));
+    }
+  }
+});
 
 test("Tests has the six requested levels in order and the seven requested categories", () => {
   assert.deepEqual(TEST_LEVELS.map((level) => level.label), ["A1", "A2", "B1", "B1+", "B2", "C1"]);

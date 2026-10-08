@@ -1,8 +1,10 @@
-import type { TestDefinition } from "./types";
+import type { TestCatalogEntry } from "./types";
 
-export const FIRST_CONDITIONAL: TestDefinition = {
+export const FIRST_CONDITIONAL: TestCatalogEntry = {
   id: "first-conditional", version: 2, level: "b1", category: "grammar",
   title: "First conditional", subtitle: "First conditional & future time clauses",
+  cover: { src: "/images/tests/first-conditional-v1.webp", width: 1200, height: 600,
+    alt: "B1 first conditional: When I find the third little pig's house, I'll have a big barbecue." },
   exercises: [
     { id: "exercise-1", number: 1, instruction: "Choose the correct form to complete the sentences below.", questions: [
       { id: "q1", before: "I ", after: " you an answer when I have one.", options: ["will give", "would give", "give"] },
@@ -54,5 +56,5 @@ export const FIRST_CONDITIONAL: TestDefinition = {
   ],
 };
 
-export const TEST_CATALOG: TestDefinition[] = [FIRST_CONDITIONAL];
+export const TEST_CATALOG: TestCatalogEntry[] = [FIRST_CONDITIONAL];
 export function findLibraryTest(id: string) { return TEST_CATALOG.find((test) => test.id === id) ?? null; }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import type { MouseEvent, Ref } from "react";
 import { ArrowLeft, ArrowUpRight, BookOpen, BookText, ChevronRight, ClipboardCheck, Folder, FolderOpen, Headphones, Languages, PenLine, SpellCheck2, Trophy, type LucideIcon } from "lucide-react";
 import { fmt, type Dict } from "@/lib/i18n";
@@ -128,12 +129,16 @@ export function TestsLibraryView({
         </section>
       ) : tests.length ? (
         <section data-tests-catalog className="grid gap-4 sm:grid-cols-2">
-          {tests.map((test) => <Link key={test.id} data-library-test={test.id} href={`/teacher/tests/${test.id}`} className="group relative flex flex-col gap-5 overflow-hidden rounded-3xl border border-line bg-surface p-6 transition hover:border-accent/50 hover:shadow-lg hover:shadow-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-            <div aria-hidden className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-accent to-accent-2" />
-            <div className="flex items-center gap-3"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent"><ClipboardCheck aria-hidden className="h-6 w-6" /></span><div><p className="text-[10px] font-bold uppercase tracking-wider text-accent">{level.label} · {labels.categoryNames[category]}</p><h2 className="mt-1 text-lg font-bold text-content">{test.title}</h2></div></div>
+          {tests.map((test) => <Link key={test.id} data-library-test={test.id} href={`/teacher/tests/${test.id}`} className="group relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-line bg-surface transition hover:border-accent/50 hover:shadow-lg hover:shadow-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <div data-test-cover={test.id} className="aspect-[2/1] w-full overflow-hidden border-b border-line bg-surface-2">
+              <Image src={test.cover.src} alt={test.cover.alt} width={test.cover.width} height={test.cover.height} sizes="(min-width: 1280px) 560px, (min-width: 640px) 50vw, 100vw" loading="lazy" className="h-full w-full object-contain" />
+            </div>
+            <div className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
+            <div><p className="text-[10px] font-bold uppercase tracking-wider text-accent">{level.label} · {labels.categoryNames[category]}</p><h2 className="mt-1 text-lg font-bold text-content">{test.title}</h2></div>
             <p className="text-sm text-muted">{test.subtitle}</p>
             <div className="flex flex-wrap gap-2">{test.exercises.map((exercise) => <span key={exercise.id} className={cn("rounded-lg border px-2.5 py-1.5 text-[11px] font-bold", exercise.questions.length ? "border-accent/20 bg-accent-soft text-accent" : "border-line bg-surface-2 text-faint")}>{testLabels.exercise} {exercise.number}</span>)}</div>
-            <div className="flex items-center justify-between gap-2 border-t border-line pt-3"><span className="text-xs font-bold text-accent">{testLabels.open}</span><span className="text-xs text-muted">{readyTestExercises(test).reduce((sum, exercise) => sum + exercise.questions.length, 0)} {testLabels.questions}</span><ArrowUpRight aria-hidden className="h-4 w-4 text-accent" /></div>
+            <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3"><span className="text-xs font-bold text-accent">{testLabels.open}</span><span className="text-xs text-muted">{readyTestExercises(test).reduce((sum, exercise) => sum + exercise.questions.length, 0)} {testLabels.questions}</span><ArrowUpRight aria-hidden className="h-4 w-4 text-accent" /></div>
+            </div>
           </Link>)}
         </section>
       ) : (

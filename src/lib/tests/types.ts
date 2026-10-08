@@ -11,11 +11,15 @@ export type TestExercise = {
   id: string; number: number; instruction: string; questions: TestQuestion[];
   passage?: TestPassagePart[][];
 };
+export type TestCover = { src: string; alt: string; width: number; height: number };
 /** Public content only. Answer keys never cross the server/client boundary. */
 export type TestDefinition = {
   id: string; version: number; title: string; subtitle: string;
   level: TestLevelId; category: TestCategoryId; exercises: TestExercise[];
+  cover?: TestCover;
 };
+/** Every newly published library test has a cover; historical assignments remain compatible. */
+export type TestCatalogEntry = TestDefinition & { cover: TestCover };
 export type TestQuestionKey = { answer: string | string[]; acceptedAnswers?: string[]; rule: TestText; reasons: Record<string, TestText> };
 export type TestAnswerKey = Record<string, Record<string, TestQuestionKey>>;
 export type TestAnswer = string | string[] | null;
