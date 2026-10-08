@@ -658,6 +658,8 @@ export const en = {
     classOnly: "Only in this class",
     classOnlyHint: "The activity stays in this class, but no preset is saved.",
     loadFailed: "Could not load the games and presets.",
+    classLoadFailed: "Could not load all activities. Your saved games have not been removed.",
+    retryLoad: "Retry loading",
     createFailed: "Could not create the activity.",
     backgroundFailed: "Could not upload the game background.",
   },

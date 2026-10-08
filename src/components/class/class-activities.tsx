@@ -7,14 +7,13 @@
  * они никуда не пропадают — приготовленные ждут своего часа,
  * законченные остаются с итогом, пока учитель их не уберёт.
  */
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { showGameToStudentAction } from "@/lib/actions/class";
 import {
   clearClassActivitiesAction,
   duplicateClassActivitiesAction,
-  listGamesAction,
   pauseGameAction,
   playGameAction,
   removeGameAction,
@@ -35,7 +34,6 @@ import { WordDeckBoard } from "@/components/game/word-deck-board";
 import { WordDeckForm } from "@/components/game/word-deck-studio";
 import { ClassActivityPicker } from "@/components/class/class-activity-picker";
 import {
-  listClassWordDeckActivitiesAction,
   copyWordDeckBetweenClassAndHomeworkAction,
   removeWordDeckFromClassAction,
   updateClassWordDeckActivityAction,
@@ -46,7 +44,6 @@ import {
 } from "@/lib/actions/word-deck";
 import {
   deleteRevisionAction,
-  listClassRevisionsAction,
   reopenRevisionAction,
   revisionSourcesForPhrasesAction,
   showRevisionToStudentAction,
@@ -57,11 +54,11 @@ import { RevisionSetup, type RevisionVocabularySource } from "@/components/revis
 import { IconGrip, IconPencil, IconPlus, IconTrash, IconUser, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import {
-  listClassActivityMetaAction,
   saveClassActivityOrderAction,
   setClassGameAnswerVisibilityAction,
 } from "@/lib/actions/class-games";
 import { classActivityKey, type ClassActivityMeta, type ClassGameReview } from "@/lib/class-game-meta";
+import { listClassActivitiesAction } from "@/lib/actions/class-activities";
 import {
   ClassGameReviewBadge,
   ClassGameReviewEditor,
@@ -99,46 +96,38 @@ export function ClassActivities({ studentId }: { studentId: string }) {
   const [busy, startBusy] = useTransition();
   /** Не удалось позвать ученика — говорим об этом на месте. */
   const [showError, setShowError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const loadGeneration = useRef(0);
 
   const reload = useCallback(async () => {
-    const [rows, wordDecks, wordRevisions, activityMeta] = await Promise.all([
-      listGamesAction(studentId),
-      listClassWordDeckActivitiesAction(studentId),
-      listClassRevisionsAction(studentId),
-      listClassActivityMetaAction(studentId),
-    ]);
-    setQueue(rows);
-    setDecks(wordDecks);
-    setRevisions(wordRevisions);
-    setMeta(activityMeta);
-    return rows;
+    const generation = ++loadGeneration.current;
+    setLoading(true);
+    try {
+      const result = await listClassActivitiesAction(studentId);
+      if (generation !== loadGeneration.current || result.studentId !== studentId) return;
+      // Only successful reads replace saved UI state; a failure is not an empty list.
+      if (result.queue !== undefined) setQueue(result.queue);
+      if (result.decks !== undefined) setDecks(result.decks);
+      if (result.revisions !== undefined) setRevisions(result.revisions);
+      if (result.meta !== undefined) setMeta(result.meta);
+      setLoadError(result.failed.length > 0);
+    } catch {
+      if (generation === loadGeneration.current) setLoadError(true);
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
   }, [studentId]);
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      listGamesAction(studentId),
-      listClassWordDeckActivitiesAction(studentId),
-      listClassRevisionsAction(studentId),
-      listClassActivityMetaAction(studentId),
-    ])
-      .then(([rows, wordDecks, wordRevisions, activityMeta]) => {
-        if (!alive) return;
-        setQueue(rows);
-        setDecks(wordDecks);
-        setRevisions(wordRevisions);
-        setMeta(activityMeta);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setQueue([]);
-        setDecks([]);
-        setRevisions([]);
-      });
+    // Defer the first load; cleanup invalidates requests from a previous student/mount.
+    void Promise.resolve().then(() => { if (alive) void reload(); });
     return () => {
       alive = false;
+      loadGeneration.current += 1;
     };
-  }, [studentId]);
+  }, [reload]);
 
   const modeLabel: Record<GameMode, string> = {
     PICTURE: t.game.modePicture,
@@ -565,9 +554,18 @@ export function ClassActivities({ studentId }: { studentId: string }) {
         </button>
       </div>
 
-      {(queue === null || decks === null || revisions === null) && <p className="text-sm text-faint">{t.common.loading}</p>}
+      {loading && <p className="text-sm text-faint">{t.common.loading}</p>}
 
-      {queue?.length === 0 && decks?.length === 0 && revisions?.length === 0 && (
+      {loadError && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-content">
+          <p className="min-w-0 flex-1">{t.activityPicker.classLoadFailed}</p>
+          <button type="button" disabled={loading} onClick={() => void reload()} className="h-9 rounded-xl bg-accent px-3 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50">
+            {t.activityPicker.retryLoad}
+          </button>
+        </div>
+      )}
+
+      {!loading && !loadError && queue?.length === 0 && decks?.length === 0 && revisions?.length === 0 && (
         <div className="rounded-2xl bg-surface-2 p-6 text-center">
           <p className="text-sm font-semibold text-content">{t.game.queueEmpty}</p>
           <p className="mt-1 text-[12px] text-faint">{t.game.subtitle}</p>

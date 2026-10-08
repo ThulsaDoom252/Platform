@@ -679,7 +679,7 @@ export function ClassRoom({
         ) : lessonTab === "twister" && partner ? (
           <ClassTwister studentId={partner.id} studentName={partner.name} />
         ) : lessonTab === "activities" && partner ? (
-          <ClassActivities studentId={partner.id} />
+          <ClassActivities key={partner.id} studentId={partner.id} />
         ) : (
           <div className="flex flex-1 items-center justify-center">
             {stub(LESSON_TABS.find((tab) => tab.key === lessonTab)!.label)}
