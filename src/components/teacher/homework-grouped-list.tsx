@@ -11,8 +11,11 @@ import {
 import { SCHOOL_TIME_ZONE } from "@/lib/schedule-time";
 import { useLocalFlag } from "@/lib/use-local-flag";
 import { cn } from "@/lib/utils";
+import { groupTeacherHomeworkPriorities, readTeacherHomeworkSort, sortTeacherHomeworks,
+  type TeacherHomeworkOrderable, type TeacherHomeworkOverviewState, type TeacherHomeworkSortState } from "@/lib/teacher-homework-order";
+import { HomeworkSortControls, useHomeworkSort, type HomeworkSortLabels } from "./homework-sort-controls";
 
-type HomeworkListCard = TeacherHomeworkGroupable & { card: ReactNode };
+type HomeworkListCard = TeacherHomeworkGroupable & { card: ReactNode; order?: TeacherHomeworkOrderable };
 type GroupingLabels = {
   grouping: string;
   groupByAssignedDate: string;
@@ -29,19 +32,34 @@ export function HomeworkGroupedList({
   locale,
   dateDescending = true,
   labels,
+  initialSort,
+  sortLabels,
+  statusLabels,
 }: {
   cards: HomeworkListCard[];
   sortControls: ReactNode;
   locale: string;
   dateDescending?: boolean;
   labels: GroupingLabels;
+  initialSort?: TeacherHomeworkSortState;
+  sortLabels?: HomeworkSortLabels;
+  statusLabels?: Record<TeacherHomeworkOverviewState, string>;
 }) {
   // Store the opt-out so a first visit (including SSR) enables both groups.
   const [datesDisabled, setDatesDisabled] = useLocalFlag("teacher-homework-date-groups-disabled");
   const [typesDisabled, setTypesDisabled] = useLocalFlag("teacher-homework-type-groups-disabled");
-  const dateGroups = useMemo(() =>
-    groupTeacherHomeworkDates(cards, !datesDisabled, dateDescending),
-  [cards, dateDescending, datesDisabled]);
+  const { state: sorting, change } = useHomeworkSort(initialSort ?? readTeacherHomeworkSort(undefined, undefined), "assigned");
+  const dateGroups = useMemo(() => {
+    const orderable = cards.map((item) => ({ ...item, ...(item.order ?? {
+      studentName: "", nextLessonAt: null, submittedAt: null, reviewedAt: null, started: false,
+    }) }));
+    const sorted = sortLabels ? sortTeacherHomeworks(orderable, sorting.key, sorting.desc, locale) : orderable;
+    const buckets = sortLabels ? groupTeacherHomeworkPriorities(sorted, sorting.key, sorting.desc) : [{ state: null, items: sorted }];
+    return buckets.flatMap((bucket) => groupTeacherHomeworkDates(bucket.items, !datesDisabled,
+      sortLabels && sorting.key === "assigned" ? sorting.desc : dateDescending)
+      .map((group, index) => ({ ...group, key: `${bucket.state ?? "all"}:${group.key}`,
+        sortState: bucket.state, priorityState: index === 0 ? bucket.state : null })));
+  }, [cards, dateDescending, datesDisabled, sortLabels, sorting.key, sorting.desc, locale]);
   const dateFormat = useMemo(() => new Intl.DateTimeFormat(locale, {
     timeZone: SCHOOL_TIME_ZONE, year: "numeric", month: "long", day: "numeric",
   }), [locale]);
@@ -55,7 +73,10 @@ export function HomeworkGroupedList({
   return (
     <>
       <section className="flex flex-col gap-3 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-line sm:px-4">
-        <div className="flex flex-wrap items-center gap-2">{sortControls}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {sortLabels && <HomeworkSortControls state={sorting} labels={sortLabels} onChange={change} />}
+          {sortControls}
+        </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">{labels.grouping}</span>
           <GroupingToggle checked={!datesDisabled} onChange={(checked) => setDatesDisabled(!checked)} label={labels.groupByAssignedDate} Icon={IconCalendar} />
@@ -67,9 +88,13 @@ export function HomeworkGroupedList({
         {dateGroups.map((dateGroup) => (
           <section
             key={dateGroup.key}
-            data-homework-assigned-day={datesDisabled ? undefined : dateGroup.key}
+            data-homework-assigned-day={datesDisabled ? undefined : dateGroup.day ?? "undated"}
+            data-homework-sort-state={dateGroup.sortState ?? undefined}
             className={cn("min-w-0", !datesDisabled && "rounded-3xl border border-line bg-surface-2/45 p-3 sm:p-4")}
           >
+            {dateGroup.priorityState && statusLabels && <h2 className="mb-3 rounded-xl bg-accent-soft px-3 py-2 text-sm font-black text-accent">
+              {statusLabels[dateGroup.priorityState]}
+            </h2>}
             {!datesDisabled && (
               <div className="mb-4 flex items-center gap-2.5 border-b border-line pb-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent"><IconCalendar className="h-4 w-4" /></span>

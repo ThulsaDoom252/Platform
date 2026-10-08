@@ -11,6 +11,8 @@ import { DeleteStudentHomeworkButton } from "@/components/teacher/delete-student
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { HomeworkSourceAssigner } from "@/components/teacher/homework-source-assigner";
 import { HomeworkGroupedList } from "@/components/teacher/homework-grouped-list";
+import { HomeworkSortedFolders } from "@/components/teacher/homework-sorted-folders";
+import type { HomeworkSortLabels } from "@/components/teacher/homework-sort-controls";
 import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 import {
   IconCalendar,
@@ -41,14 +43,20 @@ import { getDict } from "@/lib/i18n/server";
 import { SCHOOL_TIME_ZONE, SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 import {
   groupTeacherHomeworksByStudent,
-  sortTeacherHomeworks,
+  readTeacherHomeworkSort,
   teacherHomeworkOverviewState,
   type TeacherHomeworkOverviewState,
   type TeacherHomeworkStudentGroup,
+  type TeacherHomeworkOrderable,
 } from "@/lib/teacher-homework-order";
 import { cn } from "@/lib/utils";
 
 type TeacherHomeworkListItem = TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard | TeacherRevisionHomeworkCard;
+
+function homeworkSortData(item: TeacherHomeworkListItem): TeacherHomeworkOrderable {
+  return { id: item.id, title: item.title, studentName: item.studentName, nextLessonAt: item.nextLessonAt,
+    assignedAt: item.assignedAt, submittedAt: item.submittedAt, reviewedAt: item.reviewedAt, started: item.started };
+}
 
 const FOLDER_THEMES = [
   {
@@ -84,6 +92,8 @@ type FolderLabels = {
   submitted: string;
   doneCount: string;
   openFolder: string;
+  nextLesson: string;
+  noNextLesson: string;
 };
 
 function themeForStudent(studentId: string) {
@@ -97,8 +107,6 @@ export default async function TeacherHomeworksPage({
   searchParams: Promise<{ student?: string; sort?: string; dir?: string }>;
 }) {
   const params = await searchParams;
-  const sort = params.sort === "status" ? "status" : "assigned";
-  const desc = params.dir ? params.dir === "desc" : sort === "assigned";
   const [lessonItems, activityItems, revisionItems, { t, locale }] = await Promise.all([
     teacherHomeworkAssignmentsAction(),
     teacherWordDeckHomeworkAssignmentsAction(),
@@ -109,9 +117,14 @@ export default async function TeacherHomeworksPage({
   const localeName = locale === "ru" ? "ru-RU" : locale === "uk" ? "uk-UA" : "en-US";
   const groups = groupTeacherHomeworksByStudent(items, localeName);
   const selectedGroup = groups.find((group) => group.studentId === params.student) ?? null;
-  const sorted = selectedGroup
-    ? sortTeacherHomeworks(selectedGroup.items, sort, desc, localeName)
-    : [];
+  const initialSort = readTeacherHomeworkSort(params.sort, params.dir, selectedGroup ? "assigned" : "name");
+  const sortLabels: HomeworkSortLabels = {
+    sortBy: selectedGroup ? t.teacherHomeworks.sortFolderBy : t.teacherHomeworks.sortBy,
+    sortName: t.teacherHomeworks.sortName, sortLesson: t.teacherHomeworks.sortLesson,
+    sortStatus: t.teacherHomeworks.sortStatus, sortAssigned: t.teacherHomeworks.sortAssigned,
+    waiting: t.teacherHomeworks.waiting, notStarted: t.teacherHomeworks.notStarted,
+    inProgress: t.teacherHomeworks.inProgress, reverseSort: t.teacherHomeworks.reverseSort,
+  };
   const students = groups.length;
   const waiting = items.filter((item) => item.submittedAt && !item.reviewedAt).length;
   const dateOptions: Intl.DateTimeFormatOptions = {
@@ -128,30 +141,6 @@ export default async function TeacherHomeworksPage({
     ...dateOptions,
     timeZone: SCHEDULE_FORMAT_TIME_ZONE,
   });
-  const sortHref = (key: "status" | "assigned") => {
-    if (!selectedGroup) return "/teacher/homeworks";
-    const nextDesc = sort === key ? !desc : key === "assigned";
-    return `/teacher/homeworks?student=${encodeURIComponent(selectedGroup.studentId)}&sort=${key}&dir=${nextDesc ? "desc" : "asc"}`;
-  };
-  const sortButton = (key: "status" | "assigned", label: string) => {
-    const active = sort === key;
-    return (
-      <Link
-        href={sortHref(key)}
-        className={cn(
-          "flex h-8 items-center gap-1 rounded-lg px-3 text-[12px] font-semibold transition",
-          active
-            ? "bg-accent-soft text-accent"
-            : "text-muted hover:bg-surface-2 hover:text-content",
-        )}
-      >
-        {label}
-        <span aria-hidden className={active ? "" : "opacity-35"}>
-          {active && desc ? "↓" : "↑"}
-        </span>
-      </Link>
-    );
-  };
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -194,7 +183,10 @@ export default async function TeacherHomeworksPage({
 
           <HomeworkGroupedList
             locale={localeName}
-            dateDescending={sort === "assigned" ? desc : true}
+            initialSort={initialSort}
+            sortLabels={sortLabels}
+            statusLabels={{ reviewed: t.teacherHomeworks.reviewed, submitted: t.teacherHomeworks.submitted,
+              notStarted: t.teacherHomeworks.notStarted, inProgress: t.teacherHomeworks.inProgress }}
             labels={{
               grouping: t.teacherHomeworks.grouping,
               groupByAssignedDate: t.teacherHomeworks.groupByAssignedDate,
@@ -212,21 +204,17 @@ export default async function TeacherHomeworksPage({
               },
             }}
             sortControls={<>
-              <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
-                {t.teacherHomeworks.sortFolderBy}
-              </span>
-              {sortButton("status", t.teacherHomeworks.sortStatus)}
-              {sortButton("assigned", t.teacherHomeworks.sortAssigned)}
               <HomeworkBackgroundToggle
                 showLabel={t.teacherHomeworks.showColors}
                 hideLabel={t.teacherHomeworks.hideColors}
               />
             </>}
-            cards={sorted.map((item) => ({
+            cards={selectedGroup.items.map((item) => ({
               id: item.id,
               kind: item.kind,
               assignedAt: item.assignedAt,
               activityType: item.kind === "ACTIVITY" ? item.activityType : undefined,
+              order: homeworkSortData(item),
               card: item.kind === "REVISION" ? (
               <RevisionHomeworkCard
                 key={item.id}
@@ -262,15 +250,9 @@ export default async function TeacherHomeworksPage({
             </div>
           </section>
 
-          <div className="grid gap-5 pt-2 lg:grid-cols-2">
-            {groups.map((group) => (
-              <StudentFolder
-                key={group.studentId}
-                group={group}
-                labels={t.teacherHomeworks}
-              />
-            ))}
-          </div>
+          <HomeworkSortedFolders initialSort={initialSort} labels={sortLabels} locale={localeName}
+            folders={groups.map((group) => ({ ...group, items: group.items.map(homeworkSortData),
+              card: <StudentFolder group={group} labels={t.teacherHomeworks} lessonDateFormat={lessonDateFormat} /> }))} />
         </>
       )}
     </div>
@@ -280,11 +262,14 @@ export default async function TeacherHomeworksPage({
 function StudentFolder({
   group,
   labels,
+  lessonDateFormat,
 }: {
   group: TeacherHomeworkStudentGroup<TeacherHomeworkListItem>;
   labels: FolderLabels;
+  lessonDateFormat: Intl.DateTimeFormat;
 }) {
   const theme = themeForStudent(group.studentId);
+  const nextLesson = group.items.map((item) => item.nextLessonAt).filter((date): date is string => !!date).sort()[0];
   return (
     <Link
       href={`/teacher/homeworks?student=${encodeURIComponent(group.studentId)}`}
@@ -338,9 +323,14 @@ function StudentFolder({
           <FolderMetric value={group.counts.reviewed} label={labels.doneCount} Icon={IconCheckCircle} tone="done" />
         </div>
 
-        <div className="relative mt-4 flex items-center justify-end gap-1 text-xs font-black text-content/75">
-          {labels.openFolder}
-          <IconChevronRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
+        <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 text-xs font-black text-content/75">
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold">
+            <IconCalendar className="h-3.5 w-3.5 shrink-0" />
+            {labels.nextLesson}: {nextLesson ? lessonDateFormat.format(new Date(nextLesson)) : labels.noNextLesson}
+          </span>
+          <span className="inline-flex items-center gap-1">{labels.openFolder}
+            <IconChevronRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
+          </span>
         </div>
       </article>
     </Link>
