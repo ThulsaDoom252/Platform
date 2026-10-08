@@ -137,6 +137,15 @@ test("native input, textarea and dropdown stay identical when highlighting switc
   }
 });
 
+test("lesson and homework highlight bars show no explanatory caption and retain right-aligned controls", () => {
+  for (const file of ["assigned-lesson.tsx", "interactive-homework.tsx"]) {
+    const source = readFileSync(`src/components/lessons/${file}`, "utf8");
+    assert(!source.includes("highlightToolsHint"));
+    assert(source.includes("<HighlightToolButtons tools={highlightTools} />"));
+    assert(source.includes("sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2"));
+  }
+});
+
 test("a selection is applied once and its following click cannot toggle a word back off", () => {
   const gesture = createHighlightGestureGuard();
   gesture.begin();
