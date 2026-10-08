@@ -47,6 +47,7 @@ test("ten correct answers score 100%; all omissions score 0% and remain ten erro
   const none = gradeTestExercise(definition, key, exercise.id, {});
   assert.equal(none.percent, 0); assert.equal(none.total, 10);
   assert.ok(none.questions.every((item) => !item.correct && item.selected === null));
+  for (const item of none.questions) assert.deepEqual(item.explanation, key[exercise.id][item.id].rule);
   for (const item of none.questions) for (const locale of ["en", "ru", "uk"] as const) assert.ok(item.explanation[locale].length > 40);
 });
 
@@ -124,11 +125,36 @@ test("results show every unanswered sentence, correct answer and reason, and a l
     const labels = TEST_LABELS[locale];
     const html = renderToStaticMarkup(createElement(TestExerciseReview, { exercise, result, locale, labels }));
     assert.equal((html.match(/data-test-question-result="no-answer"/g) ?? []).length, 10);
-    assert.equal((html.match(/No answer/g) ?? []).length >= 10, true);
+    assert.equal((html.match(/No answer/g) ?? []).length, 10);
     assert.equal(html.split(labels.correctAnswer).length - 1, 10);
     const score = renderToStaticMarkup(createElement(TestScore, { percent: 0, correct: 0, total: 10, title: labels.completed, labels }));
     assert.ok(score.includes("0%")); assert.ok(score.includes("0/10")); assert.ok(score.includes("text-5xl"));
   }
+});
+
+test("saved unanswered attempts hide the old redundant notice without changing rules or scores", () => {
+  const result = gradeTestExercise(definition, key, exercise.id, {});
+  const notices = {
+    en: "No answer was selected. This counts as an error.",
+    ru: "Ответ не выбран. Это считается ошибкой.",
+    uk: "Відповідь не вибрано. Це вважається помилкою.",
+  };
+  const saved = { ...result, questions: result.questions.map((row) => ({ ...row, explanation: {
+    en: `${notices.en} ${row.explanation.en}`,
+    ru: `${notices.ru} ${row.explanation.ru}`,
+    uk: `${notices.uk} ${row.explanation.uk}`,
+  } })) };
+  for (const locale of ["en", "ru", "uk"] as const) {
+    const labels = TEST_LABELS[locale];
+    const html = renderToStaticMarkup(createElement(TestExerciseReview, { exercise, result: saved, locale, labels }));
+    assert.ok(!html.includes(notices[locale]));
+    assert.equal((html.match(/data-test-question-result="no-answer"/g) ?? []).length, 10);
+    assert.equal((html.match(/No answer/g) ?? []).length, 10);
+    assert.equal(html.split(labels.correctAnswer).length - 1, 10);
+    assert.ok(html.includes(result.questions[0].explanation[locale]));
+  }
+  assert.equal(saved.percent, 0);
+  assert.ok(saved.questions.every((row) => row.explanation.en.startsWith(notices.en)));
 });
 
 test("all correct results have no error explanations and use the success theme token", () => {

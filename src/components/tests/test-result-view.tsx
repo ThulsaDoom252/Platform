@@ -30,6 +30,8 @@ export function TestExerciseReview({ exercise, result, locale, labels }: {
     {exercise.questions.map((question, index) => {
       const row = result.questions.find((item) => item.id === question.id);
       if (!row) return null;
+      // Older attempts retain the removed notice in their saved explanation.
+      const explanation = row.selected === null ? row.explanation[locale].replace(/^(?:No answer was selected\. This counts as an error\.|Ответ не выбран\. Это считается ошибкой\.|Відповідь не вибрано\. Це вважається помилкою\.)\s*/, "") : row.explanation[locale];
       return <article key={row.id} data-test-question-result={row.correct ? "correct" : row.selected ? "incorrect" : "no-answer"} style={testTone(row.correct ? 100 : 0)} className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-xs font-black text-muted">{index + 1}</span>
@@ -38,7 +40,7 @@ export function TestExerciseReview({ exercise, result, locale, labels }: {
         </div>
         {!row.correct && <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3 sm:ml-11 sm:p-4">
           <p className="text-sm font-bold text-[var(--t-green)]">{labels.correctAnswer}: {row.answer}</p>
-          <p className="mt-2 flex items-start gap-2 text-sm leading-relaxed text-muted"><CircleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-accent" /><span>{row.explanation[locale]}</span></p>
+          <p className="mt-2 flex items-start gap-2 text-sm leading-relaxed text-muted"><CircleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-accent" /><span>{explanation}</span></p>
         </div>}
       </article>;
     })}

@@ -35,11 +35,7 @@ export function gradeTestExercise(test: TestDefinition, key: TestAnswerKey, exer
     const selected = answers[question.id] || null;
     if (selected !== null && !question.options.includes(selected)) throw new Error("Invalid answer");
     const correct = selected === itemKey.answer;
-    const explanation = correct ? itemKey.rule : selected ? itemKey.reasons[selected] ?? itemKey.rule : text(
-      `No answer was selected. This counts as an error. ${itemKey.rule.en}`,
-      `Ответ не выбран. Это считается ошибкой. ${itemKey.rule.ru}`,
-      `Відповідь не вибрано. Це вважається помилкою. ${itemKey.rule.uk}`,
-    );
+    const explanation = correct || selected === null ? itemKey.rule : itemKey.reasons[selected] ?? itemKey.rule;
     return { id: question.id, selected, answer: itemKey.answer, correct, explanation };
   });
   const correct = questions.filter((question) => question.correct).length;
