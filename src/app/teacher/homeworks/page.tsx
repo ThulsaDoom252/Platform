@@ -11,6 +11,7 @@ import { DeleteStudentHomeworkButton } from "@/components/teacher/delete-student
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { HomeworkSourceAssigner } from "@/components/teacher/homework-source-assigner";
 import { HomeworkGroupedList } from "@/components/teacher/homework-grouped-list";
+import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 import {
   IconCalendar,
   IconCap,
@@ -482,7 +483,7 @@ function RevisionHomeworkCard({
       <div className="relative">
         <Link
           href={`/teacher/homeworks/revisions/${item.id}`}
-          className="group flex flex-col gap-4 px-4 py-4 pr-28 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-28"
+          className="group flex flex-col gap-4 px-4 py-4 pt-16 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pt-4 sm:pr-40"
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <Avatar name={item.studentName} src={item.studentAvatarUrl} className="h-11 w-11 shrink-0 text-sm" />
@@ -527,6 +528,7 @@ function RevisionHomeworkCard({
           </div>
         </Link>
         <div className="absolute right-3 top-3 z-10 flex items-start gap-2">
+          <HomeworkReminderButton target={{ kind: "REVISION", id: item.id }} title={item.title} />
           {state !== "notStarted" && (
             <ResetStudentHomeworkButton assignmentId={item.id} kind="REVISION" labels={labels} />
           )}
@@ -601,7 +603,7 @@ function HomeworkCard({
       <div className="relative">
         <Link
           href={href}
-          className="group flex flex-col gap-4 px-4 py-4 pr-28 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pr-28"
+          className="group flex flex-col gap-4 px-4 py-4 pt-16 transition hover:bg-white/35 dark:hover:bg-black/10 sm:flex-row sm:items-center sm:px-5 sm:pt-4 sm:pr-40"
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <Avatar
@@ -657,6 +659,7 @@ function HomeworkCard({
           </div>
         </Link>
         <div className="absolute right-3 top-3 z-10 flex items-start gap-2">
+          <HomeworkReminderButton target={{ kind: item.kind, id: item.id }} title={item.title} />
           {state !== "notStarted" && (
             <ResetStudentHomeworkButton assignmentId={item.id} kind={item.kind} labels={labels} />
           )}

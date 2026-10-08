@@ -7,6 +7,7 @@ import { StudentPresence } from "@/components/student-presence";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { HomeworkActivityTransfer } from "@/components/teacher/homework-activity-transfer";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
+import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 import { latestCompletedHomeworkScore, readHomeworkFeedback } from "@/lib/homework-feedback";
 
 export default async function TeacherRevisionHomeworkPage({
@@ -25,6 +26,7 @@ export default async function TeacherRevisionHomeworkPage({
           ← {t.teacherHomeworks.backToFolders}
         </Link>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <HomeworkReminderButton target={{ kind: "REVISION", id: activity.id }} title={activity.title} showLabel />
           <HomeworkActivityTransfer kind="REVISION" activity={activity} />
           {(activity.status !== "LOBBY" || activity.attempts.length > 0) && (
             <ResetStudentHomeworkButton assignmentId={activity.id} kind="REVISION" labels={t.teacherHomeworks} showLabel />

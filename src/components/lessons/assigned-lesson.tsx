@@ -56,6 +56,7 @@ export function AssignedLesson({
   liveClass = false,
   presentationManaged = false,
   initialSection,
+  homeworkReminder,
   onLessonSaved,
 }: {
   data: {
@@ -77,12 +78,15 @@ export function AssignedLesson({
   /** The class parent already refreshes marks together with answers and tabs. */
   presentationManaged?: boolean;
   initialSection?: (typeof LESSON_SECTIONS)[number];
+  /** A notification deep-link, separate from the shared live-class focus. */
+  homeworkReminder?: { section: "homework"; elementId: string | null; at: string } | null;
   onLessonSaved?: () => void | Promise<void>;
 }) {
   const { t } = useT();
   const [marks, setMarks] = useState(data.assignment.highlights);
   const [british, setBritish] = useState(data.showBritish);
   const highlightTools = useHighlightTools();
+  const displayedSectionFocus = liveClass ? sectionFocus : !teacher ? homeworkReminder : null;
   const highlightMode = highlightTools.enabled;
   const highlightColor = highlightTools.color;
   const [highlightHistorySize, setHighlightHistorySize] = useState(0);
@@ -334,7 +338,7 @@ export function AssignedLesson({
           teacher={teacher}
           open={data.open}
           lockClosed={liveClass && !teacher}
-          sectionFocus={liveClass && !teacher ? sectionFocus : null}
+          sectionFocus={!teacher ? displayedSectionFocus : null}
           sectionVisibilityBusy={sectionVisibilityBusy}
           onSectionVisibilityChange={onSectionVisibilityChange}
           onFocusElement={teacher && liveClass
@@ -390,8 +394,8 @@ export function AssignedLesson({
     );
   }
   const activitySectionFocus =
-    sectionFocus && LESSON_SECTIONS.includes(sectionFocus.section as (typeof LESSON_SECTIONS)[number])
-      ? { ...sectionFocus, section: sectionFocus.section as (typeof LESSON_SECTIONS)[number] }
+    displayedSectionFocus && LESSON_SECTIONS.includes(displayedSectionFocus.section as (typeof LESSON_SECTIONS)[number])
+      ? { ...displayedSectionFocus, section: displayedSectionFocus.section as (typeof LESSON_SECTIONS)[number] }
       : null;
   const lessonSections = lessonSectionsForKind(data.lesson.kind);
 
@@ -426,7 +430,7 @@ export function AssignedLesson({
             : undefined
         }
         lockClosed={liveClass && !teacher}
-        sectionFocus={liveClass && !teacher ? activitySectionFocus : null}
+        sectionFocus={!teacher ? activitySectionFocus : null}
         sectionVisibilityBusy={sectionVisibilityBusy}
         onSectionVisibilityChange={onSectionVisibilityChange}
         highlights={dialogueMarks}

@@ -795,7 +795,7 @@ export const notifications = pgTable("notifications", {
   href: text("href"),
   /** Служебные данные, например запрос учителю на подтверждение отправки. */
   data: jsonb("data").$type<{
-    kind?: "SEND_CONFIRMATION";
+    kind?: "SEND_CONFIRMATION" | "HOMEWORK_REMINDER";
     studentId?: string;
     message?: string;
     href?: string;

@@ -158,7 +158,7 @@ export async function getStudentFeed(
 
   const events: FeedItem[] = stored.map((n) => ({
     id: n.id,
-    kind: storedKind[n.type] ?? "wishlist",
+    kind: n.data?.kind === "HOMEWORK_REMINDER" ? "reminder" : storedKind[n.type] ?? "wishlist",
     title: n.message,
     meta: relTime(n.createdAt, realNow, t),
     unread: !n.isRead,
@@ -214,7 +214,7 @@ export async function getTeacherFeed(
           : "not_charged" as const;
     return {
       id: n.id,
-      kind: storedKind[n.type] ?? "wishlist",
+      kind: n.data?.kind === "HOMEWORK_REMINDER" ? "reminder" : storedKind[n.type] ?? "wishlist",
       title: n.message,
       meta: relTime(n.createdAt, realNow, t),
       unread: cancellationDecision === "pending" || !n.isRead,

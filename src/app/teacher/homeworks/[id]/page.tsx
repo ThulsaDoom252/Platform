@@ -12,6 +12,7 @@ import { StudentPresence } from "@/components/student-presence";
 import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-homework-button";
 import { teacherHomeworkOverviewState } from "@/lib/teacher-homework-order";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
+import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 
 export default async function TeacherHomeworkReviewPage({
   params,
@@ -41,9 +42,12 @@ export default async function TeacherHomeworkReviewPage({
           <IconChevronLeft className="h-4 w-4" />
           {t.teacherHomeworks.back}
         </Link>
-        {state !== "notStarted" && (
-          <ResetStudentHomeworkButton assignmentId={item.id} labels={t.teacherHomeworks} showLabel />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!assignedPlan && <HomeworkReminderButton target={{ kind: "LESSON", id: item.id }} title={item.title} showLabel />}
+          {state !== "notStarted" && (
+            <ResetStudentHomeworkButton assignmentId={item.id} labels={t.teacherHomeworks} showLabel />
+          )}
+        </div>
       </div>
 
       <header className="rounded-2xl bg-surface px-4 py-4 shadow-sm ring-1 ring-line sm:px-5">
@@ -67,6 +71,7 @@ export default async function TeacherHomeworkReviewPage({
             teacher: true,
             state: data.answers,
             canEdit: true,
+            studentId: item.studentId,
           }}
         />
       ) : (
@@ -74,6 +79,10 @@ export default async function TeacherHomeworkReviewPage({
           <HomeworkFeedbackPanel kind="LESSON" id={item.id} settings={item.homeworkFeedback} teacher />
           {data.lesson.homework.map((task, index) => (
             <section key={index} className="rounded-2xl bg-surface p-5 ring-1 ring-line">
+              <div className="float-right ml-3">
+                <HomeworkReminderButton target={{ kind: "LESSON", id: item.id, legacyIndex: index }} title={item.title}
+                  exerciseTitle={task.title || t.notifications.reminderExerciseNumber.replace("{n}", String(index + 1))} />
+              </div>
               {task.title && <h2 className="text-sm font-black text-content">{task.title}</h2>}
               {task.text && (
                 <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-muted">

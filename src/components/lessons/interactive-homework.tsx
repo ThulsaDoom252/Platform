@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
 import { HighlightableAnswerField } from "./highlightable-answer-field";
+import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools, useSharedHighlightTools } from "./highlight-tools";
 import { selectedOffsets, wordAtPoint } from "@/lib/text-highlight-dom";
 import {
@@ -369,6 +370,10 @@ export function InteractiveHomework({
             <h2 className="mt-1 text-xl font-black text-content">{currentPlan.title}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {session.teacher && (
+              <HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId }} title={currentPlan.title}
+                showLabel disabled={!assignedAt} />
+            )}
             {session.teacher && (
               <button
                 type="button"
@@ -1022,6 +1027,9 @@ function HomeworkExerciseView({
   const [wordBankSide, setWordBankSide] = useState<"left" | "right">("right");
   const [busy, startAction] = useTransition();
   const hidden = homeworkExerciseHidden(state, exercise.id);
+  const canRemind = !hidden && homeworkAssignedExerciseIds({
+    kind: "INTERACTIVE_HOMEWORK_V1", title: "", exercises: [exercise],
+  }, state).includes(exercise.id);
   const reactionColor = homeworkReactionColor(
     homeworkReaction(state, "exercise", exercise.id),
   );
@@ -1178,11 +1186,11 @@ function HomeworkExerciseView({
   if (exercise.optional) {
     return (
       <section data-homework-reaction={reactionColor ?? undefined} className={cn(
-        "homework-reaction-block flex items-start gap-2 rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm",
+        "homework-reaction-block flex flex-wrap items-start gap-2 rounded-2xl border border-dashed border-accent/35 bg-surface p-4 shadow-sm",
         hidden && "border-faint/40 opacity-70",
         focusId === exerciseFocusId && "border-accent ring-2 ring-accent/40",
       )}>
-        <details data-homework-focus={exerciseFocusId} className="group min-w-0 flex-1">
+        <details data-homework-focus={exerciseFocusId} className="group min-w-0 flex-1 basis-full sm:basis-0">
           <summary className="flex min-w-0 flex-1 cursor-pointer list-none items-center gap-3">
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
               {t.interactiveHomework.bonus}
@@ -1224,6 +1232,11 @@ function HomeworkExerciseView({
             <IconShuffle className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t.interactiveHomework.shuffle}</span>
           </button>
+        )}
+        {session.teacher && (
+          <HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId, exerciseId: exercise.id }}
+            title={exercise.title} exerciseTitle={exercise.title} small
+            disabled={!canRemind} />
         )}
         {session.teacher && onFocus && (
           <button
@@ -1268,11 +1281,11 @@ function HomeworkExerciseView({
       hidden && "opacity-70 ring-faint/40",
       focusId === exerciseFocusId && "ring-2 ring-accent",
     )}>
-      <div data-homework-focus={exerciseFocusId} className="flex items-start gap-3">
+      <div data-homework-focus={exerciseFocusId} className="flex flex-wrap items-start gap-3">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-black text-white">
           {number}
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[min(100%,10rem)] flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-black text-content">{exercise.title}</h3>
             {hidden && (
@@ -1309,6 +1322,11 @@ function HomeworkExerciseView({
             <IconShuffle className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t.interactiveHomework.shuffle}</span>
           </button>
+        )}
+        {session.teacher && (
+          <HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId, exerciseId: exercise.id }}
+            title={exercise.title} exerciseTitle={exercise.title} small
+            disabled={!canRemind} />
         )}
         {session.teacher && onFocus && (
           <button

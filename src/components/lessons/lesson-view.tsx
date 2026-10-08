@@ -46,6 +46,9 @@ import {
 } from "@/components/lessons/interactive-homework";
 import { homeworkExerciseProgress } from "@/lib/lesson-homework";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
+import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
+import { legacyHomeworkFocusId } from "@/lib/homework-reminders";
+import { revealHomeworkFocusTarget } from "@/lib/homework-focus";
 import { lessonHomeworkFeedback } from "@/lib/homework-feedback";
 
 export type LessonViewProps = {
@@ -809,6 +812,14 @@ function Homework({
   onFocus?: (elementId: string) => void;
 }) {
   const { t } = useT();
+  const legacyRoot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusId?.startsWith("homework:legacy:") || !legacyRoot.current) return;
+    const target = revealHomeworkFocusTarget(legacyRoot.current, focusId);
+    if (!target) return;
+    const frame = requestAnimationFrame(() => target.scrollIntoView({ behavior: "smooth", block: "center" }));
+    return () => cancelAnimationFrame(frame);
+  }, [focusId, focusAt]);
 
   if (
     lesson.homework.length === 0 &&
@@ -832,7 +843,10 @@ function Homework({
   }
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div ref={legacyRoot} className="flex flex-col gap-2.5">
+      {!lesson.interactiveHomework && lesson.homework.length > 0 && session?.teacher && (
+        <div className="flex justify-end"><HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId }} title={lesson.title} showLabel /></div>
+      )}
       {lesson.activities.map((activity) => (
         <WordDeckBoard key={activity.id} activity={activity} compact />
       ))}
@@ -851,7 +865,10 @@ function Homework({
         />
       )}
       {lesson.homework.map((task, i) => (
-        <section key={i} className="rounded-2xl bg-surface p-4 ring-1 ring-line">
+        <section key={i} data-homework-focus={legacyHomeworkFocusId(i)} className="rounded-2xl bg-surface p-4 ring-1 ring-line">
+          {session?.teacher && <div className="float-right ml-3"><HomeworkReminderButton
+            target={{ kind: "LESSON", id: session.assignmentId, legacyIndex: i }} title={lesson.title}
+            exerciseTitle={task.title || t.notifications.reminderExerciseNumber.replace("{n}", String(i + 1))} /></div>}
           {task.title && (
             <p className="text-sm font-bold text-content">{task.title}</p>
           )}
