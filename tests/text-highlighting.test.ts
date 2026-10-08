@@ -137,12 +137,16 @@ test("native input, textarea and dropdown stay identical when highlighting switc
   }
 });
 
-test("lesson and homework highlight bars show no explanatory caption and retain right-aligned controls", () => {
+test("lesson and homework highlight bars have no caption or backdrop and retain right-aligned controls", () => {
   for (const file of ["assigned-lesson.tsx", "interactive-homework.tsx"]) {
     const source = readFileSync(`src/components/lessons/${file}`, "utf8");
     assert(!source.includes("highlightToolsHint"));
     assert(source.includes("<HighlightToolButtons tools={highlightTools} />"));
     assert(source.includes("sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2"));
+    const toolbar = source.match(/className="(sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2[^"]*)"/)?.[1];
+    assert(toolbar);
+    assert(!/\b(bg-|border|shadow|backdrop)/.test(toolbar));
+    assert(toolbar.includes("px-3 py-2"));
   }
 });
 
