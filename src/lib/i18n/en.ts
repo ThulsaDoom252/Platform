@@ -1154,6 +1154,18 @@ export const en = {
   },
 
   revision: {
+    strugglingWith: "Struggling with",
+    strugglingSettingHint: "Let students mark difficult words. Each attempt keeps its own list for the teacher.",
+    strugglingHint: "Mark words you find difficult. Your teacher will see them after this attempt. This does not affect your score.",
+    strugglingSearch: "Find a word…",
+    strugglingEmpty: "No difficult words marked in this attempt.",
+    strugglingAdd: "Add / remove words",
+    strugglingMark: "This word is difficult",
+    strugglingUnmark: "Remove from difficult words",
+    strugglingSaving: "Saving…",
+    strugglingSaved: "Saved",
+    strugglingSaveFailed: "Your changes could not be saved. Retry before leaving.",
+    strugglingRetry: "Retry saving",
     title: "Words revision",
     activityEyebrow: "Word practice",
     activitySubtitle: "Audio flashcards, multiple choice, matching, unscramble, pictures and definitions in one configurable game.",

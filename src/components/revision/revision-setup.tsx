@@ -47,6 +47,7 @@ import { cn } from "@/lib/utils";
 
 /** Подписи настроек показа. Отдельно — их две группы на один словарь. */
 const SHOW_LABEL = (t: ReturnType<typeof useT>["t"]): Record<keyof RevisionShow, string> => ({
+  strugglingWith: t.revision.strugglingWith,
   cardIcon: t.revision.showIcon,
   cardImage: t.revision.showImage,
   cardTranslation: t.revision.showTranslation,
@@ -647,6 +648,16 @@ export function RevisionSetup({
             </div>
           )}
         </div>
+
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-accent-soft p-3 ring-1 ring-line">
+          <input type="checkbox" checked={show.strugglingWith}
+            onChange={(event) => setShow((prev) => ({ ...prev, strugglingWith: event.target.checked }))}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]" />
+          <span>
+            <span className="block text-sm font-bold text-content">🔖 {t.revision.strugglingWith}</span>
+            <span className="mt-0.5 block text-xs text-muted">{t.revision.strugglingSettingHint}</span>
+          </span>
+        </label>
 
         {/* Время и срок */}
         <div className={cn("grid gap-3", purpose === "ASSIGN" && "sm:grid-cols-2")}>

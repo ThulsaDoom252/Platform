@@ -1227,6 +1227,18 @@ export const ru: Dict = {
   },
 
   revision: {
+    strugglingWith: "Struggling with · Трудные слова",
+    strugglingSettingHint: "Ученик может отмечать трудные слова. Ты увидишь отдельный список для каждой попытки.",
+    strugglingHint: "Отметь слова, с которыми сложно. Учитель увидит их после этой попытки. На оценку это не влияет.",
+    strugglingSearch: "Найти слово…",
+    strugglingEmpty: "В этой попытке трудные слова не отмечены.",
+    strugglingAdd: "Добавить / убрать слова",
+    strugglingMark: "Мне сложно с этим словом",
+    strugglingUnmark: "Убрать из трудных слов",
+    strugglingSaving: "Сохраняю…",
+    strugglingSaved: "Сохранено",
+    strugglingSaveFailed: "Не удалось сохранить изменения. Повтори сохранение перед выходом.",
+    strugglingRetry: "Повторить сохранение",
     title: "Повторение слов",
     activityEyebrow: "Практика слов",
     activitySubtitle: "Карточки со звуком, выбор ответа, пары, сборка слова, картинки и определения — в одной настраиваемой игре.",

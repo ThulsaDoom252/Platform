@@ -25,6 +25,7 @@ import type { RevisionMode } from "@/lib/revision-modes";
 import { IconChevronDown, IconTrash } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { HomeworkResultReactionBadge } from "@/components/homework-result-reaction";
+import { RevisionStrugglingSummary } from "@/components/revision/revision-struggling-panel";
 import { readHomeworkFeedback, resolveHomeworkFeedback, type HomeworkFeedbackSettings } from "@/lib/homework-feedback";
 
 export function RevisionTeacherList({ studentId }: { studentId: string }) {
@@ -176,6 +177,9 @@ export function RevisionAttempts({ revisionId, homeworkFeedback }: { revisionId:
               <span className="text-[12px] font-bold text-content">
                 {fmt(t.revision.attemptNo, { n: i + 1 })}
               </span>
+              <time dateTime={row.startedAt} className="text-[10px] text-faint">
+                {new Date(row.startedAt).toLocaleString()}
+              </time>
               {row.finishedAt ? (
                 <>
                   <span className="text-[12px] font-bold text-accent">{r.accuracy}%</span>
@@ -191,6 +195,7 @@ export function RevisionAttempts({ revisionId, homeworkFeedback }: { revisionId:
             </div>
 
             {/* По секциям: где именно сыпется. */}
+            {row.finishedAt && <RevisionStrugglingSummary words={row.strugglingWords} />}
             <div className="mt-1.5 flex flex-col gap-1">
               {r.sections.map((s) => (
                 <div key={s.mode} className="flex items-center gap-2">

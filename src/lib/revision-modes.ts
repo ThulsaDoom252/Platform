@@ -161,6 +161,8 @@ export function canStart(words: RevisionWord[], modes: RevisionMode[]): boolean 
  * класс: начинающему картинка помогает, продвинутому мешает.
  */
 export type RevisionShow = {
+  /** Students can keep a separate difficult-word list for every attempt. */
+  strugglingWith: boolean;
   cardIcon: boolean;
   cardImage: boolean;
   cardTranslation: boolean;
@@ -170,6 +172,7 @@ export type RevisionShow = {
 };
 
 export const DEFAULT_SHOW: RevisionShow = {
+  strugglingWith: true,
   cardIcon: false,
   cardImage: false,
   cardTranslation: false,
@@ -184,9 +187,9 @@ export const SHOW_KEYS: Partial<Record<RevisionMode, (keyof RevisionShow)[]>> = 
   unscramble: ["scrambleImage", "scrambleTranslation"],
 };
 
-/** Настройки из базы: чего там нет — того и не показываем. */
+/** Old assignments gain the difficult-word list without rewriting their settings. */
 export function readShow(stored: Record<string, boolean> | null | undefined): RevisionShow {
-  return { ...DEFAULT_SHOW, ...(stored ?? {}) };
+  return { ...DEFAULT_SHOW, ...(stored ?? {}), strugglingWith: stored?.strugglingWith !== false };
 }
 
 /** Случайная доля слов; каждое нажатие даёт новую выборку. */

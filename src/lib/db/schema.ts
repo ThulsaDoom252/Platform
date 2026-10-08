@@ -1148,6 +1148,8 @@ export const wordRevisionAttempts = pgTable("word_revision_attempts", {
   /** Собранное задание: шаги в том виде, в каком их увидел ученик. */
   plan: jsonb("plan").$type<unknown>(),
   answers: jsonb("answers").$type<RevisionAnswerRow[]>().default([]).notNull(),
+  /** Student-selected difficult words, independent of correctness and other attempts. */
+  strugglingWords: jsonb("struggling_words").$type<string[]>().default([]).notNull(),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   finishedAt: timestamp("finished_at"),
   /** Учитель посмотрел результат — уведомление гаснет. */

@@ -41,6 +41,8 @@ export type StepProps = {
   /** Что учитель разрешил показывать рядом с заданием. */
   show: RevisionShow;
   onDone: (entries: RevisionAnswer[]) => void;
+  strugglingIds?: string[];
+  onStrugglingToggle?: (phraseId: string) => void;
 };
 
 /* ------------------------------------------------------------------ */
@@ -217,10 +219,14 @@ function Flashcards({
   words,
   show,
   onDone,
+  strugglingIds,
+  onStrugglingToggle,
 }: {
   words: RevisionWord[];
   show: RevisionShow;
   onDone: StepProps["onDone"];
+  strugglingIds?: StepProps["strugglingIds"];
+  onStrugglingToggle?: StepProps["onStrugglingToggle"];
 }) {
   const { t } = useT();
   const speech = useSpeech();
@@ -306,6 +312,13 @@ function Flashcards({
         {show.cardDescription && word.description && (
           <span className="text-sm text-muted">{word.description}</span>
         )}
+        {show.strugglingWith && onStrugglingToggle && <button type="button"
+          aria-pressed={strugglingIds?.includes(word.phraseId) ?? false}
+          onClick={() => onStrugglingToggle(word.phraseId)}
+          className={cn("mt-2 min-h-10 rounded-xl px-3 py-2 text-xs font-bold ring-1 transition",
+            strugglingIds?.includes(word.phraseId) ? "bg-accent-soft text-accent ring-accent" : "bg-surface-2 text-muted ring-line hover:text-accent")}>
+          🔖 {strugglingIds?.includes(word.phraseId) ? t.revision.strugglingUnmark : t.revision.strugglingMark}
+        </button>}
       </div>
 
       <div className="flex gap-2.5">
@@ -936,12 +949,13 @@ function Picture({
 /* Диспетчер                                                           */
 /* ------------------------------------------------------------------ */
 
-export function RevisionStepScreen({ step, seconds, show, onDone }: StepProps) {
+export function RevisionStepScreen({ step, seconds, show, onDone, strugglingIds, onStrugglingToggle }: StepProps) {
   const speech = useSpeech();
 
   switch (step.mode) {
     case "flashcards":
-      return <Flashcards words={step.words} show={show} onDone={onDone} />;
+      return <Flashcards words={step.words} show={show} onDone={onDone}
+        strugglingIds={strugglingIds} onStrugglingToggle={onStrugglingToggle} />;
 
     case "choose":
       return (

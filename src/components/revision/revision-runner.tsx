@@ -11,16 +11,18 @@
  * проходить всё заново — попытка продолжится с того же места, а план
  * шагов зафиксирован при старте и под учеником не меняется.
  */
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
   attemptAction,
   saveAnswersAction,
+  saveRevisionStrugglingWordsAction,
   startRevisionAction,
   type AttemptView,
   type RevisionCard,
+  type RevisionState,
 } from "@/lib/actions/revision";
 import {
   nextSection,
@@ -34,6 +36,8 @@ import { RevisionStepScreen } from "@/components/revision/revision-steps";
 import { IconCheck, IconChevronLeft, IconClock } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
+import { uniqueRevisionWords, revisionStrugglingWords } from "@/lib/revision-struggling";
+import { RevisionStrugglingPanel, RevisionStrugglingSummary } from "@/components/revision/revision-struggling-panel";
 
 type Phase = "intro" | "play" | "between" | "done";
 
@@ -57,6 +61,63 @@ export function RevisionRunner({
   const [error, setError] = useState<string | null>(null);
   const [timeUp, setTimeUp] = useState(false);
   const [busy, startBusy] = useTransition();
+  const [strugglingIds, setStrugglingIds] = useState<string[]>([]);
+  const strugglingRef = useRef<string[]>([]);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaves = useRef(0);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const words = useMemo(() => uniqueRevisionWords(attempt?.plan ?? []), [attempt?.plan]);
+
+  useEffect(() => {
+    if (preview || (!saving && !saveError)) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [preview, saving, saveError]);
+
+  /** Keep marks and answers ordered, including the last click immediately before completion. */
+  function queueSave(job: () => Promise<RevisionState>, fullSnapshot = false) {
+    pendingSaves.current += 1;
+    setSaving(true);
+    saveQueue.current = saveQueue.current.then(async () => {
+      try {
+        const result = await job();
+        if (result.error) setSaveError(true);
+        else if (fullSnapshot) setSaveError(false);
+      } catch {
+        setSaveError(true);
+      } finally {
+        pendingSaves.current -= 1;
+        if (pendingSaves.current === 0) setSaving(false);
+      }
+    });
+  }
+
+  function persistAnswers(next: RevisionAnswer[], finished: boolean) {
+    if (!attempt || preview) return;
+    const ids = attempt.show.strugglingWith ? [...strugglingRef.current] : undefined;
+    queueSave(() => saveAnswersAction(attempt.id, next, finished, ids), true);
+  }
+
+  function toggleStruggling(phraseId: string) {
+    if (!attempt?.show.strugglingWith || phase === "done") return;
+    const next = strugglingRef.current.includes(phraseId)
+      ? strugglingRef.current.filter((id) => id !== phraseId)
+      : [...strugglingRef.current, phraseId];
+    strugglingRef.current = next;
+    setStrugglingIds(next);
+    if (!preview) queueSave(() => saveRevisionStrugglingWordsAction(attempt.id, next));
+  }
+
+  const saveNotice = !preview && saveError ? <div className="rounded-xl bg-surface-2 px-3 py-2 text-left text-xs" role="status" aria-live="polite">
+    <p className="font-semibold text-rose-500">{t.revision.strugglingSaveFailed}</p>
+    <button type="button" disabled={saving}
+      onClick={() => persistAnswers(answers, phase === "done")}
+      className="mt-2 min-h-9 rounded-lg bg-accent px-3 font-bold text-white transition hover:opacity-90 disabled:opacity-50">
+      {t.revision.strugglingRetry}
+    </button>
+  </div> : null;
 
   const MODE_LABEL: Record<RevisionMode, string> = {
     flashcards: t.revision.modeFlashcards,
@@ -78,6 +139,8 @@ export function RevisionRunner({
         finishedAt: null,
       });
       setAnswers([]);
+      strugglingRef.current = [];
+      setStrugglingIds([]);
       setSection(0);
       setTimeUp(false);
       setPhase("play");
@@ -101,6 +164,8 @@ export function RevisionRunner({
       const where = nextSection(planProgress(view.plan, done));
       setAttempt(view);
       setAnswers(done);
+      strugglingRef.current = view.strugglingWords ?? [];
+      setStrugglingIds(strugglingRef.current);
       setSection(where < 0 ? 0 : where);
       setPhase("play");
     });
@@ -110,7 +175,7 @@ export function RevisionRunner({
   function close(final: RevisionAnswer[]) {
     setAnswers(final);
     setPhase("done");
-    if (attempt && !preview) void saveAnswersAction(attempt.id, final, true);
+    persistAnswers(final, true);
   }
 
   function stepDone(entries: RevisionAnswer[]) {
@@ -123,7 +188,7 @@ export function RevisionRunner({
     const finished = testSectionsComplete(after);
 
     setAnswers(next);
-    if (!preview) void saveAnswersAction(attempt.id, next, finished);
+    persistAnswers(next, finished);
 
     if (finished) setPhase("done");
     // Секция кончилась — поздравляем; иначе просто следующий шаг.
@@ -139,6 +204,9 @@ export function RevisionRunner({
         labels={MODE_LABEL}
         embedded={embedded}
         homeworkCard={!preview && card.placement === "HOMEWORK" ? card : undefined}
+        strugglingWords={revisionStrugglingWords(attempt?.plan ?? [], strugglingIds)}
+        strugglingEnabled={attempt?.show.strugglingWith ?? false}
+        saveNotice={saveNotice ?? (!preview && saving ? <p role="status" className="text-xs text-muted">{t.revision.strugglingSaving}</p> : null)}
       />
     );
   }
@@ -279,6 +347,9 @@ export function RevisionRunner({
         })}
       </div>
 
+      {attempt.show.strugglingWith && <RevisionStrugglingPanel words={words} selected={strugglingIds} onToggle={toggleStruggling} saving={!preview && saving} />}
+      {saveNotice}
+
       {phase === "between" ? (
         <Between
           answers={answers}
@@ -315,6 +386,8 @@ export function RevisionRunner({
           seconds={attempt.answerSeconds}
           show={attempt.show}
           onDone={stepDone}
+          strugglingIds={strugglingIds}
+          onStrugglingToggle={toggleStruggling}
         />
       )}
     </div>
@@ -445,6 +518,9 @@ function Result({
   labels,
   embedded,
   homeworkCard,
+  strugglingWords,
+  strugglingEnabled,
+  saveNotice,
 }: {
   title: string;
   answers: RevisionAnswer[];
@@ -452,6 +528,9 @@ function Result({
   labels: Record<RevisionMode, string>;
   embedded: boolean;
   homeworkCard?: RevisionCard;
+  strugglingWords: ReturnType<typeof revisionStrugglingWords>;
+  strugglingEnabled: boolean;
+  saveNotice: ReactNode;
 }) {
   const { t } = useT();
   const result = scoreRevision(answers);
@@ -469,6 +548,7 @@ function Result({
           {t.revision.taskDone}
         </h1>
         <p className="text-sm text-muted">{title}</p>
+        {saveNotice && <div className="mt-3">{saveNotice}</div>}
 
         {timeUp && (
           <p className="mt-2 text-sm font-semibold text-rose-500">
@@ -496,6 +576,7 @@ function Result({
         {homeworkCard && <HomeworkFeedbackPanel kind="REVISION" id={homeworkCard.id}
           settings={homeworkCard.homeworkFeedback} score={result}
           canAuto={result.total > 0} studentId={homeworkCard.studentId} />}
+        {(strugglingEnabled || strugglingWords.length > 0) && <RevisionStrugglingSummary words={strugglingWords} />}
 
         <div className="mt-4 flex flex-col gap-1.5 text-left">
           {result.sections.map((s) => (

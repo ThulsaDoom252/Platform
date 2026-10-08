@@ -1227,6 +1227,18 @@ export const uk: Dict = {
   },
 
   revision: {
+    strugglingWith: "Struggling with · Складні слова",
+    strugglingSettingHint: "Учень може позначати складні слова. Ти побачиш окремий список для кожної спроби.",
+    strugglingHint: "Познач слова, з якими складно. Викладач побачить їх після цієї спроби. На оцінку це не впливає.",
+    strugglingSearch: "Знайти слово…",
+    strugglingEmpty: "У цій спробі складні слова не позначені.",
+    strugglingAdd: "Додати / прибрати слова",
+    strugglingMark: "Мені складно з цим словом",
+    strugglingUnmark: "Прибрати зі складних слів",
+    strugglingSaving: "Зберігаю…",
+    strugglingSaved: "Збережено",
+    strugglingSaveFailed: "Не вдалося зберегти зміни. Повтори збереження перед виходом.",
+    strugglingRetry: "Повторити збереження",
     title: "Повторення слів",
     activityEyebrow: "Практика слів",
     activitySubtitle: "Звукові картки, вибір відповіді, пари, складання слова, картинки й визначення — в одній грі.",

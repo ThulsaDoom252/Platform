@@ -36,6 +36,7 @@ import { scheduleNow } from "@/lib/schedule-time";
 import { queueStudentNotification } from "@/lib/notifications";
 import { readHomeworkFeedback, type HomeworkFeedbackSettings, type HomeworkResultScore } from "@/lib/homework-feedback";
 import { revisionHomeworkScoreSql } from "@/lib/homework-feedback-persistence";
+import { revisionStrugglingWords, validateRevisionStrugglingIds, type RevisionStrugglingWord } from "@/lib/revision-struggling";
 
 export type RevisionState = { ok?: boolean; error?: string; id?: string };
 
@@ -351,6 +352,7 @@ export async function previewRevisionPresetAction(
     title: preset.title,
     plan,
     answers: [],
+    strugglingWords: [],
     startedAt: new Date().toISOString(),
     finishedAt: null,
     answerSeconds: preset.answerSeconds,
@@ -929,6 +931,7 @@ export type AttemptView = {
   title: string;
   plan: RevisionSection[];
   answers: RevisionAnswer[];
+  strugglingWords: string[];
   startedAt: string;
   finishedAt: string | null;
   answerSeconds: number | null;
@@ -961,6 +964,7 @@ export async function attemptAction(attemptId: string): Promise<AttemptView | nu
     title: row.revision.title,
     plan: (row.attempt.plan ?? []) as RevisionSection[],
     answers: (row.attempt.answers ?? []) as RevisionAnswer[],
+    strugglingWords: validateRevisionStrugglingIds((row.attempt.plan ?? []) as RevisionSection[], row.attempt.strugglingWords) ?? [],
     startedAt: row.attempt.startedAt.toISOString(),
     finishedAt: row.attempt.finishedAt?.toISOString() ?? null,
     answerSeconds: row.revision.answerSeconds,
@@ -979,6 +983,7 @@ export async function saveAnswersAction(
   attemptId: string,
   answers: RevisionAnswer[],
   finished: boolean,
+  strugglingIds?: string[],
 ): Promise<RevisionState> {
   const session = await getSession();
   if (!session) return { error: "Нужно войти" };
@@ -993,15 +998,26 @@ export async function saveAnswersAction(
 
   if (!row) return { error: "Попытка не найдена" };
   if (row.revision.studentId !== session.userId) return { error: "Это чужая попытка" };
-  if (row.attempt.finishedAt) return { error: "Попытка уже закрыта" };
+  // An acknowledged completion may be retried after a lost network response.
+  if (row.attempt.finishedAt) return finished ? { ok: true } : { error: "Попытка уже закрыта" };
 
-  await db
+  const struggling = strugglingIds === undefined ? undefined
+    : validateRevisionStrugglingIds((row.attempt.plan ?? []) as RevisionSection[], strugglingIds);
+  if (struggling === null) return { error: "Некорректный список трудных слов" };
+  if (struggling !== undefined && !readShow(row.revision.show).strugglingWith) {
+    return { error: "Список трудных слов выключен учителем" };
+  }
+
+  const [saved] = await db
     .update(wordRevisionAttempts)
     .set({
       answers: answers ?? [],
       finishedAt: finished ? new Date() : null,
+      ...(struggling !== undefined ? { strugglingWords: struggling } : {}),
     })
-    .where(eq(wordRevisionAttempts.id, id));
+    .where(and(eq(wordRevisionAttempts.id, id), isNull(wordRevisionAttempts.finishedAt)))
+    .returning({ id: wordRevisionAttempts.id });
+  if (!saved) return { error: "Попытка уже закрыта" };
 
   if (finished && row.revision.reopened) {
     await db
@@ -1046,6 +1062,7 @@ export type AttemptSummary = {
   startedAt: string;
   finishedAt: string | null;
   result: ReturnType<typeof scoreRevision>;
+  strugglingWords: RevisionStrugglingWord[];
   mistakes: {
     word: string;
     mode: RevisionMode;
@@ -1066,23 +1083,34 @@ export async function attemptsAction(revisionId: string): Promise<AttemptSummary
     .where(eq(wordRevisionAttempts.revisionId, id))
     .orderBy(asc(wordRevisionAttempts.startedAt));
 
-  return rows.map((row) => {
-    const answers = (row.answers ?? []) as RevisionAnswer[];
-    return {
-      id: row.id,
-      startedAt: row.startedAt.toISOString(),
-      finishedAt: row.finishedAt?.toISOString() ?? null,
-      result: scoreRevision(answers),
-      mistakes: answers
-        .filter((answer) => !answer.correct)
-        .map((answer) => ({
-          word: answer.word,
-          mode: answer.mode,
-          reason: answer.reason === "timeout" ? "timeout" as const : "wrong" as const,
-          ms: answer.ms,
-        })),
-    };
-  });
+  return rows.map(attemptSummary);
+}
+
+/** Autosave only the current student's list; never touch answers, scores or past attempts. */
+export async function saveRevisionStrugglingWordsAction(attemptId: string, suppliedIds: string[]): Promise<RevisionState> {
+  const session = await getSession();
+  if (!session || session.role !== "STUDENT") return { error: "Только для ученика" };
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(String(attemptId ?? ""))) {
+    return { error: "Попытка не найдена" };
+  }
+  const [row] = await db.select({
+    plan: wordRevisionAttempts.plan,
+    show: wordRevisions.show,
+  }).from(wordRevisionAttempts)
+    .innerJoin(wordRevisions, eq(wordRevisions.id, wordRevisionAttempts.revisionId))
+    .where(and(
+      eq(wordRevisionAttempts.id, attemptId),
+      eq(wordRevisions.studentId, session.userId),
+      isNull(wordRevisionAttempts.finishedAt),
+    )).limit(1);
+  if (!row) return { error: "Своя активная попытка не найдена" };
+  if (!readShow(row.show).strugglingWith) return { error: "Список трудных слов выключен учителем" };
+  const ids = validateRevisionStrugglingIds((row.plan ?? []) as RevisionSection[], suppliedIds);
+  if (!ids) return { error: "Некорректный список трудных слов" };
+  const [saved] = await db.update(wordRevisionAttempts).set({ strugglingWords: ids })
+    .where(and(eq(wordRevisionAttempts.id, attemptId), isNull(wordRevisionAttempts.finishedAt)))
+    .returning({ id: wordRevisionAttempts.id });
+  return saved ? { ok: true } : { error: "Попытка уже закрыта" };
 }
 
 export type TeacherRevisionHomeworkCard = {
@@ -1216,6 +1244,7 @@ function attemptSummary(
     startedAt: row.startedAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
     result: scoreRevision(answers),
+    strugglingWords: revisionStrugglingWords((row.plan ?? []) as RevisionSection[], row.strugglingWords),
     mistakes: answers
       .filter((answer) => !answer.correct)
       .map((answer) => ({
