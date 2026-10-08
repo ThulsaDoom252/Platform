@@ -50,8 +50,13 @@ import {
   type TeacherHomeworkOrderable,
 } from "@/lib/teacher-homework-order";
 import { cn } from "@/lib/utils";
+import { testHomeworkCardsAction } from "@/lib/actions/tests";
+import type { TestHomeworkCard } from "@/lib/tests/types";
+import { TestAssignmentCard } from "@/components/tests/test-assignment-card";
+import { TestsLiveList } from "@/components/tests/tests-live-list";
+import { getSession } from "@/lib/session";
 
-type TeacherHomeworkListItem = TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard | TeacherRevisionHomeworkCard;
+type TeacherHomeworkListItem = TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard | TeacherRevisionHomeworkCard | TestHomeworkCard;
 
 function homeworkSortData(item: TeacherHomeworkListItem): TeacherHomeworkOrderable {
   return { id: item.id, title: item.title, studentName: item.studentName, nextLessonAt: item.nextLessonAt,
@@ -107,13 +112,15 @@ export default async function TeacherHomeworksPage({
   searchParams: Promise<{ student?: string; sort?: string; dir?: string }>;
 }) {
   const params = await searchParams;
-  const [lessonItems, activityItems, revisionItems, { t, locale }] = await Promise.all([
+  const [lessonItems, activityItems, revisionItems, testItems, session, { t, locale }] = await Promise.all([
     teacherHomeworkAssignmentsAction(),
     teacherWordDeckHomeworkAssignmentsAction(),
     teacherRevisionHomeworkAssignmentsAction(),
+    testHomeworkCardsAction(),
+    getSession(),
     getDict(),
   ]);
-  const items: TeacherHomeworkListItem[] = [...lessonItems, ...activityItems, ...revisionItems];
+  const items: TeacherHomeworkListItem[] = [...lessonItems, ...activityItems, ...revisionItems, ...testItems];
   const localeName = locale === "ru" ? "ru-RU" : locale === "uk" ? "uk-UA" : "en-US";
   const groups = groupTeacherHomeworksByStudent(items, localeName);
   const selectedGroup = groups.find((group) => group.studentId === params.student) ?? null;
@@ -144,6 +151,7 @@ export default async function TeacherHomeworksPage({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+      {session && <TestsLiveList userId={session.userId} />}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-content">{t.teacherHomeworks.title}</h1>
@@ -200,6 +208,7 @@ export default async function TeacherHomeworksPage({
                 GUESS_PICTURE: t.wordDeck.guessByPicture,
                 SPELLING: t.wordDeck.spellingTitle,
                 REVISION: t.revision.title,
+                TEST: t.nav.tests,
                 OTHER: t.teacherHomeworks.otherActivities,
               },
             }}
@@ -215,7 +224,7 @@ export default async function TeacherHomeworksPage({
               assignedAt: item.assignedAt,
               activityType: item.kind === "ACTIVITY" ? item.activityType : undefined,
               order: homeworkSortData(item),
-              card: item.kind === "REVISION" ? (
+              card: item.kind === "TEST" ? <TestAssignmentCard item={item} teacher locale={locale} /> : item.kind === "REVISION" ? (
               <RevisionHomeworkCard
                 key={item.id}
                 item={item}

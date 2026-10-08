@@ -106,7 +106,7 @@ test("server-rendered folders and grouped cards honor initial sorting, including
     statusLabels: { reviewed: labels.reviewed, submitted: labels.submitted, inProgress: labels.inProgress, notStarted: labels.notStarted },
     labels: { grouping: labels.grouping, groupByAssignedDate: labels.groupByAssignedDate, groupByHomeworkType: labels.groupByHomeworkType,
       interactiveHomeworks: labels.interactiveHomeworks, activities: "Activities", unknownAssignedDate: labels.unknownAssignedDate,
-      activityTypes: { WORDS: "Words", GUESS_DESCRIPTION: "Description", GUESS_PICTURE: "Picture", SPELLING: "Spelling", REVISION: "Revision", OTHER: "Other" } } }));
+      activityTypes: { WORDS: "Words", GUESS_DESCRIPTION: "Description", GUESS_PICTURE: "Picture", SPELLING: "Spelling", REVISION: "Revision", TEST: "Tests", OTHER: "Other" } } }));
   assert.ok(html.indexOf('data-card="Bogdan-waiting"') < html.indexOf('data-card="Alla-new"'));
   assert.ok(html.includes('data-homework-assigned-day="2026-10-01"'));
   assert.ok(html.includes('data-homework-assigned-day="2026-10-08"'));

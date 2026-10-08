@@ -7,7 +7,7 @@ import { parseTestLibraryLocation, testLibraryHref, type TestLibraryLocation } f
 import { TestsLibraryView } from "./tests-library-view";
 
 export function TestsLibrary() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const searchParams = useSearchParams();
   const location = parseTestLibraryLocation(searchParams);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -22,5 +22,5 @@ export function TestsLibrary() {
     window.scrollTo({ top: 0, behavior: "instant" });
   };
 
-  return <TestsLibraryView location={location} labels={t.testsLibrary} onNavigate={navigate} headingRef={headingRef} />;
+  return <TestsLibraryView location={location} labels={t.testsLibrary} locale={locale} onNavigate={navigate} headingRef={headingRef} />;
 }

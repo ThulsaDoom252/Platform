@@ -58,10 +58,16 @@ test("every level renders all seven categories vertically and in the same order"
   }
 });
 
-test("category folders open an honest empty state and let the teacher return to the categories", () => {
+test("empty category folders stay empty; B1 Grammar links to the published First conditional test", () => {
   for (const level of TEST_LEVELS) {
     for (const category of TEST_CATEGORIES) {
       const html = renderToStaticMarkup(createElement(TestsLibraryView, { location: { level: level.id, category }, labels: dictionaries.en.testsLibrary }));
+      if (level.id === "b1" && category === "grammar") {
+        assert.ok(html.includes('data-library-test="first-conditional"'));
+        assert.ok(html.includes('href="/teacher/tests/first-conditional"'));
+        assert.ok(!html.includes("data-tests-empty"));
+        continue;
+      }
       assert.ok(html.includes("data-tests-empty"));
       assert.ok(html.includes(dictionaries.en.testsLibrary.emptyHint));
       assert.ok(html.includes('aria-current="page"'));

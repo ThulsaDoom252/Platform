@@ -6,6 +6,10 @@ import { ArrowLeft, ArrowUpRight, BookOpen, BookText, ChevronRight, ClipboardChe
 import { fmt, type Dict } from "@/lib/i18n";
 import { TEST_CATEGORIES, TEST_LEVELS, testLibraryHref, type TestCategoryId, type TestLibraryLocation } from "@/lib/test-library";
 import { cn } from "@/lib/utils";
+import type { Locale } from "@/lib/i18n";
+import { TEST_CATALOG } from "@/lib/tests/catalog";
+import { TEST_LABELS } from "@/lib/tests/labels";
+import { readyTestExercises } from "@/lib/tests/types";
 
 const CATEGORY_ICONS: Record<TestCategoryId, LucideIcon> = {
   grammar: SpellCheck2,
@@ -25,16 +29,19 @@ const FOLDER_GRADIENTS = [
 ];
 
 export function TestsLibraryView({
-  location, labels, onNavigate, headingRef,
+  location, labels, onNavigate, headingRef, locale = "en",
 }: {
   location: TestLibraryLocation;
   labels: Dict["testsLibrary"];
   onNavigate?: (location: TestLibraryLocation) => void;
   headingRef?: Ref<HTMLHeadingElement>;
+  locale?: Locale;
 }) {
   const level = TEST_LEVELS.find((item) => item.id === location.level);
   const category = level ? location.category : null;
   const CategoryIcon = category ? CATEGORY_ICONS[category] : ClipboardCheck;
+  const tests = TEST_CATALOG.filter((test) => test.level === level?.id && test.category === category);
+  const testLabels = TEST_LABELS[locale];
 
   function navigate(event: MouseEvent<HTMLAnchorElement>, next: TestLibraryLocation) {
     if (!onNavigate || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -118,6 +125,16 @@ export function TestsLibraryView({
               );
             })}
           </div>
+        </section>
+      ) : tests.length ? (
+        <section data-tests-catalog className="grid gap-4 sm:grid-cols-2">
+          {tests.map((test) => <Link key={test.id} data-library-test={test.id} href={`/teacher/tests/${test.id}`} className="group relative flex flex-col gap-5 overflow-hidden rounded-3xl border border-line bg-surface p-6 transition hover:border-accent/50 hover:shadow-lg hover:shadow-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <div aria-hidden className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-accent to-accent-2" />
+            <div className="flex items-center gap-3"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent"><ClipboardCheck aria-hidden className="h-6 w-6" /></span><div><p className="text-[10px] font-bold uppercase tracking-wider text-accent">{level.label} · {labels.categoryNames[category]}</p><h2 className="mt-1 text-lg font-bold text-content">{test.title}</h2></div></div>
+            <p className="text-sm text-muted">{test.subtitle}</p>
+            <div className="flex flex-wrap gap-2">{test.exercises.map((exercise) => <span key={exercise.id} className={cn("rounded-lg border px-2.5 py-1.5 text-[11px] font-bold", exercise.questions.length ? "border-accent/20 bg-accent-soft text-accent" : "border-line bg-surface-2 text-faint")}>{testLabels.exercise} {exercise.number}</span>)}</div>
+            <div className="flex items-center justify-between gap-2 border-t border-line pt-3"><span className="text-xs font-bold text-accent">{testLabels.open}</span><span className="text-xs text-muted">{readyTestExercises(test).reduce((sum, exercise) => sum + exercise.questions.length, 0)} {testLabels.questions}</span><ArrowUpRight aria-hidden className="h-4 w-4 text-accent" /></div>
+          </Link>)}
         </section>
       ) : (
         <section data-tests-empty className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-surface px-5 py-10 text-center">

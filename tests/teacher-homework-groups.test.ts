@@ -109,7 +109,7 @@ test("server-rendered teacher list enables both switches by default and renders 
     labels: {
       grouping: "Группировка", groupByAssignedDate: "По датам назначения", groupByHomeworkType: "Домашки и активности отдельно",
       interactiveHomeworks: "Интерактивные домашки", activities: "Активности", unknownAssignedDate: "Дата неизвестна",
-      activityTypes: { WORDS: "Слова", GUESS_DESCRIPTION: "По описанию", GUESS_PICTURE: "По картинке", SPELLING: "Spelling Practice", REVISION: "Повторение слов", OTHER: "Другие" },
+      activityTypes: { WORDS: "Слова", GUESS_DESCRIPTION: "По описанию", GUESS_PICTURE: "По картинке", SPELLING: "Spelling Practice", REVISION: "Повторение слов", TEST: "Тесты", OTHER: "Другие" },
     },
   }));
   assert.equal((html.match(/type="checkbox"[^>]*checked=""/g) ?? []).length, 2);

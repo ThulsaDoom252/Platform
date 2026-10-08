@@ -6,6 +6,7 @@ import type { ClassReaction } from "@/lib/class-reaction";
 import type { RegularLessonSection } from "@/lib/regular-lesson";
 import type { LessonHomeworkEntry } from "@/lib/lesson-homework";
 import type { HomeworkFeedbackSettings } from "@/lib/homework-feedback";
+import type { TestAnswerKey, TestDefinition, TestResults } from "@/lib/tests/types";
 import type {
   WordDeckLiveState,
   WordDeckHomeworkAttempt,
@@ -216,6 +217,34 @@ export const classActivityPreferences = pgTable("class_activity_preferences", {
   reviewNotice: jsonb("review_notice").$type<ClassGameReviewNotice>(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ---------- Tests ----------
+/** Standalone tests: immutable assigned content, independent attempt history. */
+export const testAssignments = pgTable("test_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  studentId: uuid("student_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  teacherId: uuid("teacher_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  testId: text("test_id").notNull(),
+  definition: jsonb("definition").$type<TestDefinition>().notNull(),
+  grading: jsonb("grading").$type<TestAnswerKey>().notNull(),
+  exerciseIds: jsonb("exercise_ids").$type<string[]>().notNull(),
+  assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+}, (table) => [
+  index("test_assignments_student_date_idx").on(table.studentId, table.assignedAt),
+  index("test_assignments_teacher_date_idx").on(table.teacherId, table.assignedAt),
+]);
+
+export const testAttempts = pgTable("test_attempts", {
+  id: uuid("id").primaryKey(),
+  assignmentId: uuid("assignment_id").notNull().references(() => testAssignments.id, { onDelete: "cascade" }),
+  results: jsonb("results").$type<TestResults>().notNull().default({}),
+  checkedExerciseIds: jsonb("checked_exercise_ids").$type<string[]>().notNull().default([]),
+  correct: integer("correct").notNull().default(0),
+  total: integer("total").notNull().default(0),
+  percent: integer("percent").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [index("test_attempts_assignment_date_idx").on(table.assignmentId, table.createdAt)]);
 
 // ---------- Пакеты уроков ----------
 // Пакет может быть общим: несколько учеников списывают уроки из одного пула.

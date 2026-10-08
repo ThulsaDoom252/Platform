@@ -2,13 +2,13 @@ import { SCHOOL_TIME_ZONE } from "@/lib/schedule-time";
 
 export type TeacherHomeworkGroupable = {
   id: string;
-  kind: "LESSON" | "ACTIVITY" | "REVISION";
+  kind: "LESSON" | "ACTIVITY" | "REVISION" | "TEST";
   assignedAt: string;
   activityType?: string;
 };
 
 export type TeacherHomeworkActivityGroupType =
-  | "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE" | "SPELLING" | "REVISION" | "OTHER";
+  | "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE" | "SPELLING" | "REVISION" | "TEST" | "OTHER";
 
 export type TeacherHomeworkDateGroup<T> = {
   /** School-local calendar day; null means a flat list or an invalid old date. */
@@ -24,11 +24,12 @@ export type TeacherHomeworkContentGroup<T> = {
 };
 
 const ACTIVITY_ORDER: TeacherHomeworkActivityGroupType[] = [
-  "WORDS", "GUESS_DESCRIPTION", "GUESS_PICTURE", "SPELLING", "REVISION", "OTHER",
+  "WORDS", "GUESS_DESCRIPTION", "GUESS_PICTURE", "SPELLING", "REVISION", "TEST", "OTHER",
 ];
 
 function activityType(item: TeacherHomeworkGroupable): TeacherHomeworkActivityGroupType {
   if (item.kind === "REVISION") return "REVISION";
+  if (item.kind === "TEST") return "TEST";
   return ACTIVITY_ORDER.includes(item.activityType as TeacherHomeworkActivityGroupType)
     ? item.activityType as TeacherHomeworkActivityGroupType
     : "OTHER";

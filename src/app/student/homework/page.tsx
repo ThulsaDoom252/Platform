@@ -7,17 +7,25 @@ import { IconCheckCircle } from "@/components/icons";
 import { RevisionList } from "@/components/revision/revision-list";
 import { HomeworkResultReactionBadge } from "@/components/homework-result-reaction";
 import { resolveHomeworkFeedback } from "@/lib/homework-feedback";
+import { testHomeworkCardsAction } from "@/lib/actions/tests";
+import { TestAssignmentCard } from "@/components/tests/test-assignment-card";
+import { TestsLiveList } from "@/components/tests/tests-live-list";
+import { getSession } from "@/lib/session";
+import { TEST_LABELS } from "@/lib/tests/labels";
 
 export default async function StudentHomeworkPage() {
-  const [items, games, revisions, { t }] = await Promise.all([
+  const [items, games, revisions, tests, session, { t, locale }] = await Promise.all([
     myInteractiveHomeworkAction(),
     myWordDeckHomeworkAction(),
     myRevisionsAction(),
+    testHomeworkCardsAction(),
+    getSession(),
     getDict(),
   ]);
 
   return (
     <div className="flex flex-col gap-5">
+      {session && <TestsLiveList userId={session.userId} />}
       <div>
         <h1 className="text-2xl font-black text-content">{t.nav.homework}</h1>
         <p className="mt-1 text-sm text-muted">{t.interactiveHomework.pageHint}</p>
@@ -85,7 +93,9 @@ export default async function StudentHomeworkPage() {
 
       {revisions.length > 0 && <RevisionList items={revisions} />}
 
-      {items.length === 0 && games.length === 0 && revisions.length === 0 && <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
+      {tests.length > 0 && <section><h2 className="mb-3 text-lg font-black text-content">{TEST_LABELS[locale].tests}</h2><div className="grid gap-3 sm:grid-cols-2">{tests.map((item) => <TestAssignmentCard key={item.id} item={item} locale={locale} />)}</div></section>}
+
+      {items.length === 0 && games.length === 0 && revisions.length === 0 && tests.length === 0 && <div className="rounded-2xl bg-surface p-8 text-center ring-1 ring-line">
         <IconCheckCircle className="mx-auto h-10 w-10 text-emerald-500" />
         <p className="mt-3 text-sm font-bold text-content">{t.interactiveHomework.nothingAssigned}</p>
       </div>}
