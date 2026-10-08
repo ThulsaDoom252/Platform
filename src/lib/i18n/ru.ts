@@ -257,6 +257,8 @@ export const ru: Dict = {
     offline: "не в сети",
     onlineTitle: "На платформе",
     offlineTitle: "Не в сети",
+    inClass: "в классе",
+    inClassTitle: "Сейчас в разделе класса",
     notStarted: "Класс не начат",
     waitingTeacher: "Учитель ещё не начал класс",
     leave: "Выйти из класса",

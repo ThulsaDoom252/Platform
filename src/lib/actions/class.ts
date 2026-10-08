@@ -29,7 +29,7 @@ import {
 } from "@/lib/class-video";
 import { scheduleNow } from "@/lib/schedule-time";
 import { liveClassTimerState, type ClassTimerState } from "@/lib/class-timer";
-import { presenceFromLastSeen, type Presence } from "@/lib/presence";
+import { classPresenceFromLastSeen, presenceFromLastSeen, type ClassPresence } from "@/lib/presence";
 import {
   classActivityKey,
   normalizeClassGameReview,
@@ -52,7 +52,7 @@ export type ClassPerson = {
   name: string;
   avatarUrl: string | null;
   level: string | null;
-  presence: Presence;
+  presence: ClassPresence;
   /** Учитель уже ведёт класс с этим учеником. */
   inClass: boolean;
   unread: number;
@@ -125,7 +125,7 @@ export async function heartbeatAction(): Promise<{
     id: string;
     name: string;
     avatarUrl: string | null;
-    presence: Presence;
+    presence: ClassPresence;
   } | null;
   unread: number;
 }> {
@@ -153,6 +153,7 @@ export async function heartbeatAction(): Promise<{
             name: users.name,
             avatarUrl: users.avatarUrl,
             lastSeenAt: users.lastSeenAt,
+            classWhere: users.classWhere,
           })
           .from(users)
           .where(and(eq(users.id, me.classWithId), eq(users.role, "STUDENT")))
@@ -164,6 +165,7 @@ export async function heartbeatAction(): Promise<{
           name: users.name,
           avatarUrl: users.avatarUrl,
           lastSeenAt: users.lastSeenAt,
+          classWhere: users.classWhere,
         })
         .from(users)
         .where(
@@ -185,7 +187,7 @@ export async function heartbeatAction(): Promise<{
           id: partnerRow.id,
           name: partnerRow.name,
           avatarUrl: partnerRow.avatarUrl,
-          presence: isOnline(partnerRow.lastSeenAt) ? "online" : "offline",
+          presence: classPresenceFromLastSeen(partnerRow.lastSeenAt, partnerRow.classWhere),
         }
       : null,
     unread,
@@ -252,6 +254,7 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
       avatarUrl: users.avatarUrl,
       level: users.level,
       lastSeenAt: users.lastSeenAt,
+      classWhere: users.classWhere,
       balance: users.lessonBalance,
       packageId: users.packageId,
     })
@@ -330,7 +333,7 @@ export async function listClassPeopleAction(): Promise<ClassPerson[]> {
     name: r.name,
     avatarUrl: r.avatarUrl,
     level: r.level,
-    presence: isOnline(r.lastSeenAt) ? "online" : "offline",
+    presence: classPresenceFromLastSeen(r.lastSeenAt, r.classWhere),
     inClass: me?.classWithId === r.id,
     unread: unreadOf.get(r.id) ?? 0,
     lessons: lessonsOf.get(r.id) ?? [],
@@ -836,7 +839,7 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
           .limit(1),
       )
     : [];
-  const classWhere = onBoard ? "board" : null;
+  const classWhere = onBoard ? "board" : "class";
   const cutoff = new Date(Date.now() - 15_000);
   const updatePresence = me.classWhere !== classWhere || !me.lastSeenAt || me.lastSeenAt < cutoff
     ? db.update(users).set({ classWhere, lastSeenAt: new Date() })

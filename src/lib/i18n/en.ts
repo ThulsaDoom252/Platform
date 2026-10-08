@@ -255,6 +255,8 @@ export const en = {
     offline: "offline",
     onlineTitle: "On the platform",
     offlineTitle: "Offline",
+    inClass: "in the class",
+    inClassTitle: "In the class right now",
     notStarted: "Class not started",
     waitingTeacher: "The teacher hasn't started the class yet",
     leave: "Leave the class",

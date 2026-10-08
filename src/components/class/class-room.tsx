@@ -37,8 +37,8 @@ import {
   leaveClassAction,
   type ClassPerson,
   type ClassPartnerProfile,
-  type Presence,
 } from "@/lib/actions/class";
+import { platformPresence, type ClassPresence } from "@/lib/presence";
 import { PresenceIndicator, usePresenceMap } from "@/components/student-presence";
 const ClassChat = dynamic(() => import("./class-chat").then((m) => m.ClassChat));
 const QuickVerbs = dynamic(() => import("./quick-verbs").then((m) => m.QuickVerbs));
@@ -120,13 +120,19 @@ export function ClassRoom({
   const livePresences = usePresenceMap();
 
   const [people, setPeople] = useState<ClassPerson[] | null>(null);
-  const [partner, setPartner] = useState<{
+  const [partnerSnapshot, setPartner] = useState<{
     id: string;
     name: string;
     avatarUrl: string | null;
-    presence: Presence;
+    presence: ClassPresence;
   } | null>(null);
+  const partner = partnerSnapshot ? {
+    ...partnerSnapshot,
+    presence: livePresences[partnerSnapshot.id] ?? partnerSnapshot.presence,
+  } : null;
   const { t, locale } = useT();
+  const presenceLabel = (presence: ClassPresence) => presence === "in_class"
+    ? t.classRoom.inClass : presence === "online" ? t.classRoom.online : t.classRoom.offline;
   /*
    * Урок начинается с пустого стола: панели включает учитель, когда они
    * понадобились. Открытые по умолчанию чат и глаголы отъедали у урока
@@ -729,7 +735,7 @@ export function ClassRoom({
             className="h-20 w-20 text-xl ring-2 ring-line transition group-hover:ring-accent"
           />
           <span className="absolute bottom-1 right-1">
-            <PresenceIndicator presence={p.presence} />
+            <PresenceIndicator presence={p.presence} showClassStatus />
           </span>
           {p.unread > 0 && (
             <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">
@@ -914,7 +920,7 @@ export function ClassRoom({
                   className="h-9 w-9 text-sm ring-1 ring-line"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5">
-                  <PresenceIndicator presence={partner.presence} />
+                  <PresenceIndicator presence={partner.presence} showClassStatus />
                 </span>
               </button>
               <Link
@@ -926,9 +932,7 @@ export function ClassRoom({
                   {partner.name}
                 </span>
                 <span className="text-[11px] text-faint">
-                  {partner.presence === "online"
-                    ? t.classRoom.online
-                    : t.classRoom.offline}
+                  {presenceLabel(partner.presence)}
                 </span>
                 <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
               </Link>
@@ -949,16 +953,14 @@ export function ClassRoom({
                   className="h-9 w-9 text-sm ring-1 ring-line"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5">
-                  <PresenceIndicator presence={partner.presence} />
+                  <PresenceIndicator presence={partner.presence} showClassStatus />
                 </span>
               </button>
               <span className="text-sm font-semibold text-content">{partner.name}</span>
               <span className="text-[11px] text-faint">
                 {profileBusy
                   ? t.common.loading
-                  : partner.presence === "online"
-                    ? t.classRoom.online
-                    : t.classRoom.offline}
+                  : presenceLabel(partner.presence)}
               </span>
             </div>
           )
@@ -975,13 +977,13 @@ export function ClassRoom({
         {teacher && partner && (
           <button
             type="button"
-            disabled={busy || partner.presence !== "online"}
+            disabled={busy || platformPresence(partner.presence) === "offline"}
             onClick={() => startBusy(async () => {
               const result = await summonStudentToClassAction();
               setSummonNotice(result.error ?? t.classRoom.bringToClassSent);
             })}
             title={
-              partner.presence === "online"
+              platformPresence(partner.presence) === "online"
                 ? t.classRoom.bringToClass
                 : t.classRoom.bringToClassOffline
             }

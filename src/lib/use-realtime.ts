@@ -1,7 +1,8 @@
 "use client";
 
 import type * as Ably from "ably";
-import { createContext, createElement, useContext, useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { createContext, createElement, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { schoolPresenceMap, type ClassPresence } from "@/lib/presence";
 
 type RealtimeStatus = "connected" | "connecting" | "unavailable";
 const RealtimeConfigured = createContext(true);
@@ -125,12 +126,16 @@ export function useSchoolPresence({
 }: {
   enabled?: boolean;
   data: Record<string, unknown>;
-  onMembers?: (clientIds: Set<string>) => void;
+  onMembers?: (presences: Record<string, ClassPresence>) => void;
 }) {
   const configured = useContext(RealtimeConfigured);
   const [status, setStatus] = useState<RealtimeStatus>("connecting");
   const presenceData = useEffectEvent(() => data);
-  const emitMembers = useEffectEvent((ids: Set<string>) => onMembers?.(ids));
+  const emitMembers = useEffectEvent((presences: Record<string, ClassPresence>) => onMembers?.(presences));
+  const updateDataRef = useRef<(() => Promise<void>) | null>(null);
+  const recoverRef = useRef<(() => Promise<void>) | null>(null);
+  const dataKey = JSON.stringify(data);
+  const observesMembers = !!onMembers;
 
   useEffect(() => {
     if (!enabled || !configured) {
@@ -143,41 +148,86 @@ export function useSchoolPresence({
       if (!alive || !client) return;
       const channel = client.channels.get("presence:school");
       const refresh = async () => {
+        if (!observesMembers) return true;
         try {
           const members = await channel.presence.get();
-          if (alive) emitMembers(new Set(members.map((member) => member.clientId).filter(Boolean) as string[]));
+          if (alive) emitMembers(schoolPresenceMap(members));
+          if (alive && client.connection.state === "connected" && channel.state === "attached") setStatus("connected");
+          return true;
         } catch {
           if (alive) setStatus("unavailable");
+          return false;
         }
       };
       const presenceChanged = () => void refresh();
+      const updateData = async () => {
+        if (!alive || client.connection.state !== "connected" || channel.state !== "attached") return false;
+        try {
+          await channel.presence.update(presenceData());
+          return true;
+        } catch {
+          if (alive) setStatus("unavailable");
+          return false;
+        }
+      };
+      const publishData = async () => { await updateData(); };
+      updateDataRef.current = publishData;
+      let entering = false;
       const connectionChanged = async () => {
         if (!alive) return;
         const state = client.connection.state;
-        setStatus(state === "connected" ? "connected" : state === "connecting" ? "connecting" : "unavailable");
-        if (state === "connected") {
+        if (state !== "connected") {
+          setStatus(state === "connecting" ? "connecting" : "unavailable");
+          return;
+        }
+        if (!entering) {
+          entering = true;
           try {
-            await channel.presence.enter(presenceData());
-            await refresh();
+            const sentData = presenceData();
+            await channel.presence.enter(sentData);
+            if (!alive) return;
+            if (JSON.stringify(sentData) !== JSON.stringify(presenceData()) && !await updateData()) return;
+            const refreshed = await refresh();
+            if (alive && refreshed && client.connection.state === "connected" && channel.state === "attached") setStatus("connected");
           } catch {
             if (alive) setStatus("unavailable");
+          } finally {
+            entering = false;
           }
         }
       };
+      recoverRef.current = connectionChanged;
       client.connection.on(connectionChanged);
-      void channel.presence.subscribe(["enter", "leave", "update"], presenceChanged).catch(() => {
+      const channelChanged = () => {
+        if (channel.state === "attached") void connectionChanged();
+        else if (alive) setStatus("unavailable");
+      };
+      channel.on(channelChanged);
+      if (observesMembers) void channel.presence.subscribe(["enter", "leave", "update", "present"], presenceChanged).catch(() => {
         if (alive) setStatus("unavailable");
       });
       void connectionChanged();
       unsubscribe = () => {
+        if (updateDataRef.current === publishData) updateDataRef.current = null;
+        if (recoverRef.current === connectionChanged) recoverRef.current = null;
         client.connection.off(connectionChanged);
-        channel.presence.unsubscribe(["enter", "leave", "update"], presenceChanged);
+        channel.off(channelChanged);
+        if (observesMembers) channel.presence.unsubscribe(["enter", "leave", "update", "present"], presenceChanged);
         void channel.presence.leave().catch(() => {});
       };
     }).catch(() => {
       if (alive) setStatus("unavailable");
     });
     return () => { alive = false; unsubscribe(); };
-  }, [configured, enabled]);
+  }, [configured, enabled, observesMembers]);
+  // Route changes update member data without leaving/re-entering the school.
+  useEffect(() => {
+    void updateDataRef.current?.();
+  }, [dataKey]);
+  useEffect(() => {
+    if (!configured || !enabled || status !== "unavailable") return;
+    const timer = window.setInterval(() => void recoverRef.current?.(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [configured, enabled, status]);
   return status;
 }
