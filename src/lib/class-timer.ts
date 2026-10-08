@@ -13,6 +13,7 @@ export type ClassTimerRating = {
   grade: ClassGameGrade;
   visible: boolean;
   at: string;
+  notes?: string;
 };
 
 export type ClassTimerPreset = {
@@ -67,6 +68,7 @@ export function normalizeClassTimerState(value: unknown): ClassTimerState | null
         grade: rawRating.grade as ClassGameGrade,
         visible: rawRating.visible === true,
         at: rawRating.at,
+        ...(typeof rawRating.notes === "string" && rawRating.notes.trim() ? { notes: rawRating.notes.trim().slice(0, 1000) } : {}),
       }
     : null;
   return {

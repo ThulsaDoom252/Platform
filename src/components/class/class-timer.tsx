@@ -264,11 +264,14 @@ function TimerFace({ state, student }: { state: ClassTimerState; student: boolea
       </div>
       {state.rating && (!student || state.rating.visible) && (
         <div className={cn(
-          "mt-4 flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-black shadow-sm",
+          "mt-4 rounded-2xl border px-4 py-3 text-sm font-black shadow-sm",
           classGameGradeStyle[state.rating.grade].panel,
         )}>
-          <span className="text-2xl" aria-hidden>{classGameGradeStyle[state.rating.grade].emoji}</span>
-          <span>{timerGradeLabel(t, state.rating.grade)}</span>
+          <p className="flex items-center justify-center gap-2">
+            <span className="text-2xl" aria-hidden>{classGameGradeStyle[state.rating.grade].emoji}</span>
+            <span>{timerGradeLabel(t, state.rating.grade)}</span>
+          </p>
+          {state.rating.notes && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed">{state.rating.notes}</p>}
         </div>
       )}
     </div>
@@ -282,11 +285,12 @@ function TimerRatingEditor({
 }: {
   state: ClassTimerState;
   busy: boolean;
-  onSave: (grade: ClassGameGrade, visible: boolean) => void;
+  onSave: (grade: ClassGameGrade, visible: boolean, notes: string) => void;
 }) {
   const { t } = useT();
   const [grade, setGrade] = useState<ClassGameGrade | null>(state.rating?.grade ?? null);
   const [visible, setVisible] = useState(state.rating?.visible ?? true);
+  const [notes, setNotes] = useState(state.rating?.notes ?? "");
 
   return (
     <section className="rounded-2xl bg-surface-2 p-4 ring-1 ring-line">
@@ -327,10 +331,16 @@ function TimerRatingEditor({
           );
         })}
       </div>
+      <label className="mt-3 block text-xs font-bold text-muted">
+        {t.classRoom.reviewNotes}
+        <textarea rows={3} maxLength={1000} disabled={busy} value={notes} onChange={event => setNotes(event.target.value)}
+          placeholder={t.classRoom.reviewNotesPlaceholder}
+          className="mt-2 w-full resize-y rounded-xl bg-surface p-3 text-sm text-content outline-none ring-1 ring-line focus:ring-accent" />
+      </label>
       <button
         type="button"
         disabled={busy || !grade}
-        onClick={() => grade && onSave(grade, visible)}
+        onClick={() => grade && onSave(grade, visible, notes)}
         className="mt-3 h-11 w-full rounded-xl bg-accent text-sm font-black text-white shadow-sm transition hover:brightness-110 disabled:opacity-40"
       >
         {t.classRoom.saveGrade}
@@ -590,7 +600,7 @@ export function ClassTimerManager({
                 <TimerRatingEditor
                   state={state}
                   busy={busy}
-                  onSave={(grade, visible) => act(() => saveClassTimerRatingAction(grade, visible))}
+                  onSave={(grade, visible, notes) => act(() => saveClassTimerRatingAction(grade, visible, notes))}
                 />
               )}
 

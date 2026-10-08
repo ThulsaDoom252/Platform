@@ -13,6 +13,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
 import { HighlightableAnswerField } from "./highlightable-answer-field";
+import { HomeworkGradeEditor } from "./homework-grade-editor";
+import { PublicHomeworkTeacherNote } from "./homework-teacher-note";
 import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools, useSharedHighlightTools } from "./highlight-tools";
 import { selectedOffsets, wordAtPoint } from "@/lib/text-highlight-dom";
@@ -47,7 +49,6 @@ import {
   homeworkAssignedExercisesKey,
   homeworkExerciseHidden,
   homeworkExerciseComment,
-  homeworkExerciseNeedsTeacherScore,
   homeworkExerciseScore,
   homeworkExerciseTeacherScore,
   homeworkGradeLabel,
@@ -66,6 +67,9 @@ import {
   homeworkStatus,
   homeworkStatusKey,
   homeworkOverallScore,
+  homeworkOverallTeacherScore,
+  homeworkOverallComment,
+  mergeHomeworkGradeFeedback,
   homeworkStateAfterTeacherAutoAnswerEdit,
   homeworkSubmittedAt,
   homeworkSubmittedAtKey,
@@ -114,7 +118,7 @@ import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { focusHomeworkElementAction } from "@/lib/actions/lessons";
 import { revealHomeworkFocusTarget } from "@/lib/homework-focus";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
-import { HOMEWORK_OVERALL_REACTION_KEY, lessonHomeworkFeedback } from "@/lib/homework-feedback";
+import { HOMEWORK_OVERALL_REACTION_KEY, HOMEWORK_RESULT_COMMENT_KEY, lessonHomeworkFeedback } from "@/lib/homework-feedback";
 
 export type InteractiveHomeworkSession = {
   assignmentId: string;
@@ -306,14 +310,14 @@ export function InteractiveHomework({
   useEffect(() => {
     if (session.teacher || !session.liveClass) return;
     const frame = requestAnimationFrame(() => {
-      setState((current) => mergeHomeworkTextHighlights(mergeHomeworkReactions(current, session.state), session.state));
+      setState((current) => mergeHomeworkGradeFeedback(mergeHomeworkTextHighlights(mergeHomeworkReactions(current, session.state), session.state), session.state));
     });
     return () => cancelAnimationFrame(frame);
   }, [session.liveClass, session.state, session.teacher]);
 
-  const pullReviewState = async () => {
+  const pullReviewState = async (gradesOnly = false) => {
     const next = await homeworkReviewStateAction(session.assignmentId);
-    if (next) setState(next);
+    if (next) setState(current => gradesOnly ? mergeHomeworkGradeFeedback(mergeHomeworkReactions(current, next), next) : next);
   };
 
   useRealtimeSubscription({
@@ -321,8 +325,11 @@ export function InteractiveHomework({
       ? `${session.liveClass ? "class" : "user"}:${session.studentId}`
       : null,
     events: "homework-review",
-    onMessage: pullReviewState,
-    onFallback: pullReviewState,
+    onMessage: message => {
+      if (message.data?.assignmentId && message.data.assignmentId !== session.assignmentId) return;
+      return pullReviewState(message.data?.gradeFeedback === true);
+    },
+    onFallback: () => pullReviewState(),
     fallbackMs: 30_000,
     enabled: !session.teacher && Boolean(session.studentId),
   });
@@ -570,10 +577,10 @@ export function InteractiveHomework({
         />
       ))}
 
-      {(teacherReviewTools || reviewedAt || exercises.some(
+      {(session.teacher || reviewedAt || homeworkOverallTeacherScore(state) !== null || homeworkOverallComment(state) || exercises.some(
         (exercise) => homeworkExerciseTeacherScore(state, exercise.id) !== null,
       )) && (
-        <HomeworkOverallGrade exercises={exercises} state={state} />
+        <HomeworkOverallGrade exercises={exercises} session={session} state={state} setState={setState} />
       )}
 
       <HomeworkFeedbackPanel kind="LESSON" id={session.assignmentId}
@@ -582,6 +589,8 @@ export function InteractiveHomework({
           const next = { ...current };
           if (feedback.manualReaction) next[HOMEWORK_OVERALL_REACTION_KEY] = feedback.manualReaction;
           else delete next[HOMEWORK_OVERALL_REACTION_KEY];
+          if (feedback.teacherNote) next[HOMEWORK_RESULT_COMMENT_KEY] = feedback.teacherNote;
+          else delete next[HOMEWORK_RESULT_COMMENT_KEY];
           return next;
         })} />
 
@@ -1128,8 +1137,8 @@ function HomeworkExerciseView({
           {exerciseItems}
         </>
       )}
-      {(interaction.reviewTools || Boolean(homeworkReviewedAt(state)) ||
-        homeworkExerciseTeacherScore(state, exercise.id) !== null) && (
+      {(session.teacher || Boolean(homeworkReviewedAt(state)) ||
+        homeworkExerciseTeacherScore(state, exercise.id) !== null || homeworkExerciseComment(state, exercise.id)) && (
         <HomeworkExerciseGrade
           exercise={exercise}
           session={session}
@@ -1452,109 +1461,60 @@ function HomeworkExerciseGrade({
   setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
 }) {
   const { t } = useT();
-  const interaction = useContext(HomeworkInteractionContext);
   const storedScore = homeworkExerciseTeacherScore(state, exercise.id);
-  const [scoreDraft, setScoreDraft] = useState(String(storedScore ?? 100));
-  const [commentDraft, setCommentDraft] = useState(
-    homeworkExerciseComment(state, exercise.id),
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [busy, startBusy] = useTransition();
-  const needsTeacherScore = homeworkExerciseNeedsTeacherScore(exercise);
   const score = homeworkExerciseScore(exercise, state);
   const comment = homeworkExerciseComment(state, exercise.id);
-
   const presentation = score === null ? null : gradePresentation(score);
+  if (!session.teacher && score === null && !comment) return null;
   return (
     <div className="mt-4 border-t border-line pt-4">
-      {session.teacher && interaction.reviewTools && needsTeacherScore && (
-        <div className="mb-4 grid gap-3 rounded-2xl bg-surface-2 p-3 ring-1 ring-line sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-end">
-          <label className="text-[11px] font-black uppercase tracking-wide text-muted">
-            {t.interactiveHomework.exerciseScore}
-            <span className="mt-1 flex h-10 items-center overflow-hidden rounded-xl bg-surface ring-1 ring-line">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={scoreDraft}
-                onChange={(event) => setScoreDraft(event.target.value)}
-                className="h-full min-w-0 flex-1 bg-transparent px-3 text-base font-black text-content outline-none"
-              />
-              <span className="pr-3 text-sm text-faint">%</span>
-            </span>
-          </label>
-          <label className="text-[11px] font-black uppercase tracking-wide text-muted">
-            {t.interactiveHomework.scoreComment}
-            <input
-              value={commentDraft}
-              onChange={(event) => setCommentDraft(event.target.value)}
-              placeholder={t.interactiveHomework.scoreCommentPlaceholder}
-              className="mt-1 h-10 w-full rounded-xl bg-surface px-3 text-sm font-semibold normal-case tracking-normal text-content outline-none ring-1 ring-line focus:ring-accent"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={busy || !Number.isFinite(Number(scoreDraft))}
-            onClick={() => startBusy(async () => {
-              setError(null);
-              const result = await saveHomeworkExerciseGradeAction(
-                session.assignmentId,
-                exercise.id,
-                Number(scoreDraft),
-                commentDraft,
-              );
-              if (result.error || !result.state) {
-                setError(result.error ?? t.interactiveHomework.scoreSaveFailed);
-                return;
-              }
-              setState(result.state);
-            })}
-            className="h-10 rounded-xl bg-accent px-4 text-xs font-black text-white disabled:opacity-45"
-          >
-            {busy ? t.interactiveHomework.scoreSaving : t.interactiveHomework.scoreSave}
-          </button>
-          {error && <p className="text-xs font-bold text-rose-600 sm:col-span-3">{error}</p>}
-        </div>
-      )}
-
-      {score !== null && presentation && (
-        <div className={cn("rounded-2xl border px-4 py-3 text-center", presentation.panelClassName)}>
+      <div className={cn("rounded-2xl border px-4 py-3 text-center", presentation?.panelClassName ?? "border-line bg-surface")}>
+        {score !== null && presentation && (
           <p className={cn("text-2xl font-black sm:text-3xl", presentation.className)}>
             {score}% · {gradeLabelText(presentation.label, t.interactiveHomework)}
           </p>
-          {comment && (
-            <p className="mx-auto mt-2 max-w-3xl whitespace-pre-wrap text-sm font-semibold leading-relaxed text-content">
-              {comment}
-            </p>
-          )}
-        </div>
-      )}
+        )}
+        <PublicHomeworkTeacherNote label={t.interactiveHomework.teacherNote} note={comment} />
+        {session.teacher && <HomeworkGradeEditor score={score} teacherScore={storedScore} comment={comment}
+          onSave={async (nextScore, nextComment) => {
+            const result = await saveHomeworkExerciseGradeAction(session.assignmentId, exercise.id, nextScore, nextComment);
+            if (result.error || !result.state) return result.error ?? t.interactiveHomework.scoreSaveFailed;
+            setState(current => mergeHomeworkGradeFeedback(current, result.state!));
+          }} />}
+      </div>
     </div>
   );
 }
 
 function HomeworkOverallGrade({
   exercises,
+  session,
   state,
+  setState,
 }: {
   exercises: HomeworkExercise[];
+  session: InteractiveHomeworkSession;
   state: HomeworkStoredState;
+  setState: React.Dispatch<React.SetStateAction<HomeworkStoredState>>;
 }) {
   const { t } = useT();
   const overall = homeworkOverallScore(exercises, state);
-  if (overall.score === null) return null;
-  const presentation = gradePresentation(overall.score);
+  const comment = homeworkOverallComment(state);
+  const teacherScore = homeworkOverallTeacherScore(state);
+  if (overall.score === null && !comment && !session.teacher) return null;
+  const presentation = overall.score === null ? null : gradePresentation(overall.score);
   return (
     <section className={cn(
       "rounded-2xl border-2 px-5 py-5 text-center shadow-sm",
-      presentation.panelClassName,
+      presentation?.panelClassName ?? "border-line bg-surface",
     )}>
       <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted">
         {t.interactiveHomework.overallScore}
       </p>
-      <p className={cn("mt-1 text-3xl font-black sm:text-4xl", presentation.className)}>
+      {overall.score !== null && presentation && <p className={cn("mt-1 text-3xl font-black sm:text-4xl", presentation.className)}>
         {overall.score}% · {gradeLabelText(presentation.label, t.interactiveHomework)}
-      </p>
+      </p>}
+      <PublicHomeworkTeacherNote label={t.interactiveHomework.teacherNote} note={comment} />
       {overall.graded < overall.total && (
         <p className="mt-2 text-xs font-bold text-muted">
           {t.interactiveHomework.exercisesGraded
@@ -1562,6 +1522,12 @@ function HomeworkOverallGrade({
             .replace("{total}", String(overall.total))}
         </p>
       )}
+      {session.teacher && <HomeworkGradeEditor score={overall.score} teacherScore={teacherScore} comment={comment} scoreLabel={t.interactiveHomework.overallScore}
+        onSave={async (score, note) => {
+          const result = await saveHomeworkExerciseGradeAction(session.assignmentId, null, score, note);
+          if (result.error || !result.state) return result.error ?? t.interactiveHomework.scoreSaveFailed;
+          setState(current => mergeHomeworkGradeFeedback(current, result.state!));
+        }} />}
     </section>
   );
 }

@@ -90,6 +90,7 @@ import {
 import {
   assignedInteractiveHomework,
   HOMEWORK_REACTION_PREFIX,
+  isHomeworkGradeFeedbackKey,
   findHomeworkItem,
   homeworkAssignedAt,
   homeworkAssignedExerciseIds,
@@ -2721,6 +2722,9 @@ export async function answerAction(
   const responseKey = String(key ?? "").slice(0, 240);
   if (isStudent && responseKey.startsWith(HOMEWORK_REACTION_PREFIX)) {
     return { error: "Эту реакцию устанавливает учитель" };
+  }
+  if (isStudent && isHomeworkGradeFeedbackKey(responseKey)) {
+    return { error: "Оценки и пометки устанавливает учитель" };
   }
 
   await db

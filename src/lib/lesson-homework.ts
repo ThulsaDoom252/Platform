@@ -2,6 +2,7 @@
 
 import { detectTranslationLang, type TranslationLang } from "@/lib/translation-lang";
 import { organizeVocabularyHomework } from "@/lib/vocabulary-homework";
+import { HOMEWORK_RESULT_COMMENT_KEY } from "@/lib/homework-feedback";
 
 export type HomeworkExerciseKind =
   | "fill"
@@ -77,6 +78,38 @@ const TEXT_RANGE_HIGHLIGHT = "hw:text-range-highlight:";
 export const HOMEWORK_REACTION_PREFIX = "hw:reaction:";
 const EXERCISE_SCORE = "hw:exercise-score:";
 const EXERCISE_COMMENT = "hw:exercise-comment:";
+export const HOMEWORK_OVERALL_SCORE_KEY = "hw:overall-score";
+export const HOMEWORK_OVERALL_COMMENT_KEY = "hw:overall-comment";
+export const HOMEWORK_GRADE_FEEDBACK_PREFIXES = [EXERCISE_SCORE, EXERCISE_COMMENT] as const;
+export const HOMEWORK_GRADE_FEEDBACK_KEYS = [HOMEWORK_OVERALL_SCORE_KEY, HOMEWORK_OVERALL_COMMENT_KEY, HOMEWORK_RESULT_COMMENT_KEY] as const;
+
+/** Teacher-owned metadata; students may read it but never replace it. */
+export function isHomeworkGradeFeedbackKey(key: string): boolean {
+  return HOMEWORK_GRADE_FEEDBACK_PREFIXES.some(prefix => key.startsWith(prefix)) ||
+    HOMEWORK_GRADE_FEEDBACK_KEYS.some(value => value === key);
+}
+
+/** Apply feedback updates without interrupting an answer currently being typed. */
+export function mergeHomeworkGradeFeedback(local: HomeworkStoredState, saved: HomeworkStoredState): HomeworkStoredState {
+  const currentKeys = Object.keys(local).filter(isHomeworkGradeFeedbackKey);
+  const savedKeys = Object.keys(saved).filter(isHomeworkGradeFeedbackKey);
+  if (currentKeys.length === savedKeys.length && currentKeys.every(key => local[key] === saved[key])) return local;
+  const next = { ...local };
+  for (const key of Object.keys(next)) if (isHomeworkGradeFeedbackKey(key)) delete next[key];
+  for (const [key, value] of Object.entries(saved)) if (isHomeworkGradeFeedbackKey(key)) next[key] = value;
+  return next;
+}
+
+/** null removes only the manual score; the public comment is independent. */
+export function homeworkGradeFeedbackPatch(exerciseId: string | null, score: number | null, comment: string): Record<string, string | null> {
+  if (exerciseId !== null && !cleanId(exerciseId)) throw new Error("Invalid grade target");
+  if (score !== null && (typeof score !== "number" || !Number.isInteger(score) || score < 0 || score > 100)) throw new Error("Invalid grade score");
+  const text = String(comment ?? "").trim().slice(0, 4_000);
+  return {
+    [exerciseId === null ? HOMEWORK_OVERALL_SCORE_KEY : homeworkExerciseScoreKey(exerciseId)]: score === null ? null : String(score),
+    [exerciseId === null ? HOMEWORK_OVERALL_COMMENT_KEY : homeworkExerciseCommentKey(exerciseId)]: text || null,
+  };
+}
 
 export type HomeworkHighlightColor = "yellow" | "green" | "red";
 export type HomeworkReaction =
@@ -980,7 +1013,7 @@ export function homeworkExerciseTeacherScore(
 ): number | null {
   if (!cleanId(exerciseId)) return null;
   const raw = state[homeworkExerciseScoreKey(exerciseId)];
-  if (raw === undefined) return null;
+  if (raw === undefined || !raw.trim()) return null;
   const score = Number(raw);
   return Number.isInteger(score) && score >= 0 && score <= 100 ? score : null;
 }
@@ -991,6 +1024,17 @@ export function homeworkExerciseComment(
 ): string {
   if (!cleanId(exerciseId)) return "";
   return state[homeworkExerciseCommentKey(exerciseId)] ?? "";
+}
+
+export function homeworkOverallTeacherScore(state: HomeworkStoredState): number | null {
+  const raw = state[HOMEWORK_OVERALL_SCORE_KEY];
+  if (raw === undefined || !raw.trim()) return null;
+  const score = Number(raw);
+  return Number.isInteger(score) && score >= 0 && score <= 100 ? score : null;
+}
+
+export function homeworkOverallComment(state: HomeworkStoredState): string {
+  return state[HOMEWORK_OVERALL_COMMENT_KEY] ?? "";
 }
 
 export function homeworkExerciseNeedsTeacherScore(exercise: HomeworkExercise): boolean {
@@ -1032,9 +1076,9 @@ export function homeworkOverallScore(
     return score === null ? [] : [score];
   });
   return {
-    score: scores.length > 0
+    score: homeworkOverallTeacherScore(state) ?? (scores.length > 0
       ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
-      : null,
+      : null),
     graded: scores.length,
     total: visible.length,
   };

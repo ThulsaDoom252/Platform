@@ -8,9 +8,10 @@ import { getSession } from "@/lib/session";
 import { teacherWordDeckHomeworkAction } from "@/lib/actions/word-deck";
 import { publishClassRealtime, publishUserRealtime } from "@/lib/realtime-server";
 import {
-  HOMEWORK_OVERALL_REACTION_KEY, isHomeworkResultReaction, lessonHomeworkFeedback,
+  HOMEWORK_OVERALL_REACTION_KEY, HOMEWORK_RESULT_COMMENT_KEY, isHomeworkResultReaction, lessonHomeworkFeedback,
   readHomeworkFeedback, type HomeworkFeedbackKind, type HomeworkFeedbackSettings,
 } from "@/lib/homework-feedback";
+import { homeworkGradeFeedbackPatchSql } from "@/lib/homework-feedback-persistence";
 
 const validTarget = (kind: unknown, id: unknown) =>
   ["LESSON", "ACTIVITY", "REVISION"].includes(String(kind)) &&
@@ -54,16 +55,19 @@ export async function homeworkFeedbackAction(kind: HomeworkFeedbackKind, id: str
   return (await feedbackAssignment(kind, id))?.settings ?? null;
 }
 
-export async function saveHomeworkFeedbackAction(kind: HomeworkFeedbackKind, id: string, input: HomeworkFeedbackSettings): Promise<{ error?: string }> {
+export async function saveHomeworkFeedbackAction(kind: HomeworkFeedbackKind, id: string, input: HomeworkFeedbackSettings): Promise<{ error?: string; settings?: HomeworkFeedbackSettings }> {
   const session = await getSession();
   if (session?.role !== "TEACHER") return { error: "Доступно только учителю" };
   if (!validTarget(kind, id) || !input || typeof input.autoEnabled !== "boolean" ||
-    (input.manualReaction !== null && !isHomeworkResultReaction(input.manualReaction))) return { error: "Некорректная реакция" };
+    (input.manualReaction !== null && !isHomeworkResultReaction(input.manualReaction)) ||
+    (input.teacherNote !== undefined && typeof input.teacherNote !== "string")) return { error: "Некорректная реакция" };
   const row = await feedbackAssignment(kind, id);
   if (!row) return { error: "Домашняя работа не найдена" };
-  const settings = { ...readHomeworkFeedback(input), autoEnabled: kind === "REVISION" && input.autoEnabled };
+  const settings = { ...readHomeworkFeedback({ ...input,
+    teacherNote: input.teacherNote === undefined ? row.settings.teacherNote : input.teacherNote,
+  }), autoEnabled: kind === "REVISION" && input.autoEnabled };
   if (kind === "LESSON") {
-    const current = sql`coalesce(${lessonAssignments.answers}, '{}'::jsonb)`;
+    const current = homeworkGradeFeedbackPatchSql(lessonAssignments.answers, { [HOMEWORK_RESULT_COMMENT_KEY]: settings.teacherNote || null });
     await db.update(lessonAssignments).set({ answers: settings.manualReaction === null
       ? sql`${current} - ${HOMEWORK_OVERALL_REACTION_KEY}`
       : sql`${current} || jsonb_build_object(${HOMEWORK_OVERALL_REACTION_KEY}::text, ${settings.manualReaction}::text)`, updatedAt: new Date() })
@@ -76,6 +80,9 @@ export async function saveHomeworkFeedbackAction(kind: HomeworkFeedbackKind, id:
   }
   for (const path of ["/teacher/homeworks", "/student/homework", `/teacher/homeworks/${id}`, `/teacher/homeworks/activities/${id}`, `/teacher/homeworks/revisions/${id}`, `/student/homework/games/${id}`, `/student/homework/revision/${id}`, `/student/lessons/${id}`, "/student/class"]) revalidatePath(path);
   await publishUserRealtime(row.studentId, "homework-feedback", { kind, id });
-  if (kind === "LESSON") await Promise.all([publishClassRealtime(row.studentId, "homework-review"), publishUserRealtime(row.studentId, "homework-review")]);
-  return {};
+  if (kind === "LESSON") await Promise.all([
+    publishClassRealtime(row.studentId, "homework-review", { assignmentId: id, gradeFeedback: true }),
+    publishUserRealtime(row.studentId, "homework-review", { assignmentId: id, gradeFeedback: true }),
+  ]);
+  return { settings };
 }

@@ -14,11 +14,13 @@ export type HomeworkResultReaction = typeof HOMEWORK_RESULT_REACTIONS[number]["i
 export type HomeworkFeedbackSettings = {
   autoEnabled: boolean;
   manualReaction: HomeworkResultReaction | null;
+  teacherNote?: string;
 };
 export type HomeworkFeedbackKind = "LESSON" | "ACTIVITY" | "REVISION";
 export type HomeworkResultScore = { right: number; total: number };
 // Part of the existing reaction namespace: whole-homework Reset also clears this.
 export const HOMEWORK_OVERALL_REACTION_KEY = "hw:reaction:overall";
+export const HOMEWORK_RESULT_COMMENT_KEY = "hw:result-comment";
 
 export function isHomeworkResultReaction(value: unknown): value is HomeworkResultReaction {
   return HOMEWORK_RESULT_REACTIONS.some((reaction) => reaction.id === value);
@@ -26,15 +28,16 @@ export function isHomeworkResultReaction(value: unknown): value is HomeworkResul
 
 export function readHomeworkFeedback(value: unknown): HomeworkFeedbackSettings {
   const stored = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const teacherNote = typeof stored.teacherNote === "string" ? stored.teacherNote.trim().slice(0, 4_000) : "";
   return {
     autoEnabled: stored.autoEnabled !== false,
     manualReaction: isHomeworkResultReaction(stored.manualReaction) ? stored.manualReaction : null,
+    ...(teacherNote ? { teacherNote } : {}),
   };
 }
 
 export function lessonHomeworkFeedback(state: Record<string, string>): HomeworkFeedbackSettings {
-  return { autoEnabled: false, manualReaction: isHomeworkResultReaction(state[HOMEWORK_OVERALL_REACTION_KEY])
-    ? state[HOMEWORK_OVERALL_REACTION_KEY] : null };
+  return readHomeworkFeedback({ autoEnabled: false, manualReaction: state[HOMEWORK_OVERALL_REACTION_KEY], teacherNote: state[HOMEWORK_RESULT_COMMENT_KEY] });
 }
 
 export function homeworkResultReaction(score: HomeworkResultScore | null | undefined): HomeworkResultReaction | null {

@@ -14,7 +14,7 @@ import { publishClassRealtime, publishUserRealtime } from "@/lib/realtime-server
 import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-lesson";
 import { homeworkReactionPatchSql, homeworkReactionsResetSql } from "@/lib/homework-reaction-persistence";
 import { lessonHomeworkFeedback, type HomeworkFeedbackSettings } from "@/lib/homework-feedback";
-import { homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
+import { homeworkGradeFeedbackPatchSql, homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
 import {
   findHomeworkItem,
   assignedInteractiveHomework,
@@ -27,8 +27,7 @@ import {
   homeworkAttempts,
   homeworkAttemptsKey,
   homeworkExerciseHiddenKey,
-  homeworkExerciseCommentKey,
-  homeworkExerciseScoreKey,
+  homeworkGradeFeedbackPatch,
   homeworkExerciseProgress,
   homeworkFocusTarget,
   homeworkNoteKey,
@@ -86,10 +85,10 @@ async function requireUser() {
   return session;
 }
 
-function publishHomeworkReviewRealtime(studentId: string) {
+function publishHomeworkReviewRealtime(studentId: string, data?: Record<string, unknown>) {
   return Promise.all([
-    publishClassRealtime(studentId, "homework-review"),
-    publishUserRealtime(studentId, "homework-review"),
+    publishClassRealtime(studentId, "homework-review", data),
+    publishUserRealtime(studentId, "homework-review", data),
   ]).then(() => undefined);
 }
 
@@ -362,39 +361,35 @@ export async function clearHomeworkReactionsAction(
   return { cleared: true };
 }
 
-/** Teacher score and public feedback for one exercise. */
+/** Edit any exercise or the whole homework at any status; null restores automatic scoring. */
 export async function saveHomeworkExerciseGradeAction(
   assignmentId: string,
-  exerciseId: string,
-  suppliedScore: number,
+  exerciseId: string | null,
+  suppliedScore: number | null,
   suppliedComment: string,
 ): Promise<{ error?: string; state?: HomeworkStoredState }> {
   const session = await requireUser();
   if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  if (typeof assignmentId !== "string" || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(assignmentId)) return { error: "Домашняя работа не найдена" };
   const row = await assignmentWithPlan(String(assignmentId ?? ""));
   if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
-  const exercise = row.plan.exercises.find((item) => item.id === String(exerciseId ?? ""));
-  if (!exercise) return { error: "Упражнение не найдено" };
-  const score = Math.round(Number(suppliedScore));
-  if (!Number.isFinite(score) || score < 0 || score > 100) {
+  if (exerciseId !== null && !row.plan.exercises.some(item => item.id === exerciseId)) return { error: "Упражнение не найдено" };
+  if (suppliedScore !== null && (typeof suppliedScore !== "number" || !Number.isInteger(suppliedScore) || suppliedScore < 0 || suppliedScore > 100)) {
     return { error: "Оценка должна быть от 0 до 100" };
   }
-  const comment = String(suppliedComment ?? "").trim().slice(0, 4_000);
-  const state = { ...(row.assignment.answers ?? {}) };
-  state[homeworkExerciseScoreKey(exercise.id)] = String(score);
-  if (comment) state[homeworkExerciseCommentKey(exercise.id)] = comment;
-  else delete state[homeworkExerciseCommentKey(exercise.id)];
-
-  await db
+  const patch = homeworkGradeFeedbackPatch(exerciseId, suppliedScore, suppliedComment);
+  const [saved] = await db
     .update(lessonAssignments)
-    .set({ answers: state, updatedAt: new Date() })
-    .where(eq(lessonAssignments.id, row.assignment.id));
+    .set({ answers: homeworkGradeFeedbackPatchSql(lessonAssignments.answers, patch), updatedAt: new Date() })
+    .where(eq(lessonAssignments.id, row.assignment.id))
+    .returning({ answers: lessonAssignments.answers });
+  if (!saved) return { error: "Домашняя работа не найдена" };
   revalidatePath(`/teacher/homeworks/${row.assignment.id}`);
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   revalidatePath(`/student/lessons/${row.assignment.id}`);
   revalidatePath("/student/homework");
-  await publishHomeworkReviewRealtime(row.assignment.studentId);
-  return { state };
+  await publishHomeworkReviewRealtime(row.assignment.studentId, { assignmentId: row.assignment.id, gradeFeedback: true });
+  return { state: saved.answers };
 }
 
 /** Lightweight state refresh for review marks in an active class. */

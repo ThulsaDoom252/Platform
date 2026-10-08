@@ -454,10 +454,12 @@ export async function controlClassTimerAction(
 export async function saveClassTimerRatingAction(
   grade: ClassGameGrade,
   visible: boolean,
+  notes?: string,
 ): Promise<{ state?: ClassTimerState; error?: string }> {
   const { studentId } = await teacherWithStudent();
   if (!studentId) return { error: "Pick a student first" };
   if (!CLASS_GAME_GRADES.includes(grade)) return { error: "Choose a rating" };
+  if (notes !== undefined && typeof notes !== "string") return { error: "Invalid rating note" };
   const focus = await studentFocus(studentId);
   const current = liveClassTimerState(focus?.timerState);
   if (!current) return { error: "Open a timer first" };
@@ -473,6 +475,7 @@ export async function saveClassTimerRatingAction(
       grade,
       visible: visible === true,
       at: new Date().toISOString(),
+      ...((notes ?? current.rating?.notes ?? "").trim() ? { notes: (notes ?? current.rating?.notes ?? "").trim().slice(0, 1000) } : {}),
     },
     updatedAt: new Date().toISOString(),
   };
