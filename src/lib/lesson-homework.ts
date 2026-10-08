@@ -105,6 +105,14 @@ export type HomeworkTextHighlightRange = {
   color: HomeworkHighlightColor;
 };
 
+export type HomeworkTextHighlightTarget = {
+  itemId: string;
+  source: HomeworkTextHighlightSource;
+  start: number;
+  end: number;
+  word?: boolean;
+};
+
 export type HomeworkGradeLabel =
   | "great"
   | "good"
@@ -188,6 +196,15 @@ export function mergeHomeworkReactions(
   if (entries.length === currentKeys.length && entries.every(([key, value]) =>
     state[key] === value)) return state;
   return { ...withoutHomeworkReactions(state), ...Object.fromEntries(entries) };
+}
+
+/** Live presentation changes must not replace answers currently being written. */
+export function mergeHomeworkTextHighlights(state: HomeworkStoredState, incoming: HomeworkStoredState): HomeworkStoredState {
+  const isTextMark = (key: string) => key.startsWith(TEXT_HIGHLIGHT) || key.startsWith(TEXT_RANGE_HIGHLIGHT);
+  const entries = Object.entries(incoming).filter(([key]) => isTextMark(key));
+  const currentKeys = Object.keys(state).filter(isTextMark);
+  if (entries.length === currentKeys.length && entries.every(([key, value]) => state[key] === value)) return state;
+  return { ...Object.fromEntries(Object.entries(state).filter(([key]) => !isTextMark(key))), ...Object.fromEntries(entries) };
 }
 
 /** A reaction doubles as visual feedback for the entire reviewed block. */
@@ -667,6 +684,30 @@ export function homeworkTextHighlightRanges(
   }).sort((a, b) => a.start - b.start || a.end - b.end);
 }
 
+/** Read both historical word marks and arbitrary selected fragments without changing fonts. */
+export function homeworkTextHighlightColors(state: HomeworkStoredState, itemId: string, source: HomeworkTextHighlightSource, text: string) {
+  const colors: Array<HomeworkHighlightColor | null> = Array.from({ length: text.length }, () => null);
+  let offset = 0;
+  homeworkTextTokens(text).forEach((token, index) => {
+    const color = homeworkTextHighlight(state, itemId, source, index);
+    if (color) colors.fill(color, offset, offset + token.text.length);
+    offset += token.text.length;
+  });
+  for (const range of homeworkTextHighlightRanges(state, itemId, source, text.length)) colors.fill(range.color, range.start, range.end);
+  return colors;
+}
+
+export function homeworkHighlightSegments(text: string, colors: Array<HomeworkHighlightColor | null>) {
+  const result: Array<{ text: string; color: HomeworkHighlightColor | null }> = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const color = colors[index] ?? null;
+    const previous = result.at(-1);
+    if (previous?.color === color) previous.text += text[index];
+    else result.push({ text: text[index], color });
+  }
+  return result;
+}
+
 export function toggleHomeworkTextHighlightRange(
   state: HomeworkStoredState,
   item: HomeworkItem,
@@ -674,6 +715,8 @@ export function toggleHomeworkTextHighlightRange(
   start: number,
   end: number,
   color: HomeworkHighlightColor,
+  wordClick = false,
+  operation?: "apply" | "remove",
 ): HomeworkStoredState {
   const next = { ...state };
   const value = homeworkTextSourceValue(item, state, source);
@@ -689,18 +732,30 @@ export function toggleHomeworkTextHighlightRange(
     (color !== "yellow" && color !== "green" && color !== "red")
   ) return next;
 
-  const exact = homeworkTextRangeHighlightKey(item.id, source, start, end);
-  const removeExact = next[exact] === color;
-  const prefix = `${TEXT_RANGE_HIGHLIGHT}${item.id}:${source}:`;
-  for (const key of Object.keys(next)) {
-    if (!key.startsWith(prefix)) continue;
-    const [rangeStartRaw, rangeEndRaw] = key.slice(prefix.length).split(":");
-    const rangeStart = Number(rangeStartRaw);
-    const rangeEnd = Number(rangeEndRaw);
-    if (rangeStart < end && rangeEnd > start) delete next[key];
+  const colors = homeworkTextHighlightColors(next, item.id, source, value);
+  const selected = colors.slice(start, end);
+  const remove = operation ? operation === "remove" : wordClick ? selected.some(Boolean) : selected.every((mark) => mark === color);
+  colors.fill(remove ? null : color, start, end);
+  const cleared = clearHomeworkTextHighlights(next, item.id, source);
+  let at = 0;
+  for (const segment of homeworkHighlightSegments(value, colors)) {
+    if (segment.color) cleared[homeworkTextRangeHighlightKey(item.id, source, at, at + segment.text.length)] = segment.color;
+    at += segment.text.length;
   }
-  if (!removeExact) next[exact] = color;
-  return next;
+  return cleared;
+}
+
+/** A selection across several sentences is one gesture, not independent toggles. */
+export function toggleHomeworkTextHighlightTargets(state: HomeworkStoredState, items: HomeworkItem[], targets: HomeworkTextHighlightTarget[], color: HomeworkHighlightColor) {
+  const found = targets.flatMap((target) => {
+    const item = items.find((entry) => entry.id === target.itemId);
+    return item ? [{ item, target }] : [];
+  });
+  if (!found.length) return state;
+  const remove = found.some(({ target }) => target.word)
+    ? found.some(({ item, target }) => homeworkTextHighlightColors(state, item.id, target.source, homeworkTextSourceValue(item, state, target.source)).slice(target.start, target.end).some(Boolean))
+    : found.every(({ item, target }) => homeworkTextHighlightColors(state, item.id, target.source, homeworkTextSourceValue(item, state, target.source)).slice(target.start, target.end).every((mark) => mark === color));
+  return found.reduce((next, { item, target }) => toggleHomeworkTextHighlightRange(next, item, target.source, target.start, target.end, color, Boolean(target.word), remove ? "remove" : "apply"), state);
 }
 
 export function clearHomeworkTextHighlights(

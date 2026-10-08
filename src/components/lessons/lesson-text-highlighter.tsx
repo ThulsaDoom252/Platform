@@ -7,7 +7,10 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import type { HighlightColor } from "@/lib/lesson-unit";
+import { dialogueHighlights, type HighlightColor } from "@/lib/lesson-unit";
+import { lessonSnippetColors, toggleLessonTextFragments, type LessonHighlightSnippet, type LessonHighlightFragment } from "@/lib/lesson-text-highlights";
+import { rangeContainsPoint } from "@/lib/text-highlight-dom";
+import { useSharedHighlightTools } from "./highlight-tools";
 import { cn } from "@/lib/utils";
 
 type WordRange = {
@@ -17,6 +20,7 @@ type WordRange = {
   end: number;
   range: Range;
 };
+type TextSnippet = LessonHighlightSnippet & { node: Text; ranges: WordRange[] };
 
 type HighlightRegistry = {
   set: (name: string, value: unknown) => void;
@@ -65,7 +69,7 @@ function hash32(value: string) {
 function ignoredText(node: Text) {
   const parent = node.parentElement;
   return !parent || Boolean(parent.closest(
-    "[data-no-lesson-highlight], input, textarea, select, option, script, style, svg, canvas, video, audio, [contenteditable='true']",
+    "[data-no-lesson-highlight], input, textarea, select, option, script, style, svg, canvas, video, audio",
   ));
 }
 
@@ -77,10 +81,11 @@ function ignoredText(node: Text) {
  * scope (or explicitly ignored), so the same lesson word receives the same
  * key for teacher and student.
  */
-function collectWordRanges(root: HTMLElement): WordRange[] {
+function collectTextSnippets(root: HTMLElement): TextSnippet[] {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const collisions = new Map<string, number>();
-  const words: WordRange[] = [];
+  const snippets: TextSnippet[] = [];
+  const snippetCollisions = new Map<string, number>();
   let current = walker.nextNode();
 
   while (current) {
@@ -88,10 +93,14 @@ function collectWordRanges(root: HTMLElement): WordRange[] {
     const scope = node.parentElement?.closest<HTMLElement>("[data-lesson-highlight-scope]");
     if (scope && root.contains(scope) && !ignoredText(node)) {
       const text = node.data;
+      const scopeName = scope.dataset.lessonHighlightScope ?? "lesson";
+      const snippetFingerprint = `${scopeName}\u0000${text}`;
+      const snippetOccurrence = snippetCollisions.get(snippetFingerprint) ?? 0;
+      snippetCollisions.set(snippetFingerprint, snippetOccurrence + 1);
+      const words: WordRange[] = [];
       for (const match of text.matchAll(WORD_PATTERN)) {
         const start = match.index;
         const end = start + match[0].length;
-        const scopeName = scope.dataset.lessonHighlightScope ?? "lesson";
         const fingerprint = `${scopeName}\u0000${text}\u0000${start}\u0000${match[0].toLocaleLowerCase()}`;
         const occurrence = collisions.get(fingerprint) ?? 0;
         collisions.set(fingerprint, occurrence + 1);
@@ -99,18 +108,19 @@ function collectWordRanges(root: HTMLElement): WordRange[] {
         range.setStart(node, start);
         range.setEnd(node, end);
         words.push({
-          key: `text:${hash32(scopeName)}:${hash32(fingerprint)}:${occurrence}`,
+          key: node.parentElement?.closest<HTMLElement>("[data-lesson-highlight-key]")?.dataset.lessonHighlightKey ?? `text:${hash32(scopeName)}:${hash32(fingerprint)}:${occurrence}`,
           node,
           start,
           end,
           range,
         });
       }
+      snippets.push({ key: `text-range:${hash32(scopeName)}:${hash32(snippetFingerprint)}:${snippetOccurrence}`, text, node, words, ranges: words });
     }
     current = walker.nextNode();
   }
 
-  return words;
+  return snippets;
 }
 
 function cssHighlightApi() {
@@ -122,26 +132,13 @@ function cssHighlightApi() {
   return registry && Constructor ? { registry, Constructor } : null;
 }
 
-function caretAtPoint(x: number, y: number) {
-  const modern = document as Document & {
-    caretPositionFromPoint?: (left: number, top: number) => {
-      offsetNode: Node;
-      offset: number;
-    } | null;
-    caretRangeFromPoint?: (left: number, top: number) => Range | null;
-  };
-  const position = modern.caretPositionFromPoint?.(x, y);
-  if (position) return { node: position.offsetNode, offset: position.offset };
-  const range = modern.caretRangeFromPoint?.(x, y);
-  return range ? { node: range.startContainer, offset: range.startOffset } : null;
-}
-
 export function LessonTextHighlighter({
   children,
   marks,
   enabled,
   color,
   onHighlight,
+  onReplaceHighlights,
   className,
 }: {
   children: ReactNode;
@@ -149,25 +146,40 @@ export function LessonTextHighlighter({
   enabled: boolean;
   color: HighlightColor;
   onHighlight?: (key: string | string[]) => void;
+  onReplaceHighlights?: (layer: Record<string, HighlightColor>) => void;
   className?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const selectedRangeHandled = useRef(false);
+  const snippetsRef = useRef<TextSnippet[]>([]);
+  const marksRef = useRef(marks);
+  const tools = useSharedHighlightTools();
+  const hovered = useRef<{ element: HTMLElement; cursor: string } | null>(null);
 
   const paint = useCallback(() => {
     const root = rootRef.current;
+    if (!root) return;
+    marksRef.current = marks;
+    snippetsRef.current = collectTextSnippets(root);
     const api = cssHighlightApi();
-    if (!root || !api) return;
+    if (!api) return;
 
     const grouped: Record<HighlightColor, Range[]> = {
       yellow: [],
       green: [],
       red: [],
     };
-    for (const word of collectWordRanges(root)) {
-      const mark = marks[word.key];
-      if (mark === "yellow" || mark === "green" || mark === "red") {
-        grouped[mark].push(word.range);
+    for (const snippet of snippetsRef.current) {
+      const colors = lessonSnippetColors(marks, snippet);
+      for (let start = 0; start < colors.length;) {
+        const mark = colors[start];
+        let end = start + 1;
+        while (end < colors.length && colors[end] === mark) end += 1;
+        if (mark) {
+          const range = document.createRange();
+          range.setStart(snippet.node, start); range.setEnd(snippet.node, end);
+          grouped[mark].push(range);
+        }
+        start = end;
       }
     }
     for (const markColor of Object.keys(HIGHLIGHT_NAMES) as HighlightColor[]) {
@@ -182,7 +194,11 @@ export function LessonTextHighlighter({
     const root = rootRef.current;
     if (!root) return;
     let frame = requestAnimationFrame(paint);
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((records) => {
+      if (records.every(({ target }) => {
+        const element = target instanceof Element ? target : target.parentElement;
+        return element?.closest("[data-no-lesson-highlight]");
+      })) return;
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(paint);
     });
@@ -203,46 +219,36 @@ export function LessonTextHighlighter({
     };
   }, [paint]);
 
-  const chooseWord = (event: MouseEvent<HTMLDivElement>) => {
-    if (!enabled || !onHighlight) return;
-    if (selectedRangeHandled.current) {
-      selectedRangeHandled.current = false;
-      event.preventDefault();
-      return;
-    }
+  const wordUnderPointer = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null;
     const scope = target?.closest("[data-lesson-highlight-scope]");
-    if (!scope || target?.closest("[data-no-lesson-highlight]")) return;
-
-    const words = rootRef.current ? collectWordRanges(rootRef.current) : [];
-    const caret = caretAtPoint(event.clientX, event.clientY);
-    let word = caret
-      ? words.find((entry) => (
-          entry.node === caret.node && caret.offset >= entry.start && caret.offset <= entry.end
-        ))
-      : undefined;
-
-    if (!word) {
-      word = words.find((entry) => {
-        if (!scope.contains(entry.node.parentElement)) return false;
-        return [...entry.range.getClientRects()].some((rect) => (
-          event.clientX >= rect.left - 2 &&
-          event.clientX <= rect.right + 2 &&
-          event.clientY >= rect.top - 2 &&
-          event.clientY <= rect.bottom + 2
-        ));
-      });
+    if (!scope || target?.closest("[data-no-lesson-highlight]")) return null;
+    for (const snippet of snippetsRef.current) {
+      if (!scope.contains(snippet.node.parentElement)) continue;
+      const word = snippet.ranges.find((entry) => rangeContainsPoint(entry.range, event.clientX, event.clientY));
+      if (word) return { snippet, word };
     }
-    if (!word) return;
-
+    return null;
+  };
+  const chooseWord = (event: MouseEvent<HTMLDivElement>) => {
+    if (!enabled || tools?.tool === "select" || (!onHighlight && !onReplaceHighlights)) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    const hit = wordUnderPointer(event);
+    if (!hit) return; // Empty space must keep its normal editing/focus behavior.
     event.preventDefault();
     event.stopPropagation();
     if (event.detail > 1) return;
-    onHighlight(word.key);
+    if (onReplaceHighlights) {
+      const next = toggleLessonTextFragments(dialogueHighlights(marksRef.current), [{ snippet: hit.snippet, start: hit.word.start, end: hit.word.end }], color, true);
+      marksRef.current = next;
+      onReplaceHighlights(next);
+    }
+    else onHighlight?.(hit.word.key);
   };
 
-  const chooseSelection = (event: MouseEvent<HTMLDivElement>) => {
-    if (!enabled || !onHighlight || !rootRef.current) return;
+  const chooseSelection = () => {
+    if (!enabled || tools?.tool !== "select" || !onReplaceHighlights || !rootRef.current) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
     const selected = selection.getRangeAt(0);
@@ -250,27 +256,46 @@ export function LessonTextHighlighter({
       !rootRef.current.contains(selected.startContainer) ||
       !rootRef.current.contains(selected.endContainer)
     ) return;
-    const keys = collectWordRanges(rootRef.current)
-      .filter((word) => {
-        const scope = word.node.parentElement?.closest("[data-lesson-highlight-scope]");
-        if (!scope) return false;
-        return selected.compareBoundaryPoints(Range.END_TO_START, word.range) > 0 &&
-          selected.compareBoundaryPoints(Range.START_TO_END, word.range) < 0;
-      })
-      .map((word) => word.key);
-    if (keys.length === 0) return;
-    selectedRangeHandled.current = true;
-    event.preventDefault();
-    event.stopPropagation();
-    onHighlight([...new Set(keys)]);
-    selection.removeAllRanges();
+    const fragments: LessonHighlightFragment[] = [];
+    for (const snippet of snippetsRef.current) {
+      if (!selected.intersectsNode(snippet.node)) continue;
+      const contents = document.createRange(); contents.selectNodeContents(snippet.node);
+      const intersection = selected.cloneRange();
+      if (selected.compareBoundaryPoints(Range.START_TO_START, contents) < 0) intersection.setStart(snippet.node, 0);
+      if (selected.compareBoundaryPoints(Range.END_TO_END, contents) > 0) intersection.setEnd(snippet.node, snippet.text.length);
+      const start = intersection.startOffset; const end = intersection.endOffset;
+      if (end > start && snippet.text.slice(start, end).trim()) fragments.push({ snippet, start, end });
+    }
+    if (!fragments.length) return;
+    tools.select((nextColor) => {
+      const next = toggleLessonTextFragments(dialogueHighlights(marksRef.current), fragments, nextColor);
+      marksRef.current = next;
+      onReplaceHighlights(next);
+    });
   };
+
+  const clearCursor = () => {
+    if (hovered.current) hovered.current.element.style.cursor = hovered.current.cursor;
+    hovered.current = null;
+  };
+  useEffect(() => () => {
+    if (hovered.current) hovered.current.element.style.cursor = hovered.current.cursor;
+    hovered.current = null;
+  }, [enabled, tools?.tool]);
 
   return (
     <div
       ref={rootRef}
       onClickCapture={chooseWord}
       onMouseUpCapture={chooseSelection}
+      onInputCapture={(event) => { if (event.target instanceof HTMLElement && event.target.isContentEditable) paint(); }}
+      onMouseLeave={clearCursor}
+      onMouseMoveCapture={(event) => {
+        clearCursor();
+        if (!enabled || tools?.tool === "select" || !wordUnderPointer(event) || !(event.target instanceof HTMLElement)) return;
+        hovered.current = { element: event.target, cursor: event.target.style.cursor };
+        event.target.style.cursor = "pointer";
+      }}
       data-highlight-color={enabled ? color : undefined}
       className={cn(enabled && "lesson-word-highlight-active", className)}
     >

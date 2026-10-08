@@ -669,7 +669,6 @@ function Transcript({
             key={i}
             className={cn(
               "relative rounded-2xl bg-surface p-3 ring-1 ring-line transition",
-              highlightMode && "pr-24",
               phraseMarked === GREEN_HIGHLIGHT
                 ? "bg-emerald-300 ring-emerald-500/70"
                 : phraseMarked === RED_HIGHLIGHT
@@ -700,6 +699,7 @@ function Transcript({
                 return (
                   <span
                     key={at}
+                    data-lesson-highlight-key={wKey}
                     ref={focus === wKey ? focusedWord : undefined}
                     onClick={
                       highlightMode && onHighlight

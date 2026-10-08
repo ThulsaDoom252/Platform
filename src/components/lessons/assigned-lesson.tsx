@@ -39,6 +39,7 @@ import {
 import { LessonView } from "@/components/lessons/lesson-view";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { LessonTextHighlighter } from "@/components/lessons/lesson-text-highlighter";
+import { HighlightToolButtons, HighlightToolsContext, useHighlightTools } from "./highlight-tools";
 const LiveLessonEditor = dynamic(() => import("@/components/lessons/live-lesson-editor").then((m) => m.LiveLessonEditor));
 import { IconPencil, IconReset, IconTrash, IconVolume } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -81,8 +82,9 @@ export function AssignedLesson({
   const { t } = useT();
   const [marks, setMarks] = useState(data.assignment.highlights);
   const [british, setBritish] = useState(data.showBritish);
-  const [highlightMode, setHighlightMode] = useState(false);
-  const [highlightColor, setHighlightColor] = useState<HighlightColor>("yellow");
+  const highlightTools = useHighlightTools();
+  const highlightMode = highlightTools.enabled;
+  const highlightColor = highlightTools.color;
   const [highlightHistorySize, setHighlightHistorySize] = useState(0);
   const [vocabularyReveal, setVocabularyReveal] = useState(data.vocabularyReveal);
   const [editingLesson, setEditingLesson] = useState(false);
@@ -159,6 +161,14 @@ export function AssignedLesson({
     marksRef.current = next;
     setMarks(next);
     persistHighlights(next);
+  };
+
+  const replaceHighlightedText = (layer: Record<string, HighlightColor>) => {
+    const previousLayer = dialogueHighlights(marksRef.current);
+    if (JSON.stringify(previousLayer) === JSON.stringify(layer)) return;
+    highlightHistory.current.push(previousLayer);
+    setHighlightHistorySize(highlightHistory.current.length);
+    commitHighlights(replaceLessonHighlights(marksRef.current, layer));
   };
 
   const highlight = (key: string | string[]) => {
@@ -264,63 +274,9 @@ export function AssignedLesson({
       className="sticky top-20 z-30 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/95 px-3 py-2 shadow-lg backdrop-blur-md"
     >
       <span className="mr-auto text-[12px] font-semibold text-muted">
-        {highlightMode
-          ? t.lessonUnits.highlightModeHint
-          : t.interactiveHomework.reviewHighlightOffHint}
+        {t.interactiveHomework.highlightToolsHint}
       </span>
-      <button
-        type="button"
-        onClick={() => setHighlightMode((value) => !value)}
-        aria-pressed={highlightMode}
-        className={cn(
-          "flex h-9 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold ring-1 transition",
-          highlightMode
-            ? "bg-yellow-300 text-slate-950 ring-yellow-500 shadow-sm"
-            : "bg-surface text-muted ring-line hover:text-content hover:ring-accent/50",
-        )}
-      >
-        <span aria-hidden>🖍️</span>
-        {t.lessonUnits.highlightMode}
-      </button>
-      <div className={cn(
-        "flex items-center gap-1 rounded-lg bg-surface p-1 ring-1 ring-line transition",
-        !highlightMode && "opacity-45",
-      )}>
-        {(["yellow", "green", "red"] as const).map((color) => (
-          <button
-            key={color}
-            type="button"
-            disabled={!highlightMode}
-            onClick={() => setHighlightColor(color)}
-            aria-pressed={highlightMode && highlightColor === color}
-            aria-label={
-              color === "yellow"
-                ? t.lessonUnits.highlightYellow
-                : color === "green"
-                  ? t.lessonUnits.highlightGreen
-                  : t.interactiveHomework.highlightRed
-            }
-            title={
-              color === "yellow"
-                ? t.lessonUnits.highlightYellow
-                : color === "green"
-                  ? t.lessonUnits.highlightGreen
-                  : t.interactiveHomework.highlightRed
-            }
-            className={cn(
-              "h-5 w-5 rounded-full transition enabled:hover:scale-110 disabled:cursor-default",
-              color === "yellow"
-                ? "bg-yellow-300"
-                : color === "green"
-                  ? "bg-emerald-400"
-                  : "bg-rose-500",
-              highlightMode && highlightColor === color
-                ? "ring-2 ring-accent ring-offset-2 ring-offset-surface"
-                : "ring-1 ring-black/10",
-            )}
-          />
-        ))}
-      </div>
+      <HighlightToolButtons tools={highlightTools} />
       <button
         type="button"
         disabled={busy || highlightHistorySize === 0}
@@ -361,11 +317,13 @@ export function AssignedLesson({
 
   if (data.lesson.kind === "REGULAR") {
     return (
+      <HighlightToolsContext.Provider value={highlightTools}>
       <LessonTextHighlighter
         marks={marks}
         enabled={teacher && highlightMode}
         color={highlightColor}
         onHighlight={teacher ? highlight : undefined}
+        onReplaceHighlights={teacher ? replaceHighlightedText : undefined}
       >
         <div className="flex flex-col gap-4">
           {topic}
@@ -428,6 +386,7 @@ export function AssignedLesson({
           />
         </div>
       </LessonTextHighlighter>
+      </HighlightToolsContext.Provider>
     );
   }
   const activitySectionFocus =
@@ -437,11 +396,13 @@ export function AssignedLesson({
   const lessonSections = lessonSectionsForKind(data.lesson.kind);
 
   return (
+    <HighlightToolsContext.Provider value={highlightTools}>
     <LessonTextHighlighter
       marks={marks}
       enabled={teacher && highlightMode}
       color={highlightColor}
       onHighlight={teacher ? highlight : undefined}
+      onReplaceHighlights={teacher ? replaceHighlightedText : undefined}
     >
       <div className="flex flex-col gap-4">
         {topic}
@@ -502,5 +463,6 @@ export function AssignedLesson({
         />
       </div>
     </LessonTextHighlighter>
+    </HighlightToolsContext.Provider>
   );
 }

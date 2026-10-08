@@ -406,7 +406,8 @@ export function isDialogueHighlightKey(key: string): boolean {
  * assignment through the public Server Action.
  */
 export function isLessonTextHighlightKey(key: string): boolean {
-  return /^text:[a-f0-9]{8}:[a-f0-9]{8}:\d{1,4}$/.test(String(key ?? ""));
+  return /^text:[a-f0-9]{8}:[a-f0-9]{8}:\d{1,4}$/.test(String(key ?? "")) ||
+    /^text-range:[a-f0-9]{8}:[a-f0-9]{8}:\d{1,4}:\d{1,6}:\d{1,6}$/.test(String(key ?? ""));
 }
 
 export function isLessonHighlightKey(key: string): boolean {

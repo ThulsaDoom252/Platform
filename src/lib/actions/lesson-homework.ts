@@ -65,6 +65,7 @@ import {
   toggleHomeworkHighlight,
   toggleHomeworkTextHighlight,
   toggleHomeworkTextHighlightRange,
+  toggleHomeworkTextHighlightTargets,
   withoutAssignedHomeworkState,
   withoutHomeworkExerciseState,
   withoutHomeworkProgressState,
@@ -72,6 +73,7 @@ import {
   type HomeworkReaction,
   type HomeworkReactionTarget,
   type HomeworkTextHighlightSource,
+  type HomeworkTextHighlightTarget,
   type InteractiveHomeworkPlan,
   type HomeworkExerciseKind,
   type HomeworkStoredState,
@@ -244,6 +246,38 @@ export async function highlightHomeworkTextRangeAction(
   revalidatePath("/student/homework");
   await publishHomeworkReviewRealtime(row.assignment.studentId);
   return { state };
+}
+
+/** One selection can span several prompts/answers; save the entire gesture atomically. */
+export async function highlightHomeworkTextRangesAction(
+  assignmentId: string,
+  targets: HomeworkTextHighlightTarget[],
+  color: HomeworkHighlightColor,
+): Promise<{ error?: string; state?: HomeworkStoredState }> {
+  const session = await requireUser();
+  if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  if (!["yellow", "green", "red"].includes(color) || !Array.isArray(targets) || !targets.length || targets.length > 400) return { error: "Выдели текст" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
+  const result = await db.transaction(async (tx) => {
+    const [saved] = await tx.select({ answers: lessonAssignments.answers }).from(lessonAssignments)
+      .where(eq(lessonAssignments.id, row.assignment.id)).for("update");
+    if (!saved) return { error: "Домашняя работа не найдена" };
+    const current = saved.answers ?? {};
+    for (const target of targets) {
+      if (!target || typeof target !== "object") return { error: "Выдели текст" };
+      const found = findHomeworkItem(row.plan, String(target.itemId ?? ""));
+      if (!found || !["word", "prompt", "prompt-before", "prompt-after", "answer"].includes(target.source)) return { error: "Предложение не найдено" };
+      const text = homeworkTextSourceValue(found.item, current, target.source);
+      if (!Number.isInteger(target.start) || !Number.isInteger(target.end) || target.start < 0 || target.end <= target.start || target.end > text.length || !text.slice(target.start, target.end).trim()) return { error: "Выдели текст в предложении" };
+    }
+    const state = toggleHomeworkTextHighlightTargets(current, row.plan.exercises.flatMap((exercise) => exercise.items), targets, color);
+    await tx.update(lessonAssignments).set({ answers: state, updatedAt: new Date() }).where(eq(lessonAssignments.id, row.assignment.id));
+    return { state };
+  });
+  if (result.error) return result;
+  await publishHomeworkReviewRealtime(row.assignment.studentId);
+  return result;
 }
 
 /** Учитель отправляет одну реакцию на всё упражнение или конкретное предложение. */
