@@ -1,0 +1,60 @@
+// Server-side answer key. Never imported by the public catalog or Client Components.
+import type { TestAnswerKey, TestText } from "./types";
+
+const text = (en: string, ru: string, uk: string): TestText => ({ en, ru, uk });
+const condition = text("An imaginary present or future condition uses if + past simple, not would/will or the present simple. The past form expresses an unreal situation, not past time.", "Воображаемое условие в настоящем или будущем: if + Past Simple, без would/will и не Present Simple. Прошедшая форма здесь обозначает нереальную ситуацию, а не прошлое время.", "Уявна умова в теперішньому або майбутньому: if + Past Simple, без would/will і не Present Simple. Минула форма тут позначає нереальну ситуацію, а не минулий час.");
+const result = text("The imagined result uses would + the base verb (negative: would not / wouldn't). A plain past form describes a past event; will describes a real future result; had + participle refers to an earlier past.", "Воображаемый результат: would + начальная форма глагола (отрицание: would not / wouldn't). Просто прошедшая форма описывает прошлое событие; will — реальное будущее; had + причастие — более раннее прошлое.", "Уявний результат: would + початкова форма дієслова (заперечення: would not / wouldn't). Просто минула форма описує минулу подію; will — реальне майбутнє; had + дієприкметник — раніше минуле.");
+const question = text("A question about an imagined result uses would + subject + base verb: would you date/do/travel...? The if-clause uses the past simple or could.", "Вопрос о воображаемом результате: would + подлежащее + начальная форма — would you date/do/travel...? В части с if нужен Past Simple или could.", "Питання про уявний результат: would + підмет + початкова форма — would you date/do/travel...? У частині з if потрібен Past Simple або could.");
+const advice = text("Use the standard advice expression 'If I were you'. Were is the expected form here, not was, did or would be. The result uses would + base verb.", "Для совета используется стандартное выражение If I were you («на твоём месте»). Здесь ожидается were, а не was, did или would be. Результат: would + начальная форма.", "Для поради вживаємо стандартний вислів If I were you («на твоєму місці»). Тут очікується were, а не was, did або would be. Результат: would + початкова форма.");
+const modal = text("Might + base verb expresses a possible imagined result. After a hypothetical if-clause, do not use will or a plain past verb for that result.", "Might + начальная форма выражает возможный воображаемый результат. После гипотетического условия с if этот результат не выражается через will или просто глагол в прошедшем времени.", "Might + початкова форма виражає можливий уявний результат. Після гіпотетичної умови з if цей результат не виражаємо через will або просто дієслово в минулому часі.");
+const paired = text("Fill the two gaps in order: the result uses would + base verb and the condition after if uses past simple. Do not put would in both clauses or swap these forms.", "Заполни оба пропуска по порядку: результат — would + начальная форма, условие после if — Past Simple. Не ставь would в обеих частях и не меняй формы местами.", "Заповни обидва пропуски за порядком: результат — would + початкова форма, умова після if — Past Simple. Не став would в обох частинах і не міняй форми місцями.");
+const pastBe = text("The hypothetical condition needs the past of be. With you or a plural subject use were, not was, did or would be. With I/he/she/it, both were and informal was can be used.", "В гипотетическом условии нужна прошедшая форма be. С you или множественным числом — were, а не was, did или would be. С I/he/she/it возможны were и разговорное was.", "У гіпотетичній умові потрібна минула форма be. З you або множиною — were, а не was, did або would be. З I/he/she/it можливі were й розмовне was.");
+
+export const SECOND_CONDITIONAL_KEY: TestAnswerKey = {
+  "exercise-1": {
+    q1: { answer: "had", rule: condition, reasons: { "would have": condition, have: condition } },
+    q2: { answer: "wouldn't give up", rule: result, reasons: { "didn't give up": result, "hadn't given up": result } },
+    q3: { answer: "would you", rule: question, reasons: { "had you": question, "did you": question } },
+    q4: { answer: "donated", rule: condition, reasons: { "would donate": condition, donate: condition } },
+    q5: { answer: "were", rule: pastBe, reasons: { did: pastBe, "would be": condition } },
+    q6: { answer: "wouldn't worry", rule: advice, reasons: { "didn't worry": result, "hadn't worried": result } },
+    q7: { answer: "might have", rule: modal, reasons: { "will have": modal, had: modal } },
+    q8: { answer: "had", rule: text("Unless means 'if not'. In this imaginary condition, use the past simple: unless I had a real emergency. Would/will belongs in the result, not this condition.", "Unless означает «если не». В этом воображаемом условии нужен Past Simple: unless I had a real emergency. Would/will относится к результату, а не к этому условию.", "Unless означає «якщо не». У цій уявній умові потрібен Past Simple: unless I had a real emergency. Would/will належить до результату, а не до цієї умови."), reasons: { "will have": condition, "would have": condition } },
+    q9: { answer: "wouldn't have", rule: result, reasons: { "hadn't had": result, "didn't have": result } },
+    q10: { answer: "didn't make", rule: condition, reasons: { "won't make": condition, "wouldn't make": condition } },
+  },
+  "exercise-2": {
+    q1: { answer: "were", rule: advice, reasons: { was: advice, did: pastBe } },
+    q2: { answer: ["might get", "would get"], rule: text("Choose BOTH might get and would get: might expresses a possible imagined result; would expresses its expected consequence. Can get is not the hypothetical form here.", "Выбери ОБА варианта: might get и would get. Might выражает возможный воображаемый результат, would — ожидаемое следствие. Can get здесь не является гипотетической формой.", "Вибери ОБИДВА варіанти: might get і would get. Might виражає можливий уявний результат, would — очікуваний наслідок. Can get тут не є гіпотетичною формою."), reasons: { "can get": modal } },
+    q3: { answer: "would feel / lost", rule: paired, reasons: { "felt / would lose": paired, "would feel / would lose": condition } },
+    q4: { answer: "wouldn't get", rule: result, reasons: { "didn't get": result, "won't get": result } },
+    q5: { answer: "opened", rule: text("A polite request with 'Would you mind if I ...?' uses the past simple after if: opened. It describes an imagined action, not a completed past event.", "В вежливой просьбе Would you mind if I ...? после if нужен Past Simple: opened. Это воображаемое действие, а не завершённое событие в прошлом.", "У ввічливому проханні Would you mind if I ...? після if потрібен Past Simple: opened. Це уявна дія, а не завершена подія в минулому."), reasons: { open: condition, "would open": condition } },
+    q6: { answer: "'d help / allowed", rule: paired, reasons: { "helped / 'd allow": paired, "'d help / allow": condition } },
+    q7: { answer: "would look", rule: result, reasons: { looked: result, "had looked": result } },
+    q8: { answer: ["could travel", "might travel"], rule: text("Choose BOTH could travel and might travel. Could expresses hypothetical ability; might expresses hypothetical possibility. Travelled alone does not express this imagined result.", "Выбери ОБА варианта: could travel и might travel. Could — гипотетическая возможность/способность; might — вероятность. Одно travelled не выражает этот воображаемый результат.", "Вибери ОБИДВА варіанти: could travel і might travel. Could — гіпотетична можливість/здатність; might — імовірність. Одне travelled не виражає цей уявний результат."), reasons: { travelled: result } },
+    q9: { answer: "would you like / weren't", rule: text("The question needs would + you + like. After if, the past of be agrees with you: weren't (were not), never wasn't. Wouldn't be is not the past-simple condition.", "В вопросе нужно would + you + like. После if прошедшая форма be согласуется с you: weren't (were not), не wasn't. Wouldn't be не является условием в Past Simple.", "У питанні потрібно would + you + like. Після if минула форма be узгоджується з you: weren't (were not), не wasn't. Wouldn't be не є умовою в Past Simple."), reasons: { "would you like / wasn't": pastBe, "did you like / wouldn't be": paired } },
+    q10: { answer: "were / would be", rule: text("The condition comes first: if drugs were legal (plural subject + were). The imagined result is the world would be safer. 'd be means would be and cannot replace were in this if-clause.", "Сначала условие: if drugs were legal (множественное число + were). Воображаемый результат: the world would be safer. 'd be означает would be и не заменяет were в этой части с if.", "Спочатку умова: if drugs were legal (множина + were). Уявний результат: the world would be safer. 'd be означає would be і не замінює were в цій частині з if."), reasons: {} },
+  },
+  "exercise-3": {
+    q1: { answer: "would you travel", rule: question, reasons: {} },
+    q2: { answer: "could", rule: text("Use could, the past/modal form of can, for hypothetical ability after if. Not can, would can or would be able: the given verb is can.", "Для гипотетической возможности после if нужна форма could от can. Не can, would can или would be able: дан глагол can.", "Для гіпотетичної можливості після if потрібна форма could від can. Не can, would can або would be able: дано дієслово can."), reasons: {} },
+    q3: { answer: "would you do", rule: question, reasons: {} },
+    q4: { answer: "were", rule: pastBe, reasons: {} },
+    q5: { answer: "knew", rule: condition, reasons: {} },
+    q6: { answer: "would tell", acceptedAnswers: ["'d tell"], rule: result, reasons: {} },
+    q7: { answer: "would have", acceptedAnswers: ["'d have"], rule: result, reasons: {} },
+    q8: { answer: "spoke", rule: condition, reasons: {} },
+    q9: { answer: "would never forgive", acceptedAnswers: ["'d never forgive"], rule: text("Use would + never + base verb: would never forgive. Never normally goes between the modal would and the main verb; the condition after if uses past simple.", "Нужно would + never + начальная форма: would never forgive. Never обычно стоит между модальным would и основным глаголом; условие после if — в Past Simple.", "Потрібно would + never + початкова форма: would never forgive. Never зазвичай стоїть між модальним would та основним дієсловом; умова після if — у Past Simple."), reasons: {} },
+    q10: { answer: "were not", acceptedAnswers: ["weren't", "was not", "wasn't"], rule: pastBe, reasons: {} },
+    q11: { answer: "would be", acceptedAnswers: ["'d be"], rule: result, reasons: {} },
+    q12: { answer: "had", rule: condition, reasons: {} },
+    q13: { answer: "found", rule: condition, reasons: {} },
+    q14: { answer: "would you do", rule: question, reasons: {} },
+    q15: { answer: "did not criticise", acceptedAnswers: ["didn't criticise", "did not criticize", "didn't criticize"], rule: text("A negative past-simple condition uses did not / didn't + base verb: criticise (also spelled criticize). Do not add -d after didn't or put would in the if-clause.", "Отрицательное условие в Past Simple: did not / didn't + начальная форма — criticise (также пишется criticize). После didn't не добавляем -d и не ставим would в части с if.", "Заперечна умова в Past Simple: did not / didn't + початкова форма — criticise (також пишеться criticize). Після didn't не додаємо -d і не ставимо would у частині з if."), reasons: {} },
+    q16: { answer: "would have", acceptedAnswers: ["'d have"], rule: result, reasons: {} },
+    q17: { answer: "got", rule: condition, reasons: {} },
+    q18: { answer: "would go", acceptedAnswers: ["'d go"], rule: result, reasons: {} },
+    q19: { answer: "would not travel", acceptedAnswers: ["wouldn't travel", "'d not travel"], rule: result, reasons: {} },
+    q20: { answer: "did not have", acceptedAnswers: ["didn't have"], rule: condition, reasons: {} },
+  },
+};

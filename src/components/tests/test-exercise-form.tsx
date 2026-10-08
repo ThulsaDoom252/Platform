@@ -35,6 +35,14 @@ export function TestExerciseQuestions({ testId, exercise, answers, busy, onAnswe
           </label>;
         })}
       </div>
+    </fieldset> : question.prompt ? <fieldset className="min-w-0 flex-1">
+      <legend className="text-sm leading-loose text-content sm:text-base">{question.prompt}</legend>
+      <div className="mt-2 flex flex-wrap gap-2">{question.options.map((option) => {
+        const checked = answers[question.id] === option;
+        return <label key={option} className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition ${checked ? "border-accent bg-accent-soft text-accent" : "border-line bg-surface-2 text-content"}`}>
+          <input type="radio" name={fieldId(question)} value={option} checked={checked} disabled={busy} onChange={() => onAnswer(question.id, option)} className="h-4 w-4 accent-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40" />{option}
+        </label>;
+      })}</div>
     </fieldset> : <label className="min-w-0 flex-1 text-sm leading-[2.8] text-content sm:text-base" htmlFor={fieldId(question)}>
       {question.before}{renderField(question, index + 1)}{question.after}
     </label>}

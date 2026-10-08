@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import { config } from "dotenv";
 import { SignJWT } from "jose";
 import { Pool } from "pg";
-import { FIRST_CONDITIONAL } from "../src/lib/tests/catalog";
+import { FIRST_CONDITIONAL, SECOND_CONDITIONAL } from "../src/lib/tests/catalog";
 import { FIRST_CONDITIONAL_KEY } from "../src/lib/tests/grading";
+import { SECOND_CONDITIONAL_KEY } from "../src/lib/tests/second-conditional-key";
 
 async function main() {
   const base = process.argv[2] ?? "http://localhost:3100";
@@ -71,7 +72,27 @@ async function main() {
     assert.equal((html.match(/data-test-question=/g) ?? []).length, 10);
     assert.ok(html.includes("Check the answers"));
     assert.ok(!html.includes(FIRST_CONDITIONAL_KEY["exercise-1"].q6.reasons["does get"].en));
-    console.log("PASS: all three exercises, teacher/student authorization, 0/80/90/100 scores, double choices, contractions, omissions, input validation, real page and private answer keys");
+    for (const exercise of SECOND_CONDITIONAL.exercises) {
+      const correctAnswers = Object.fromEntries(Object.entries(SECOND_CONDITIONAL_KEY[exercise.id]).map(([id, item]) => [id, item.answer]));
+      for (const [answers, percent] of [[{}, 0], [correctAnswers, 100]] as const) {
+        const result = await call("checkPracticeTestAction", [SECOND_CONDITIONAL.id, { exerciseId: exercise.id, answers }], "TEACHER");
+        assert.equal(result.ok, true); assert.equal(result.value.percent, percent); assert.equal(result.value.total, exercise.questions.length);
+      }
+    }
+    const secondConditionalText = Object.fromEntries(Object.entries(SECOND_CONDITIONAL_KEY["exercise-3"]).map(([id, item]) => [id, item.answer]));
+    assert.equal((await call("checkPracticeTestAction", [SECOND_CONDITIONAL.id, { exerciseId: "exercise-3", answers: { ...secondConditionalText, q10: " WASN’T ", q15: "didn’t criticize", q19: "wouldn’t travel" } }], "TEACHER")).value.percent, 100);
+    assert.equal((await call("checkPracticeTestAction", [SECOND_CONDITIONAL.id, { exerciseId: "exercise-2", answers: { q2: ["might get", "can get", "would get"] } }], "TEACHER")).error, "invalid");
+    assert.equal((await call("checkPracticeTestAction", [SECOND_CONDITIONAL.id, { exerciseId: "exercise-1", answers: {} }], "STUDENT")).error, "forbidden");
+    const secondPage = await fetch(`${base}/teacher/tests/second-conditional`, { headers: { cookie: `ewv_session=${tokens.get("TEACHER")}` } });
+    assert.equal(secondPage.status, 200);
+    const secondHtml = await secondPage.text();
+    assert.equal((secondHtml.match(/data-test-question=/g) ?? []).length, 10);
+    assert.ok(secondHtml.includes("Second conditional"));
+    assert.ok(!secondHtml.includes(SECOND_CONDITIONAL_KEY["exercise-1"].q1.rule.en));
+    const libraryPage = await fetch(`${base}/teacher/tests?level=b1&category=grammar`, { headers: { cookie: `ewv_session=${tokens.get("TEACHER")}` } });
+    assert.equal(libraryPage.status, 200);
+    assert.ok((await libraryPage.text()).includes('data-library-test="second-conditional"'));
+    console.log("PASS: First and Second conditional, all six exercises, teacher/student authorization, scoring, double and paired choices, contractions, omissions, input validation, real pages and private answer keys");
   } finally { await pool.end(); }
 }
 main().catch((error: unknown) => { console.error("Test integration failed", { type: (error as Error).name, message: (error as Error).message }); process.exitCode = 1; });

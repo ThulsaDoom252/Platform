@@ -1,5 +1,6 @@
 // Imported only by server actions and tests, never by a Client Component.
 import type { TestAnswer, TestAnswerKey, TestAnswers, TestDefinition, TestExerciseResult, TestText } from "./types";
+import { SECOND_CONDITIONAL_KEY } from "./second-conditional-key";
 
 const text = (en: string, ru: string, uk: string): TestText => ({ en, ru, uk });
 const future = text("The main clause describes a real future result: use will + the base verb. The time clause uses the present simple.", "Главная часть описывает реальный будущий результат: will + начальная форма глагола. В придаточной части времени — Present Simple.", "Головна частина описує реальний майбутній результат: will + початкова форма дієслова. У підрядній частині часу — Present Simple.");
@@ -51,6 +52,7 @@ export const FIRST_CONDITIONAL_KEY: TestAnswerKey = { "exercise-1": {
 } };
 
 export function libraryTestKey(testId: string, version: number): TestAnswerKey | null {
+  if (testId === "second-conditional") return version === 1 ? SECOND_CONDITIONAL_KEY : null;
   if (testId !== "first-conditional") return null;
   if (version === 1) return { "exercise-1": FIRST_CONDITIONAL_KEY["exercise-1"] };
   return version === 2 ? FIRST_CONDITIONAL_KEY : null;

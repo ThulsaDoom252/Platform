@@ -5,6 +5,8 @@ export type TestText = Record<Locale, string>;
 export type TestQuestion = {
   id: string; before: string; after: string; options: string[];
   kind?: "single" | "multiple" | "text"; selectionCount?: number;
+  /** A complete sentence for one choice that fills two gaps together. */
+  prompt?: string;
 };
 export type TestPassagePart = { text: string } | { questionId: string };
 export type TestExercise = {

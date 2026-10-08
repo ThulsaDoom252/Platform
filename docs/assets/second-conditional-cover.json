@@ -1,0 +1,9 @@
+{
+  "method": "built-in imagegen",
+  "source": "codex-clipboard-ec542307-8044-4427-b7dd-83f0f14f0724.png",
+  "asset": "public/images/tests/second-conditional-v1.webp",
+  "width": 1200,
+  "height": 600,
+  "bytes": 58730,
+  "prompt": "Use case: identity-preserve.\nAsset type: wide 2:1 raster cover for the B1 Grammar test Second conditional.\nInput image 1: edit target, the user's low-resolution cartoon test thumbnail.\nPrimary request: faithfully redraw and improve this thumbnail at high resolution with crisp line art, clean readable typography, and balanced spacing.\nScene/backdrop: solid deep cranberry red, matching the original.\nSubject: preserve the two original cartoon characters and their outfits: smiling poor blond man in a patched pale suit and battered light-green tall hat at the left, pointing toward the rich man; reserved rich blond man wearing a navy formal suit and dark tall top hat with a cane at the right.\nStyle/medium: polished flat editorial cartoon, retain the original expressive proportions and simple black outlines.\nComposition/framing: landscape 2:1, preserve left character, centered large multiline quote, right character, and small blue circular B1 badge in the upper-right. Fit complete characters with comfortable padding, no clipped feet or hats.\nText (verbatim): \"I'm glad to be poor. If I was rich, I would be like him!\"\nRender this exact sentence once, including \"was\", in large bold friendly sans-serif. \"I'm glad to be poor.\" in warm white and \"If I was rich, I would be like him!\" in pale yellow. Preserve the wording, do not change was to were. Badge text: \"B1\"; use decorative circular rings, no tiny extra writing.\nConstraints: improve sharpness and typography, preserve the original characters, composition, red palette and exact quote; no new characters, no extra slogans, no watermarks or unrelated logos; no blur, text errors, overlapping text, cropped characters or transparent background."
+}

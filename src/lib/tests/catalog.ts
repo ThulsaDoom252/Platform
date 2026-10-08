@@ -1,4 +1,6 @@
 import type { TestCatalogEntry } from "./types";
+import { SECOND_CONDITIONAL } from "./second-conditional";
+export { SECOND_CONDITIONAL } from "./second-conditional";
 
 export const FIRST_CONDITIONAL: TestCatalogEntry = {
   id: "first-conditional", version: 2, level: "b1", category: "grammar",
@@ -56,5 +58,5 @@ export const FIRST_CONDITIONAL: TestCatalogEntry = {
   ],
 };
 
-export const TEST_CATALOG: TestCatalogEntry[] = [FIRST_CONDITIONAL];
+export const TEST_CATALOG: TestCatalogEntry[] = [FIRST_CONDITIONAL, SECOND_CONDITIONAL];
 export function findLibraryTest(id: string) { return TEST_CATALOG.find((test) => test.id === id) ?? null; }

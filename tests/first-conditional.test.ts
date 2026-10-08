@@ -19,7 +19,7 @@ const correct = Object.fromEntries(Object.entries(key[exercise.id]).map(([id, it
 test("First conditional is in B1 Grammar with three published exercises and 35 questions", () => {
   assert.equal(findLibraryTest("first-conditional"), definition);
   assert.equal(findLibraryTest("unknown"), null);
-  assert.equal(TEST_CATALOG.filter((item) => item.level === "b1" && item.category === "grammar").length, 1);
+  assert.equal(TEST_CATALOG.filter((item) => item.id === definition.id && item.level === "b1" && item.category === "grammar").length, 1);
   assert.deepEqual(definition.exercises.map((item) => item.number), [1, 2, 3]);
   assert.equal(new Set(definition.exercises.map((item) => item.id)).size, 3);
   assert.equal(exercise.questions.length, 10);
