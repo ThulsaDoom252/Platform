@@ -29,6 +29,7 @@ import {
   effectiveRegularExerciseOverride,
   regularExerciseDeleted,
   regularHomeworkExerciseId,
+  regularLessonReaderSections,
   regularNoteKey,
   regularNoteVisibleKey,
   regularResponseKey,
@@ -349,7 +350,7 @@ export function RegularLessonView({
   const router = useRouter();
   const [busy, startBusy] = useTransition();
   const available = useMemo(
-    () => sections.filter((section) => teacher || !section.teacherOnly),
+    () => regularLessonReaderSections(sections, teacher),
     [sections, teacher],
   );
   const first = available.find((section) => open.includes(regularSectionKey(section.id))) ??

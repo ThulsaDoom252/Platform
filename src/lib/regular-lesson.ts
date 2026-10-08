@@ -63,6 +63,11 @@ export type RegularLessonSection = {
   exerciseOverrides?: Record<string, RegularExerciseOverride>;
 };
 
+/** Keep stored teacher notes for editing, but omit their tab from lesson readers. */
+export function regularLessonReaderSections(sections: RegularLessonSection[], teacher: boolean) {
+  return sections.filter((section) => section.tone !== "teacher" && (teacher || !section.teacherOnly));
+}
+
 const TONES = new Set<RegularLessonTone>([
   "warm",
   "vocab",

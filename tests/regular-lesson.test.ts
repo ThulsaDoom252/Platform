@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   addRegularLessonFocusIds,
   defaultRegularOpenSections,
@@ -12,6 +13,7 @@ import {
   regularExerciseOverrideKey,
   regularHomeworkExerciseId,
   regularLessonSection,
+  regularLessonReaderSections,
   regularVoiceRecording,
   regularVoiceRecordingKey,
 } from "../src/lib/regular-lesson";
@@ -56,6 +58,25 @@ test("student payload contains neither answers nor teacher-only notes", () => {
   const sections = publicRegularLessonSections(source);
   assert.deepEqual(sections.map((section) => section.id), ["01-warm-up", "02-vocabulary"]);
   assert.ok(sections.every((section) => section.teacherHtml === ""));
+});
+
+test("lesson readers omit the Teacher notes tab without removing stored notes", () => {
+  const sections = normalizeRegularLessonSections(source);
+  assert.deepEqual(regularLessonReaderSections(sections, true).map((section) => section.id), ["01-warm-up", "02-vocabulary"]);
+  assert.deepEqual(regularLessonReaderSections(sections, false).map((section) => section.id), ["01-warm-up", "02-vocabulary"]);
+  assert.equal(sections.length, 3);
+  assert.equal(sections[2].teacherHtml, "<p>Private</p>");
+  const view = readFileSync("src/components/lessons/regular-lesson-view.tsx", "utf8");
+  assert.ok(view.includes("() => regularLessonReaderSections(sections, teacher)"));
+});
+
+test("removing Teacher notes does not hide other teacher-only sections such as warm-up", () => {
+  const sections = normalizeRegularLessonSections(source);
+  sections[0].teacherOnly = true;
+  sections[2].title = "Нотатки вчителя";
+  sections[2].teacherOnly = false;
+  assert.deepEqual(regularLessonReaderSections(sections, true).map((section) => section.id), ["01-warm-up", "02-vocabulary"]);
+  assert.deepEqual(regularLessonReaderSections(sections, false).map((section) => section.id), ["02-vocabulary"]);
 });
 
 test("only vocabulary sections open by default", () => {
