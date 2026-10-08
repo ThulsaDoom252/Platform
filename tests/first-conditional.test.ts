@@ -4,7 +4,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FIRST_CONDITIONAL, TEST_CATALOG, findLibraryTest } from "../src/lib/tests/catalog";
-import { FIRST_CONDITIONAL_KEY, gradeTestExercise } from "../src/lib/tests/grading";
+import { FIRST_CONDITIONAL_KEY, gradeTestExercise, libraryTestKey } from "../src/lib/tests/grading";
 import { TEST_LABELS } from "../src/lib/tests/labels";
 import { selectedTestExerciseIds, testResultsScore } from "../src/lib/tests/types";
 import { TestExerciseQuestions } from "../src/components/tests/test-exercise-form";
@@ -16,13 +16,17 @@ const exercise = definition.exercises[0];
 const key = FIRST_CONDITIONAL_KEY;
 const correct = Object.fromEntries(Object.entries(key[exercise.id]).map(([id, item]) => [id, item.answer]));
 
-test("First conditional is in B1 Grammar with three distinct exercise slots", () => {
+test("First conditional is in B1 Grammar with three published exercises and 35 questions", () => {
   assert.equal(findLibraryTest("first-conditional"), definition);
   assert.equal(findLibraryTest("unknown"), null);
   assert.equal(TEST_CATALOG.filter((item) => item.level === "b1" && item.category === "grammar").length, 1);
   assert.deepEqual(definition.exercises.map((item) => item.number), [1, 2, 3]);
   assert.equal(new Set(definition.exercises.map((item) => item.id)).size, 3);
   assert.equal(exercise.questions.length, 10);
+  assert.deepEqual(definition.exercises.map((item) => item.questions.length), [10, 10, 15]);
+  assert.equal(definition.version, 2);
+  assert.equal(libraryTestKey(definition.id, 2), key);
+  assert.deepEqual(Object.keys(libraryTestKey(definition.id, 1)!), ["exercise-1"]);
 });
 
 test("all ten supplied sentences and choices are kept, with the expected answer key", () => {
@@ -74,18 +78,22 @@ test("every distractor gets its own grammatical explanation in all three interfa
 });
 
 test("invalid exercises and forged option values cannot produce scores", () => {
-  for (const id of ["exercise-2", "exercise-3", "missing"]) assert.throws(() => gradeTestExercise(definition, key, id, {}));
+  assert.throws(() => gradeTestExercise(definition, key, "missing", {}));
+  assert.throws(() => gradeTestExercise({ ...definition, exercises: [{ ...exercise, questions: [] }] }, key, exercise.id, {}));
   assert.throws(() => gradeTestExercise(definition, key, exercise.id, { q1: "<script>fake</script>" }));
   assert.throws(() => gradeTestExercise(definition, {}, exercise.id, correct));
 });
 
 test("whole or selected assignment includes only published exercises and never duplicates them", () => {
-  assert.deepEqual(selectedTestExerciseIds(definition, null), ["exercise-1"]);
+  assert.deepEqual(selectedTestExerciseIds(definition, null), ["exercise-1", "exercise-2", "exercise-3"]);
   assert.deepEqual(selectedTestExerciseIds(definition, ["exercise-1", "exercise-1"]), ["exercise-1"]);
-  for (const selection of [[], ["exercise-2"], ["exercise-1", "unknown"]]) assert.deepEqual(selectedTestExerciseIds(definition, selection), []);
-  const published = { ...definition, exercises: definition.exercises.map((item) => ({ ...item, questions: exercise.questions })) };
-  assert.deepEqual(selectedTestExerciseIds(published, null), ["exercise-1", "exercise-2", "exercise-3"]);
-  assert.deepEqual(selectedTestExerciseIds(published, ["exercise-3", "exercise-1"]), ["exercise-1", "exercise-3"]);
+  for (const selection of [[], ["missing"], ["exercise-1", "unknown"]]) assert.deepEqual(selectedTestExerciseIds(definition, selection), []);
+  assert.deepEqual(selectedTestExerciseIds(definition, ["exercise-3", "exercise-1"]), ["exercise-1", "exercise-3"]);
+  assert.deepEqual(selectedTestExerciseIds(definition, ["exercise-2"]), ["exercise-2"]);
+  const legacy = { ...definition, version: 1, exercises: definition.exercises.map((item) => item.id === exercise.id ? item : { ...item, questions: [] }) };
+  assert.deepEqual(selectedTestExerciseIds(legacy, null), ["exercise-1"]);
+  assert.deepEqual(selectedTestExerciseIds(legacy, ["exercise-2"]), []);
+  assert.equal(gradeTestExercise(legacy, libraryTestKey(definition.id, 1)!, exercise.id, correct).percent, 100);
 });
 
 test("overall score is weighted by question counts, excludes unassigned exercises and completes only after all checks", () => {

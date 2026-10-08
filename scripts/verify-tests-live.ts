@@ -48,7 +48,19 @@ async function main() {
       const result = await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: "exercise-1", answers }], "TEACHER");
       assert.equal(result.ok, true); assert.equal(result.value.percent, expected); assert.equal(result.value.total, 10);
     }
-    assert.equal((await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: "exercise-2", answers: {} }], "TEACHER")).error, "invalid");
+    for (const exercise of FIRST_CONDITIONAL.exercises.slice(1)) {
+      const correctAnswers = Object.fromEntries(Object.entries(FIRST_CONDITIONAL_KEY[exercise.id]).map(([id, key]) => [id, key.answer]));
+      for (const [answers, percent] of [[{}, 0], [correctAnswers, 100]] as const) {
+        const result = await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: exercise.id, answers }], "TEACHER");
+        assert.equal(result.ok, true); assert.equal(result.value.percent, percent); assert.equal(result.value.total, exercise.questions.length);
+      }
+    }
+    const pairAnswers = Object.fromEntries(Object.entries(FIRST_CONDITIONAL_KEY["exercise-2"]).map(([id, key]) => [id, key.answer]));
+    assert.equal((await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: "exercise-2", answers: { ...pairAnswers, q1: ["might get"] } }], "TEACHER")).value.percent, 90);
+    assert.equal((await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: "exercise-2", answers: { q1: ["might get", "get", "will get"] } }], "TEACHER")).error, "invalid");
+    const textAnswers = Object.fromEntries(Object.entries(FIRST_CONDITIONAL_KEY["exercise-3"]).map(([id, key]) => [id, key.answer]));
+    assert.equal((await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: "exercise-3", answers: { ...textAnswers, q1: " DOESN’T ARRIVE ", q2: "’ll miss", q9: "isn’t" } }], "TEACHER")).value.percent, 100);
+    assert.equal((await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: "missing", answers: {} }], "TEACHER")).error, "invalid");
     assert.equal((await call("checkPracticeTestAction", [FIRST_CONDITIONAL.id, { exerciseId: "exercise-1", answers: {}, percent: 100 }], "TEACHER")).error, "invalid");
     assert.equal((await call("checkAssignedTestAction", [{ assignmentId: "00000000-0000-4000-8000-000000000001", attemptId: "00000000-0000-4000-8000-000000000002", exerciseId: "exercise-1", answers: {} }], "TEACHER")).error, "forbidden");
     assert.equal((await call("assignTestAction", [{ testId: "first-conditional", studentId: "00000000-0000-4000-8000-000000000001", exerciseIds: null, requestId: "00000000-0000-4000-8000-000000000002" }], "STUDENT")).error, "forbidden");
@@ -59,7 +71,7 @@ async function main() {
     assert.equal((html.match(/data-test-question=/g) ?? []).length, 10);
     assert.ok(html.includes("Check the answers"));
     assert.ok(!html.includes(FIRST_CONDITIONAL_KEY["exercise-1"].q6.reasons["does get"].en));
-    console.log("PASS: local server actions, teacher/student authorization, 0/80/100 scores, omitted answers, input validation, real page and private answer keys");
+    console.log("PASS: all three exercises, teacher/student authorization, 0/80/90/100 scores, double choices, contractions, omissions, input validation, real page and private answer keys");
   } finally { await pool.end(); }
 }
 main().catch((error: unknown) => { console.error("Test integration failed", { type: (error as Error).name, message: (error as Error).message }); process.exitCode = 1; });

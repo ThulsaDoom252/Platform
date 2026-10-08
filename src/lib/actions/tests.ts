@@ -16,7 +16,7 @@ import { saveTestExerciseCheck, serialTestAttempt } from "@/lib/tests/persistenc
 
 const idSchema = z.uuid();
 const checkSchema = z.object({
-  exerciseId: z.string().max(100), answers: z.record(z.string().max(100), z.string().max(200).nullable()),
+  exerciseId: z.string().max(100), answers: z.record(z.string().max(100), z.union([z.string().max(200), z.array(z.string().max(200)).max(10)]).nullable()),
 }).strict();
 const attemptSummaryColumns = {
   id: testAttempts.id, createdAt: testAttempts.createdAt, completedAt: testAttempts.completedAt,

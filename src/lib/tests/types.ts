@@ -2,18 +2,26 @@ import type { Locale } from "@/lib/i18n";
 import type { TestCategoryId, TestLevelId } from "@/lib/test-library";
 
 export type TestText = Record<Locale, string>;
-export type TestQuestion = { id: string; before: string; after: string; options: string[] };
-export type TestExercise = { id: string; number: number; instruction: string; questions: TestQuestion[] };
+export type TestQuestion = {
+  id: string; before: string; after: string; options: string[];
+  kind?: "single" | "multiple" | "text"; selectionCount?: number;
+};
+export type TestPassagePart = { text: string } | { questionId: string };
+export type TestExercise = {
+  id: string; number: number; instruction: string; questions: TestQuestion[];
+  passage?: TestPassagePart[][];
+};
 /** Public content only. Answer keys never cross the server/client boundary. */
 export type TestDefinition = {
   id: string; version: number; title: string; subtitle: string;
   level: TestLevelId; category: TestCategoryId; exercises: TestExercise[];
 };
-export type TestQuestionKey = { answer: string; rule: TestText; reasons: Record<string, TestText> };
+export type TestQuestionKey = { answer: string | string[]; acceptedAnswers?: string[]; rule: TestText; reasons: Record<string, TestText> };
 export type TestAnswerKey = Record<string, Record<string, TestQuestionKey>>;
-export type TestAnswers = Record<string, string | null>;
+export type TestAnswer = string | string[] | null;
+export type TestAnswers = Record<string, TestAnswer>;
 export type TestQuestionResult = {
-  id: string; selected: string | null; answer: string; correct: boolean; explanation: TestText;
+  id: string; selected: TestAnswer; answer: string | string[]; correct: boolean; explanation: TestText;
 };
 export type TestExerciseResult = { exerciseId: string; correct: number; total: number; percent: number; questions: TestQuestionResult[] };
 export type TestResults = Record<string, TestExerciseResult>;
@@ -35,6 +43,10 @@ export type TestHomeworkCard = {
 };
 export type TestActionError = "invalid" | "forbidden" | "failed";
 export type TestReply<T> = { ok: true; value: T } | { ok: false; error: TestActionError };
+
+export function testAnswerText(answer: TestAnswer, empty = "") {
+  return Array.isArray(answer) ? answer.join(" / ") || empty : answer || empty;
+}
 
 export function readyTestExercises(test: TestDefinition) {
   return test.exercises.filter((exercise) => exercise.questions.length > 0);
