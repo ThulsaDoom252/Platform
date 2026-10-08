@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RAIL_ONLY_OPEN } from "@/components/sidebar-rail";
 import { useT } from "@/components/i18n-provider";
@@ -31,6 +32,7 @@ export function SidebarNav() {
     { href: "/teacher/students/new", label: t.nav.addStudent, Icon: IconPlus, exact: true },
     { href: "/teacher/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/teacher/lessons", label: t.nav.lessons, Icon: IconLayers },
+    { href: "/teacher/tests", label: t.nav.tests, Icon: ClipboardCheck },
     { href: "/teacher/script", label: t.nav.script, Icon: IconFile },
     { href: "/teacher/tongue-twisters", label: t.nav.twisters, Icon: IconVolume },
     { href: "/teacher/activities", label: t.nav.activities, Icon: IconFire },
@@ -40,7 +42,7 @@ export function SidebarNav() {
   ];
 
   return (
-    <nav className="flex flex-col gap-1">
+    <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {items.map(({ href, label, Icon, exact }) => {
         const active = exact
           ? pathname === href
@@ -54,7 +56,7 @@ export function SidebarNav() {
             /* В свёрнутой полосе подписи не видно — выручает подсказка. */
             title={label}
             className={cn(
-              "group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all",
+              "group flex shrink-0 items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all",
               active
                 ? "bg-accent-soft text-accent shadow-sm"
                 : "text-muted hover:bg-surface-2 hover:text-content",

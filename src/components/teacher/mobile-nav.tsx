@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/i18n-provider";
 import {
@@ -20,6 +21,7 @@ export function MobileNav() {
   const items = [
     { href: "/teacher/class", label: t.nav.myClass, Icon: IconCap },
     { href: "/teacher/homeworks", label: t.nav.homeworks, Icon: IconCheckCircle },
+    { href: "/teacher/tests", label: t.nav.tests, Icon: ClipboardCheck },
     { href: "/teacher/students", label: t.nav.students, Icon: IconUsers },
     { href: "/teacher/schedule", label: t.nav.shortLessons, Icon: IconCalendar },
     { href: "/teacher/materials", label: t.nav.shortFiles, Icon: IconMaterials },
@@ -35,12 +37,12 @@ export function MobileNav() {
             key={href}
             href={href}
             className={cn(
-              "flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+              "flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
               active ? "text-accent" : "text-faint",
             )}
           >
             <Icon className="h-5 w-5" />
-            {label}
+            <span className="max-w-full truncate px-0.5">{label}</span>
           </Link>
         );
       })}
