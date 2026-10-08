@@ -6,11 +6,12 @@ import {
   useRef,
   type MouseEvent,
   type ReactNode,
+  type SyntheticEvent,
 } from "react";
 import { dialogueHighlights, type HighlightColor } from "@/lib/lesson-unit";
 import { lessonSnippetColors, toggleLessonTextFragments, type LessonHighlightSnippet, type LessonHighlightFragment } from "@/lib/lesson-text-highlights";
 import { rangeContainsPoint } from "@/lib/text-highlight-dom";
-import { useSharedHighlightTools } from "./highlight-tools";
+import { createHighlightGestureGuard } from "@/lib/highlight-gesture";
 import { cn } from "@/lib/utils";
 
 type WordRange = {
@@ -152,7 +153,7 @@ export function LessonTextHighlighter({
   const rootRef = useRef<HTMLDivElement>(null);
   const snippetsRef = useRef<TextSnippet[]>([]);
   const marksRef = useRef(marks);
-  const tools = useSharedHighlightTools();
+  const gesture = useRef(createHighlightGestureGuard());
   const hovered = useRef<{ element: HTMLElement; cursor: string } | null>(null);
 
   const paint = useCallback(() => {
@@ -231,13 +232,17 @@ export function LessonTextHighlighter({
     return null;
   };
   const chooseWord = (event: MouseEvent<HTMLDivElement>) => {
-    if (!enabled || tools?.tool === "select" || (!onHighlight && !onReplaceHighlights)) return;
-    const selection = window.getSelection();
-    if (selection && !selection.isCollapsed) return;
+    if (!enabled || (!onHighlight && !onReplaceHighlights)) return;
+    if (gesture.current.consumeClick(event.detail > 0)) {
+      event.preventDefault(); event.stopPropagation();
+      return;
+    }
     const hit = wordUnderPointer(event);
     if (!hit) return; // Empty space must keep its normal editing/focus behavior.
     event.preventDefault();
     event.stopPropagation();
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
     if (event.detail > 1) return;
     if (onReplaceHighlights) {
       const next = toggleLessonTextFragments(dialogueHighlights(marksRef.current), [{ snippet: hit.snippet, start: hit.word.start, end: hit.word.end }], color, true);
@@ -247,8 +252,9 @@ export function LessonTextHighlighter({
     else onHighlight?.(hit.word.key);
   };
 
-  const chooseSelection = () => {
-    if (!enabled || tools?.tool !== "select" || !onReplaceHighlights || !rootRef.current) return;
+  const chooseSelection = (event: SyntheticEvent<HTMLDivElement>) => {
+    if (!enabled || !onReplaceHighlights || !rootRef.current) return;
+    if (event.target instanceof Element && event.target.closest("[data-no-lesson-highlight], input, textarea, select")) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
     const selected = selection.getRangeAt(0);
@@ -267,11 +273,12 @@ export function LessonTextHighlighter({
       if (end > start && snippet.text.slice(start, end).trim()) fragments.push({ snippet, start, end });
     }
     if (!fragments.length) return;
-    tools.select((nextColor) => {
-      const next = toggleLessonTextFragments(dialogueHighlights(marksRef.current), fragments, nextColor);
-      marksRef.current = next;
-      onReplaceHighlights(next);
-    });
+    gesture.current.selected();
+    event.stopPropagation();
+    const next = toggleLessonTextFragments(dialogueHighlights(marksRef.current), fragments, color);
+    marksRef.current = next;
+    onReplaceHighlights(next);
+    selection.removeAllRanges();
   };
 
   const clearCursor = () => {
@@ -281,18 +288,21 @@ export function LessonTextHighlighter({
   useEffect(() => () => {
     if (hovered.current) hovered.current.element.style.cursor = hovered.current.cursor;
     hovered.current = null;
-  }, [enabled, tools?.tool]);
+  }, [enabled]);
 
   return (
     <div
       ref={rootRef}
+      data-highlight-active={enabled ? "true" : undefined}
+      onMouseDownCapture={() => gesture.current.begin()}
       onClickCapture={chooseWord}
       onMouseUpCapture={chooseSelection}
+      onKeyUpCapture={(event) => { if (event.key === "Shift") chooseSelection(event); }}
       onInputCapture={(event) => { if (event.target instanceof HTMLElement && event.target.isContentEditable) paint(); }}
       onMouseLeave={clearCursor}
       onMouseMoveCapture={(event) => {
         clearCursor();
-        if (!enabled || tools?.tool === "select" || !wordUnderPointer(event) || !(event.target instanceof HTMLElement)) return;
+        if (!enabled || !wordUnderPointer(event) || !(event.target instanceof HTMLElement)) return;
         hovered.current = { element: event.target, cursor: event.target.style.cursor };
         event.target.style.cursor = "pointer";
       }}

@@ -1127,7 +1127,7 @@ export const en = {
     highlightToggle: "Highlight",
     highlightWords: "Words",
     highlightSelect: "Select text",
-    highlightToolsHint: "Click a word to highlight or clear it. Select text, then choose a color.",
+    highlightToolsHint: "Choose a color. Click a word or select text to highlight it; repeat to remove the highlight.",
     reviewHighlightOffHint: "Highlighting is off. Press Highlight to start marking words.",
     reviewHighlightHint: "Highlight mode: select any text in prompts and answers. Choose yellow, green, or red.",
     exerciseScore: "Score for this exercise",

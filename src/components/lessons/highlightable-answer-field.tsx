@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from "react";
 import { homeworkHighlightSegments, type HomeworkHighlightColor } from "@/lib/lesson-homework";
 import { wordAtPoint } from "@/lib/text-highlight-dom";
+import { createHighlightGestureGuard, isHighlightPointerClick } from "@/lib/highlight-gesture";
 import { useSharedHighlightTools } from "./highlight-tools";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,8 @@ export function HighlightableAnswerField({
   const controlRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
+  const gesture = useRef(createHighlightGestureGuard());
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const [focused, setFocused] = useState(false);
   const [metrics, setMetrics] = useState<{ style: CSSProperties; width: number } | null>(null);
   const [scroll, setScroll] = useState({ left: 0, top: 0 });
@@ -68,6 +71,19 @@ export function HighlightableAnswerField({
     const trimmedEnd = Math.min(value.trim().length, end - prefix);
     if (trimmedEnd > trimmedStart) onHighlight?.(trimmedStart, trimmedEnd, color, word);
   };
+  const highlightSelection = (event: SyntheticEvent<HTMLDivElement>) => {
+    if (!active || !tools) return;
+    const control = controlRef.current;
+    if (!control || control instanceof HTMLSelectElement) return;
+    const start = control.selectionStart ?? 0;
+    const end = control.selectionEnd ?? 0;
+    if (end <= start || !value.slice(start, end).trim()) return;
+    gesture.current.selected();
+    event.stopPropagation();
+    control.setSelectionRange(end, end);
+    commitBeforeHighlight();
+    highlight(start, end, tools.color);
+  };
   const shared = {
     value, disabled, "aria-label": label,
     className,
@@ -86,27 +102,38 @@ export function HighlightableAnswerField({
     onMouseMove={(event) => {
       const control = controlRef.current;
       if (!control) return;
-      control.style.cursor = active && tools?.tool === "word" && textRef.current && wordAtPoint(textRef.current, event.clientX, event.clientY) ? "pointer" : "";
+      control.style.cursor = active && textRef.current && wordAtPoint(textRef.current, event.clientX, event.clientY) ? "pointer" : "";
     }}
     onMouseLeave={() => { if (controlRef.current) controlRef.current.style.cursor = ""; }}
     onMouseDownCapture={(event) => {
-      if (!active || tools?.tool !== "word" || event.button !== 0 || !textRef.current) return;
+      gesture.current.begin();
+      pointerStart.current = event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
+      // Text fields must receive mousedown so native drag selection and typing work.
+      // A select has no drag selection; keep its existing word-click behavior.
+      if (!choices || !active || !tools || event.button !== 0 || !textRef.current) return;
       const word = wordAtPoint(textRef.current, event.clientX, event.clientY);
       if (!word) return; // Blank space belongs to the native editor, not to highlighting.
+      event.preventDefault(); event.stopPropagation();
+      gesture.current.selected();
+      commitBeforeHighlight();
+      highlight(word.start, word.end, tools.color, true);
+    }}
+    onClickCapture={(event) => {
+      if (!active || !tools) return;
+      if (gesture.current.consumeClick(event.detail > 0)) {
+        event.preventDefault(); event.stopPropagation();
+        return;
+      }
+      if (choices || event.detail > 1 || !textRef.current ||
+        !isHighlightPointerClick(pointerStart.current, event.clientX, event.clientY)) return;
+      const word = wordAtPoint(textRef.current, event.clientX, event.clientY);
+      if (!word) return;
       event.preventDefault(); event.stopPropagation();
       commitBeforeHighlight();
       highlight(word.start, word.end, tools.color, true);
     }}
-    onMouseUp={(event) => {
-      if (!active || tools?.tool !== "select") return;
-      const control = controlRef.current;
-      if (!control || control instanceof HTMLSelectElement) return;
-      const start = control.selectionStart ?? 0;
-      const end = control.selectionEnd ?? 0;
-      if (end <= start || !value.slice(start, end).trim()) return;
-      event.stopPropagation();
-      tools.select((color) => { commitBeforeHighlight(); highlight(start, end, color); });
-    }}>
+    onMouseUp={highlightSelection}
+    onKeyUp={(event) => { if (event.key === "Shift") highlightSelection(event); }}>
     {choices ? <select {...shared} ref={(node) => { controlRef.current = node; }} onChange={(event) => { onChange(event.target.value); onCommit(event.target.value); }}>
       <option value="" disabled>{placeholder}</option>
       {value && !choices.includes(value) && <option value={value}>{value}</option>}

@@ -186,6 +186,7 @@ export function ClassLesson({
     fallbackText = "",
   ) => {
     if (!onTextSelect) return;
+    if (event.target instanceof Element && event.target.closest('[data-highlight-active="true"]')) return;
     const selection = window.getSelection();
     const selectionInside = !!selection &&
       !selection.isCollapsed &&

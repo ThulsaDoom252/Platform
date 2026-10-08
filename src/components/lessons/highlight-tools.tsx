@@ -1,30 +1,17 @@
 "use client";
 
-import { createContext, useContext, useRef, useState } from "react";
+import { createContext, useContext, useState } from "react";
 import type { HighlightColor } from "@/lib/lesson-unit";
 import { useT } from "@/components/i18n-provider";
 import { cn } from "@/lib/utils";
 
-export type HighlightTool = "word" | "select";
 export function useHighlightTools() {
   const [enabled, setEnabled] = useState(false);
-  const [tool, setTool] = useState<HighlightTool>("word");
   const [color, setColor] = useState<HighlightColor>("yellow");
-  const pending = useRef<((color: HighlightColor) => void) | null>(null);
   return {
-    enabled, tool, color,
-    toggle() { pending.current = null; setEnabled((value) => !value); },
-    chooseTool(next: HighlightTool) { pending.current = null; setTool(next); },
-    select(apply: (color: HighlightColor) => void) { pending.current = apply; },
-    chooseColor(next: HighlightColor) {
-      setColor(next);
-      if (enabled && tool === "select" && pending.current) {
-        const apply = pending.current;
-        pending.current = null;
-        apply(next);
-        window.getSelection()?.removeAllRanges();
-      }
-    },
+    enabled, color,
+    toggle() { setEnabled((value) => !value); },
+    chooseColor(next: HighlightColor) { setColor(next); },
   };
 }
 export type HighlightTools = ReturnType<typeof useHighlightTools>;
@@ -40,14 +27,6 @@ export function HighlightToolButtons({ tools }: { tools: HighlightTools }) {
         tools.enabled ? "bg-yellow-300 text-slate-950 ring-yellow-500" : "bg-surface text-muted ring-line hover:text-content")}>
       <span aria-hidden>🖍️</span>{t.interactiveHomework.highlightToggle}
     </button>
-    <div className="flex h-9 shrink-0 items-center rounded-lg bg-surface p-1 ring-1 ring-line">
-      {(["word", "select"] as const).map((tool) => <button key={tool} type="button" disabled={!tools.enabled}
-        onMouseDown={(event) => event.preventDefault()} onClick={() => tools.chooseTool(tool)}
-        aria-pressed={tools.tool === tool} className={cn("h-7 rounded-md px-2 text-[11px] font-bold transition disabled:opacity-45",
-          tools.tool === tool ? "bg-accent text-white" : "text-muted hover:text-content")}>
-        {tool === "word" ? t.interactiveHomework.highlightWords : t.interactiveHomework.highlightSelect}
-      </button>)}
-    </div>
     <div className={cn("flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-surface px-2 ring-1 ring-line", !tools.enabled && "opacity-45")}>
       {(["yellow", "green", "red"] as const).map((color) => <button key={color} type="button" disabled={!tools.enabled}
         onMouseDown={(event) => event.preventDefault()} onClick={() => tools.chooseColor(color)}

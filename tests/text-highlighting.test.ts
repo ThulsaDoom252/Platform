@@ -15,6 +15,8 @@ import {
 import { lessonSnippetColors, toggleLessonTextFragments, type LessonHighlightSnippet } from "../src/lib/lesson-text-highlights";
 import { clearLessonHighlights, dialogueHighlights, isLessonHighlightKey, replaceLessonHighlights, lineWordKey } from "../src/lib/lesson-unit";
 import { rangeContainsPoint, selectedOffsets, wordAtPoint } from "../src/lib/text-highlight-dom";
+import { createHighlightGestureGuard, isHighlightPointerClick } from "../src/lib/highlight-gesture";
+import { readFileSync } from "node:fs";
 
 const item: HomeworkItem = { id: "test", prompt: "A reliable artist works out.", answer: "reliable" };
 
@@ -103,23 +105,23 @@ test("lesson range keys persist through normalization/undo/clear alongside legac
   assert(!isLessonHighlightKey("text-range:1234abcd:abcdef01:0:2:bad"));
 });
 
-const fakeTools = (enabled: boolean, tool: "word" | "select" = "word"): HighlightTools => ({
-  enabled, tool, color: "yellow", toggle() {}, chooseTool() {}, select() {}, chooseColor() {},
+const fakeTools = (enabled: boolean): HighlightTools => ({
+  enabled, color: "yellow", toggle() {}, chooseColor() {},
 });
 const render = (children: ReactNode, tools: HighlightTools, locale: "en" | "ru" | "uk" = "en") => renderToStaticMarkup(createElement(I18nProvider, {
   locale, dictionary: dictionaries[locale], realtimeConfigured: false,
 } as ComponentProps<typeof I18nProvider>, createElement(HighlightToolsContext.Provider, { value: tools }, children)));
 
-test("highlight toolbar keeps the same controls and dimensions enabled, disabled and in selection mode in all languages", () => {
+test("unified highlight toolbar has only Highlight and three colors with stable dimensions in every language", () => {
   const shape = (html: string) => [...html.matchAll(/<button[^>]*class="([^"]*)"/g)].map((match) => match[1].split(" ").filter((name) => /^(h-|w-|px-|py-|p-|gap-|flex|shrink)/.test(name)));
   for (const locale of ["en", "ru", "uk"] as const) {
     const off = render(createElement(HighlightToolButtons, { tools: fakeTools(false) }), fakeTools(false), locale);
     const on = render(createElement(HighlightToolButtons, { tools: fakeTools(true) }), fakeTools(true), locale);
-    const select = render(createElement(HighlightToolButtons, { tools: fakeTools(true, "select") }), fakeTools(true, "select"), locale);
-    assert.equal([...off.matchAll(/<button /g)].length, 6);
-    assert.deepEqual(shape(off), shape(on)); assert.deepEqual(shape(on), shape(select));
+    assert.equal([...off.matchAll(/<button /g)].length, 4);
+    assert.deepEqual(shape(off), shape(on));
     assert.equal(off.replace(/<[^>]+>/g, ""), on.replace(/<[^>]+>/g, ""));
-    assert.equal(on.replace(/<[^>]+>/g, ""), select.replace(/<[^>]+>/g, ""));
+    assert(!on.includes(dictionaries[locale].interactiveHomework.highlightWords));
+    assert(!on.includes(dictionaries[locale].interactiveHomework.highlightSelect));
   }
 });
 
@@ -129,11 +131,59 @@ test("native input, textarea and dropdown stay identical when highlighting switc
       label: "Answer", placeholder: "Type", className: "h-9 w-full px-3 text-sm font-bold", onChange() {}, onCommit() {}, onHighlight() {}, ...variant });
     const off = render(field, fakeTools(false));
     assert.equal(render(field, fakeTools(true)), off);
-    assert.equal(render(field, fakeTools(true, "select")), off);
     assert.equal([...off.matchAll(/<(input|textarea|select)\b/g)].length, 1);
     assert(off.includes('aria-hidden="true"')); assert(off.includes("pointer-events-none absolute inset-0"));
     assert(!off.includes("background-color:#fde047"));
   }
+});
+
+test("a selection is applied once and its following click cannot toggle a word back off", () => {
+  const gesture = createHighlightGestureGuard();
+  gesture.begin();
+  assert.equal(gesture.consumeClick(), false);
+  gesture.selected();
+  assert.equal(gesture.consumeClick(false), false);
+  assert.equal(gesture.consumeClick(), true);
+  assert.equal(gesture.consumeClick(), false);
+  gesture.selected();
+  gesture.begin();
+  assert.equal(gesture.consumeClick(), false);
+});
+
+test("text fields distinguish clicks from drags without blocking normal native selection", () => {
+  assert.equal(isHighlightPointerClick(null, 10, 20), false);
+  assert.equal(isHighlightPointerClick({ x: 10, y: 20 }, 12, 22), true);
+  assert.equal(isHighlightPointerClick({ x: 10, y: 20 }, 16, 20), false);
+  assert.equal(isHighlightPointerClick({ x: 10, y: 20 }, 10, 60), false);
+  const field = readFileSync("src/components/lessons/highlightable-answer-field.tsx", "utf8");
+  assert(field.includes("if (!choices || !active || !tools || event.button !== 0"));
+  assert(field.includes("onMouseUp={highlightSelection}"));
+  assert(field.includes("commitBeforeHighlight();\n    highlight(start, end, tools.color)"));
+  assert(!field.includes("tools.select("));
+});
+
+test("lesson and homework selections apply immediately with no submode and retain boundary and click guards", () => {
+  for (const file of ["lesson-text-highlighter.tsx", "interactive-homework.tsx"]) {
+    const source = readFileSync(`src/components/lessons/${file}`, "utf8");
+    assert(!source.includes(".tool"));
+    assert(!source.includes("tools.select("));
+    assert(!source.includes("highlightTools.select("));
+    assert(source.includes(".current.selected()"));
+    assert(source.includes(".current.consumeClick(event.detail > 0)"));
+    assert(source.includes("selection.removeAllRanges()"));
+    assert(source.includes("onKeyUpCapture"));
+    assert(source.includes(".contains("));
+  }
+});
+
+test("dictionary lookup is disabled only inside an active highlighter, including homework answers", () => {
+  const lesson = readFileSync("src/components/class/class-lesson.tsx", "utf8");
+  assert(lesson.includes(`event.target.closest('[data-highlight-active="true"]')`));
+  assert(lesson.includes("captureSelection(event, target?.dataset.lookupText"));
+  const highlighter = readFileSync("src/components/lessons/lesson-text-highlighter.tsx", "utf8");
+  const homework = readFileSync("src/components/lessons/interactive-homework.tsx", "utf8");
+  assert(highlighter.includes('data-highlight-active={enabled ? "true" : undefined}'));
+  assert(homework.includes('data-highlight-active={canHighlight && highlightMode ? "true" : undefined}'));
 });
 
 test("hit testing only accepts actual word rectangles, never the surrounding empty field", () => {

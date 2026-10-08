@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
   type DragEvent,
+  type SyntheticEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
@@ -18,6 +19,7 @@ import { PublicHomeworkTeacherNote } from "./homework-teacher-note";
 import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools, useSharedHighlightTools } from "./highlight-tools";
 import { selectedOffsets, wordAtPoint } from "@/lib/text-highlight-dom";
+import { createHighlightGestureGuard } from "@/lib/highlight-gesture";
 import {
   addHomeworkQuestionAction,
   assignInteractiveHomeworkAction,
@@ -197,6 +199,7 @@ export function InteractiveHomework({
   const [teacherFocusId, setTeacherFocusId] = useState<string | null>(null);
   const activeFocusId = session.teacher ? teacherFocusId ?? focusId : focusId;
   const rootRef = useRef<HTMLDivElement>(null);
+  const highlightGesture = useRef(createHighlightGestureGuard());
   const progress = homeworkExerciseProgress(currentPlan, state);
   const submittedAt = homeworkSubmittedAt(state);
   const reviewedAt = homeworkReviewedAt(state);
@@ -344,6 +347,25 @@ export function InteractiveHomework({
     return () => cancelAnimationFrame(frame);
   }, [activeFocusId, focusAt, session.teacher]);
 
+  const highlightSelection = (event: SyntheticEvent<HTMLDivElement>) => {
+    if (!canHighlight || !highlightMode || !rootRef.current) return;
+    if (event.target instanceof Element && event.target.closest("input, textarea, select, [data-homework-answer-field]")) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!rootRef.current.contains(range.startContainer) || !rootRef.current.contains(range.endContainer)) return;
+    const targets: HomeworkTextHighlightTarget[] = [];
+    rootRef.current.querySelectorAll<HTMLElement>("[data-homework-highlight-text]").forEach((element) => {
+      const offsets = selectedOffsets(element, range);
+      if (offsets) targets.push({ itemId: element.dataset.homeworkItem!, source: element.dataset.homeworkSource as HomeworkTextHighlightSource, ...offsets });
+    });
+    if (!targets.length) return;
+    highlightGesture.current.selected();
+    event.stopPropagation();
+    highlightTargets(targets, highlightColor);
+    selection.removeAllRanges();
+  };
+
   return (
     <HighlightToolsContext.Provider value={highlightTools}>
     <HomeworkInteractionContext.Provider value={{
@@ -354,19 +376,14 @@ export function InteractiveHomework({
       onHighlightText: highlightText,
     }}>
     <div ref={rootRef} className="flex flex-col gap-4" data-no-lesson-highlight
-      onMouseUpCapture={(event) => {
-        if (!canHighlight || !highlightMode || highlightTools.tool !== "select" || !rootRef.current) return;
-        if (event.target instanceof Element && event.target.closest("input, textarea, select, [data-homework-answer-field]")) return;
-        const selection = window.getSelection();
-        if (!selection || selection.isCollapsed || !selection.rangeCount) return;
-        const range = selection.getRangeAt(0);
-        const targets: HomeworkTextHighlightTarget[] = [];
-        rootRef.current.querySelectorAll<HTMLElement>("[data-homework-highlight-text]").forEach((element) => {
-          const offsets = selectedOffsets(element, range);
-          if (offsets) targets.push({ itemId: element.dataset.homeworkItem!, source: element.dataset.homeworkSource as HomeworkTextHighlightSource, ...offsets });
-        });
-        if (targets.length) highlightTools.select((color) => highlightTargets(targets, color));
-      }}>
+      data-highlight-active={canHighlight && highlightMode ? "true" : undefined}
+      onMouseDownCapture={() => highlightGesture.current.begin()}
+      onClickCapture={(event) => {
+        if (!canHighlight || !highlightMode || !highlightGesture.current.consumeClick(event.detail > 0)) return;
+        event.preventDefault(); event.stopPropagation();
+      }}
+      onMouseUpCapture={highlightSelection}
+      onKeyUpCapture={(event) => { if (event.key === "Shift") highlightSelection(event); }}>
       <section className="overflow-hidden rounded-2xl border border-accent/25 bg-gradient-to-br from-accent-soft via-surface to-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -2166,7 +2183,7 @@ function HomeworkHighlightableText({
       data-homework-highlight-text data-homework-item={item.id} data-homework-source={source}
       onClick={(event) => {
         const selection = window.getSelection();
-        if (!canHighlight || tools?.tool !== "word" || !rootRef.current || (selection && !selection.isCollapsed)) return;
+        if (!canHighlight || !tools || !rootRef.current || (selection && !selection.isCollapsed)) return;
         const word = wordAtPoint(rootRef.current, event.clientX, event.clientY);
         if (!word) return;
         event.preventDefault(); event.stopPropagation();
@@ -2174,7 +2191,7 @@ function HomeworkHighlightableText({
       }}
       className={cn(
         "whitespace-pre-wrap",
-        canHighlight && (tools?.tool === "word" ? "cursor-pointer select-text" : "cursor-text select-text"),
+        canHighlight && "cursor-pointer select-text",
         className,
       )}
     >
