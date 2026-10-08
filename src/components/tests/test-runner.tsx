@@ -86,7 +86,7 @@ export function TestRunner({ test, assignmentId, exerciseIds, initialAttempt, re
       </div> : readOnly ? <p className="rounded-2xl border border-line bg-surface p-6 text-sm text-muted">{labels.notStarted}</p> : <>
         <p className="rounded-2xl border border-line bg-accent-soft px-4 py-3 text-sm leading-relaxed text-content">{active.instruction}</p>
         <form onSubmit={(event) => { event.preventDefault(); check(); }} className="flex flex-col gap-3">
-          <TestExerciseQuestions testId={test.id} exercise={active} answers={answers[active.id] ?? {}} busy={busy} labels={labels} onAnswer={(questionId, value) => setAnswers((current) => ({ ...current, [active.id]: { ...current[active.id], [questionId]: value } }))} />
+          <TestExerciseQuestions testId={test.id} exercise={active} answers={answers[active.id] ?? {}} busy={busy} onAnswer={(questionId, value) => setAnswers((current) => ({ ...current, [active.id]: { ...current[active.id], [questionId]: value } }))} />
           {error && <p role="alert" className="rounded-xl border border-[var(--t-rose)] bg-surface px-4 py-3 text-sm text-[var(--t-rose)]">{error}</p>}
           <div className="mt-2 flex justify-end"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-accent px-6 py-3 text-sm font-bold text-white shadow-lg shadow-accent/15 transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-60"><CheckCheck aria-hidden className="h-5 w-5" />{busy ? labels.checking : labels.check}</button></div>
         </form>

@@ -98,20 +98,24 @@ test("overall score is weighted by question counts, excludes unassigned exercise
   assert.equal(testResultsScore({}, []).complete, false);
 });
 
-test("exercise renders ten accessible dropdowns with the original three options and a blank choice", () => {
+test("exercise renders blank accessible dropdowns that only offer the original three answers", () => {
+  const html = renderToStaticMarkup(createElement(TestExerciseQuestions, { testId: definition.id, exercise,
+    answers: {}, busy: false, onAnswer: () => {} }));
+  assert.equal((html.match(/<select /g) ?? []).length, 10);
+  assert.equal((html.match(/<option /g) ?? []).length, 40);
+  assert.equal((html.match(/<option value="" hidden="" selected=""><\/option>/g) ?? []).length, 10);
+  assert.equal((html.match(/aria-label=/g) ?? []).length, 10);
+  assert.equal((html.match(/min-w-28/g) ?? []).length, 10);
+  assert.ok(!html.includes("required="));
+  assert.ok(!html.includes("disabled="));
   for (const labels of Object.values(TEST_LABELS)) {
-    const html = renderToStaticMarkup(createElement(TestExerciseQuestions, { testId: definition.id, exercise,
-      answers: {}, busy: false, labels, onAnswer: () => {} }));
-    assert.equal((html.match(/<select /g) ?? []).length, 10);
-    assert.equal((html.match(/<option /g) ?? []).length, 40);
-    assert.equal((html.match(/aria-label=/g) ?? []).length, 10);
-    assert.ok(!html.includes("required="));
-    assert.ok(!html.includes("disabled="));
-    const selectedHtml = renderToStaticMarkup(createElement(TestExerciseQuestions, { testId: definition.id, exercise,
-      answers: correct, busy: true, labels, onAnswer: () => {} }));
-    assert.equal((selectedHtml.match(/disabled=""/g) ?? []).length, 10);
-    assert.equal((selectedHtml.match(/ selected=""/g) ?? []).length, 10);
+    assert.ok(!html.includes(labels.choose));
   }
+  const selectedHtml = renderToStaticMarkup(createElement(TestExerciseQuestions, { testId: definition.id, exercise,
+    answers: correct, busy: true, onAnswer: () => {} }));
+  assert.equal((selectedHtml.match(/disabled=""/g) ?? []).length, 10);
+  assert.equal((selectedHtml.match(/ selected=""/g) ?? []).length, 10);
+  assert.equal((selectedHtml.match(/<option value="" hidden=""><\/option>/g) ?? []).length, 10);
 });
 
 test("results show every unanswered sentence, correct answer and reason, and a large zero percent", () => {
