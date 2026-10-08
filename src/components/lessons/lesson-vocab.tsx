@@ -27,6 +27,7 @@ import {
   groupWords,
   parseKey,
   toggleLessonVocabularyReveal,
+  toggleAllLessonVocabularyReveal,
   wordKey,
   type LessonVocabularyReveal,
   type LessonWord,
@@ -154,8 +155,14 @@ export function LessonVocab({
           <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
             <Toggle on={reveal.allTranslations} onClick={() => toggleReveal("translation")} label={t.lessonUnits.showTranslations} />
             <Toggle on={reveal.allDescriptions} onClick={() => toggleReveal("description")} label={t.lessonUnits.showDescriptions} />
-            <Toggle on={reveal.allExamples} onClick={() => toggleReveal("example")} label="Examples" />
-            <Toggle on={reveal.allNotes} onClick={() => toggleReveal("note")} label="Hints" />
+            <Toggle on={reveal.allExamples} onClick={() => toggleReveal("example")} label={t.lessonUnits.vocabExamples} />
+            <Toggle on={reveal.allNotes} onClick={() => toggleReveal("note")} label={t.lessonUnits.vocabTips} />
+            <Toggle
+              on={reveal.allTranslations && reveal.allDescriptions && reveal.allExamples && reveal.allNotes}
+              onClick={() => updateReveal(toggleAllLessonVocabularyReveal(reveal))}
+              label={reveal.allTranslations && reveal.allDescriptions && reveal.allExamples && reveal.allNotes
+                ? t.lessonUnits.vocabHideAll : t.lessonUnits.vocabRevealAll}
+            />
             {teacher && unitId && lessonTitle && (
               <>
                 <span className="flex rounded-xl bg-surface-2 p-1 ring-1 ring-line">
@@ -376,7 +383,7 @@ export function LessonVocab({
                         (examplesShown(w.id) ? (
                           <div className="mt-2 rounded-xl bg-surface-2 px-3 py-2">
                             <div className="mb-1 flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-black uppercase tracking-wide text-accent">Examples</span>
+                              <span className="text-[10px] font-black uppercase tracking-wide text-accent">{t.lessonUnits.vocabExamples}</span>
                               {teacher && (
                                 <RevealOne
                                   on={studentShown("example", w.id)}
@@ -400,10 +407,10 @@ export function LessonVocab({
                             onClick={() => toggleReveal("example", w.id)}
                             className="mt-1.5 text-[11px] text-faint transition hover:text-accent"
                           >
-                            Show examples
+                            {t.lessonUnits.vocabRevealExamples}
                           </button>
                         ) : (
-                          <span className="mt-1.5 block text-[11px] text-faint">Examples: •••</span>
+                          <span className="mt-1.5 block text-[11px] text-faint">{t.lessonUnits.vocabExamples}: •••</span>
                         ))}
 
                       {w.note &&
@@ -425,10 +432,10 @@ export function LessonVocab({
                             onClick={() => toggleReveal("note", w.id)}
                             className="mt-1.5 text-[11px] text-faint transition hover:text-accent"
                           >
-                            Show hint
+                            {t.lessonUnits.vocabRevealTips}
                           </button>
                         ) : (
-                          <span className="mt-1.5 block text-[11px] text-faint">Hint: •••</span>
+                          <span className="mt-1.5 block text-[11px] text-faint">{t.lessonUnits.vocabTips}: •••</span>
                         ))}
                     </div>
                   </div>

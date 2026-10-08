@@ -79,6 +79,12 @@ export const emptyLessonVocabularyReveal = (): LessonVocabularyReveal => ({
   notes: [],
 });
 
+/** One teacher action reveals or hides every vocabulary detail for the student. */
+export function toggleAllLessonVocabularyReveal(state: LessonVocabularyReveal): LessonVocabularyReveal {
+  const show = !(state.allTranslations && state.allDescriptions && state.allExamples && state.allNotes);
+  return { ...emptyLessonVocabularyReveal(), allTranslations: show, allDescriptions: show, allExamples: show, allNotes: show };
+}
+
 export function isLessonVocabularyRevealOption(value: string): boolean {
   return String(value ?? "").startsWith(VOCAB_REVEAL_PREFIX);
 }

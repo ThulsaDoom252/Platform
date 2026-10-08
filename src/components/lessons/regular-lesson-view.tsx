@@ -349,7 +349,7 @@ export function RegularLessonView({
     [sections, teacher],
   );
   const first = available.find((section) => open.includes(regularSectionKey(section.id))) ??
-    (teacher || !lockClosed ? available[0] : undefined);
+    (teacher ? available[0] : undefined);
   const [activeId, setActiveId] = useState(first?.id ?? "");
   const [answersFor, setAnswersFor] = useState<string | null>(null);
   const [focused, setFocused] = useState<{ section: string; elementId: string } | null>(null);
@@ -386,15 +386,15 @@ export function RegularLessonView({
       });
 
   useEffect(() => {
-    if (teacher || !lockClosed) return;
+    if (teacher) return;
     const forced = focusedSectionId;
     const allowed = new Set(visibleSections.map((section) => section.id));
-    if (forced === "__homework") allowed.add("__homework");
+    if (forced === "__homework" || (homeworkOpen && homeworkAvailable)) allowed.add("__homework");
     if (allowed.has(activeId)) return;
     const next = forced || visibleSections[0]?.id || "";
     const frame = requestAnimationFrame(() => setActiveId(next));
     return () => cancelAnimationFrame(frame);
-  }, [activeId, focusedSectionId, lockClosed, teacher, visibleSections]);
+  }, [activeId, focusedSectionId, homeworkOpen, homeworkAvailable, teacher, visibleSections]);
 
   useEffect(() => {
     saveResponseRef.current = onSaveResponse;
@@ -443,7 +443,6 @@ export function RegularLessonView({
   const activeCandidate = available.find((section) =>
     section.id === activeId && (
       teacher ||
-      !lockClosed ||
       visibleSections.some((visible) => visible.id === section.id)
     )) ?? first;
   const active = useStableRegularSection(activeCandidate);
