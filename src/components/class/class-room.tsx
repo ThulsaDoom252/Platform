@@ -668,9 +668,6 @@ export function ClassRoom({
         {lessonTabButton(LESSON_TABS[0])}
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
           {LESSON_TABS.slice(1).map(lessonTabButton)}
-          <span className="basis-full text-right text-[11px] text-faint sm:ml-2 sm:basis-auto">
-            {t.classRoom.onlyYou}
-          </span>
         </div>
       </div>
 

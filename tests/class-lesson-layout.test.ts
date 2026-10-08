@@ -10,6 +10,7 @@ test("teacher lesson stays on the left while twister and activities share a righ
   assert.ok(room.includes('"h-9 shrink-0 rounded-xl px-3.5 text-sm font-semibold transition"'));
   assert.ok(room.includes("onClick={() => setLessonTab(tab.key)}"));
   assert.ok(room.includes("aria-pressed={lessonTab === tab.key}"));
+  assert.ok(!room.includes("t.classRoom.onlyYou"));
 });
 
 test("changing the lesson is passed into the topic rather than rendered in a separate row", () => {
