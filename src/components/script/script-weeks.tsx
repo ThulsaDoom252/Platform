@@ -9,7 +9,7 @@
  * действительно написан, и искать прошлую подготовку проще по ней, чем
  * листая недели назад.
  */
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Avatar } from "@/components/avatar";
 import { StudentPresence } from "@/components/student-presence";
 import {
@@ -19,10 +19,12 @@ import {
 } from "@/lib/actions/script";
 import { IconChevronLeft, IconChevronRight } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { scrollScriptListToToday } from "@/lib/script-list-scroll";
 import {
   SCHEDULE_FORMAT_TIME_ZONE,
   addScheduleDays,
   sameScheduleDay,
+  scheduleDateValue,
   scheduleNow,
   scheduleStartOfWeek,
 } from "@/lib/schedule-time";
@@ -53,7 +55,7 @@ const addDays = (date: Date, days: number) => {
 
 const sameDay = sameScheduleDay;
 
-/** Неделя строится от понедельника; воскресенье показываем только с уроками. */
+/** Неделя строится от понедельника; пустое воскресенье видно, если оно сегодня. */
 const WEEKDAYS = 6;
 
 type Week = { start: Date; lessons: ScriptLesson[] };
@@ -71,6 +73,11 @@ export function ScriptWeeks({
   const [history, setHistory] = useState<ScriptLesson[] | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [busy, startLoad] = useTransition();
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrolledToday = useRef<string | null>(null);
+  const today = scheduleNow();
+  const todayKey = scheduleDateValue(today);
+  const thisWeek = weekStart(today);
 
   useEffect(() => {
     let alive = true;
@@ -106,8 +113,20 @@ export function ScriptWeeks({
     };
   }, [showHistory, history]);
 
-  const today = scheduleNow();
-  const thisWeek = weekStart(today);
+  useEffect(() => {
+    if (showHistory || !sameDay(anchor, weekStart(scheduleNow()))) {
+      scrolledToday.current = null;
+      return;
+    }
+    // Wait for this week's actual rows, not the previous week's loading state.
+    if (weeks[0]?.start.getTime() !== anchor.getTime() || scrolledToday.current === todayKey) return;
+    const frame = requestAnimationFrame(() => {
+      if (listRef.current && scrollScriptListToToday(listRef.current, todayKey)) {
+        scrolledToday.current = todayKey;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [anchor, weeks, showHistory, todayKey, openId]);
 
   const range = (start: Date) =>
     `${dayShort.format(start)} — ${dayShort.format(addDays(start, 6))}`;
@@ -216,7 +235,7 @@ export function ScriptWeeks({
         {busy && <span className="ml-auto text-[11px] text-faint">…</span>}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {showHistory ? (
           <>
             {history?.length === 0 && (
@@ -237,10 +256,10 @@ export function ScriptWeeks({
                 )}
 
                 {Array.from({ length: 7 }, (_, i) => addDays(week.start, i))
-                  // Воскресенье показываем, только если на него есть урок.
+                  // Сегодняшний день остаётся доступен даже без уроков в воскресенье.
                   .filter(
                     (day, i) =>
-                      i < WEEKDAYS ||
+                      i < WEEKDAYS || sameDay(day, today) ||
                       week.lessons.some((l) => sameDay(new Date(l.startTime), day)),
                   )
                   .map((day) => {
@@ -250,7 +269,7 @@ export function ScriptWeeks({
                     const isToday = sameDay(day, today);
 
                     return (
-                      <div key={day.toISOString()} className="mb-1">
+                      <div key={day.toISOString()} data-script-day={scheduleDateValue(day)} className="mb-1">
                         <p
                           className={cn(
                             "flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold uppercase tracking-wide",
