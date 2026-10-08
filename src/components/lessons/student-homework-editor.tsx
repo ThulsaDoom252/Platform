@@ -148,7 +148,11 @@ export function StudentHomeworkExerciseEditor({
       items = parsed.map((item) => {
         const next = item!;
         const old = oldItems.get(next.id);
-        return old?.accepted ? { ...next, accepted: old.accepted } : next;
+        return {
+          ...next,
+          ...(old?.accepted ? { accepted: old.accepted } : {}),
+          ...(old?.choices?.includes(next.answer!) ? { choices: old.choices } : {}),
+        };
       });
     } else if (kind === "describe") {
       if (rows.some((row) => !row.primary.trim())) {
@@ -181,6 +185,8 @@ export function StudentHomeworkExerciseEditor({
         ...(row.questionAudioUrl?.trim()
           ? { questionAudioUrl: row.questionAudioUrl.trim() }
           : {}),
+        ...(oldItems.get(row.id)?.answer ? { answer: oldItems.get(row.id)!.answer } : {}),
+        ...(oldItems.get(row.id)?.accepted ? { accepted: oldItems.get(row.id)!.accepted } : {}),
       }));
     }
 
@@ -190,7 +196,9 @@ export function StudentHomeworkExerciseEditor({
       instruction: original?.instruction ?? "",
       kind,
       optional,
-      ...(kind === "fill" ? { wordBank: mixedWordBank(items) } : {}),
+      ...(kind === "fill" && !items.every((item) => item.choices?.length)
+        ? { wordBank: mixedWordBank(items) }
+        : {}),
       ...(kind === "translate"
         ? { translationDirection: direction, translationLanguage }
         : {}),

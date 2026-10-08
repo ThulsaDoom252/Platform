@@ -20,6 +20,8 @@ export type HomeworkItem = {
   /** Canonical answer for automatically checked tasks. */
   answer?: string;
   accepted?: string[];
+  /** Optional in-line answer choices for an automatically checked gap. */
+  choices?: string[];
   /** Word shown for an open description task. */
   word?: string;
   /** Canonical dictionary headword; metadata only, never an answer hint. */
@@ -723,6 +725,12 @@ const cleanItem = (value: unknown): HomeworkItem | null => {
   const prompt = typeof raw.prompt === "string" ? raw.prompt.trim().slice(0, 1_500) : "";
   if (!id || !prompt) return null;
   const answer = typeof raw.answer === "string" ? raw.answer.trim().slice(0, 300) : undefined;
+  const choices = Array.isArray(raw.choices)
+    ? [...new Set(raw.choices
+        .filter((choice): choice is string => typeof choice === "string")
+        .map((choice) => choice.trim().slice(0, 300))
+        .filter(Boolean))].slice(0, 20)
+    : [];
   const questionAudioUrl = typeof raw.questionAudioUrl === "string"
     ? raw.questionAudioUrl.trim().slice(0, 2_000)
     : "";
@@ -736,6 +744,7 @@ const cleanItem = (value: unknown): HomeworkItem | null => {
     prompt,
     ...(safeQuestionAudioUrl ? { questionAudioUrl: safeQuestionAudioUrl } : {}),
     ...(answer ? { answer } : {}),
+    ...(choices.length >= 2 && (!answer || choices.includes(answer)) ? { choices } : {}),
     ...(Array.isArray(raw.accepted)
       ? {
           accepted: raw.accepted

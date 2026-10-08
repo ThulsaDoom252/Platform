@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
+import { HomeworkAnswerChoice } from "./homework-answer-choice";
 import {
   addHomeworkQuestionAction,
   assignInteractiveHomeworkAction,
@@ -1717,8 +1718,8 @@ function AutoTextExercise({
   const [feedback, setFeedback] = useState<Record<string, "wrong" | "right" | undefined>>({});
   const [busy, startBusy] = useTransition();
 
-  const submit = (item: HomeworkItem) => {
-    const value = drafts[item.id] ?? "";
+  const submit = (item: HomeworkItem, chosenValue?: string) => {
+    const value = chosenValue ?? drafts[item.id] ?? "";
     const savedValue = state[homeworkValueKey(item.id)] ?? "";
     if (busy || value.trim() === savedValue.trim() || (!session.teacher && !value.trim())) return;
     startBusy(async () => {
@@ -1785,7 +1786,7 @@ function AutoTextExercise({
               editable={session.teacher}
               placeholder={t.interactiveHomework.answerPlaceholder}
               onChange={(value) => setDrafts((current) => ({ ...current, [item.id]: value }))}
-              onCommit={() => submit(item)}
+              onCommit={(value) => submit(item, value)}
             />
           </HomeworkItemShell>
         );
@@ -2345,7 +2346,7 @@ function InlineHomeworkAnswer({
   editable: boolean;
   placeholder: string;
   onChange: (value: string) => void;
-  onCommit: () => void;
+  onCommit: (value?: string) => void;
 }) {
   const interaction = useContext(HomeworkInteractionContext);
   const status = homeworkStatus(state, item.id);
@@ -2389,12 +2390,34 @@ function InlineHomeworkAnswer({
               <span className="text-faint">{placeholder}</span>
             )}
           </span>
+        ) : item.choices?.length ? (
+          <HomeworkAnswerChoice
+            choices={item.choices}
+            value={value}
+            label={item.prompt}
+            placeholder={placeholder}
+            disabled={disabled}
+            onChoose={(choice) => {
+              onChange(choice);
+              onCommit(choice);
+            }}
+            className={cn(
+              "h-9 max-w-full rounded-lg border bg-surface-2 px-3 text-sm font-bold text-content outline-none transition focus:border-accent disabled:cursor-default",
+              feedback === "wrong" && "homework-error-flash",
+              feedback === "right" && "homework-correct-pop",
+              status === "correct"
+                ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                : status === "locked"
+                  ? "border-rose-500 bg-rose-50 text-rose-800"
+                  : "border-line",
+            )}
+          />
         ) : (
           <input
             value={value}
             disabled={disabled}
             onChange={(event) => onChange(event.target.value)}
-            onBlur={onCommit}
+            onBlur={() => onCommit()}
             onKeyDown={(event) => {
               if (event.key !== "Enter") return;
               event.preventDefault();

@@ -16,7 +16,8 @@ import type {
   HomeworkItem,
   InteractiveHomeworkPlan,
 } from "../src/lib/lesson-homework";
-import { organizeVocabularyHomework } from "../src/lib/vocabulary-homework";
+import { isVocabularyHomeworkExercise, organizeVocabularyHomework } from "../src/lib/vocabulary-homework";
+import { PART9_GRAMMAR_EXERCISES } from "../src/lib/bundled-lessons/tucker-mendel-part-9-grammar";
 
 const LESSON_TITLE = "Tucker & Mendel — Part 9";
 const FOLDER_NAME = "Tucker & Mendel";
@@ -546,6 +547,7 @@ const homework: InteractiveHomeworkPlan = organizeVocabularyHomework({
     fillExercise("tm9-fill-bonus", "Bonus — Fill in the gaps", bonusWords, true),
     definitionExercise("tm9-definition-bonus", "Bonus — Guess by description", bonusWords, true),
     describeExercise("tm9-describe-bonus", "Bonus — Describe the words", bonusWords, true),
+    ...structuredClone(PART9_GRAMMAR_EXERCISES),
     {
       id: "tm9-written-questions",
       title: "Questions — Written answers",
@@ -568,7 +570,7 @@ function validateContent() {
   if (new Set(vocabulary.map((entry) => entry.word.toLowerCase())).size !== vocabulary.length) {
     throw new Error("Vocabulary contains duplicate headwords");
   }
-  const vocabularyHomework = homework.exercises.filter((exercise) => ["fill", "definition", "describe"].includes(exercise.kind));
+  const vocabularyHomework = homework.exercises.filter((exercise) => isVocabularyHomeworkExercise(exercise, homework));
   if (vocabularyHomework.some((exercise) => exercise.items.length > 8)) throw new Error("Homework group exceeds eight words");
   if (vocabularyHomework.filter((exercise) => !exercise.optional).some((exercise) => exercise.items.length !== 8)) throw new Error("Homework split is invalid");
   if (new Set(vocabularyHomework.flatMap((exercise) => exercise.items.map((item) => item.vocabularyWord))).size !== 43) throw new Error("Homework vocabulary repeats or is incomplete");
