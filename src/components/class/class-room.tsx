@@ -645,25 +645,33 @@ export function ClassRoom({
     { key: "activities", label: t.classRoom.activities },
   ];
 
+  const lessonTabButton = (tab: (typeof LESSON_TABS)[number]) => (
+    <button
+      key={tab.key}
+      type="button"
+      onClick={() => setLessonTab(tab.key)}
+      aria-pressed={lessonTab === tab.key}
+      className={cn(
+        "h-9 shrink-0 rounded-xl px-3.5 text-sm font-semibold transition",
+        lessonTab === tab.key
+          ? "bg-accent text-white"
+          : "text-muted hover:bg-surface-2 hover:text-content",
+      )}
+    >
+      {tab.label}
+    </button>
+  );
+
   const lessonSection = (
     <section className="flex min-h-[420px] flex-col gap-3 rounded-2xl bg-surface p-3.5 ring-1 ring-line">
-      <div className="flex flex-wrap items-center gap-1">
-        {LESSON_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setLessonTab(tab.key)}
-            className={cn(
-              "h-9 rounded-xl px-3.5 text-sm font-semibold transition",
-              lessonTab === tab.key
-                ? "bg-accent text-white"
-                : "text-muted hover:bg-surface-2 hover:text-content",
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <span className="ml-auto text-[11px] text-faint">{t.classRoom.onlyYou}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {lessonTabButton(LESSON_TABS[0])}
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
+          {LESSON_TABS.slice(1).map(lessonTabButton)}
+          <span className="basis-full text-right text-[11px] text-faint sm:ml-2 sm:basis-auto">
+            {t.classRoom.onlyYou}
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col justify-center">

@@ -12,7 +12,7 @@ import {
   openSectionAction,
   type LessonCard,
 } from "@/lib/actions/lessons";
-import { IconPencil, IconPlus, IconX } from "@/components/icons";
+import { IconPlus, IconX } from "@/components/icons";
 import type { ClassVideoState } from "@/lib/class-video";
 import type { ClassTextSelection } from "./selection-translation-popover";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
@@ -277,60 +277,46 @@ export function ClassLesson({
           </div>
         </div>
       ) : (
-        <>
-          {teacher && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setChangingLesson(true)}
-                className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-soft px-3 text-[11px] font-bold text-accent transition hover:brightness-95"
-              >
-                <IconPencil className="h-3.5 w-3.5" />
-                {t.lessonUnits.changeClass}
-              </button>
-            </div>
-          )}
-
-          <div onMouseUp={captureSelection} onDoubleClick={captureDoubleClick}>
-            <AssignedLesson
-              key={data.assignment.id}
-              data={data}
-              teacher={teacher}
-              liveClass
-              presentationManaged
-              classVideo={
-                videoSync?.assignmentId === data.assignment.id
-                  ? videoSync
-                  : null
-              }
-              sectionFocus={
-                !teacher && sectionFocus?.assignmentId === data.assignment.id
-                  ? {
-                      section: sectionFocus.section,
-                      elementId: sectionFocus.elementId,
-                      at: sectionFocus.at,
-                    }
-                  : null
-              }
-              sectionVisibilityBusy={busy}
-              onSectionVisibilityChange={teacher
-                ? (section, opened) => {
-                    setError(null);
-                    startBusy(async () => {
-                      const result = await openSectionAction(
-                        data.assignment.id,
-                        section,
-                        opened,
-                      );
-                      if (result.error) setError(result.error);
-                      await reload();
-                    });
+        <div onMouseUp={captureSelection} onDoubleClick={captureDoubleClick}>
+          <AssignedLesson
+            key={data.assignment.id}
+            data={data}
+            teacher={teacher}
+            liveClass
+            presentationManaged
+            classVideo={
+              videoSync?.assignmentId === data.assignment.id
+                ? videoSync
+                : null
+            }
+            sectionFocus={
+              !teacher && sectionFocus?.assignmentId === data.assignment.id
+                ? {
+                    section: sectionFocus.section,
+                    elementId: sectionFocus.elementId,
+                    at: sectionFocus.at,
                   }
-                : undefined}
-              onLessonSaved={teacher ? reload : undefined}
-            />
-          </div>
-        </>
+                : null
+            }
+            sectionVisibilityBusy={busy}
+            onSectionVisibilityChange={teacher
+              ? (section, opened) => {
+                  setError(null);
+                  startBusy(async () => {
+                    const result = await openSectionAction(
+                      data.assignment.id,
+                      section,
+                      opened,
+                    );
+                    if (result.error) setError(result.error);
+                    await reload();
+                  });
+                }
+              : undefined}
+            onLessonSaved={teacher ? reload : undefined}
+            onChangeLesson={teacher ? () => setChangingLesson(true) : undefined}
+          />
+        </div>
       )}
     </div>
   );

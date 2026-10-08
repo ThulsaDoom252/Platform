@@ -58,6 +58,7 @@ export function AssignedLesson({
   initialSection,
   homeworkReminder,
   onLessonSaved,
+  onChangeLesson,
 }: {
   data: {
     assignment: LessonAssignmentCard;
@@ -81,6 +82,8 @@ export function AssignedLesson({
   /** A notification deep-link, separate from the shared live-class focus. */
   homeworkReminder?: { section: "homework"; elementId: string | null; at: string } | null;
   onLessonSaved?: () => void | Promise<void>;
+  /** Live-class lesson picker; not available to students or in homework. */
+  onChangeLesson?: () => void;
 }) {
   const { t } = useT();
   const [marks, setMarks] = useState(data.assignment.highlights);
@@ -246,19 +249,31 @@ export function AssignedLesson({
       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">
         {t.lessonUnits.topic}
       </p>
-      <div className="mt-1 flex items-center gap-3">
-        <h1 className="min-w-0 flex-1 text-xl font-black leading-tight text-content sm:text-2xl">
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <h1 className="min-w-0 basis-full flex-1 text-xl font-black leading-tight text-content sm:basis-auto sm:text-2xl">
           {data.lesson.title}
         </h1>
         {teacher && (
-          <button
-            type="button"
-            onClick={() => setEditingLesson(true)}
-            className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-black text-white shadow-sm transition hover:brightness-95"
-          >
-            <IconPencil className="h-3.5 w-3.5" />
-            Edit lesson
-          </button>
+          <div data-no-lesson-highlight className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+            {liveClass && onChangeLesson && (
+              <button
+                type="button"
+                onClick={onChangeLesson}
+                className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-accent-soft px-3 text-[11px] font-black text-accent transition hover:brightness-95"
+              >
+                <IconPencil className="h-3.5 w-3.5" />
+                {t.lessonUnits.changeClass}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditingLesson(true)}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-[11px] font-black text-white shadow-sm transition hover:brightness-95"
+            >
+              <IconPencil className="h-3.5 w-3.5" />
+              Edit lesson
+            </button>
+          </div>
         )}
       </div>
     </header>
