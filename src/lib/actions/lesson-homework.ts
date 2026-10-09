@@ -2,7 +2,7 @@
 
 import { randomInt, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { lessonAssignments, lessons, lessonUnits, notifications, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
@@ -15,6 +15,7 @@ import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-l
 import { homeworkReactionPatchSql, homeworkReactionsResetSql } from "@/lib/homework-reaction-persistence";
 import { lessonHomeworkFeedback, type HomeworkFeedbackSettings } from "@/lib/homework-feedback";
 import { homeworkGradeFeedbackPatchSql, homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
+import { HOMEWORK_MEDIA_KEY, homeworkMediaAvailability, homeworkMediaSelection, isHomeworkMediaSelection, type HomeworkMediaSelection } from "@/lib/homework-media";
 import {
   findHomeworkItem,
   assignedInteractiveHomework,
@@ -92,7 +93,35 @@ function publishHomeworkReviewRealtime(studentId: string, data?: Record<string, 
   ]).then(() => undefined);
 }
 
-async function assignmentWithOptionalPlan(id: string) {
+// Read only availability when listing/assigning homework. Hot answer/review
+// queries skip this work; full media already comes with assignedLessonAction.
+function hasMediaVideo(value: SQL) {
+  return sql<boolean>`length(trim(coalesce(${value}, ''))) > 0`;
+}
+function hasMediaTranscript(value: SQL) {
+  return sql<boolean>`case when jsonb_typeof(${value}) = 'array' then exists (
+    select 1 from jsonb_array_elements(${value}) as media_line
+    where length(trim(coalesce(media_line->>'text', ''))) > 0
+  ) else false end`;
+}
+const unitMediaColumns = {
+  hasVideo: hasMediaVideo(sql`${lessonUnits.videoUrl}`),
+  hasTranscript: hasMediaTranscript(sql`${lessonUnits.transcript}`),
+};
+const overrideMediaAvailability = sql<HomeworkMediaSelection | null>`case
+  when ${lessonAssignments.contentOverride} is null then null
+  else jsonb_build_object(
+    'video', ${hasMediaVideo(sql`${lessonAssignments.contentOverride}->>'videoUrl'`)},
+    'transcript', ${hasMediaTranscript(sql`${lessonAssignments.contentOverride}->'transcript'`)}
+  ) end`;
+
+function availableAssignmentMedia(row: { hasVideo: boolean; hasTranscript: boolean; assignment: { contentOverride: Record<string, unknown> | null } }): HomeworkMediaSelection {
+  return row.assignment.contentOverride
+    ? homeworkMediaAvailability(row.assignment.contentOverride)
+    : { video: row.hasVideo, transcript: row.hasTranscript };
+}
+
+async function assignmentWithOptionalPlan(id: string, includeMedia = false) {
   const [row] = await db
     .select({
       assignment: lessonAssignments,
@@ -100,6 +129,8 @@ async function assignmentWithOptionalPlan(id: string) {
       unitId: lessonUnits.id,
       title: lessonUnits.title,
       homework: lessonUnits.homework,
+      hasVideo: includeMedia ? unitMediaColumns.hasVideo : sql<boolean>`false`,
+      hasTranscript: includeMedia ? unitMediaColumns.hasTranscript : sql<boolean>`false`,
     })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -119,8 +150,8 @@ async function assignmentWithOptionalPlan(id: string) {
   return { ...row, plan };
 }
 
-async function assignmentWithPlan(id: string) {
-  const row = await assignmentWithOptionalPlan(id);
+async function assignmentWithPlan(id: string, includeMedia = false) {
+  const row = await assignmentWithOptionalPlan(id, includeMedia);
   return row?.plan ? { ...row, plan: row.plan } : null;
 }
 
@@ -409,10 +440,12 @@ export async function homeworkReviewStateAction(
 export async function assignInteractiveHomeworkAction(
   assignmentId: string,
   exerciseIds: string[],
-): Promise<{ error?: string; assignedAt?: string; exerciseIds?: string[] }> {
+  media?: HomeworkMediaSelection,
+): Promise<{ error?: string; assignedAt?: string; exerciseIds?: string[]; media?: HomeworkMediaSelection }> {
   const session = await requireUser();
   if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
-  const row = await assignmentWithPlan(String(assignmentId ?? ""));
+  if (media !== undefined && !isHomeworkMediaSelection(media)) return { error: "Некорректный выбор материалов" };
+  const row = await assignmentWithPlan(String(assignmentId ?? ""), true);
   if (!row || row.authorId !== session.userId) return { error: "Домашняя работа не найдена" };
 
   const wanted = new Set((Array.isArray(exerciseIds) ? exerciseIds : []).map(String));
@@ -423,6 +456,8 @@ export async function assignInteractiveHomeworkAction(
 
   const state = { ...(row.assignment.answers ?? {}) };
   const updating = Boolean(homeworkAssignedAt(state));
+  const selectedMedia = homeworkMediaSelection(state, availableAssignmentMedia(row), media);
+  state[HOMEWORK_MEDIA_KEY] = JSON.stringify(selectedMedia);
   const assignedAt = new Date().toISOString();
   state[homeworkPlanOverrideKey()] = JSON.stringify(row.plan);
   state[homeworkAssignedAtKey()] = assignedAt;
@@ -449,7 +484,8 @@ export async function assignInteractiveHomeworkAction(
   revalidatePath("/student/homework");
   revalidatePath(`/teacher/lessons/given/${row.assignment.id}`);
   revalidatePath("/teacher/homeworks");
-  return { assignedAt, exerciseIds: selected };
+  await publishHomeworkReviewRealtime(row.assignment.studentId, { assignmentId: row.assignment.id });
+  return { assignedAt, exerciseIds: selected, media: selectedMedia };
 }
 
 export type HomeworkLessonSource = {
@@ -457,6 +493,8 @@ export type HomeworkLessonSource = {
   title: string;
   homeworkTitle: string;
   assignmentId: string | null;
+  mediaAvailable: HomeworkMediaSelection;
+  mediaSelection: HomeworkMediaSelection;
   exercises: Array<{
     id: string;
     title: string;
@@ -477,7 +515,7 @@ export async function listHomeworkLessonSourcesAction(
 
   const [units, assignments] = await Promise.all([
     db
-      .select({ id: lessonUnits.id, title: lessonUnits.title, homework: lessonUnits.homework })
+      .select({ id: lessonUnits.id, title: lessonUnits.title, homework: lessonUnits.homework, ...unitMediaColumns })
       .from(lessonUnits)
       .where(eq(lessonUnits.authorId, session.userId))
       .orderBy(asc(lessonUnits.title)),
@@ -486,6 +524,7 @@ export async function listHomeworkLessonSourcesAction(
         id: lessonAssignments.id,
         unitId: lessonAssignments.unitId,
         answers: lessonAssignments.answers,
+        mediaAvailable: overrideMediaAvailability,
       })
       .from(lessonAssignments)
       .where(eq(lessonAssignments.studentId, target)),
@@ -500,11 +539,14 @@ export async function listHomeworkLessonSourcesAction(
       ? homeworkPlanForAssignment(base, assignment.answers ?? {}) ?? base
       : base;
     if (plan.exercises.length === 0) return [];
+    const mediaAvailable = assignment?.mediaAvailable ?? { video: unit.hasVideo, transcript: unit.hasTranscript };
     return [{
       id: unit.id,
       title: unit.title,
       homeworkTitle: plan.title,
       assignmentId: assignment?.id ?? null,
+      mediaAvailable,
+      mediaSelection: homeworkMediaSelection(assignment?.answers ?? {}, mediaAvailable),
       exercises: plan.exercises.map((exercise) => ({
         id: exercise.id,
         title: exercise.title,
@@ -521,14 +563,16 @@ export async function assignHomeworkFromLessonSourceAction(input: {
   studentId: string;
   lessonId: string;
   exerciseIds: string[];
+  media?: HomeworkMediaSelection;
 }): Promise<{ assignmentId?: string; assignedAt?: string; error?: string }> {
   const session = await requireUser();
   if (session.role !== "TEACHER") return { error: "Доступно только учителю" };
+  if (input?.media !== undefined && !isHomeworkMediaSelection(input.media)) return { error: "Некорректный выбор материалов" };
   const studentId = String(input?.studentId ?? "");
   const lessonId = String(input?.lessonId ?? "");
   const [[unit], [student]] = await Promise.all([
     db
-      .select({ id: lessonUnits.id, title: lessonUnits.title, homework: lessonUnits.homework })
+      .select({ id: lessonUnits.id, title: lessonUnits.title, homework: lessonUnits.homework, ...unitMediaColumns })
       .from(lessonUnits)
       .where(and(eq(lessonUnits.id, lessonId), eq(lessonUnits.authorId, session.userId)))
       .limit(1),
@@ -560,6 +604,10 @@ export async function assignHomeworkFromLessonSourceAction(input: {
   const updating = Boolean(homeworkAssignedAt(current));
   const assignedAt = new Date().toISOString();
   const state = { ...current };
+  const mediaAvailable = existing?.contentOverride
+    ? homeworkMediaAvailability(existing.contentOverride)
+    : { video: unit.hasVideo, transcript: unit.hasTranscript };
+  state[HOMEWORK_MEDIA_KEY] = JSON.stringify(homeworkMediaSelection(current, mediaAvailable, input.media));
   state[homeworkPlanOverrideKey()] = JSON.stringify(plan);
   state[homeworkAssignedAtKey()] = assignedAt;
   state[homeworkAssignedExercisesKey()] = JSON.stringify(selected);
@@ -600,6 +648,7 @@ export async function assignHomeworkFromLessonSourceAction(input: {
   revalidatePath("/student/homework");
   revalidatePath(`/student/lessons/${assignmentId}`);
   revalidatePath(`/teacher/lessons/given/${assignmentId}`);
+  await publishHomeworkReviewRealtime(studentId, { assignmentId });
   return { assignmentId, assignedAt };
 }
 

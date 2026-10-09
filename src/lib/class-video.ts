@@ -17,6 +17,11 @@ export type ClassVideoState = {
   focusAt?: string;
 };
 
+/** Independent homework playback cannot receive or publish a class session. */
+export function lessonVideoPlaybackContext<T>(teacher: boolean, independent: boolean, session?: T) {
+  return { canControl: teacher || independent, session: independent ? undefined : session };
+}
+
 export type ParsedLessonVideoSource =
   | { kind: "youtube"; src: string; videoId: string; startAt: number; endAt: number | null }
   | { kind: "file" | "link"; src: string };

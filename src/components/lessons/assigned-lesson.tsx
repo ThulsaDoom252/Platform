@@ -384,6 +384,7 @@ export function AssignedLesson({
             canEdit: teacher,
             liveClass,
             studentId: data.assignment.studentId,
+            materials: { videoUrl: data.lesson.videoUrl, videoTitle: data.lesson.videoTitle, transcript: data.lesson.transcript },
           }}
           />
         </div>
@@ -454,6 +455,7 @@ export function AssignedLesson({
           canEdit: teacher,
           liveClass,
           studentId: data.assignment.studentId,
+          materials: { videoUrl: data.lesson.videoUrl, videoTitle: data.lesson.videoTitle, transcript: data.lesson.transcript },
         }}
         videoSession={
           liveClass

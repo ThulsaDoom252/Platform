@@ -18,6 +18,7 @@ import {
 } from "@/lib/actions/lessons";
 import {
   expectedClassVideoTime,
+  lessonVideoPlaybackContext,
   parseLessonVideoSource,
   withYouTubeClip,
   type ClassVideoState,
@@ -969,15 +970,18 @@ function LessonVideoPlayerState({
   title,
   teacher,
   session,
+  independent = false,
 }: {
   lessonId: string;
   url: string | null;
   title: string | null;
   teacher: boolean;
   session?: LessonVideoSession;
+  independent?: boolean;
 }) {
   const { t } = useT();
   const [activeUrl, setActiveUrl] = useState(url ?? "");
+  const playback = lessonVideoPlaybackContext(teacher, independent, session);
   const [activeTitle, setActiveTitle] = useState(title ?? "");
   const parsed = useMemo(() => parseLessonVideoSource(activeUrl), [activeUrl]);
   const [mode, setMode] = useState<"local" | "youtube">(
@@ -1231,11 +1235,11 @@ function LessonVideoPlayerState({
           videoId={parsed.videoId}
           startAt={parsed.startAt}
           endAt={parsed.endAt}
-          teacher={teacher}
-          session={session}
+          teacher={playback.canControl}
+          session={playback.session}
         />
       ) : parsed.kind === "file" ? (
-        <LocalVideoPlayer src={parsed.src} teacher={teacher} session={session} />
+        <LocalVideoPlayer src={parsed.src} teacher={playback.canControl} session={playback.session} />
       ) : (
         <div className="p-5 text-center text-sm font-bold text-rose-300">
           {teacher ? t.lessonUnits.videoInvalidYoutube : t.lessonUnits.videoSoon}
@@ -1251,6 +1255,8 @@ export function LessonVideoPlayer(props: {
   title: string | null;
   teacher: boolean;
   session?: LessonVideoSession;
+  /** Homework controls stay local and never subscribe to or publish class playback. */
+  independent?: boolean;
 }) {
   return (
     <LessonVideoPlayerState

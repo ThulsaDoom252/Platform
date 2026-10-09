@@ -72,6 +72,7 @@ export default async function TeacherHomeworkReviewPage({
             state: data.answers,
             canEdit: true,
             studentId: item.studentId,
+            materials: { videoUrl: data.lesson.videoUrl, videoTitle: data.lesson.videoTitle, transcript: data.lesson.transcript },
           }}
         />
       ) : (

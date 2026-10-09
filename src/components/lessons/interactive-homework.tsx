@@ -121,6 +121,9 @@ import { focusHomeworkElementAction } from "@/lib/actions/lessons";
 import { revealHomeworkFocusTarget } from "@/lib/homework-focus";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
 import { HOMEWORK_OVERALL_REACTION_KEY, HOMEWORK_RESULT_COMMENT_KEY, lessonHomeworkFeedback } from "@/lib/homework-feedback";
+import { HomeworkMedia } from "@/components/lessons/homework-media";
+import { HomeworkMediaOptions } from "@/components/lessons/homework-media-options";
+import { HOMEWORK_MEDIA_KEY, homeworkMediaAvailability, homeworkMediaSelection, mergeHomeworkMedia, type HomeworkMediaSelection, type HomeworkMediaSource } from "@/lib/homework-media";
 
 export type InteractiveHomeworkSession = {
   assignmentId: string;
@@ -131,6 +134,7 @@ export type InteractiveHomeworkSession = {
   canEdit?: boolean;
   liveClass?: boolean;
   studentId?: string;
+  materials?: HomeworkMediaSource;
 };
 
 type HomeworkInteractionContextValue = {
@@ -313,7 +317,7 @@ export function InteractiveHomework({
   useEffect(() => {
     if (session.teacher || !session.liveClass) return;
     const frame = requestAnimationFrame(() => {
-      setState((current) => mergeHomeworkGradeFeedback(mergeHomeworkTextHighlights(mergeHomeworkReactions(current, session.state), session.state), session.state));
+      setState((current) => mergeHomeworkMedia(mergeHomeworkGradeFeedback(mergeHomeworkTextHighlights(mergeHomeworkReactions(current, session.state), session.state), session.state), session.state));
     });
     return () => cancelAnimationFrame(frame);
   }, [session.liveClass, session.state, session.teacher]);
@@ -546,16 +550,18 @@ export function InteractiveHomework({
 
       {session.teacher && session.canAssign && (
         <HomeworkAssignmentPanel
-          key={`${currentPlan.exercises.map((exercise) => exercise.id).join(":")}:${homeworkAssignedAt(state) ?? "draft"}:${homeworkAssignedExercisesKey() in state ? state[homeworkAssignedExercisesKey()] : ""}`}
+          key={`${currentPlan.exercises.map((exercise) => exercise.id).join(":")}:${homeworkAssignedAt(state) ?? "draft"}:${state[homeworkAssignedExercisesKey()] ?? ""}:${state[HOMEWORK_MEDIA_KEY] ?? ""}:${JSON.stringify(homeworkMediaAvailability(session.materials))}`}
           plan={currentPlan}
           assignmentId={session.assignmentId}
           state={state}
-          onAssigned={(assigned, exerciseIds) => {
+          materials={session.materials}
+          onAssigned={(assigned, exerciseIds, media) => {
             setState((current) => {
               const next = {
                 ...current,
                 [homeworkAssignedAtKey()]: assigned,
                 [homeworkAssignedExercisesKey()]: JSON.stringify(exerciseIds),
+                [HOMEWORK_MEDIA_KEY]: JSON.stringify(media),
               };
               delete next[homeworkSubmittedAtKey()];
               delete next[homeworkReviewedAtKey()];
@@ -565,6 +571,8 @@ export function InteractiveHomework({
           }}
         />
       )}
+
+      {session.materials && <HomeworkMedia lessonId={session.unitId} source={session.materials} state={state} />}
 
       {exercises.map((exercise, index) => (
         <HomeworkExerciseView
@@ -730,16 +738,20 @@ function HomeworkAssignmentPanel({
   plan,
   assignmentId,
   state,
+  materials,
   onAssigned,
 }: {
   plan: InteractiveHomeworkPlan;
   assignmentId: string;
   state: HomeworkStoredState;
-  onAssigned: (assignedAt: string, exerciseIds: string[]) => void;
+  materials?: HomeworkMediaSource;
+  onAssigned: (assignedAt: string, exerciseIds: string[], media: HomeworkMediaSelection) => void;
 }) {
   const { t } = useT();
   const assignedAt = homeworkAssignedAt(state);
   const assignedIds = homeworkAssignedExerciseIds(plan, state);
+  const mediaAvailable = homeworkMediaAvailability(materials);
+  const [media, setMedia] = useState(() => homeworkMediaSelection(state, mediaAvailable));
   const [selected, setSelected] = useState<string[]>(
     assignedIds.length > 0 ? assignedIds : plan.exercises.map((exercise) => exercise.id),
   );
@@ -804,13 +816,13 @@ function HomeworkAssignmentPanel({
               return;
             }
             startAssign(async () => {
-              const result = await assignInteractiveHomeworkAction(assignmentId, selected);
+              const result = await assignInteractiveHomeworkAction(assignmentId, selected, media);
               if (result.error || !result.assignedAt || !result.exerciseIds) {
                 setError(result.error ?? t.interactiveHomework.assignmentFailed);
                 return;
               }
               setError(null);
-              onAssigned(result.assignedAt, result.exerciseIds);
+              onAssigned(result.assignedAt, result.exerciseIds, result.media ?? media);
             });
           }}
           className="min-h-11 rounded-xl bg-accent px-4 text-sm font-black text-white shadow-sm transition hover:brightness-95 disabled:opacity-50"
@@ -823,6 +835,7 @@ function HomeworkAssignmentPanel({
         </button>
       </div>
 
+      <HomeworkMediaOptions available={mediaAvailable} value={media} onChange={setMedia} disabled={busy} />
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
         {exerciseGroups.map(({ exercise, bonuses }, index) => {
           const checked = selected.includes(exercise.id);

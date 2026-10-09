@@ -22,6 +22,8 @@ import {
   listRevisionPresetsAction,
 } from "@/lib/actions/revision";
 import { cn } from "@/lib/utils";
+import { HomeworkMediaOptions } from "@/components/lessons/homework-media-options";
+import type { HomeworkMediaSelection } from "@/lib/homework-media";
 
 type Stage = "choice" | "lesson" | "activity";
 type ActivitySource = {
@@ -46,6 +48,7 @@ export function HomeworkSourceAssigner({
   const [lessons, setLessons] = useState<HomeworkLessonSource[] | null>(null);
   const [lessonId, setLessonId] = useState<string | null>(null);
   const [exerciseIds, setExerciseIds] = useState<string[]>([]);
+  const [media, setMedia] = useState<HomeworkMediaSelection>({ video: false, transcript: false });
   const [activities, setActivities] = useState<ActivitySource[] | null>(null);
   const [activityKeys, setActivityKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,6 +60,7 @@ export function HomeworkSourceAssigner({
     setOpen(false);
     setStage("choice");
     setError(null);
+    if (done) setLessons(null);
     setDone(null);
   };
 
@@ -71,6 +75,7 @@ export function HomeworkSourceAssigner({
       if (rows[0]) {
         setLessonId(rows[0].id);
         setExerciseIds(rows[0].exercises.map((exercise) => exercise.id));
+        setMedia(rows[0].mediaSelection);
       }
     } catch {
       setError(t.teacherHomeworks.sourceLoadFailed);
@@ -128,6 +133,7 @@ export function HomeworkSourceAssigner({
   const chooseLesson = (lesson: HomeworkLessonSource) => {
     setLessonId(lesson.id);
     setExerciseIds(lesson.exercises.map((exercise) => exercise.id));
+    setMedia(lesson.mediaSelection);
     setError(null);
   };
 
@@ -144,8 +150,11 @@ export function HomeworkSourceAssigner({
       return;
     }
     startAssign(async () => {
-      const result = await assignHomeworkFromLessonSourceAction({ studentId, lessonId, exerciseIds });
+      const result = await assignHomeworkFromLessonSourceAction({ studentId, lessonId, exerciseIds, media });
       if (result.error) return setError(result.error);
+      setLessons((current) => current?.map((lesson) => lesson.id === lessonId
+        ? { ...lesson, assignmentId: result.assignmentId ?? lesson.assignmentId, mediaSelection: media }
+        : lesson) ?? null);
       setDone(t.teacherHomeworks.homeworkAdded);
       router.refresh();
     });
@@ -284,6 +293,7 @@ export function HomeworkSourceAssigner({
                         <button type="button" onClick={() => setExerciseIds([])} className="text-xs font-black text-muted">{t.wordDeck.selectNone}</button>
                       </div>
                     </div>
+                    <HomeworkMediaOptions available={selectedLesson.mediaAvailable} value={media} onChange={setMedia} disabled={busy} />
                     <div className="mt-4 grid gap-2">
                       {selectedLesson.exercises.map((exercise, index) => {
                         const checked = exerciseIds.includes(exercise.id);
