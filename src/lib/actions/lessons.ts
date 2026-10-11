@@ -29,6 +29,7 @@ import {
 import { getSession } from "@/lib/session";
 import { resolveMaterialIcon } from "@/lib/material-icon";
 import { homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
+import { HOMEWORK_TITLE_KEY } from "@/lib/homework-title";
 import { HOMEWORK_MEDIA_KEY } from "@/lib/homework-media";
 import { lessonContentVersion } from "@/lib/lesson-content-version";
 import { queueStudentNotification } from "@/lib/notifications";
@@ -2724,6 +2725,9 @@ export async function answerAction(
   if (!isStudent && !isTeacher) return { error: "Это чужой урок" };
 
   const responseKey = String(key ?? "").slice(0, 240);
+  if (isStudent && responseKey === HOMEWORK_TITLE_KEY) {
+    return { error: "Название домашки выбирает учитель" };
+  }
   if (isStudent && responseKey === HOMEWORK_MEDIA_KEY) {
     return { error: "Материалы домашки выбирает учитель" };
   }

@@ -67,6 +67,15 @@ export const uk: Dict = {
   },
 
   teacherHomeworks: {
+    renameHomework: "Редагувати назву домашки",
+    homeworkName: "Назва, яку побачить учень",
+    renameHomeworkHint: "Змінюється лише назва домашки цього учня. Урок, вправи та відповіді залишаються без змін.",
+    saveHomeworkName: "Зберегти назву",
+    savingHomeworkName: "Зберігаю…",
+    restoreHomeworkName: "Повернути початкову назву",
+    cancelHomeworkName: "Скасувати",
+    invalidHomeworkName: "Введіть назву від 1 до 240 символів.",
+    renameHomeworkError: "Не вдалося зберегти назву домашки. Спробуйте ще раз.",
     title: "Домашки учнів",
     hint: "Перевіряйте всі призначені домашки напряму, не відкриваючи урок.",
     folders: "Папки учнів",

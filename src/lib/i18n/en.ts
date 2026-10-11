@@ -70,6 +70,15 @@ export const en = {
   },
 
   teacherHomeworks: {
+    renameHomework: "Edit homework title",
+    homeworkName: "Name shown to the student",
+    renameHomeworkHint: "Only this student's homework is renamed. The lesson, exercises and answers stay unchanged.",
+    saveHomeworkName: "Save title",
+    savingHomeworkName: "Saving…",
+    restoreHomeworkName: "Restore original title",
+    cancelHomeworkName: "Cancel",
+    invalidHomeworkName: "Enter a title of 1–240 characters.",
+    renameHomeworkError: "Could not save the homework title. Please try again.",
     title: "Student homeworks",
     hint: "Review every assigned homework directly, without opening the lesson.",
     folders: "Student folders",

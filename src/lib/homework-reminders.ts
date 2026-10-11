@@ -1,4 +1,5 @@
 import { fmt, type Dict } from "./i18n";
+import { assignedHomeworkTitle } from "./homework-title";
 import {
   assignedInteractiveHomework, homeworkExerciseHidden, homeworkPlanForAssignment, homeworkRemovedAt,
   interactiveHomeworkFromEntries, legacyHomeworkFromEntries, normalizeInteractiveHomework,
@@ -47,7 +48,7 @@ export function lessonHomeworkReminderDescription(target: HomeworkReminderTarget
   const legacy = legacyHomeworkFromEntries(override?.homework ?? lesson.homework);
   if (plan && !assigned) return null;
   if (!assigned && !legacy.length) return null;
-  const title = typeof override?.title === "string" && override.title.trim() ? override.title.trim().slice(0, 240) : lesson.title;
+  const title = assignedHomeworkTitle(lesson.answers, typeof override?.title === "string" && override.title.trim() ? override.title.trim().slice(0, 240) : lesson.title);
   if (target.exerciseId !== undefined) {
     const exercise = assigned?.exercises.find((entry) => entry.id === target.exerciseId);
     if (!exercise || homeworkExerciseHidden(lesson.answers, exercise.id)) return null;

@@ -17,6 +17,8 @@ import { HighlightableAnswerField } from "./highlightable-answer-field";
 import { HomeworkGradeEditor } from "./homework-grade-editor";
 import { PublicHomeworkTeacherNote } from "./homework-teacher-note";
 import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
+import { RenameHomeworkButton } from "@/components/teacher/rename-homework-button";
+import { HOMEWORK_TITLE_KEY, assignedHomeworkTitle, mergeHomeworkTitle } from "@/lib/homework-title";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools, useSharedHighlightTools } from "./highlight-tools";
 import { selectedOffsets, wordAtPoint } from "@/lib/text-highlight-dom";
 import { createHighlightGestureGuard } from "@/lib/highlight-gesture";
@@ -209,6 +211,7 @@ export function InteractiveHomework({
   const reviewedAt = homeworkReviewedAt(state);
   const revisionRequestedAt = homeworkRevisionRequestedAt(state);
   const assignedAt = homeworkAssignedAt(state);
+  const displayTitle = assignedHomeworkTitle(state, currentPlan.title);
   const exercises = homeworkVisibleExercises(currentPlan, state, session.teacher, activeFocusId);
 
   const clearAllReactions = () => {
@@ -312,6 +315,11 @@ export function InteractiveHomework({
     onStateChange?.(state);
   }, [onStateChange, state]);
 
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setState((current) => mergeHomeworkTitle(current, session.state)));
+    return () => cancelAnimationFrame(frame);
+  }, [session.state]);
+
   // The class already refreshes the assignment. Apply its feedback without
   // extra requests or replacing an answer the student is currently typing.
   useEffect(() => {
@@ -324,7 +332,7 @@ export function InteractiveHomework({
 
   const pullReviewState = async (gradesOnly = false) => {
     const next = await homeworkReviewStateAction(session.assignmentId);
-    if (next) setState(current => gradesOnly ? mergeHomeworkGradeFeedback(mergeHomeworkReactions(current, next), next) : next);
+    if (next) setState(current => gradesOnly ? mergeHomeworkTitle(mergeHomeworkGradeFeedback(mergeHomeworkReactions(current, next), next), next) : next);
   };
 
   useRealtimeSubscription({
@@ -390,15 +398,17 @@ export function InteractiveHomework({
       onKeyUpCapture={(event) => { if (event.key === "Shift") highlightSelection(event); }}>
       <section className="overflow-hidden rounded-2xl border border-accent/25 bg-gradient-to-br from-accent-soft via-surface to-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-accent">
               {t.interactiveHomework.eyebrow}
             </p>
-            <h2 className="mt-1 text-xl font-black text-content">{currentPlan.title}</h2>
+            <h2 className="mt-1 break-words text-xl font-black text-content">{displayTitle}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {session.teacher && assignedAt && <RenameHomeworkButton assignmentId={session.assignmentId} title={displayTitle}
+              onSaved={(title) => setState((current) => mergeHomeworkTitle(current, title ? { [HOMEWORK_TITLE_KEY]: title } : {}))} />}
             {session.teacher && (
-              <HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId }} title={currentPlan.title}
+              <HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId }} title={displayTitle}
                 showLabel disabled={!assignedAt} />
             )}
             {session.teacher && (

@@ -13,6 +13,7 @@ import { ResetStudentHomeworkButton } from "@/components/teacher/reset-student-h
 import { teacherHomeworkOverviewState } from "@/lib/teacher-homework-order";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
 import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
+import { RenameHomeworkButton } from "@/components/teacher/rename-homework-button";
 
 export default async function TeacherHomeworkReviewPage({
   params,
@@ -43,6 +44,7 @@ export default async function TeacherHomeworkReviewPage({
           {t.teacherHomeworks.back}
         </Link>
         <div className="flex flex-wrap items-center gap-2">
+          <RenameHomeworkButton assignmentId={item.id} title={item.title} showLabel />
           {!assignedPlan && <HomeworkReminderButton target={{ kind: "LESSON", id: item.id }} title={item.title} showLabel />}
           {state !== "notStarted" && (
             <ResetStudentHomeworkButton assignmentId={item.id} labels={t.teacherHomeworks} showLabel />

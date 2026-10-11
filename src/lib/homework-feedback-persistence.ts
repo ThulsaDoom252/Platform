@@ -1,6 +1,7 @@
 import { sql, type SQLWrapper } from "drizzle-orm";
 import { HOMEWORK_OVERALL_REACTION_KEY, type HomeworkResultScore } from "@/lib/homework-feedback";
 import { HOMEWORK_GRADE_FEEDBACK_KEYS, HOMEWORK_GRADE_FEEDBACK_PREFIXES, isHomeworkGradeFeedbackKey } from "@/lib/lesson-homework";
+import { HOMEWORK_TITLE_KEY } from "./homework-title";
 
 /** Patch only grade/comment keys on the current row, never a stale answer snapshot. */
 export function homeworkGradeFeedbackPatchSql(answers: SQLWrapper, patch: Record<string, string | null>) {
@@ -24,12 +25,12 @@ export function revisionHomeworkScoreSql(answers: SQLWrapper) {
   )`;
 }
 
-/** A student saving an answer must not overwrite newer teacher grades, comments or result reactions. */
+/** Student saves must not overwrite current teacher feedback or the assignment's display name. */
 export function homeworkStateWithCurrentResultSql(answers: SQLWrapper, state: Record<string, string>) {
   const next = { ...state };
-  for (const key of Object.keys(next)) if (key === HOMEWORK_OVERALL_REACTION_KEY || isHomeworkGradeFeedbackKey(key)) delete next[key];
+  for (const key of Object.keys(next)) if (key === HOMEWORK_TITLE_KEY || key === HOMEWORK_OVERALL_REACTION_KEY || isHomeworkGradeFeedbackKey(key)) delete next[key];
   const current = sql`coalesce(${answers}, '{}'::jsonb)`;
-  const exact = [HOMEWORK_OVERALL_REACTION_KEY, ...HOMEWORK_GRADE_FEEDBACK_KEYS];
+  const exact = [HOMEWORK_TITLE_KEY, HOMEWORK_OVERALL_REACTION_KEY, ...HOMEWORK_GRADE_FEEDBACK_KEYS];
   const conditions = [sql`feedback_entry.key = ANY(ARRAY[${sql.join(exact.map(key => sql`${key}`), sql`, `)}]::text[])`,
     ...HOMEWORK_GRADE_FEEDBACK_PREFIXES.map(prefix => sql`left(feedback_entry.key, ${prefix.length}) = ${prefix}`)];
   return sql`${JSON.stringify(next)}::jsonb || coalesce((

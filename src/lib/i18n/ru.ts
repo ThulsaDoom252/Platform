@@ -67,6 +67,15 @@ export const ru: Dict = {
   },
 
   teacherHomeworks: {
+    renameHomework: "Редактировать название домашки",
+    homeworkName: "Название, которое увидит ученик",
+    renameHomeworkHint: "Меняется только название домашки этого ученика. Урок, упражнения и ответы остаются прежними.",
+    saveHomeworkName: "Сохранить название",
+    savingHomeworkName: "Сохраняю…",
+    restoreHomeworkName: "Вернуть исходное название",
+    cancelHomeworkName: "Отмена",
+    invalidHomeworkName: "Введите название от 1 до 240 символов.",
+    renameHomeworkError: "Не удалось сохранить название домашки. Попробуйте ещё раз.",
     title: "Домашки учеников",
     hint: "Проверяйте все назначенные домашки напрямую, не открывая урок.",
     folders: "Папки учеников",

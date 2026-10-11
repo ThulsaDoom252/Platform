@@ -15,6 +15,7 @@ import { regularVoiceRecording, regularVoiceRecordingKey } from "@/lib/regular-l
 import { homeworkReactionPatchSql, homeworkReactionsResetSql } from "@/lib/homework-reaction-persistence";
 import { lessonHomeworkFeedback, type HomeworkFeedbackSettings } from "@/lib/homework-feedback";
 import { homeworkGradeFeedbackPatchSql, homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
+import { assignedHomeworkTitle } from "@/lib/homework-title";
 import { HOMEWORK_MEDIA_KEY, homeworkMediaAvailability, homeworkMediaSelection, isHomeworkMediaSelection, type HomeworkMediaSelection } from "@/lib/homework-media";
 import {
   findHomeworkItem,
@@ -1341,7 +1342,7 @@ export async function reviewInteractiveHomeworkAction(
     teacherId: session.userId,
     studentId: row.assignment.studentId,
     event: "homeworkReviewed",
-    title: row.title,
+    title: assignedHomeworkTitle(state, row.title),
     href: `/student/lessons/${row.assignment.id}?section=homework`,
   });
 
@@ -1380,7 +1381,7 @@ export async function returnInteractiveHomeworkForRevisionAction(
     teacherId: session.userId,
     studentId: row.assignment.studentId,
     event: "homeworkRevisionRequested",
-    title: row.title,
+    title: assignedHomeworkTitle(state, row.title),
     href: `/student/lessons/${row.assignment.id}?section=homework`,
   });
 
@@ -1658,7 +1659,7 @@ export async function teacherHomeworkAssignmentsAction(): Promise<
     return [{
       kind: "LESSON" as const,
       id: row.assignment.id,
-      title: row.title,
+      title: assignedHomeworkTitle(state, row.title),
       homeworkTitle: plan?.title || legacy[0]?.title || "Homework",
       homeworkFeedback: lessonHomeworkFeedback(state),
       ...progress,
@@ -1712,7 +1713,7 @@ export async function myInteractiveHomeworkAction(): Promise<HomeworkAssignmentC
       : { required: { done: 0, total: 0 }, bonuses: { done: 0, total: 0 } };
     return [{
       id: row.assignment.id,
-      title: row.title,
+      title: assignedHomeworkTitle(state, row.title),
       homeworkTitle: plan?.title || legacy[0]?.title || "Homework",
       ...progress,
       requiredDone: exerciseProgress.required.done,
