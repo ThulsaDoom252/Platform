@@ -84,7 +84,8 @@ export default async function TeacherLayout({
 
           {/* Main column */}
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-3.5">
+            {/* Notifications must sit above lesson toolbars (z-30), below the sidebar and dialogs. */}
+            <header className="sticky top-0 z-[35] flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-3.5">
               {/* Логотип слева: боковая полоса свёрнута, и опознать
                   платформу больше негде. */}
               <Link href="/teacher" className="flex items-center gap-2">
