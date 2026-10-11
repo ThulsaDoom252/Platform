@@ -127,11 +127,13 @@ test("all labels and descriptions are translated, including navigation and empty
   }
 });
 
-test("Tests is reachable from desktop and mobile, and the compact menu can scroll rather than clipping items", () => {
+test("Tests is reachable from desktop and mobile, and the expanded menu can scroll when needed", () => {
   const desktop = readFileSync("src/components/teacher/sidebar-nav.tsx", "utf8");
   const mobile = readFileSync("src/components/teacher/mobile-nav.tsx", "utf8");
   for (const source of [desktop, mobile]) assert.ok(source.includes('{ href: "/teacher/tests", label: t.nav.tests, Icon: ClipboardCheck }'));
-  assert.ok(desktop.includes("min-h-0 flex-1 flex-col gap-1 overflow-y-auto"));
+  assert.ok(desktop.includes("sidebar-rail-nav flex min-h-0 flex-1 flex-col gap-1"));
+  const css = readFileSync("src/app/globals.css", "utf8");
+  assert.match(css, /\.sidebar-rail:is\(:hover, :has\(:focus-visible\)\) \.sidebar-rail-nav\s*\{[^}]*overflow-y:\s*auto;/);
   assert.ok(desktop.includes("group flex shrink-0 items-center"));
   assert.ok(mobile.includes("max-w-full truncate"));
 });

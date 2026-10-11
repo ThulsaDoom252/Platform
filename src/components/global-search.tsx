@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { globalSearchAction } from "@/lib/actions/global-search";
 import {
   SEARCH_CATEGORIES,
@@ -9,7 +10,7 @@ import {
   type SearchCategory,
 } from "@/lib/global-search-types";
 import { useT } from "@/components/i18n-provider";
-import { IconChevronRight, IconSearch, IconX } from "@/components/icons";
+import { IconChevronRight, IconSearch } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const teacherCategories = [...SEARCH_CATEGORIES];
@@ -26,17 +27,27 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
   const [completedKey, setCompletedKey] = useState("");
   const [failed, setFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const selectedKey = useMemo(() => [...selected].sort().join(","), [selected]);
+
+  const closeSearch = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+    setItems([]);
+    setCompletedKey("");
+    setFailed(false);
+    triggerRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     inputRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") closeSearch();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, closeSearch]);
 
   useEffect(() => {
     let current = true;
@@ -87,6 +98,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
   return (
     <div className="relative z-50">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         title={t.globalSearch.open}
@@ -98,18 +110,18 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
         <span className="hidden sm:inline">{t.globalSearch.open}</span>
       </button>
 
-      {open && (
+      {open && createPortal(
         <>
           <button
             type="button"
             aria-label={t.globalSearch.close}
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 cursor-default bg-page/45 backdrop-blur-[2px]"
+            onClick={closeSearch}
+            className="fixed inset-0 z-[60] cursor-default bg-page/45 backdrop-blur-[2px]"
           />
 
           <section
             role="search"
-            className="fixed left-3 right-3 top-16 z-50 mx-auto flex max-h-[min(76dvh,680px)] max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-8 sm:mx-0 sm:w-[min(42rem,calc(100vw-4rem))]"
+            className="fixed left-3 right-3 top-16 z-[61] mx-auto flex max-h-[min(76dvh,680px)] max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-8 sm:mx-0 sm:w-[min(42rem,calc(100vw-4rem))]"
           >
             <div className="flex items-center gap-2 border-b border-line p-3 sm:p-4">
               <IconSearch className="h-5 w-5 shrink-0 text-accent" />
@@ -130,30 +142,6 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
                 aria-label={t.globalSearch.inputLabel}
                 className="min-w-0 flex-1 bg-transparent text-base font-semibold text-content outline-none placeholder:text-faint"
               />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery("");
-                    setItems([]);
-                    setCompletedKey("");
-                    setFailed(false);
-                    inputRef.current?.focus();
-                  }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content"
-                  aria-label={t.globalSearch.clear}
-                >
-                  <IconX className="h-4 w-4" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-faint transition hover:bg-surface-2 hover:text-content"
-                aria-label={t.globalSearch.close}
-              >
-                <IconX className="h-4 w-4" />
-              </button>
             </div>
 
             {role === "TEACHER" && (
@@ -208,7 +196,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
                     <Link
                       key={`${item.category}:${item.id}`}
                       href={item.href}
-                      onClick={() => setOpen(false)}
+                      onClick={closeSearch}
                       className="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-surface-2"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xl text-accent">
@@ -234,7 +222,8 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
               )}
             </div>
           </section>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

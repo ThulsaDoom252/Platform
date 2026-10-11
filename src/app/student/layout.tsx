@@ -59,7 +59,7 @@ export default async function StudentLayout({
         <div className="mx-auto flex w-full max-w-[1440px]">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}
           <SidebarRail>
-            <Link href="/student" className="flex items-center gap-3 px-1">
+            <Link href="/student" className="flex shrink-0 items-center gap-3 px-1">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
                 <IconCap className="h-6 w-6" />
               </span>
@@ -77,7 +77,7 @@ export default async function StudentLayout({
 
             {/* Ширина задана: сплющенная в полосу карточка выросла бы
                 вверх и подвинула навигацию. */}
-            <div className={`mt-auto flex w-[240px] flex-col gap-4 ${RAIL_ONLY_OPEN}`}>
+            <div className={`sidebar-rail-footer mt-auto flex w-[240px] shrink-0 flex-col gap-4 ${RAIL_ONLY_OPEN}`}>
               <div className="rounded-2xl bg-accent-soft p-4">
                 <p className="text-sm font-semibold text-content">{t.brand.smallSteps}</p>
               </div>

@@ -42,7 +42,7 @@ export function SidebarNav() {
   ];
 
   return (
-    <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav className="sidebar-rail-nav flex min-h-0 flex-1 flex-col gap-1">
       {items.map(({ href, label, Icon, exact }) => {
         const active = exact
           ? pathname === href

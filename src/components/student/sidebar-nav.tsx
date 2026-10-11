@@ -33,7 +33,7 @@ export function StudentSidebarNav() {
   ];
 
   return (
-    <nav className="flex flex-col gap-1">
+    <nav className="sidebar-rail-nav flex min-h-0 flex-1 flex-col gap-1">
       {items.map(({ href, label, Icon }) => {
         const active = pathname.startsWith(href) || (
           href === "/student/homework" &&

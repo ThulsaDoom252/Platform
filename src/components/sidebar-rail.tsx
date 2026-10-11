@@ -29,7 +29,7 @@ export function SidebarRail({ children }: { children: React.ReactNode }) {
     // Ширина полосы в потоке не меняется — колонка с контентом стоит на месте.
     <div className="sticky top-0 z-40 hidden h-screen w-20 shrink-0 lg:block">
       <aside
-        className={`group/rail absolute left-0 top-0 h-screen w-20 overflow-hidden border-r border-line bg-surface transition-[width,box-shadow] duration-150 ease-out ${OPEN}`}
+        className={`sidebar-rail group/rail absolute left-0 top-0 h-screen w-20 overflow-hidden border-r border-line bg-surface transition-[width,box-shadow] duration-150 ease-out ${OPEN}`}
       >
         {/*
          * Содержимое тянется за полосой, а не обрезается по краю: иначе

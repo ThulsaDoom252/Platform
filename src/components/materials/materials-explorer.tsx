@@ -2078,11 +2078,11 @@ export function MaterialsExplorer({
       <section
         ref={contentRef}
         className={cn(
-          "scroll-mt-36 rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6 lg:scroll-mt-20",
+          "isolate scroll-mt-36 rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6 lg:scroll-mt-20",
           editable && selected?.needsFix && "ring-2 ring-rose-400",
         )}
       >
-        <div className="relative z-[8] lg:sticky lg:top-16 lg:-mx-6 lg:-mt-6 lg:mb-5 lg:border-b lg:border-line lg:bg-surface/95 lg:px-6 lg:pt-6 lg:pb-1 lg:backdrop-blur-md">
+        <div className="materials-content-toolbar relative z-20 bg-surface lg:sticky lg:top-16 lg:-mx-6 lg:-mt-6 lg:mb-5 lg:border-b lg:border-line lg:px-6 lg:pt-6 lg:pb-1">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
             {view === "interactive" && (
@@ -2578,33 +2578,36 @@ export function MaterialsExplorer({
         )}
         </div>
 
-        {isPhrasePage && selected &&
-          (selected.blocks.length > 0 ? (
-            <RuleReader
-              title={selected.name}
-              icon={selected.icon}
-              description={selected.description}
-              blocks={selected.blocks}
-              lang={selected.translationLang === "RU" ? "RU" : "UK"}
-            />
-          ) : (
-            <PhraseReader
-              title={selected.name}
-              icon={selected.icon}
-              description={selected.description}
-              coverImageUrl={selected.imageUrl}
-              phrases={selected.phrases}
-              nodeId={selected.id}
-              imageScale={selected.imageScale}
-              onEditPhrase={editable ? setEditPhrase : undefined}
-              onImageScale={
-                editable ? (scale) => setImageScale(selected, scale) : undefined
-              }
-              onEditImage={
-                editable && selected.imageUrl ? () => setEditImage(selected) : undefined
-              }
-            />
-          ))}
+        {isPhrasePage && selected && (
+          <div className="materials-reader-layer relative z-0">
+            {selected.blocks.length > 0 ? (
+              <RuleReader
+                title={selected.name}
+                icon={selected.icon}
+                description={selected.description}
+                blocks={selected.blocks}
+                lang={selected.translationLang === "RU" ? "RU" : "UK"}
+              />
+            ) : (
+              <PhraseReader
+                title={selected.name}
+                icon={selected.icon}
+                description={selected.description}
+                coverImageUrl={selected.imageUrl}
+                phrases={selected.phrases}
+                nodeId={selected.id}
+                imageScale={selected.imageScale}
+                onEditPhrase={editable ? setEditPhrase : undefined}
+                onImageScale={
+                  editable ? (scale) => setImageScale(selected, scale) : undefined
+                }
+                onEditImage={
+                  editable && selected.imageUrl ? () => setEditImage(selected) : undefined
+                }
+              />
+            )}
+          </div>
+        )}
 
         {!isPhrasePage && !contentNode && view !== "interactive" && (
           <p className="py-16 text-center text-sm text-faint">{t.materials.selectFolder}</p>

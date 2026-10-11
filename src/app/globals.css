@@ -578,6 +578,52 @@
   }
 }
 
+/* Collapsed navigation is not a scroll container. All icons share the
+   available height; the invisible footer must not reserve any space. */
+.sidebar-rail-nav {
+  overflow: clip;
+}
+
+.sidebar-rail-nav > a {
+  min-height: 0;
+  max-height: 2.75rem;
+  flex: 1 1 0;
+  padding-block: 0;
+}
+
+.sidebar-rail-footer {
+  display: none;
+}
+
+.sidebar-rail:is(:hover, :has(:focus-visible)) .sidebar-rail-nav {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebar-rail:is(:hover, :has(:focus-visible)) .sidebar-rail-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebar-rail:is(:hover, :has(:focus-visible)) .sidebar-rail-nav > a {
+  min-height: 2.75rem;
+  max-height: none;
+  flex: 0 0 auto;
+  padding-block: 0.625rem;
+}
+
+.sidebar-rail:is(:hover, :has(:focus-visible)) .sidebar-rail-footer {
+  display: flex;
+}
+
+/* The actions panel is a solid sheet, never glass. The reader has its
+   own lower stacking context so headings and inline controls stay below. */
+.materials-content-toolbar {
+  background: var(--surface);
+  opacity: 1;
+  isolation: isolate;
+}
+
 /* ---------- Materials tree ----------
    The same components use semantic tokens, so the premium depth survives
    both day/night mode and every per-student accent palette. */
