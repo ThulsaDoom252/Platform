@@ -43,6 +43,7 @@ export type TestAttempt = TestAttemptSummary & { results: TestResults };
 export type TestAssignmentDetail = {
   id: string; studentId: string; studentName: string; definition: TestDefinition;
   exerciseIds: string[]; assignedAt: string; attempts: TestAttemptSummary[]; latestAttempt: TestAttempt | null;
+  dueAt?: string | null;
 };
 export type TestHomeworkCard = {
   id: string; kind: "TEST"; activityType: "TEST"; title: string;
@@ -50,8 +51,9 @@ export type TestHomeworkCard = {
   assignedAt: string; submittedAt: string | null; reviewedAt: string | null;
   nextLessonAt: string | null; started: boolean; exerciseIds: string[];
   latestPercent: number | null; attemptCount: number; cover?: TestCover; level?: TestLevelId;
+  dueAt?: string | null;
 };
-export type TestActionError = "invalid" | "forbidden" | "failed" | "stale";
+export type TestActionError = "invalid" | "forbidden" | "failed" | "stale" | "completed";
 export type TestReply<T> = { ok: true; value: T } | { ok: false; error: TestActionError };
 
 export function testAnswerText(answer: TestAnswer, empty = "") {

@@ -71,7 +71,7 @@ export function prepareTestResultsImport(raw: unknown) {
         correct: score.correct, total: score.total, percent: score.percent, createdAt: importedAt, completedAt: importedAt };
     });
     return { assignment: { id: item.assignmentId, studentId: manifest.student.id, teacherId: manifest.teacher.id,
-      testId: definition.id, definition: structuredClone(definition), grading: structuredClone(grading), exerciseIds, assignedAt: new Date(manifest.importedAt) }, attempts };
+      testId: definition.id, definition: structuredClone(definition), grading: structuredClone(grading), exerciseIds, assignedAt: new Date(manifest.importedAt), dueAt: null }, attempts };
   });
   return { manifest, tests };
 }

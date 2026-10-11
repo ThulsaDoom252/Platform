@@ -21,7 +21,7 @@ const table = (name: string, columns: string[]): Table => Object.fromEntries([["
 function harness() {
   const schema = {
     users: table("users", ["id", "name", "role", "locale", "avatarUrl"]),
-    testAssignments: table("assignments", ["id", "studentId", "teacherId", "testId", "definition", "exerciseIds", "assignedAt"]),
+    testAssignments: table("assignments", ["id", "studentId", "teacherId", "testId", "definition", "exerciseIds", "assignedAt", "dueAt"]),
     testAttempts: table("attempts", ["id", "assignmentId", "createdAt", "completedAt", "correct", "total", "percent", "checkedExerciseIds"]),
     notifications: table("notices", ["id", "recipientId", "senderId", "href", "data"]),
     lessons: table("lessons", ["startTime", "studentId", "status"]),
@@ -51,6 +51,10 @@ function harness() {
       if (typeof column === "string") return [key, row[column]];
       if (column === schema.testAttempts) return [key, project(row)];
       if (key === "title" || key === "cover" || key === "level") return [key, (row["assignments.definition"] as Row)?.[key]];
+      const attempts = store.attempts.filter((item) => item.assignmentId === row["assignments.id"]).sort((a, b) => Number(b.createdAt) - Number(a.createdAt) || String(b.id).localeCompare(String(a.id)));
+      if (key === "latestPercent") return [key, attempts[0]?.total ? attempts[0].percent : null];
+      if (key === "submittedAt") return [key, attempts[0]?.completedAt ?? null];
+      if (key === "attemptCount") return [key, attempts.length];
       return [key, undefined];
     }));
   }
@@ -76,7 +80,7 @@ function harness() {
         if (target.$name === "notices" && failNotices) throw new Error("Notice storage failed");
         if (store[target.$name].some((row) => row.id === value.id)) { if (!conflictAllowed) throw new Error("Duplicate id"); return []; }
         const row = structuredClone({ createdAt: new Date(), assignedAt: new Date(), results: {}, correct: 0, total: 0,
-          percent: 0, completedAt: null, checkedExerciseIds: [], ...value });
+          percent: 0, completedAt: null, dueAt: null, checkedExerciseIds: [], ...value });
         store[target.$name].push(row); result = [row]; return result;
       };
       const query = { onConflictDoNothing: () => { conflictAllowed = true; return query; }, returning: async () => run(),
@@ -114,6 +118,74 @@ function harness() {
 }
 const assignmentInput = (request = 10, student = 2, notifyStudent = true) => ({ testId: FIRST_CONDITIONAL.id,
   studentId: uuid(student), requestId: uuid(request), exerciseIds: ["exercise-1", "exercise-3"], notifyStudent });
+
+test("deadline changes lock the parent, persist for both sides and never change answers or create notices", async () => {
+  const h = harness(); await h.actions.assignTestAction(assignmentInput());
+  h.login("STUDENT", uuid(2));
+  await h.actions.checkAssignedTestAction({ assignmentId: uuid(10), attemptId: uuid(20), exerciseId: "exercise-1", answers: { q1: "will give" } });
+  const attempts = structuredClone(h.store.attempts), notices = structuredClone(h.store.notices);
+  h.login("TEACHER");
+  const dueAt = "2099-10-12T15:30:00.000Z";
+  const saved = await h.actions.updateTestDeadlineAction({ assignmentId: uuid(10), dueAt });
+  assert.ok(saved.ok); if (saved.ok) assert.equal(saved.value.dueAt, dueAt);
+  assert.equal((h.store.assignments[0].dueAt as Date).toISOString(), dueAt);
+  const events = h.events.length;
+  assert.ok((await h.actions.updateTestDeadlineAction({ assignmentId: uuid(10), dueAt })).ok);
+  assert.equal(h.events.length, events, "same deadline does not emit duplicate events");
+  assert.equal((await h.actions.testHomeworkCardsAction(uuid(2)))[0].dueAt, dueAt);
+  h.login("STUDENT", uuid(2));
+  assert.equal((await h.actions.assignedTestDetailAction(uuid(10)))?.dueAt, dueAt);
+  assert.equal((await h.actions.testHomeworkCardsAction())[0].dueAt, dueAt);
+  h.login("TEACHER");
+  assert.ok((await h.actions.updateTestDeadlineAction({ assignmentId: uuid(10), dueAt: "2099-11-12T16:00:00.000Z" })).ok);
+  assert.ok((await h.actions.updateTestDeadlineAction({ assignmentId: uuid(10), dueAt: null })).ok);
+  assert.equal(h.store.assignments[0].dueAt, null);
+  assert.deepEqual(h.store.attempts, attempts); assert.deepEqual(h.store.notices, notices);
+  assert.ok(h.locks.includes("assignments")); assert.ok(h.paths.includes("/teacher/tests"));
+});
+
+test("deadline editing rejects non-owners, malformed input, past dates and completed latest attempts", async () => {
+  const h = harness(); await h.actions.assignTestAction(assignmentInput());
+  const input = { assignmentId: uuid(10), dueAt: "2099-10-12T15:30:00.000Z" };
+  for (const [role, id] of [[null, uuid(1)], ["STUDENT", uuid(2)], ["TEACHER", uuid(9)]] as const) {
+    h.login(role, id); const reply = await h.actions.updateTestDeadlineAction(input);
+    assert.ok(!reply.ok); if (!reply.ok) assert.equal(reply.error, "forbidden");
+  }
+  h.login("TEACHER");
+  for (const bad of [{ ...input, assignmentId: "bad" }, { ...input, dueAt: "2020-01-01T00:00:00.000Z" },
+    { ...input, dueAt: "not a date" }, { ...input, dueAt: "2200-01-01T00:00:00.000Z" }, { ...input, percent: 100 }]) {
+    const reply = await h.actions.updateTestDeadlineAction(bad);
+    assert.ok(!reply.ok); if (!reply.ok) assert.equal(reply.error, "invalid");
+  }
+  assert.equal(h.store.assignments[0].dueAt, null);
+  assert.ok((await h.actions.updateTestDeadlineAction(input)).ok);
+  h.login("STUDENT", uuid(2));
+  for (const exerciseId of ["exercise-1", "exercise-3"]) await h.actions.checkAssignedTestAction({ assignmentId: uuid(10), attemptId: uuid(20), exerciseId, answers: {} });
+  const saved = structuredClone(h.store.attempts);
+  h.login("TEACHER");
+  for (const dueAt of [input.dueAt, null]) {
+    const reply = await h.actions.updateTestDeadlineAction({ ...input, dueAt });
+    assert.ok(!reply.ok); if (!reply.ok) assert.equal(reply.error, "completed");
+  }
+  assert.deepEqual(h.store.attempts, saved);
+  await h.actions.restartAssignedTestAction({ assignmentId: uuid(10), requestId: uuid(21), notifyStudent: false });
+  assert.ok((await h.actions.updateTestDeadlineAction({ ...input, dueAt: null })).ok);
+  assert.deepEqual(h.store.attempts[0], saved[0], "old completed attempt remains immutable after restart/deadline edit");
+});
+
+test("student folders query only the selected student AND current owner's assignments", async () => {
+  const h = harness(); await h.actions.assignTestAction(assignmentInput()); await h.actions.assignTestAction(assignmentInput(11, 3, false));
+  h.login("TEACHER", uuid(9)); await h.actions.assignTestAction(assignmentInput(12, 2, false));
+  h.login("TEACHER");
+  assert.deepEqual((await h.actions.testHomeworkCardsAction()).map((item) => item.id).sort(), [uuid(10), uuid(11)]);
+  assert.deepEqual((await h.actions.testHomeworkCardsAction(uuid(2))).map((item) => item.id), [uuid(10)]);
+  assert.equal((await h.actions.testHomeworkCardsAction(uuid(8))).length, 0);
+  assert.equal((await h.actions.testHomeworkCardsAction("../other" )).length, 0);
+  h.login("STUDENT", uuid(2));
+  assert.deepEqual((await h.actions.testHomeworkCardsAction()).map((item) => item.id).sort(), [uuid(10), uuid(12)]);
+  assert.equal((await h.actions.testHomeworkCardsAction(uuid(3))).length, 0);
+  h.login(null); assert.equal((await h.actions.testHomeworkCardsAction()).length, 0);
+});
 
 test("assigning freezes an independent test for each student; optional notifications deep-link to Tests", async () => {
   const h = harness();

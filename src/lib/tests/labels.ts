@@ -19,6 +19,8 @@ const en = {
   results: "Student results", history: "Attempt history", attempt: "Attempt", emptyHistory: "No attempts yet.",
   back: "Back to Homework", notStarted: "Not started", inProgress: "In progress", done: "Completed", review: "View results", assignedOn: "Assigned",
   loadMore: "Load older attempts", loading: "Loading…", noStudents: "No students found.", dismiss: "Close",
+  studentFolders: "Student folders", foldersHint: "Students with assigned tests. Open a folder to see awaiting tests and saved results.", openFolder: "Open folder", noTestFolders: "Student folders appear after assigning a test.",
+  deadline: "Deadline", setDeadline: "Set deadline", editDeadline: "Change deadline", removeDeadline: "Remove deadline", saveDeadline: "Save deadline", deadlineSaved: "Deadline saved.", deadlineRemoved: "Deadline removed.", overdue: "Overdue", deadlineTimeZone: "School time · Europe/Simferopol", invalidDeadline: "Choose a valid future date and time.", completedDeadline: "Deadlines can only be changed for awaiting tests.",
   error: "Couldn't save. Please try again — your answers are still here.", invalid: "Choose a student and at least one available exercise.", forbidden: "You do not have access to this test.",
 };
 export type TestLabels = typeof en;
@@ -41,6 +43,8 @@ const ru: TestLabels = {
   results: "Результаты ученика", history: "История попыток", attempt: "Попытка", emptyHistory: "Попыток пока нет.",
   back: "Назад к домашкам", notStarted: "Не начат", inProgress: "В процессе", done: "Завершён", review: "Посмотреть результаты", assignedOn: "Назначено",
   loadMore: "Загрузить прошлые попытки", loading: "Загрузка…", noStudents: "Ученики не найдены.", dismiss: "Закрыть",
+  studentFolders: "Папки учеников", foldersHint: "Ученики с назначенными тестами. Открой папку, чтобы увидеть ожидающие тесты и сохранённые результаты.", openFolder: "Открыть папку", noTestFolders: "Папки учеников появятся после назначения теста.",
+  deadline: "Дедлайн", setDeadline: "Назначить дедлайн", editDeadline: "Изменить дедлайн", removeDeadline: "Убрать дедлайн", saveDeadline: "Сохранить дедлайн", deadlineSaved: "Дедлайн сохранён.", deadlineRemoved: "Дедлайн убран.", overdue: "Просрочено", deadlineTimeZone: "Время школы · Europe/Simferopol", invalidDeadline: "Выбери корректную будущую дату и время.", completedDeadline: "Дедлайн можно менять только у незавершённых тестов.",
   error: "Не удалось сохранить. Попробуй ещё раз — твои ответы остались на месте.", invalid: "Выбери ученика и хотя бы одно готовое упражнение.", forbidden: "Нет доступа к этому тесту.",
 };
 const uk: TestLabels = {
@@ -62,6 +66,8 @@ const uk: TestLabels = {
   results: "Результати учня", history: "Історія спроб", attempt: "Спроба", emptyHistory: "Спроб поки немає.",
   back: "Назад до домашок", notStarted: "Не розпочато", inProgress: "У процесі", done: "Завершено", review: "Переглянути результати", assignedOn: "Призначено",
   loadMore: "Завантажити минулі спроби", loading: "Завантаження…", noStudents: "Учнів не знайдено.", dismiss: "Закрити",
+  studentFolders: "Папки учнів", foldersHint: "Учні з призначеними тестами. Відкрий папку, щоб побачити тести, що очікують виконання, і збережені результати.", openFolder: "Відкрити папку", noTestFolders: "Папки учнів з'являться після призначення тесту.",
+  deadline: "Дедлайн", setDeadline: "Призначити дедлайн", editDeadline: "Змінити дедлайн", removeDeadline: "Прибрати дедлайн", saveDeadline: "Зберегти дедлайн", deadlineSaved: "Дедлайн збережено.", deadlineRemoved: "Дедлайн прибрано.", overdue: "Прострочено", deadlineTimeZone: "Час школи · Europe/Simferopol", invalidDeadline: "Вибери коректну майбутню дату й час.", completedDeadline: "Дедлайн можна змінювати лише в незавершених тестах.",
   error: "Не вдалося зберегти. Спробуй ще раз — твої відповіді залишилися на місці.", invalid: "Вибери учня та хоча б одну готову вправу.", forbidden: "Немає доступу до цього тесту.",
 };
 export const TEST_LABELS: Record<Locale, TestLabels> = { en, ru, uk };

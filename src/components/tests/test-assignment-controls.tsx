@@ -7,6 +7,7 @@ import { useT } from "@/components/i18n-provider";
 import { remindAssignedTestAction, restartAssignedTestAction } from "@/lib/actions/tests";
 import { TEST_LABELS } from "@/lib/tests/labels";
 import type { TestAttempt, TestReply } from "@/lib/tests/types";
+import { TestDeadlineEditor } from "./test-deadline-editor";
 
 type ControlActions = {
   remind: typeof remindAssignedTestAction;
@@ -14,8 +15,9 @@ type ControlActions = {
 };
 const actions: ControlActions = { remind: remindAssignedTestAction, restart: restartAssignedTestAction };
 
-export function TestAssignmentControls({ assignmentId, onRestarted, perform = actions }: {
+export function TestAssignmentControls({ assignmentId, onRestarted, perform = actions, dueAt, completed, onDeadlineSaved }: {
   assignmentId: string; onRestarted?: (attempt: TestAttempt) => void; perform?: ControlActions;
+  dueAt?: string | null; completed?: boolean; onDeadlineSaved?: (dueAt: string | null) => void;
 }) {
   const { locale } = useT();
   const labels = TEST_LABELS[locale];
@@ -54,6 +56,7 @@ export function TestAssignmentControls({ assignmentId, onRestarted, perform = ac
       <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-muted"><input type="checkbox" checked={notifyStudent} disabled={busy} onChange={(event) => setNotifyStudent(event.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />{labels.notify}</label>
       <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" disabled={busy} onClick={() => setConfirm(false)} className="min-h-10 rounded-xl border border-line px-3 text-xs font-bold text-muted">{labels.cancel}</button><button type="button" disabled={busy} onClick={() => act("restart")} className="min-h-10 rounded-xl bg-accent px-4 text-xs font-bold text-white disabled:opacity-50">{busy ? labels.loading : labels.restart}</button></div>
     </div>}
+    <TestDeadlineEditor assignmentId={assignmentId} dueAt={dueAt} completed={completed} onSaved={onDeadlineSaved} />
     {message && <p role={error ? "alert" : "status"} className={`text-xs font-semibold ${error ? "text-[var(--t-rose)]" : "text-[var(--t-emerald)]"}`}>{message}</p>}
   </div>;
 }

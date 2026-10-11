@@ -1,3 +1,5 @@
+/** The only ALTER allowed by deploy setup: nullable metadata, no data rewrite. */
+export const TESTS_DEADLINE_SQL = "ALTER TABLE test_assignments ADD COLUMN IF NOT EXISTS due_at timestamp;";
 /** Shared additive DDL for deploy setup and the cold-start compatibility guard. */
 export const TESTS_STORAGE_SQL = `
   CREATE TABLE IF NOT EXISTS test_assignments (
@@ -9,6 +11,7 @@ export const TESTS_STORAGE_SQL = `
   );
   CREATE INDEX IF NOT EXISTS test_assignments_student_date_idx ON test_assignments(student_id, assigned_at);
   CREATE INDEX IF NOT EXISTS test_assignments_teacher_date_idx ON test_assignments(teacher_id, assigned_at);
+  ${TESTS_DEADLINE_SQL}
   CREATE TABLE IF NOT EXISTS test_attempts (
     id uuid PRIMARY KEY, assignment_id uuid NOT NULL REFERENCES test_assignments(id) ON DELETE CASCADE,
     results jsonb NOT NULL DEFAULT '{}', checked_exercise_ids jsonb NOT NULL DEFAULT '[]',

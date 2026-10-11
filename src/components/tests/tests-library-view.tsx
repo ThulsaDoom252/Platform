@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import type { MouseEvent, Ref } from "react";
+import type { MouseEvent, Ref, ReactNode } from "react";
 import { ArrowLeft, ArrowUpRight, BookOpen, BookText, ChevronRight, ClipboardCheck, Folder, FolderOpen, Headphones, Languages, PenLine, SpellCheck2, Trophy, type LucideIcon } from "lucide-react";
 import { fmt, type Dict } from "@/lib/i18n";
 import { TEST_CATEGORIES, TEST_LEVELS, testLibraryHref, type TestCategoryId, type TestLibraryLocation } from "@/lib/test-library";
@@ -30,13 +30,14 @@ const FOLDER_GRADIENTS = [
 ];
 
 export function TestsLibraryView({
-  location, labels, onNavigate, headingRef, locale = "en",
+  location, labels, onNavigate, headingRef, locale = "en", studentFolders,
 }: {
   location: TestLibraryLocation;
   labels: Dict["testsLibrary"];
   onNavigate?: (location: TestLibraryLocation) => void;
   headingRef?: Ref<HTMLHeadingElement>;
   locale?: Locale;
+  studentFolders?: ReactNode;
 }) {
   const level = TEST_LEVELS.find((item) => item.id === location.level);
   const category = level ? location.category : null;
@@ -149,6 +150,7 @@ export function TestsLibraryView({
           <Link href={testLibraryHref(level.id)} prefetch={false} onClick={(event) => navigate(event, { level: level.id, category: null })} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"><ArrowLeft className="h-4 w-4" aria-hidden />{labels.allCategories}</Link>
         </section>
       )}
+      {!level && studentFolders}
     </div>
   );
 }

@@ -31,8 +31,38 @@ export async function testStudentsAction(): Promise<{ id: string; name: string }
 }
 
 function refreshTestPaths(id: string) {
-  for (const path of ["/student/tests", "/student/homework", "/teacher/tests/assigned", "/teacher/homeworks",
+  for (const path of ["/student/tests", "/student/homework", "/teacher/tests", "/teacher/tests/assigned", "/teacher/homeworks",
     `/student/tests/${id}`, `/student/homework/tests/${id}`, `/teacher/homeworks/tests/${id}`]) revalidatePath(path);
+  revalidatePath("/teacher/tests/assigned", "layout");
+}
+
+/** Parent lock serializes deadlines with completion/restart; only the owning teacher may edit. */
+export async function updateTestDeadlineAction(input: { assignmentId: string; dueAt: string | null }): Promise<TestReply<{ dueAt: string | null }>> {
+  const session = await getSession();
+  if (session?.role !== "TEACHER") return { ok: false, error: "forbidden" };
+  const parsed = z.object({ assignmentId: idSchema, dueAt: z.string().datetime().nullable() }).strict().safeParse(input);
+  if (!parsed.success) return { ok: false, error: "invalid" };
+  const dueAt = parsed.data.dueAt ? new Date(parsed.data.dueAt) : null;
+  if (dueAt && (dueAt.getTime() <= Date.now() || dueAt.getUTCFullYear() > 2100)) return { ok: false, error: "invalid" };
+  try {
+    await ensureTestsTables();
+    const outcome = await db.transaction(async (tx) => {
+      const [assignment] = await tx.select({ id: testAssignments.id, studentId: testAssignments.studentId, dueAt: testAssignments.dueAt })
+        .from(testAssignments).where(and(eq(testAssignments.id, parsed.data.assignmentId), eq(testAssignments.teacherId, session.userId))).for("update");
+      if (!assignment) return { ok: false as const, error: "forbidden" as const };
+      const [latest] = await tx.select({ completedAt: testAttempts.completedAt }).from(testAttempts)
+        .where(eq(testAttempts.assignmentId, assignment.id)).orderBy(desc(testAttempts.createdAt), desc(testAttempts.id)).limit(1);
+      if (latest?.completedAt) return { ok: false as const, error: "completed" as const };
+      const current = assignment.dueAt?.toISOString() ?? null, next = dueAt?.toISOString() ?? null;
+      if (current !== next) await tx.update(testAssignments).set({ dueAt }).where(eq(testAssignments.id, assignment.id)).returning({ dueAt: testAssignments.dueAt });
+      return { ok: true as const, value: { dueAt: next }, studentId: assignment.studentId, changed: current !== next };
+    });
+    if (!outcome.ok) return outcome;
+    refreshTestPaths(parsed.data.assignmentId);
+    if (outcome.changed) await Promise.all([session.userId, outcome.studentId].map((userId) =>
+      publishUserRealtime(userId, "homework-review", { kind: "TEST", id: parsed.data.assignmentId, deadlineChanged: true }).catch(() => {})));
+    return { ok: true, value: outcome.value };
+  } catch { return { ok: false, error: "failed" }; }
 }
 
 export async function assignTestAction(input: { testId: string; studentId: string; exerciseIds: string[] | null; requestId: string; notifyStudent?: boolean }): Promise<TestReply<{ id: string }>> {
@@ -179,7 +209,7 @@ export async function assignedTestDetailAction(id: string): Promise<TestAssignme
   if (!session || !idSchema.safeParse(id).success) return null;
   await ensureTestsTables();
   const [row] = await db.select({ id: testAssignments.id, studentId: testAssignments.studentId, studentName: users.name,
-    definition: testAssignments.definition, exerciseIds: testAssignments.exerciseIds, assignedAt: testAssignments.assignedAt })
+    definition: testAssignments.definition, exerciseIds: testAssignments.exerciseIds, assignedAt: testAssignments.assignedAt, dueAt: testAssignments.dueAt })
     .from(testAssignments).innerJoin(users, eq(users.id, testAssignments.studentId)).where(and(eq(testAssignments.id, id),
       session.role === "TEACHER" ? eq(testAssignments.teacherId, session.userId) : eq(testAssignments.studentId, session.userId))).limit(1);
   if (!row) return null;
@@ -188,7 +218,7 @@ export async function assignedTestDetailAction(id: string): Promise<TestAssignme
     db.select().from(testAttempts).where(eq(testAttempts.assignmentId, id)).orderBy(desc(testAttempts.createdAt), desc(testAttempts.id)).limit(1),
   ]);
   return { ...row, definition: { ...row.definition, exercises: row.definition.exercises.filter((exercise) => row.exerciseIds.includes(exercise.id)) }, assignedAt: row.assignedAt.toISOString(), attempts,
-    latestAttempt: latest[0] ? serialTestAttempt(latest[0]) : null };
+    dueAt: row.dueAt?.toISOString() ?? null, latestAttempt: latest[0] ? serialTestAttempt(latest[0]) : null };
 }
 
 export async function testAttemptHistoryAction(assignmentId: string, beforeId?: string): Promise<TestAttemptSummary[]> {
@@ -213,23 +243,24 @@ export async function testAttemptDetailAction(assignmentId: string, attemptId: s
   return row ? serialTestAttempt(row.attempt) : null;
 }
 
-export async function testHomeworkCardsAction(): Promise<TestHomeworkCard[]> {
+export async function testHomeworkCardsAction(studentId?: string): Promise<TestHomeworkCard[]> {
   const session = await getSession();
-  if (!session) return [];
+  if (!session || studentId !== undefined && !idSchema.safeParse(studentId).success) return [];
   await ensureTestsTables();
   const rows = await db.select({ id: testAssignments.id, title: sql<string>`${testAssignments.definition}->>'title'`, exerciseIds: testAssignments.exerciseIds,
     cover: sql<TestHomeworkCard["cover"]>`${testAssignments.definition}->'cover'`, level: sql<TestHomeworkCard["level"]>`${testAssignments.definition}->>'level'`,
-    studentId: users.id, studentName: users.name, studentAvatarUrl: users.avatarUrl, assignedAt: testAssignments.assignedAt,
+    studentId: users.id, studentName: users.name, studentAvatarUrl: users.avatarUrl, assignedAt: testAssignments.assignedAt, dueAt: testAssignments.dueAt,
     latestPercent: sql<number | null>`(SELECT CASE WHEN total > 0 THEN percent ELSE NULL END FROM test_attempts WHERE assignment_id = ${testAssignments.id} ORDER BY created_at DESC, id DESC LIMIT 1)`,
     submittedAt: sql<Date | null>`(SELECT completed_at FROM test_attempts WHERE assignment_id = ${testAssignments.id} ORDER BY created_at DESC, id DESC LIMIT 1)`,
     attemptCount: sql<number>`(SELECT count(*)::int FROM test_attempts WHERE assignment_id = ${testAssignments.id})`,
     nextLessonAt: sql<Date | null>`(SELECT min(${lessons.startTime}) FROM ${lessons} WHERE ${lessons.studentId} = ${users.id} AND ${lessons.status} = 'SCHEDULED' AND ${gte(lessons.startTime, new Date())})`,
-  }).from(testAssignments).innerJoin(users, eq(users.id, testAssignments.studentId)).where(
-    session.role === "TEACHER" ? eq(testAssignments.teacherId, session.userId) : eq(testAssignments.studentId, session.userId))
+  }).from(testAssignments).innerJoin(users, eq(users.id, testAssignments.studentId)).where(and(
+    session.role === "TEACHER" ? eq(testAssignments.teacherId, session.userId) : eq(testAssignments.studentId, session.userId),
+    studentId ? eq(testAssignments.studentId, studentId) : undefined))
     .orderBy(desc(testAssignments.assignedAt));
   return rows.map((row) => ({ id: row.id, kind: "TEST", activityType: "TEST", title: row.title,
     exerciseIds: row.exerciseIds, studentId: row.studentId, studentName: row.studentName, studentAvatarUrl: row.studentAvatarUrl,
     assignedAt: row.assignedAt.toISOString(), submittedAt: row.submittedAt ? new Date(row.submittedAt).toISOString() : null,
     reviewedAt: null, nextLessonAt: row.nextLessonAt ? new Date(row.nextLessonAt).toISOString() : null,
-    started: row.latestPercent !== null, latestPercent: row.latestPercent, attemptCount: row.attemptCount, cover: row.cover ?? undefined, level: row.level }));
+    dueAt: row.dueAt?.toISOString() ?? null, started: row.latestPercent !== null, latestPercent: row.latestPercent, attemptCount: row.attemptCount, cover: row.cover ?? undefined, level: row.level }));
 }

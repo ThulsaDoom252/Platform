@@ -229,6 +229,7 @@ export const testAssignments = pgTable("test_assignments", {
   grading: jsonb("grading").$type<TestAnswerKey>().notNull(),
   exerciseIds: jsonb("exercise_ids").$type<string[]>().notNull(),
   assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+  dueAt: timestamp("due_at"),
 }, (table) => [
   index("test_assignments_student_date_idx").on(table.studentId, table.assignedAt),
   index("test_assignments_teacher_date_idx").on(table.teacherId, table.assignedAt),

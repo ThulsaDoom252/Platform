@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
 import { parseTestLibraryLocation, testLibraryHref, type TestLibraryLocation } from "@/lib/test-library";
 import { TestsLibraryView } from "./tests-library-view";
 
-export function TestsLibrary() {
+export function TestsLibrary({ studentFolders }: { studentFolders?: ReactNode }) {
   const { t, locale } = useT();
   const searchParams = useSearchParams();
   const location = parseTestLibraryLocation(searchParams);
@@ -22,5 +22,5 @@ export function TestsLibrary() {
     window.scrollTo({ top: 0, behavior: "instant" });
   };
 
-  return <TestsLibraryView location={location} labels={t.testsLibrary} locale={locale} onNavigate={navigate} headingRef={headingRef} />;
+  return <TestsLibraryView location={location} labels={t.testsLibrary} locale={locale} onNavigate={navigate} headingRef={headingRef} studentFolders={studentFolders} />;
 }
