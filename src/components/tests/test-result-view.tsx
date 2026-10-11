@@ -4,6 +4,7 @@ import type { Locale } from "@/lib/i18n";
 import type { TestLabels } from "@/lib/tests/labels";
 import { testAnswerText, type TestExercise, type TestExerciseResult } from "@/lib/tests/types";
 import { TestPassage } from "./test-passage";
+import { TestExerciseContext } from "./test-exercise-context";
 
 export function testTone(percent: number): CSSProperties {
   return { "--test-tone": `var(--t-${percent >= 80 ? "green" : percent >= 50 ? "amber" : "rose"})` } as CSSProperties;
@@ -26,6 +27,7 @@ export function TestExerciseReview({ exercise, result, locale, labels }: {
   exercise: TestExercise; result: TestExerciseResult; locale: Locale; labels: TestLabels;
 }) {
   return <div data-test-review className="flex flex-col gap-4">
+    <TestExerciseContext exercise={exercise} />
     {result.source && <p data-test-import-note className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-sm leading-relaxed text-muted">
       {locale === "ru" ? "Результат перенесён из Test-English. Дата в истории — дата переноса; исходная дата прохождения неизвестна."
         : locale === "uk" ? "Результат перенесено з Test-English. Дата в історії — дата перенесення; початкова дата проходження невідома."
@@ -46,6 +48,7 @@ export function TestExerciseReview({ exercise, result, locale, labels }: {
       // Older attempts retain the removed notice in their saved explanation.
       const explanation = row.selected === null ? row.explanation[locale].replace(/^(?:No answer was selected\. This counts as an error\.|Ответ не выбран\. Это считается ошибкой\.|Відповідь не вибрано\. Це вважається помилкою\.)\s*/, "") : row.explanation[locale];
       return <article key={row.id} data-test-question-result={row.correct ? "correct" : row.selected ? "incorrect" : "no-answer"} style={testTone(row.correct ? 100 : 0)} className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        <TestExerciseContext exercise={{ ...exercise, context: undefined, images: question.images }} />
         <div className="flex items-start gap-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-xs font-black text-muted">{index + 1}</span>
           <p className="min-w-0 flex-1 pt-0.5 text-sm leading-loose text-content sm:text-base">{question.prompt ? <span className="block">{question.prompt}</span> : question.before}<strong className="mx-1 inline-block rounded-lg border border-[var(--test-tone)] bg-[color-mix(in_srgb,var(--test-tone)_10%,var(--surface))] px-2 py-0.5 text-[var(--test-tone)]">{testAnswerText(row.selected, labels.noAnswer)}</strong>{question.prompt ? null : question.after}</p>

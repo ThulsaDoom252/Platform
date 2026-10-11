@@ -29,7 +29,7 @@ function text(node: Node): string { return node.children.map((child) => typeof c
 const tidy = (value: string) => value.replace(/[\t\r\n ]+/g, " ").trim();
 
 /** Read inert quiz markup only. Never execute its scripts or keep answer/session fields. */
-export function parseTestEnglishExercise(html: string, number: number): TestExercise {
+export function parseTestEnglishExercise(html: string, number: number, supplements = false): TestExercise {
   const root = parse(html), quiz = find(root, (node) => node.attrs.id === "watupro_quiz")[0];
   const form = quiz && find(quiz, (node) => node.tag === "form" && hasClass(node, "quiz-form"))[0];
   if (!form) throw new Error("No saved quiz form");
@@ -37,19 +37,27 @@ export function parseTestEnglishExercise(html: string, number: number): TestExer
   const heading = [...header.matchAll(/<h5\b[^>]*>([\s\S]*?)<\/h5>/g)].at(-1)?.[1];
   const instruction = heading ? tidy(text(parse(heading))) : "Complete the sentences.";
   const exercise: TestExercise = { id: `exercise-${number}`, number, instruction, questions: [] };
+  if (supplements && heading) {
+    const headingEnd = header.lastIndexOf("</h5>") + 5;
+    const context = tidy(text(parse(header.slice(headingEnd).replace(/<\/(?:p|div|td|tr|table)>/gi, " "))));
+    if (context) exercise.context = context;
+  }
   const passage: TestPassagePart[][] = [];
   for (const block of find(form, (node) => hasClass(node, "watu-question"))) {
     const content = find(block, (node) => hasClass(node, "question-content"))[0];
     if (!content) throw new Error("Missing question content");
     const fields = find(content, (node) => node.tag === "select" || node.tag === "input" && node.attrs.type === "text");
-    const options = find(block, (node) => node.tag === "label").map((node) => tidy(text(node))).filter(Boolean);
+    const options = [...new Set(find(block, (node) => node.tag === "label").map((node) => tidy(text(node))).filter(Boolean))];
     if (!fields.length) {
       const promptNode = structuredClone(content);
       promptNode.children = promptNode.children.filter((node) => typeof node === "string" || node.tag !== "input");
       const prompt = tidy(text(promptNode)).replace(/^\d+\s+/, "");
       if (!prompt || options.length < 2 || new Set(options).size !== options.length) throw new Error("Invalid saved choices");
       const multiple = find(block, (node) => node.tag === "input" && node.attrs.type === "checkbox").length > 0;
-      exercise.questions.push({ id: `q${exercise.questions.length + 1}`, before: "", after: "", prompt, options, ...(multiple ? { kind: "multiple", selectionCount: 2 } : {}) });
+      const images = supplements ? find(content, node => node.tag === "img").map(node => ({
+        src: node.attrs.src, alt: node.attrs.alt || "Exercise illustration", width: Number(node.attrs.width || 500), height: Number(node.attrs.height || 300),
+      })) : [];
+      exercise.questions.push({ id: `q${exercise.questions.length + 1}`, before: "", after: "", prompt, options, ...(multiple ? { kind: "multiple", selectionCount: 2 } : {}), ...(images.length ? { images } : {}) });
       continue;
     }
     const parts: TestPassagePart[] = [];
@@ -65,7 +73,10 @@ export function parseTestEnglishExercise(html: string, number: number): TestExer
       }
       if (node.tag === "br") { addText("\n"); return; }
       if (node.tag === "img") throw new Error("Question image requires explicit import");
+      const underlined = supplements && (node.tag === "u" || /text-decoration[^;]*underline/i.test(node.attrs.style ?? ""));
+      if (underlined) addText("⟦");
       for (const child of node.children) typeof child === "string" ? addText(child.replace(/[\t\r\n ]+/g, " ")) : walk(child);
+      if (underlined) addText("⟧");
       if (node.tag === "p") addText("\n\n");
     };
     walk(content);
@@ -93,5 +104,6 @@ export function parseTestEnglishExercise(html: string, number: number): TestExer
     if (gaps.length !== exercise.questions.length) throw new Error("Mixed formats require explicit review");
     exercise.passage = passage;
   }
+  if (supplements && JSON.stringify(exercise.passage ?? []).includes("⟦")) exercise.instruction += " Underlined words are marked with ⟦ ⟧.";
   return exercise;
 }

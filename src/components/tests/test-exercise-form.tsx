@@ -1,5 +1,6 @@
 import type { TestAnswer, TestAnswers, TestExercise, TestQuestion } from "@/lib/tests/types";
 import { TestPassage } from "./test-passage";
+import { TestExerciseContext } from "./test-exercise-context";
 
 const fieldClass = "mx-1 inline-block min-w-28 max-w-full cursor-pointer rounded-xl border border-accent/30 bg-surface-2 px-3 py-2 align-middle text-sm font-bold text-content outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60";
 
@@ -20,8 +21,8 @@ export function TestExerciseQuestions({ testId, exercise, answers, busy, onAnswe
     <select id={fieldId(question)} aria-label={`${number}. ${question.before}…${question.after}`} disabled={busy} value={typeof answers[question.id] === "string" ? answers[question.id] as string : ""} onChange={(event) => onAnswer(question.id, event.target.value || null)} className={fieldClass}>
       <option value="" hidden />{question.options.map((option) => <option key={option} value={option}>{option}</option>)}
     </select>;
-  if (exercise.passage) return <TestPassage exercise={exercise} renderGap={renderField} />;
-  return <>{exercise.questions.map((question, index) => <div key={question.id} data-test-question={question.id} className="flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 sm:gap-4 sm:p-5">
+  if (exercise.passage) return <><TestExerciseContext exercise={exercise} /><TestPassage exercise={exercise} renderGap={renderField} /></>;
+  return <><TestExerciseContext exercise={exercise} />{exercise.questions.map((question, index) => <div key={question.id} data-test-question={question.id} className="flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 sm:gap-4 sm:p-5">
     <span aria-hidden className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-black text-accent">{index + 1}</span>
     {question.kind === "multiple" ? <fieldset className="min-w-0 flex-1">
       <legend className="text-sm leading-loose text-content sm:text-base">{question.prompt ?? <>{question.before}<span aria-hidden className="mx-1 inline-block w-16 border-b-2 border-accent/50 align-baseline" />{question.after}</>}</legend>
@@ -37,6 +38,7 @@ export function TestExerciseQuestions({ testId, exercise, answers, busy, onAnswe
       </div>
     </fieldset> : question.prompt ? <fieldset className="min-w-0 flex-1">
       <legend className="text-sm leading-loose text-content sm:text-base">{question.prompt}</legend>
+      <TestExerciseContext exercise={{ ...exercise, context: undefined, images: question.images }} />
       <div className="mt-2 flex flex-wrap gap-2">{question.options.map((option) => {
         const checked = answers[question.id] === option;
         return <label key={option} className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold transition ${checked ? "border-accent bg-accent-soft text-accent" : "border-line bg-surface-2 text-content"}`}>

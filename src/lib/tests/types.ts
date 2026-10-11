@@ -7,11 +7,15 @@ export type TestQuestion = {
   kind?: "single" | "multiple" | "text"; selectionCount?: number;
   /** A complete sentence for one choice that fills two gaps together. */
   prompt?: string;
+  images?: TestCover[];
 };
 export type TestPassagePart = { text: string } | { questionId: string };
 export type TestExercise = {
   id: string; number: number; instruction: string; questions: TestQuestion[];
   passage?: TestPassagePart[][];
+  /** Inert examples/word banks and locally hosted illustrations needed to answer. */
+  context?: string;
+  images?: TestCover[];
 };
 export type TestCover = { src: string; alt: string; width: number; height: number };
 /** Public content only. Answer keys never cross the server/client boundary. */

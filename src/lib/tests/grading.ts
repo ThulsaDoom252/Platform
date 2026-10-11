@@ -2,6 +2,7 @@
 import type { TestAnswer, TestAnswerKey, TestAnswers, TestDefinition, TestExerciseResult, TestText } from "./types";
 import { SECOND_CONDITIONAL_KEY } from "./second-conditional-key";
 import { FOLDER_TEST_KEYS } from "./folder-test-keys";
+import { A1_GRAMMAR_KEYS } from "./a1-grammar-keys";
 
 const text = (en: string, ru: string, uk: string): TestText => ({ en, ru, uk });
 const future = text("The main clause describes a real future result: use will + the base verb. The time clause uses the present simple.", "Главная часть описывает реальный будущий результат: will + начальная форма глагола. В придаточной части времени — Present Simple.", "Головна частина описує реальний майбутній результат: will + початкова форма дієслова. У підрядній частині часу — Present Simple.");
@@ -53,7 +54,9 @@ export const FIRST_CONDITIONAL_KEY: TestAnswerKey = { "exercise-1": {
 } };
 
 export function libraryTestKey(testId: string, version: number): TestAnswerKey | null {
+  if (testId === "a1-adjectives" && version === 2) return A1_GRAMMAR_KEYS[testId];
   if (Object.hasOwn(FOLDER_TEST_KEYS, testId)) return version === 1 ? FOLDER_TEST_KEYS[testId] : null;
+  if (Object.hasOwn(A1_GRAMMAR_KEYS, testId)) return version === 1 ? A1_GRAMMAR_KEYS[testId] : null;
   if (testId === "second-conditional") return version === 1 ? SECOND_CONDITIONAL_KEY : null;
   if (testId !== "first-conditional") return null;
   if (version === 1) return { "exercise-1": FIRST_CONDITIONAL_KEY["exercise-1"] };

@@ -26,7 +26,8 @@ for (const definition of FOLDER_TESTS) {
   test(`${definition.id}: stable catalog version, all/individual exercise assignment and server-only keys`, () => {
     const key = libraryTestKey(definition.id, 1);
     assert.equal(key, FOLDER_TEST_KEYS[definition.id]);
-    assert.equal(libraryTestKey(definition.id, 2), null);
+    if (definition.id === "a1-adjectives") assert.ok(libraryTestKey(definition.id, 2)?.["exercise-3"]);
+    else assert.equal(libraryTestKey(definition.id, 2), null);
     assert.deepEqual(selectedTestExerciseIds(definition, null), definition.exercises.map((exercise) => exercise.id));
     for (const exercise of definition.exercises) assert.deepEqual(selectedTestExerciseIds(definition, [exercise.id]), [exercise.id]);
     assert.deepEqual(selectedTestExerciseIds(definition, ["unknown"]), []);
