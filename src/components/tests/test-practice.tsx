@@ -8,11 +8,13 @@ import { TEST_LABELS } from "@/lib/tests/labels";
 import type { TestDefinition } from "@/lib/tests/types";
 import { TestAssigner } from "./test-assigner";
 import { TestRunner } from "./test-runner";
+import { TestsWorkspaceNav } from "./tests-workspace-nav";
 
 export function TestPractice({ test }: { test: TestDefinition }) {
   const { t, locale } = useT();
   const labels = TEST_LABELS[locale];
   return <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+    <TestsWorkspaceNav />
     <Link href={testLibraryHref(test.level, test.category)} className="flex min-h-10 w-fit items-center gap-2 rounded-xl px-2 text-xs font-bold text-muted hover:bg-surface-2 hover:text-accent"><ArrowLeft aria-hidden className="h-4 w-4" />{labels.tests} · {test.level.toUpperCase()} · {t.testsLibrary.categoryNames[test.category]}</Link>
     <header className="relative overflow-hidden rounded-3xl border border-line bg-gradient-to-br from-accent-soft via-surface to-surface p-6 sm:p-8">
       <ClipboardCheck aria-hidden className="pointer-events-none absolute -right-2 -top-2 h-40 w-40 text-accent opacity-5" />

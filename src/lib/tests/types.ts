@@ -45,9 +45,9 @@ export type TestHomeworkCard = {
   studentId: string; studentName: string; studentAvatarUrl: string | null;
   assignedAt: string; submittedAt: string | null; reviewedAt: string | null;
   nextLessonAt: string | null; started: boolean; exerciseIds: string[];
-  latestPercent: number | null; attemptCount: number;
+  latestPercent: number | null; attemptCount: number; cover?: TestCover; level?: TestLevelId;
 };
-export type TestActionError = "invalid" | "forbidden" | "failed";
+export type TestActionError = "invalid" | "forbidden" | "failed" | "stale";
 export type TestReply<T> = { ok: true; value: T } | { ok: false; error: TestActionError };
 
 export function testAnswerText(answer: TestAnswer, empty = "") {

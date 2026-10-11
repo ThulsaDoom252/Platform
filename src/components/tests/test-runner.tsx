@@ -10,9 +10,9 @@ import { cn } from "@/lib/utils";
 import { TestExerciseReview, TestScore } from "./test-result-view";
 import { TestExerciseQuestions } from "./test-exercise-form";
 
-export function TestRunner({ test, assignmentId, exerciseIds, initialAttempt, readOnly = false, onSaved, onRetry }: {
+export function TestRunner({ test, assignmentId, exerciseIds, initialAttempt, readOnly = false, onSaved, onRetry, onStale, externalBusy = false }: {
   test: TestDefinition; assignmentId?: string; exerciseIds?: string[]; initialAttempt?: TestAttempt | null;
-  readOnly?: boolean; onSaved?: (attempt: TestAttempt) => void; onRetry?: () => void;
+  readOnly?: boolean; onSaved?: (attempt: TestAttempt) => void; onRetry?: () => void; onStale?: () => void; externalBusy?: boolean;
 }) {
   const { locale } = useT();
   const labels = TEST_LABELS[locale];
@@ -39,7 +39,7 @@ export function TestRunner({ test, assignmentId, exerciseIds, initialAttempt, re
   }, [results]);
 
   function check() {
-    if (busy || !active?.questions.length || result || readOnly) return;
+    if (busy || externalBusy || !active?.questions.length || result || readOnly) return;
     const exerciseId = active.id;
     // Reuse this id even after a timeout: retry cannot duplicate a saved attempt.
     attemptId.current ??= crypto.randomUUID();
@@ -48,7 +48,7 @@ export function TestRunner({ test, assignmentId, exerciseIds, initialAttempt, re
       try {
         if (assignmentId) {
           const response = await checkAssignedTestAction({ assignmentId, attemptId: attemptId.current!, exerciseId, answers: answers[exerciseId] ?? {} });
-          if (!response.ok) { setError(response.error === "forbidden" ? labels.forbidden : labels.error); return; }
+          if (!response.ok) { setError(response.error === "stale" ? labels.stale : response.error === "forbidden" ? labels.forbidden : labels.error); if (response.error === "stale") onStale?.(); return; }
           setResults(response.value.results);
           onSaved?.(response.value);
         } else {
@@ -69,7 +69,7 @@ export function TestRunner({ test, assignmentId, exerciseIds, initialAttempt, re
   return <div className="flex min-w-0 flex-col gap-5" aria-busy={busy}>
     <nav aria-label={labels.exercises} className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-surface p-2">
       {visible.map((exercise) => <button key={exercise.id} type="button" aria-pressed={activeId === exercise.id} aria-controls={`test-panel-${test.id}`} disabled={busy} onClick={() => { setActiveId(exercise.id); setError(null); }} className={cn("inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60 sm:flex-none sm:px-5", activeId === exercise.id ? "bg-accent text-white shadow-sm" : "text-muted hover:bg-surface-2 hover:text-content")}>
-        {labels.exercise} {exercise.number}{results[exercise.id] ? <CheckCheck aria-hidden className="h-4 w-4" /> : !exercise.questions.length ? <Clock3 aria-hidden className="h-3.5 w-3.5 opacity-60" /> : null}
+        {labels.exercise} {exercise.number}{results[exercise.id] ? <><CheckCheck aria-hidden className="h-4 w-4" /><span>{results[exercise.id].percent}%</span></> : !exercise.questions.length ? <Clock3 aria-hidden className="h-3.5 w-3.5 opacity-60" /> : null}
       </button>)}
     </nav>
 
@@ -86,16 +86,16 @@ export function TestRunner({ test, assignmentId, exerciseIds, initialAttempt, re
       </div> : readOnly ? <p className="rounded-2xl border border-line bg-surface p-6 text-sm text-muted">{labels.notStarted}</p> : <>
         <p className="rounded-2xl border border-line bg-accent-soft px-4 py-3 text-sm leading-relaxed text-content">{active.instruction}</p>
         <form onSubmit={(event) => { event.preventDefault(); check(); }} className="flex flex-col gap-3">
-          <TestExerciseQuestions testId={test.id} exercise={active} answers={answers[active.id] ?? {}} busy={busy} onAnswer={(questionId, value) => setAnswers((current) => ({ ...current, [active.id]: { ...current[active.id], [questionId]: value } }))} />
+          <TestExerciseQuestions testId={test.id} exercise={active} answers={answers[active.id] ?? {}} busy={busy || externalBusy} onAnswer={(questionId, value) => setAnswers((current) => ({ ...current, [active.id]: { ...current[active.id], [questionId]: value } }))} />
           {error && <p role="alert" className="rounded-xl border border-[var(--t-rose)] bg-surface px-4 py-3 text-sm text-[var(--t-rose)]">{error}</p>}
-          <div className="mt-2 flex justify-end"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-accent px-6 py-3 text-sm font-bold text-white shadow-lg shadow-accent/15 transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-60"><CheckCheck aria-hidden className="h-5 w-5" />{busy ? labels.checking : labels.check}</button></div>
+          <div className="mt-2 flex justify-end"><button type="submit" disabled={busy || externalBusy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-accent px-6 py-3 text-sm font-bold text-white shadow-lg shadow-accent/15 transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-60"><CheckCheck aria-hidden className="h-5 w-5" />{busy ? labels.checking : labels.check}</button></div>
         </form>
       </>}
     </section>}
 
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4">
       <div className="flex gap-2"><button type="button" disabled={busy || activeIndex <= 0} onClick={() => setActiveId(visible[activeIndex - 1].id)} aria-label={`${labels.exercise} ${visible[activeIndex - 1]?.number ?? ""}`} className="rounded-xl border border-line bg-surface p-2.5 text-muted transition hover:text-accent disabled:opacity-30"><ChevronLeft aria-hidden className="h-4 w-4" /></button><button type="button" disabled={busy || activeIndex >= visible.length - 1} onClick={() => setActiveId(visible[activeIndex + 1].id)} aria-label={`${labels.exercise} ${visible[activeIndex + 1]?.number ?? ""}`} className="rounded-xl border border-line bg-surface p-2.5 text-muted transition hover:text-accent disabled:opacity-30"><ChevronRight aria-hidden className="h-4 w-4" /></button></div>
-      {!readOnly && score.total > 0 && <button type="button" disabled={busy} onClick={retry} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-xs font-bold text-muted transition hover:border-accent hover:text-accent disabled:opacity-50"><RotateCcw aria-hidden className="h-4 w-4" />{labels.retry}</button>}
+      {!readOnly && score.total > 0 && <button type="button" disabled={busy || externalBusy} onClick={retry} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-xs font-bold text-muted transition hover:border-accent hover:text-accent disabled:opacity-50"><RotateCcw aria-hidden className="h-4 w-4" />{labels.retry}</button>}
     </div>
   </div>;
 }

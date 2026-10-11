@@ -8,24 +8,26 @@ import { assignTestAction, testStudentsAction } from "@/lib/actions/tests";
 import { TEST_LABELS } from "@/lib/tests/labels";
 import { readyTestExercises, type TestDefinition } from "@/lib/tests/types";
 
-export function TestAssigner({ test }: { test: TestDefinition }) {
+const actions = { assign: assignTestAction, students: testStudentsAction };
+export function TestAssigner({ test, perform = actions }: { test: TestDefinition; perform?: typeof actions }) {
   const { locale } = useT();
   const labels = TEST_LABELS[locale];
   const [students, setStudents] = useState<{ id: string; name: string }[] | null>(null);
   const [studentId, setStudentId] = useState("");
   const [whole, setWhole] = useState(true);
+  const [notifyStudent, setNotifyStudent] = useState(true);
   const [chosen, setChosen] = useState(readyTestExercises(test).map((exercise) => exercise.id));
   const [message, setMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ id: string; fingerprint: string } | null>(null);
   const [busy, startAction] = useTransition();
   const request = useRef<{ id: string; fingerprint: string } | null>(null);
-  const fingerprint = JSON.stringify({ studentId, exerciseIds: whole ? null : chosen });
+  const fingerprint = JSON.stringify({ studentId, exerciseIds: whole ? null : chosen, notifyStudent });
   const assigned = success?.fingerprint === fingerprint ? success : null;
 
   function loadStudents() {
     if (students !== null || busy) return;
     startAction(async () => {
-      try { setStudents(await testStudentsAction()); setMessage(null); }
+      try { setStudents(await perform.students()); setMessage(null); }
       catch { setMessage(labels.error); }
     });
   }
@@ -37,7 +39,7 @@ export function TestAssigner({ test }: { test: TestDefinition }) {
     startAction(async () => {
       setMessage(null);
       try {
-        const response = await assignTestAction({ testId: test.id, studentId, exerciseIds: whole ? null : chosen, requestId });
+        const response = await perform.assign({ testId: test.id, studentId, exerciseIds: whole ? null : chosen, requestId, notifyStudent });
         if (!response.ok) { setMessage(response.error === "invalid" ? labels.invalid : response.error === "forbidden" ? labels.forbidden : labels.error); return; }
         setSuccess({ id: response.value.id, fingerprint });
       } catch { setMessage(labels.error); }
@@ -55,6 +57,7 @@ export function TestAssigner({ test }: { test: TestDefinition }) {
         {!whole && <div className="flex flex-wrap gap-2">{test.exercises.map((exercise) => <label key={exercise.id} className="flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-xs font-bold text-content has-disabled:cursor-default has-disabled:opacity-40"><input type="checkbox" disabled={!exercise.questions.length} checked={chosen.includes(exercise.id)} onChange={(event) => { setChosen((current) => event.target.checked ? [...current, exercise.id] : current.filter((id) => id !== exercise.id)); setMessage(null); }} className="h-4 w-4 accent-[var(--accent)]" />{labels.exercise} {exercise.number}</label>)}</div>}
         <p className="text-xs leading-relaxed text-muted">{labels.available}</p>
       </fieldset>
+      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-content"><input type="checkbox" checked={notifyStudent} disabled={busy} onChange={(event) => { setNotifyStudent(event.target.checked); setMessage(null); }} className="h-4 w-4 accent-[var(--accent)]" />{labels.notify}</label>
       {message && <p role="alert" className="text-sm text-[var(--t-rose)]">{message}</p>}
       {assigned && <p role="status" className="rounded-xl bg-accent-soft p-3 text-sm text-accent">{labels.assigned} <Link href={`/teacher/homeworks/tests/${assigned.id}`} className="font-bold underline">{labels.review} →</Link></p>}
       <button type="submit" disabled={busy || !studentId || !whole && !chosen.length || !!assigned} className="ml-auto min-h-11 rounded-xl bg-accent px-5 py-2 text-sm font-bold text-white transition hover:brightness-95 disabled:opacity-50">{busy ? labels.assigning : labels.assign}</button>

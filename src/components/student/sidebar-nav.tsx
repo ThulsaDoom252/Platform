@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { RAIL_ONLY_OPEN } from "@/components/sidebar-rail";
 import { useT } from "@/components/i18n-provider";
-import { SpellCheck2 } from "lucide-react";
+import { ClipboardCheck, SpellCheck2 } from "lucide-react";
 import {
   IconCap,
   IconMaterials,
@@ -26,6 +26,7 @@ export function StudentSidebarNav() {
     { href: "/student/materials", label: t.nav.materials, Icon: IconMaterials },
     { href: "/student/mistakes", label: t.nav.mistakes, Icon: SpellCheck2 },
     { href: "/student/homework", label: t.nav.homework, Icon: IconCheckCircle },
+    { href: "/student/tests", label: t.nav.tests, Icon: ClipboardCheck },
     { href: "/student/schedule", label: t.nav.schedule, Icon: IconCalendar },
     { href: "/student/messages", label: t.nav.messages, Icon: IconMessage },
     { href: "/student/statistics", label: t.nav.statistics, Icon: IconChart },
@@ -47,7 +48,7 @@ export function StudentSidebarNav() {
             /* В свёрнутой полосе подписи не видно — выручает подсказка. */
             title={label}
             className={cn(
-              "group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all",
+              "group flex shrink-0 items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all",
               active
                 ? "bg-accent-soft text-accent shadow-sm"
                 : "text-muted hover:bg-surface-2 hover:text-content",
