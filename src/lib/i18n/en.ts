@@ -70,6 +70,11 @@ export const en = {
   },
 
   teacherHomeworks: {
+    markHomeworkDone: "Mark homework as Done",
+    markHomeworkDoneConfirm: "Finish this homework without waiting for the student to send it for review? Answers, scores and feedback will stay unchanged.",
+    markingHomeworkDone: "Finishing…",
+    markHomeworkDoneError: "Could not finish the homework. Please try again.",
+    cancelHomeworkDone: "Cancel",
     renameHomework: "Edit homework title",
     homeworkName: "Name shown to the student",
     renameHomeworkHint: "Only this student's homework is renamed. The lesson, exercises and answers stay unchanged.",
@@ -112,7 +117,7 @@ export const en = {
     notStarted: "Not started",
     inProgress: "In progress",
     submitted: "Awaiting review",
-    reviewed: "Reviewed",
+    reviewed: "Done",
     sortBy: "Sort by",
     sortName: "Alphabetically",
     reverseSort: "Reverse sort order",

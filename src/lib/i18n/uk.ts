@@ -67,6 +67,11 @@ export const uk: Dict = {
   },
 
   teacherHomeworks: {
+    markHomeworkDone: "Позначити домашку як Done",
+    markHomeworkDoneConfirm: "Завершити цю домашку, не чекаючи відправлення на перевірку? Відповіді, оцінки та коментарі залишаться без змін.",
+    markingHomeworkDone: "Завершую…",
+    markHomeworkDoneError: "Не вдалося завершити домашку. Спробуй ще раз.",
+    cancelHomeworkDone: "Скасувати",
     renameHomework: "Редагувати назву домашки",
     homeworkName: "Назва, яку побачить учень",
     renameHomeworkHint: "Змінюється лише назва домашки цього учня. Урок, вправи та відповіді залишаються без змін.",
@@ -109,7 +114,7 @@ export const uk: Dict = {
     notStarted: "Не розпочато",
     inProgress: "У процесі",
     submitted: "Очікує перевірки",
-    reviewed: "Перевірено",
+    reviewed: "Done",
     sortBy: "Сортування",
     sortName: "За алфавітом",
     reverseSort: "Зворотний порядок",

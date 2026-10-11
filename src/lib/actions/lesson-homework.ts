@@ -1291,6 +1291,7 @@ export async function submitInteractiveHomeworkForReviewAction(
   const state = { ...(row.assignment.answers ?? {}) };
   if (!homeworkAssignedAt(state)) return { error: "Учитель ещё не назначил эту домашнюю работу" };
   const alreadySubmitted = homeworkSubmittedAt(state);
+  if (homeworkReviewedAt(state)) return { error: "Домашняя работа уже завершена учителем" };
   if (alreadySubmitted) return { submittedAt: alreadySubmitted };
   const submittedAt = new Date().toISOString();
   state[homeworkSubmittedAtKey()] = submittedAt;

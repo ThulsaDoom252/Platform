@@ -2728,6 +2728,9 @@ export async function answerAction(
   if (isStudent && responseKey === HOMEWORK_TITLE_KEY) {
     return { error: "Название домашки выбирает учитель" };
   }
+  if (isStudent && responseKey === homeworkReviewedAtKey()) {
+    return { error: "Домашнюю работу завершает учитель" };
+  }
   if (isStudent && responseKey === HOMEWORK_MEDIA_KEY) {
     return { error: "Материалы домашки выбирает учитель" };
   }

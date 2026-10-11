@@ -13,6 +13,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { RenameHomeworkButton } from "@/components/teacher/rename-homework-button";
+import { MarkHomeworkDoneButton } from "@/components/teacher/mark-homework-done-button";
+import { homeworkReviewedAt } from "@/lib/lesson-homework";
 import { assignedHomeworkTitle } from "@/lib/homework-title";
 import { useT } from "@/components/i18n-provider";
 import { useLocalNumber } from "@/lib/use-local-number";
@@ -860,6 +862,7 @@ function Homework({
           <h2 className="min-w-0 break-words text-lg font-black text-content">{assignedHomeworkTitle(session.state, lesson.title)}</h2>
           {session.teacher && <div className="flex items-center gap-2">
             <RenameHomeworkButton assignmentId={session.assignmentId} title={assignedHomeworkTitle(session.state, lesson.title)} />
+            {!homeworkReviewedAt(session.state) && <MarkHomeworkDoneButton assignmentId={session.assignmentId} />}
             <HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId }} title={assignedHomeworkTitle(session.state, lesson.title)} showLabel />
           </div>}
         </div>

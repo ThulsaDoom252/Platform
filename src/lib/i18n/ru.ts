@@ -67,6 +67,11 @@ export const ru: Dict = {
   },
 
   teacherHomeworks: {
+    markHomeworkDone: "Отметить домашку как Done",
+    markHomeworkDoneConfirm: "Завершить эту домашку, не дожидаясь отправки на ревью? Ответы, оценки и комментарии сохранятся без изменений.",
+    markingHomeworkDone: "Завершаю…",
+    markHomeworkDoneError: "Не удалось завершить домашку. Попробуй ещё раз.",
+    cancelHomeworkDone: "Отмена",
     renameHomework: "Редактировать название домашки",
     homeworkName: "Название, которое увидит ученик",
     renameHomeworkHint: "Меняется только название домашки этого ученика. Урок, упражнения и ответы остаются прежними.",
@@ -109,7 +114,7 @@ export const ru: Dict = {
     notStarted: "Не начато",
     inProgress: "В процессе",
     submitted: "Ожидает проверки",
-    reviewed: "Проверено",
+    reviewed: "Done",
     sortBy: "Сортировка",
     sortName: "По алфавиту",
     reverseSort: "Обратный порядок",

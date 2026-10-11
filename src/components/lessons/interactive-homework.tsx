@@ -18,6 +18,8 @@ import { HomeworkGradeEditor } from "./homework-grade-editor";
 import { PublicHomeworkTeacherNote } from "./homework-teacher-note";
 import { HomeworkReminderButton } from "@/components/teacher/homework-reminder-button";
 import { RenameHomeworkButton } from "@/components/teacher/rename-homework-button";
+import { MarkHomeworkDoneButton } from "@/components/teacher/mark-homework-done-button";
+import { mergeHomeworkCompletion } from "@/lib/homework-completion";
 import { HOMEWORK_TITLE_KEY, assignedHomeworkTitle, mergeHomeworkTitle } from "@/lib/homework-title";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools, useSharedHighlightTools } from "./highlight-tools";
 import { selectedOffsets, wordAtPoint } from "@/lib/text-highlight-dom";
@@ -30,7 +32,6 @@ import {
   homeworkReviewStateAction,
   removeHomeworkQuestionAction,
   returnInteractiveHomeworkForRevisionAction,
-  reviewInteractiveHomeworkAction,
   resetHomeworkExerciseAnswersAction,
   shuffleHomeworkExerciseItemsAction,
   saveStudentHomeworkPlanAction,
@@ -316,7 +317,7 @@ export function InteractiveHomework({
   }, [onStateChange, state]);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setState((current) => mergeHomeworkTitle(current, session.state)));
+    const frame = requestAnimationFrame(() => setState((current) => mergeHomeworkCompletion(mergeHomeworkTitle(current, session.state), session.state)));
     return () => cancelAnimationFrame(frame);
   }, [session.state]);
 
@@ -332,7 +333,7 @@ export function InteractiveHomework({
 
   const pullReviewState = async (gradesOnly = false) => {
     const next = await homeworkReviewStateAction(session.assignmentId);
-    if (next) setState(current => gradesOnly ? mergeHomeworkTitle(mergeHomeworkGradeFeedback(mergeHomeworkReactions(current, next), next), next) : next);
+    if (next) setState(current => gradesOnly ? mergeHomeworkCompletion(mergeHomeworkTitle(mergeHomeworkGradeFeedback(mergeHomeworkReactions(current, next), next), next), next) : next);
   };
 
   useRealtimeSubscription({
@@ -438,7 +439,7 @@ export function InteractiveHomework({
             )}
             {reviewedAt ? (
               <span className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-200">
-                {t.interactiveHomework.reviewed}
+                {t.teacherHomeworks.reviewed}
               </span>
             ) : session.teacher && submittedAt ? (
               <span className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 ring-1 ring-amber-200">
@@ -460,31 +461,12 @@ export function InteractiveHomework({
                 {t.interactiveHomework.editHomework}
               </button>
             )}
-            {session.teacher && teacherReviewTools && submittedAt && (
-              <button
-                type="button"
-                disabled={reviewBusy || Boolean(reviewedAt)}
-                onClick={() => {
-                  setReviewError(null);
-                  startReview(async () => {
-                    const result = await reviewInteractiveHomeworkAction(session.assignmentId);
-                    if (result.error || !result.reviewedAt) {
-                      setReviewError(result.error ?? t.interactiveHomework.reviewFailed);
-                      return;
-                    }
-                    setState((current) => ({
-                      ...current,
-                      [homeworkReviewedAtKey()]: result.reviewedAt!,
-                    }));
-                  });
-                }}
-                className="flex h-10 items-center gap-2 rounded-xl bg-emerald-500 px-4 text-xs font-black text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-default disabled:opacity-60"
-              >
-                <IconCheck className="h-4 w-4" />
-                {reviewedAt
-                  ? t.interactiveHomework.reviewed
-                  : t.interactiveHomework.markReviewed}
-              </button>
+            {session.teacher && assignedAt && !reviewedAt && (
+              <MarkHomeworkDoneButton assignmentId={session.assignmentId} onDone={doneAt => setState(current => {
+                const next = { ...current, [homeworkReviewedAtKey()]: doneAt };
+                delete next[homeworkRevisionRequestedAtKey()];
+                return next;
+              })} />
             )}
             {session.teacher && teacherReviewTools && (submittedAt || reviewedAt) && (
               <button
@@ -641,7 +623,7 @@ export function InteractiveHomework({
         <div className="sticky bottom-20 z-10 flex justify-end lg:bottom-4">
           <button
             type="button"
-            disabled={reviewBusy || Boolean(submittedAt)}
+            disabled={reviewBusy || Boolean(submittedAt) || Boolean(reviewedAt)}
             onClick={() => startReview(async () => {
               const result = await submitInteractiveHomeworkForReviewAction(session.assignmentId);
               if (result.error || !result.submittedAt) return;
@@ -652,11 +634,8 @@ export function InteractiveHomework({
             })}
             className="min-h-12 rounded-2xl bg-accent px-5 text-sm font-black text-white shadow-lg transition hover:-translate-y-0.5 hover:brightness-95 disabled:translate-y-0 disabled:opacity-60"
           >
-            {submittedAt
-              ? reviewedAt
-                ? t.interactiveHomework.reviewed
-                : t.interactiveHomework.sentForReview
-              : t.interactiveHomework.sendForReview}
+            {reviewedAt ? t.teacherHomeworks.reviewed
+              : submittedAt ? t.interactiveHomework.sentForReview : t.interactiveHomework.sendForReview}
           </button>
         </div>
       )}

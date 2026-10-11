@@ -6,6 +6,6 @@ import { useRealtimeSubscription } from "@/lib/use-realtime";
 export function TestsLiveList({ userId }: { userId: string }) {
   const router = useRouter();
   useRealtimeSubscription({ channel: `user:${userId}`, events: "homework-review",
-    onMessage: (message) => { if (message.data?.kind === "TEST" || message.data?.titleChanged === true) router.refresh(); } });
+    onMessage: (message) => { if (message.data?.kind === "TEST" || message.data?.titleChanged === true || message.data?.statusChanged === true) router.refresh(); } });
   return null;
 }
