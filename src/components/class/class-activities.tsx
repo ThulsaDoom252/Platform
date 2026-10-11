@@ -497,6 +497,7 @@ export function ClassActivities({ studentId }: { studentId: string }) {
           activity={openDeck}
           compact
           live
+          timerControls
           teacherSeesAnswers={meta.settings[key]?.teacherSeesAnswers === true}
           reviewEditor={(
             <button type="button" onClick={() => setReviewing({ key, title: openDeck.title })} className="h-11 w-full rounded-2xl bg-white text-sm font-black text-slate-950 shadow-lg transition hover:scale-[1.01]">

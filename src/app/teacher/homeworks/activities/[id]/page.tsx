@@ -63,7 +63,7 @@ export default async function TeacherActivityHomeworkPage({
         )}
       </section>
 
-      <WordDeckBoard activity={activity} />
+      <WordDeckBoard activity={activity} timerControls />
       <HomeworkFeedbackPanel kind="ACTIVITY" id={activity.id} settings={activity.homeworkFeedback} teacher />
     </div>
   );

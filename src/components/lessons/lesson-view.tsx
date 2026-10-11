@@ -480,6 +480,7 @@ export function LessonView({
               {section === "homework" && (
                 <Homework
                   lesson={lesson}
+                  teacher={teacher}
                   session={homeworkSession}
                   onStateChange={setHomeworkCounterState}
                   focusId={
@@ -804,6 +805,7 @@ function Questions({ lesson }: { lesson: Lesson }) {
 
 function Homework({
   lesson,
+  teacher,
   session,
   onStateChange,
   focusId,
@@ -811,6 +813,7 @@ function Homework({
   onFocus,
 }: {
   lesson: Lesson;
+  teacher: boolean;
   session?: InteractiveHomeworkSession;
   onStateChange?: (state: InteractiveHomeworkSession["state"]) => void;
   focusId?: string | null;
@@ -854,7 +857,7 @@ function Homework({
         <div className="flex justify-end"><HomeworkReminderButton target={{ kind: "LESSON", id: session.assignmentId }} title={lesson.title} showLabel /></div>
       )}
       {lesson.activities.map((activity) => (
-        <WordDeckBoard key={activity.id} activity={activity} compact />
+        <WordDeckBoard key={activity.id} activity={activity} compact timerControls={teacher} />
       ))}
       {lesson.interactiveHomework && session && (
         /* Saving an answer revalidates the assignment and refreshes

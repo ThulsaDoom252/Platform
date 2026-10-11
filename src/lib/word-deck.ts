@@ -60,6 +60,8 @@ export type WordDeckLiveState = {
   sound: boolean;
   time: number;
   expired: boolean;
+  /** Optional for older saved games. Explicit false resumes an answered card. */
+  timerPaused?: boolean;
   /** Озвучивание синхронизируется, но переключатель видит только учитель. */
   readDescriptions: boolean;
   verdict: WordDeckVerdict;
@@ -74,10 +76,28 @@ export type WordDeckHomeworkAttempt = {
 
 /** Advance from a saved anchor without persisting each clock tick. */
 export function remainingWordDeckSeconds(state: WordDeckLiveState, settings: Pick<WordDeckSettings, "timerMode">, now = Date.now()) {
-  if (settings.timerMode === "NONE" || state.at < 0 || state.expired || (state.verdict && settings.timerMode === "CARD")) return state.time;
+  if (settings.timerMode === "NONE" || state.at < 0 || state.expired || wordDeckTimerPaused(state, settings)) return state.time;
   const anchor = Date.parse(state.updatedAt);
   const elapsed = Number.isFinite(anchor) ? Math.max(0, Math.floor((now - anchor) / 1000)) : 0;
   return Math.max(0, state.time - elapsed);
+}
+
+/** Old answered card snapshots stopped the clock without an explicit pause flag. */
+export function wordDeckTimerPaused(state: Pick<WordDeckLiveState, "timerPaused" | "verdict">, settings: Pick<WordDeckSettings, "timerMode">) {
+  return state.timerPaused ?? Boolean(state.verdict && settings.timerMode === "CARD");
+}
+
+export function wordDeckTimerSeconds(settings: Pick<WordDeckSettings, "timerMode" | "cardSeconds" | "gameSeconds">) {
+  return settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds;
+}
+
+type WordDeckTimerState = Pick<WordDeckLiveState, "time" | "expired" | "feedback" | "updatedAt"> & { timerPaused: boolean };
+
+/** Restart the clock only; retain the card, its revealed side and any judgement. */
+export function restartWordDeckTimer<T extends Pick<WordDeckLiveState, "feedback">>(state: T,
+  settings: Pick<WordDeckSettings, "timerMode" | "cardSeconds" | "gameSeconds">, now = Date.now()): Omit<T, keyof WordDeckTimerState> & WordDeckTimerState {
+  return { ...state, time: wordDeckTimerSeconds(settings), expired: false, timerPaused: false,
+    feedback: state.feedback === "TIME_UP" ? null : state.feedback, updatedAt: new Date(now).toISOString() };
 }
 
 export type WordDeckHomeworkTracking = {
@@ -359,6 +379,7 @@ export function normalizeWordDeckLiveState(
     sound: value.sound !== false,
     time,
     expired: value.expired === true,
+    timerPaused: typeof value.timerPaused === "boolean" ? value.timerPaused : Boolean(verdict && settings.timerMode === "CARD"),
     readDescriptions: value.readDescriptions === true,
     verdict,
     feedback,

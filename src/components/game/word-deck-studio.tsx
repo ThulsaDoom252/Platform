@@ -238,7 +238,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId, mode = "W
             <div className="mb-3 flex justify-end">
               <button type="button" onClick={() => setPreview(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-950">× {t.wordDeck.close}</button>
             </div>
-            <WordDeckBoard key={`${preview.id}:${preview.updatedAt}`} activity={preview} />
+            <WordDeckBoard key={`${preview.id}:${preview.updatedAt}`} activity={preview} timerControls />
           </div>
         </div>,
         document.body,
