@@ -29,7 +29,11 @@ export type TestAnswers = Record<string, TestAnswer>;
 export type TestQuestionResult = {
   id: string; selected: TestAnswer; answer: string | string[]; correct: boolean; explanation: TestText;
 };
-export type TestExerciseResult = { exerciseId: string; correct: number; total: number; percent: number; questions: TestQuestionResult[] };
+export type TestExerciseResult = {
+  exerciseId: string; correct: number; total: number; percent: number; questions: TestQuestionResult[];
+  /** Imported evidence retains the original scoring unit and never invents a completion date. */
+  source?: { name: "Test-English"; file: string; importedAt: string; scoreUnit: "answer" | "sentence" };
+};
 export type TestResults = Record<string, TestExerciseResult>;
 export type TestAttemptSummary = {
   id: string; createdAt: string; completedAt: string | null;

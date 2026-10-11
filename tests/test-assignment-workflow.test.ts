@@ -244,7 +244,11 @@ test("Tests is reachable for students on both navigation surfaces and completed 
   for (const file of ["components/student/sidebar-nav.tsx", "components/student/mobile-nav.tsx"])
     assert.ok(source(file).includes('{ href: "/student/tests", label: t.nav.tests, Icon: ClipboardCheck }'));
   assert.ok(source("app/student/tests/page.tsx").includes("testHomeworkCardsAction()"));
-  assert.ok(!source("components/tests/assigned-tests-list.tsx").includes("filter((item) => !item.submittedAt)"));
+  const assignedList = source("components/tests/assigned-tests-list.tsx");
+  assert.ok(assignedList.includes("awaiting: items.filter((item) => !item.submittedAt)"));
+  assert.ok(assignedList.includes("passed: items.filter((item) => Boolean(item.submittedAt))"));
+  for (const section of ["awaiting", "passed"])
+    assert.ok(assignedList.includes(`sections.${section}.map((item) => <TestAssignmentCard`));
   assert.ok(source("components/tests/test-runner.tsx").includes("results[exercise.id].percent"));
   for (const locale of ["en", "ru", "uk"] as const) for (const event of ["assigned", "restarted", "reminder"] as const) {
     const notice = testAssignmentNotification({ id: uuid(1), assignmentId: uuid(10), teacherId: uuid(1), studentId: uuid(2), title: "First conditional", locale, event });

@@ -26,6 +26,14 @@ export function TestExerciseReview({ exercise, result, locale, labels }: {
   exercise: TestExercise; result: TestExerciseResult; locale: Locale; labels: TestLabels;
 }) {
   return <div data-test-review className="flex flex-col gap-4">
+    {result.source && <p data-test-import-note className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-sm leading-relaxed text-muted">
+      {locale === "ru" ? "Результат перенесён из Test-English. Дата в истории — дата переноса; исходная дата прохождения неизвестна."
+        : locale === "uk" ? "Результат перенесено з Test-English. Дата в історії — дата перенесення; початкова дата проходження невідома."
+        : "Imported from Test-English. The history date is the import date; the original completion date is unknown."}
+      {result.source.scoreUnit === "sentence" && <span className="mt-1 block">{locale === "ru" ? "Оценка — за целые предложения: оба пропуска должны быть правильными. Ошибки показаны отдельно для каждого пропуска."
+        : locale === "uk" ? "Оцінка — за цілі речення: обидва пропуски мають бути правильними. Помилки показано окремо для кожного пропуску."
+        : "Scored by whole sentences: both gaps must be correct. Mistakes are shown separately for each gap."}</span>}
+    </p>}
     {exercise.passage && <TestPassage exercise={exercise} renderGap={(question) => {
       const row = result.questions.find((item) => item.id === question.id);
       return <strong data-test-passage-answer={question.id} style={testTone(row?.correct ? 100 : 0)} className="mx-1 inline-block rounded-lg border border-[var(--test-tone)] bg-[color-mix(in_srgb,var(--test-tone)_10%,var(--surface))] px-2 py-0.5 text-[var(--test-tone)]">{testAnswerText(row?.selected ?? null, labels.noAnswer)}</strong>;
