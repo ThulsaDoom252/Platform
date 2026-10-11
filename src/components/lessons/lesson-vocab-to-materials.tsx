@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useRef, useState, useTransition } from "react";
 import {
   addLessonVocabularyToMaterialsAction,
   lessonVocabularyMaterialTargetsAction,
   type LessonVocabularyMaterialTarget,
 } from "@/lib/actions/lessons";
 import { IconFolder, IconPlus, IconX } from "@/components/icons";
+import { IconPicker } from "@/components/materials/icon-picker";
+import { automaticMaterialIcon } from "@/lib/material-icon";
 
 function folderOptions(target: LessonVocabularyMaterialTarget | undefined) {
   if (!target) return [];
@@ -41,6 +43,13 @@ export function LessonVocabToMaterials({
   const [studentId, setStudentId] = useState("");
   const [parentId, setParentId] = useState("");
   const [name, setName] = useState(`${lessonTitle} — Vocabulary`);
+  const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  const [pickingIcon, setPickingIcon] = useState(false);
+  const automaticIcon = useMemo(() => automaticMaterialIcon(name), [name]);
+  const icon = selectedIcon ?? automaticIcon;
+  const dialogTitleId = useId();
+  const iconPanelId = useId();
+  const iconButton = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
@@ -52,6 +61,7 @@ export function LessonVocabToMaterials({
     setOpen(true);
     setError(null);
     setDone(null);
+    setPickingIcon(false);
     if (targets.length > 0) return;
     startBusy(async () => {
       const next = await lessonVocabularyMaterialTargetsAction();
@@ -77,13 +87,15 @@ export function LessonVocabToMaterials({
 
       {open && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line sm:p-6">
+          <div role="dialog" aria-modal="true" aria-labelledby={dialogTitleId} onKeyDown={(event) => {
+            if (event.key === "Escape") { event.stopPropagation(); if (pickingIcon) { setPickingIcon(false); iconButton.current?.focus(); } else setOpen(false); }
+          }} className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line sm:p-6">
             <div className="flex items-start gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
                 <IconFolder className="h-5 w-5" />
               </span>
               <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-black text-content">Add vocabulary to materials</h2>
+                <h2 id={dialogTitleId} className="text-lg font-black text-content">Add vocabulary to materials</h2>
                 <p className="mt-0.5 text-[12px] text-muted">
                   A full copy with examples, hints, category colors and images.
                 </p>
@@ -136,11 +148,25 @@ export function LessonVocabToMaterials({
                 Vocabulary name
                 <input
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => { setName(event.target.value); setDone(null); }}
                   maxLength={200}
+                  disabled={busy}
                   className="h-11 rounded-xl border border-line bg-surface-2 px-3 text-sm font-medium text-content outline-none focus:border-accent"
                 />
               </label>
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[12px] font-bold text-content">Material icon</p>
+                  <button type="button" disabled={busy || selectedIcon === null} onClick={() => { setSelectedIcon(null); setDone(null); }} className="text-[11px] font-bold text-accent transition hover:underline disabled:text-muted disabled:no-underline">Auto-select</button>
+                </div>
+                <button ref={iconButton} type="button" disabled={busy} aria-label="Choose material icon" aria-expanded={pickingIcon} aria-controls={iconPanelId} onClick={() => setPickingIcon((value) => !value)} className="flex min-h-14 items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2 text-left transition hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50">
+                  <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-2xl">{icon}</span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-content">{pickingIcon ? "Close icon picker" : "Change icon"}</span><span className="block text-[11px] text-muted">{selectedIcon === null ? "Automatically selected from the name" : "Your selected icon"}</span></span>
+                </button>
+                {pickingIcon && <div id={iconPanelId} className="rounded-2xl border border-line bg-surface p-3">
+                  <IconPicker value={icon} onChange={(next) => { setSelectedIcon(next); setPickingIcon(false); setDone(null); iconButton.current?.focus(); }} />
+                </div>}
+              </div>
             </div>
 
             {targets.length === 0 && !busy && (
@@ -169,10 +195,12 @@ export function LessonVocabToMaterials({
                 onClick={() => startBusy(async () => {
                   setError(null);
                   setDone(null);
+                  setPickingIcon(false);
                   const result = await addLessonVocabularyToMaterialsAction(unitId, {
                     studentId,
                     parentId: parentId || null,
                     name,
+                    icon,
                   });
                   if (result.error) setError(result.error);
                   else setDone("Vocabulary added to the student's materials.");

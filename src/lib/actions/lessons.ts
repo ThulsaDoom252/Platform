@@ -27,6 +27,7 @@ import {
   wordDeckActivities,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { resolveMaterialIcon } from "@/lib/material-icon";
 import { homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persistence";
 import { HOMEWORK_MEDIA_KEY } from "@/lib/homework-media";
 import { lessonContentVersion } from "@/lib/lesson-content-version";
@@ -1082,7 +1083,7 @@ export async function lessonVocabularyMaterialTargetsAction(): Promise<
  */
 export async function addLessonVocabularyToMaterialsAction(
   unitId: string,
-  input: { studentId: string; parentId?: string | null; name: string },
+  input: { studentId: string; parentId?: string | null; name: string; icon?: string | null },
 ): Promise<{ nodeId?: string; error?: string }> {
   const session = await requireTeacher();
   const id = String(unitId ?? "");
@@ -1090,6 +1091,8 @@ export async function addLessonVocabularyToMaterialsAction(
   const parentId = input?.parentId ? String(input.parentId) : null;
   const name = String(input?.name ?? "").trim().slice(0, 200);
   if (!name) return { error: "Введи название словаря" };
+  const icon = resolveMaterialIcon(name, input?.icon);
+  if (!icon) return { error: "Выбери иконку из каталога" };
 
   const [[unit], [student], words] = await Promise.all([
     db
@@ -1149,7 +1152,7 @@ export async function addLessonVocabularyToMaterialsAction(
         scope: "STUDENT",
         ownerId: studentId,
         name,
-        icon: "📚",
+        icon,
         type: "FILE",
         pageKind: "VOCAB",
         sortOrder: (lastOrder ?? 0) + 1,
