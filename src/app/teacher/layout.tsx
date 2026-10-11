@@ -43,7 +43,7 @@ export default async function TeacherLayout({
   const { items, unreadCount } = await getTeacherFeed(session.userId, locale);
 
   return (
-    <I18nProvider locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
+    <I18nProvider userId={session.userId} locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
       <StudentPresenceProvider
         initial={presences}
         self={{ id: session.userId, name: me.name, role: "TEACHER" }}

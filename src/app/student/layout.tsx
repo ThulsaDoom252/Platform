@@ -51,7 +51,7 @@ export default async function StudentLayout({
     : t.topbar.roleStudent;
 
   return (
-    <I18nProvider locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
+    <I18nProvider userId={session.userId} locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
       <RealtimePresenceBeacon name={me.name} />
       <StudentClassSummons userId={session.userId} />
       <NotificationToastHost userId={session.userId} />

@@ -45,6 +45,7 @@ import {
 import { WordDeckBoard } from "@/components/game/word-deck-board";
 import { StudentPresence } from "@/components/student-presence";
 import { cn } from "@/lib/utils";
+import { useUiChoice } from "@/components/ui-preferences-provider";
 
 const input =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition focus:border-accent";
@@ -70,7 +71,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId, mode = "W
   );
   const [assigning, setAssigning] = useState<WordDeckActivity | null>(null);
   const [presetsOpen, setPresetsOpen] = useState(false);
-  const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
+  const [sort, setSort] = useUiChoice(`word-deck:${mode}:sort`, ["NEWEST", "TITLE"] as const, "NEWEST");
   const [notice, setNotice] = useState<string | null>(null);
   const portalReady = useSyncExternalStore(
     () => () => undefined,

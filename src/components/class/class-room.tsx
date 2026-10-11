@@ -27,6 +27,7 @@ import {
   type ClassSortKey,
 } from "@/lib/class-order";
 import { useLocalJson } from "@/lib/use-local-json";
+import { useUiChoice, useUiPreference } from "@/components/ui-preferences-provider";
 import {
   classTeacherProfileAction,
   heartbeatAction,
@@ -151,8 +152,8 @@ export function ClassRoom({
   >(`class-panel-layout:${selfId}`, DEFAULT_CLASS_PANEL_LAYOUT);
   const [lessonTab, setLessonTab] = useState<LessonTab>("lesson");
   // Порядок в списке — привычка учителя, поэтому живёт в браузере.
-  const [sort, setSort] = useLocalJson<ClassSortKey>("class-sort", "lessons");
-  const [sortDesc, setSortDesc] = useLocalJson("class-sort-desc", false);
+  const [sort, setSort] = useUiChoice<ClassSortKey>("class:sort", CLASS_SORTS, "lessons", "class-sort");
+  const [sortDesc, setSortDesc] = useUiPreference<boolean>("class:sort-desc", false, (value) => typeof value === "boolean", "class-sort-desc");
   const [showTimer, setShowTimer] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [timerState, setTimerState] = useState<ClassTimerState | null>(null);

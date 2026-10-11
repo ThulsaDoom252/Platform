@@ -11,10 +11,10 @@
  * Снимок кэшируется: JSON.parse на каждый вызов отдавал бы новый объект,
  * и React решил бы, что состояние меняется бесконечно.
  */
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { readLocalJson, writeLocalJson } from "@/lib/local-json-store";
 
 const listeners = new Set<() => void>();
-const cache = new Map<string, { raw: string | null; value: unknown }>();
 
 function notify() {
   for (const listener of listeners) listener();
@@ -29,48 +29,19 @@ function subscribe(listener: () => void) {
   };
 }
 
-function read<T>(key: string, fallback: T): T {
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(key);
-  } catch {
-    // Приватный режим: настройка проживёт до перезагрузки.
-    raw = null;
-  }
-
-  const hit = cache.get(key);
-  if (hit && hit.raw === raw) return hit.value as T;
-
-  let value: T = fallback;
-  if (raw !== null) {
-    try {
-      value = JSON.parse(raw) as T;
-    } catch {
-      value = fallback;
-    }
-  }
-
-  cache.set(key, { raw, value });
-  return value;
-}
-
 /** Возвращает объект и функцию его замены. На сервере — значение по умолчанию. */
 export function useLocalJson<T>(key: string, fallback: T): [T, (value: T) => void] {
+  const fallbackJson = JSON.stringify(fallback);
+  const stableFallback = useMemo(() => JSON.parse(fallbackJson) as T, [fallbackJson]);
   const value = useSyncExternalStore(
     subscribe,
-    () => read(key, fallback),
-    () => fallback,
+    () => readLocalJson(key, stableFallback),
+    () => stableFallback,
   );
 
   const set = useCallback(
     (next: T) => {
-      const raw = JSON.stringify(next);
-      cache.set(key, { raw, value: next });
-      try {
-        localStorage.setItem(key, raw);
-      } catch {
-        /* не сохранилось — останется в памяти до перезагрузки */
-      }
+      writeLocalJson(key, next);
       notify();
     },
     [key],

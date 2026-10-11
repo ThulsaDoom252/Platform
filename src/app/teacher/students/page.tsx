@@ -7,6 +7,7 @@ import { fmt } from "@/lib/i18n";
 import { Avatar } from "@/components/avatar";
 import { StudentPresence } from "@/components/student-presence";
 import { ToClassButton } from "@/components/class/to-class-button";
+import { StudentSortedList } from "@/components/teacher/student-sorted-list";
 import {
   SharedPackagesContent,
   SharedPackagesToggle,
@@ -73,37 +74,6 @@ export default async function TeacherStudentsPage({
     return { ...s, pkg, lessons: pkg ? pkg.remainingLessons : s.balance };
   });
 
-  const collator = new Intl.Collator(locale === "en" ? "en" : locale);
-  rows.sort((a, b) => {
-    const by =
-      sort === "lessons" ? a.lessons - b.lessons : collator.compare(a.name, b.name);
-    // При равном числе уроков порядок всё равно должен быть предсказуемым.
-    return (desc ? -by : by) || collator.compare(a.name, b.name);
-  });
-
-  /** Ссылка на ту же страницу с другой сортировкой. */
-  const sortHref = (key: SortKey) =>
-    `/teacher/students?sort=${key}&dir=${sort === key && !desc ? "desc" : "asc"}`;
-
-  const sortBtn = (key: SortKey, label: string) => {
-    const active = sort === key;
-    return (
-      <Link
-        href={sortHref(key)}
-        className={`flex h-8 items-center gap-1 rounded-lg px-3 text-[12px] font-semibold transition ${
-          active
-            ? "bg-accent-soft text-accent"
-            : "text-muted hover:bg-surface-2 hover:text-content"
-        }`}
-      >
-        {label}
-        <span aria-hidden className={active ? "" : "opacity-40"}>
-          {active && desc ? "↓" : "↑"}
-        </span>
-      </Link>
-    );
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -123,22 +93,15 @@ export default async function TeacherStudentsPage({
       </div>
 
       <section className="rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
-        <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-line pb-3">
-          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
-            {t.studentsPage.sortBy}
-          </span>
-          {sortBtn("name", t.studentsPage.sortName)}
-          {sortBtn("lessons", t.studentsPage.sortLessons)}
-          {sharedPackages.length > 0 && (
+        <StudentSortedList initialSort={{ key: sort, desc }} locale={locale}
+          labels={{ sortBy: t.studentsPage.sortBy, name: t.studentsPage.sortName, lessons: t.studentsPage.sortLessons }}
+          extraControls={sharedPackages.length > 0 && (
             <SharedPackagesToggle
               showLabel={t.studentsPage.showPackages}
               hideLabel={t.studentsPage.hidePackages}
             />
           )}
-        </div>
-
-        <div className="flex flex-col divide-y divide-line">
-          {rows.map((s) => (
+          rows={rows.map((s) => ({ id: s.id, name: s.name, lessons: s.lessons, card: (
             /* Строка перестала быть одной ссылкой: внутрь встали кнопки,
                а вкладывать кнопку в ссылку нельзя. */
             <div
@@ -194,8 +157,8 @@ export default async function TeacherStudentsPage({
                 <IconChevronRight className="h-4 w-4" />
               </Link>
             </div>
-          ))}
-        </div>
+          ) }))}
+        />
       </section>
 
       {/* Общие пакеты стоят после списка: учеников больше не отодвигает вниз. */}

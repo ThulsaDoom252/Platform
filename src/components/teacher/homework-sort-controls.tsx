@@ -1,7 +1,7 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { useId } from "react";
+import { usePersistentSort } from "@/lib/use-persistent-sort";
 import { readTeacherHomeworkSort, TEACHER_HOMEWORK_SORT_KEYS, type TeacherHomeworkSortKey, type TeacherHomeworkSortState } from "@/lib/teacher-homework-order";
 
 export type HomeworkSortLabels = {
@@ -18,15 +18,8 @@ export type HomeworkSortLabels = {
 
 /** Native history updates only the URL and local ordering, not the server data. */
 export function useHomeworkSort(initial: TeacherHomeworkSortState, defaultKey: TeacherHomeworkSortKey) {
-  const params = useSearchParams();
-  const state = params ? readTeacherHomeworkSort(params.get("sort"), params.get("dir"), defaultKey) : initial;
-  const change = (next: TeacherHomeworkSortState) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("sort", next.key);
-    url.searchParams.set("dir", next.desc ? "desc" : "asc");
-    window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
-  };
-  return { state, change };
+  return usePersistentSort(`homeworks:${defaultKey === "name" ? "folders" : "assignments"}:sort`,
+    initial, TEACHER_HOMEWORK_SORT_KEYS, ["assigned"]);
 }
 
 export function HomeworkSortControls({ state, labels, onChange }: {

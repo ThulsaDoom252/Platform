@@ -17,6 +17,7 @@ import {
 import { cleanClassVocabularyText, type ClassVocabularyLang } from "@/lib/class-vocabulary";
 import { cn } from "@/lib/utils";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
+import { useUiChoice } from "@/components/ui-preferences-provider";
 
 export function ClassVocabulary({
   studentId,
@@ -38,7 +39,7 @@ export function ClassVocabulary({
   const [query, setQuery] = useState("");
   const [lang, setLang] = useState<ClassVocabularyLang>("UK");
   const [draft, setDraft] = useState<ClassVocabularyDraft | null>(null);
-  const [sort, setSort] = useState<"DATE" | "ALPHA">("DATE");
+  const [sort, setSort] = useUiChoice("class-vocabulary:sort", ["DATE", "ALPHA"] as const, "DATE");
   const [editing, setEditing] = useState<{
     id: string;
     english: string;

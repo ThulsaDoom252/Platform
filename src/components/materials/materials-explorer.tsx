@@ -6,7 +6,7 @@ import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocalNumber } from "@/lib/use-local-number";
-import { useLocalJson } from "@/lib/use-local-json";
+import { useUiChoice, useUiPreference } from "@/components/ui-preferences-provider";
 import {
   descendantIds,
   selectRangeDeep,
@@ -313,11 +313,11 @@ export function MaterialsExplorer({
    * раскладываются по-разному.
    */
   const sortKey = `materials-sort:${scope}:${ownerId ?? "-"}`;
-  const [sortState, setSortState] = useLocalJson<{
+  const [sortState, setSortState] = useUiPreference<{
     mode: SortMode;
     presetId: string | null;
     presets: TreePreset[];
-  }>(sortKey, { mode: DEFAULT_SORT, presetId: null, presets: [] });
+  }>(sortKey, { mode: DEFAULT_SORT, presetId: null, presets: [] }, undefined, sortKey);
 
   const activePreset = sortState.presetId
     ? sortState.presets.find((p) => p.id === sortState.presetId)
@@ -431,9 +431,8 @@ export function MaterialsExplorer({
   const [selectedId, setSelectedId] = useState<string | null>(
     initialNodeId && byId.has(initialNodeId) ? initialNodeId : (tree[0]?.id ?? null),
   );
-  const [view, setView] = useState<"grid" | "list" | "interactive">("grid");
-  const [pathOpen, setPathOpen] = useState(true);
-  const pathOpenBeforeInteractive = useRef(true);
+  const [view, setView] = useUiChoice("materials:view", ["grid", "list", "interactive"] as const, "grid");
+  const [pathOpen, setPathOpen] = useUiPreference<boolean>("materials:panel-open", true, (value) => typeof value === "boolean");
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLElement>(null);
 
@@ -540,12 +539,10 @@ export function MaterialsExplorer({
 
   function changeView(next: "grid" | "list" | "interactive") {
     if (next === "interactive") {
-      pathOpenBeforeInteractive.current = pathOpen;
-      setPathOpen(false);
+      // The interactive layout hides the tree without overwriting its preference.
       setSelectedId(null);
       setAnchorId(null);
     } else if (view === "interactive") {
-      setPathOpen(pathOpenBeforeInteractive.current);
       setSelectedId((current) => current ?? sortedTree[0]?.id ?? null);
     }
     setView(next);

@@ -115,7 +115,7 @@ test("server-rendered folders and grouped cards honor initial sorting, including
 });
 
 test("changing sorting only uses native history, preserves other URL parameters and performs no data writes or requests", () => {
-  const source = readFileSync("src/components/teacher/homework-sort-controls.tsx", "utf8");
+  const source = readFileSync("src/lib/use-persistent-sort.ts", "utf8");
   assert.ok(source.includes("new URL(window.location.href)"));
   assert.ok(source.includes("window.history.replaceState"));
   assert.ok(source.includes("url.hash"));

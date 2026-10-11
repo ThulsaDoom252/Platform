@@ -29,7 +29,7 @@ import {
   type TwisterSort,
   type TwisterView,
 } from "@/lib/twisters";
-import { useLocalJson } from "@/lib/use-local-json";
+import { useUiChoice } from "@/components/ui-preferences-provider";
 import { TwisterAssign } from "./twister-assign";
 import { TwisterViewer } from "./twister-viewer";
 import {
@@ -53,8 +53,8 @@ const VIEW_CLASS: Record<TwisterView, string> = {
 export function TwisterPool({ initial }: { initial: Twister[] }) {
   const { t } = useT();
   const [pool, setPool] = useState(initial);
-  const [view, setView] = useLocalJson<TwisterView>("lingora-twister-view", "grid");
-  const [sort, setSort] = useLocalJson<TwisterSort>("lingora-twister-sort", "manual");
+  const [view, setView] = useUiChoice<TwisterView>("twisters:view", TWISTER_VIEWS, "grid", "lingora-twister-view");
+  const [sort, setSort] = useUiChoice<TwisterSort>("twisters:sort", TWISTER_SORTS, "manual", "lingora-twister-sort");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<Twister | null>(null);

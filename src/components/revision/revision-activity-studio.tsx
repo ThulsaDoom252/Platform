@@ -37,6 +37,7 @@ import {
   IconX,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { useUiChoice } from "@/components/ui-preferences-provider";
 
 type VocabularyChoice = { id: string; name: string; path?: string };
 type VocabularyBranch = CopyNode & { children: VocabularyBranch[] };
@@ -90,7 +91,7 @@ export function RevisionActivityStudio({
   const { t } = useT();
   const [presets, setPresets] = useState(initialPresets);
   const [presetsOpen, setPresetsOpen] = useState(false);
-  const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
+  const [sort, setSort] = useUiChoice("revision:sort", ["NEWEST", "TITLE"] as const, "NEWEST");
   const [choosingSource, setChoosingSource] = useState(false);
   const [sources, setSources] = useState<VocabularyChoice[]>([]);
   const [assigning, setAssigning] = useState<RevisionPreset | null>(null);

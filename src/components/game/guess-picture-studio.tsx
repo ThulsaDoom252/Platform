@@ -37,6 +37,7 @@ import {
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { StudentPresence } from "@/components/student-presence";
+import { useUiChoice } from "@/components/ui-preferences-provider";
 
 type Branch = CopyNode & { children: Branch[] };
 
@@ -80,7 +81,7 @@ export function GuessPictureStudio({ initialPresets }: { initialPresets: GuessPi
   const [creating, setCreating] = useState(false);
   const [assigning, setAssigning] = useState<GuessPicturePreset | null>(null);
   const [presetFolderOpen, setPresetFolderOpen] = useState(false);
-  const [sort, setSort] = useState<"NEWEST" | "TITLE">("NEWEST");
+  const [sort, setSort] = useUiChoice("guess-picture:sort", ["NEWEST", "TITLE"] as const, "NEWEST");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
   const sorted = useMemo(() => [...presets].sort((left, right) =>
