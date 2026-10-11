@@ -24,7 +24,7 @@ export function TestExerciseQuestions({ testId, exercise, answers, busy, onAnswe
   return <>{exercise.questions.map((question, index) => <div key={question.id} data-test-question={question.id} className="flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 sm:gap-4 sm:p-5">
     <span aria-hidden className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-black text-accent">{index + 1}</span>
     {question.kind === "multiple" ? <fieldset className="min-w-0 flex-1">
-      <legend className="text-sm leading-loose text-content sm:text-base">{question.before}<span aria-hidden className="mx-1 inline-block w-16 border-b-2 border-accent/50 align-baseline" />{question.after}</legend>
+      <legend className="text-sm leading-loose text-content sm:text-base">{question.prompt ?? <>{question.before}<span aria-hidden className="mx-1 inline-block w-16 border-b-2 border-accent/50 align-baseline" />{question.after}</>}</legend>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="mr-1 text-[11px] font-bold text-accent">Choose TWO correct options · {(Array.isArray(answers[question.id]) ? (answers[question.id] as string[]).length : 0)}/{question.selectionCount ?? 2}</span>
         {question.options.map((option) => {

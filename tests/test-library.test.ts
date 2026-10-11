@@ -99,9 +99,12 @@ test("empty category folders stay empty; B1 Grammar links to the published First
   for (const level of TEST_LEVELS) {
     for (const category of TEST_CATEGORIES) {
       const html = renderToStaticMarkup(createElement(TestsLibraryView, { location: { level: level.id, category }, labels: dictionaries.en.testsLibrary }));
-      if (level.id === "b1" && category === "grammar") {
-        assert.ok(html.includes('data-library-test="first-conditional"'));
-        assert.ok(html.includes('href="/teacher/tests/first-conditional"'));
+      const folderTests = TEST_CATALOG.filter((test) => test.level === level.id && test.category === category);
+      if (folderTests.length) {
+        for (const test of folderTests) {
+          assert.ok(html.includes(`data-library-test="${test.id}"`));
+          assert.ok(html.includes(`href="/teacher/tests/${test.id}"`));
+        }
         assert.ok(!html.includes("data-tests-empty"));
         continue;
       }

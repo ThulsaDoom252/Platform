@@ -1,6 +1,7 @@
 // Imported only by server actions and tests, never by a Client Component.
 import type { TestAnswer, TestAnswerKey, TestAnswers, TestDefinition, TestExerciseResult, TestText } from "./types";
 import { SECOND_CONDITIONAL_KEY } from "./second-conditional-key";
+import { FOLDER_TEST_KEYS } from "./folder-test-keys";
 
 const text = (en: string, ru: string, uk: string): TestText => ({ en, ru, uk });
 const future = text("The main clause describes a real future result: use will + the base verb. The time clause uses the present simple.", "Главная часть описывает реальный будущий результат: will + начальная форма глагола. В придаточной части времени — Present Simple.", "Головна частина описує реальний майбутній результат: will + початкова форма дієслова. У підрядній частині часу — Present Simple.");
@@ -52,13 +53,14 @@ export const FIRST_CONDITIONAL_KEY: TestAnswerKey = { "exercise-1": {
 } };
 
 export function libraryTestKey(testId: string, version: number): TestAnswerKey | null {
+  if (Object.hasOwn(FOLDER_TEST_KEYS, testId)) return version === 1 ? FOLDER_TEST_KEYS[testId] : null;
   if (testId === "second-conditional") return version === 1 ? SECOND_CONDITIONAL_KEY : null;
   if (testId !== "first-conditional") return null;
   if (version === 1) return { "exercise-1": FIRST_CONDITIONAL_KEY["exercise-1"] };
   return version === 2 ? FIRST_CONDITIONAL_KEY : null;
 }
 
-const normalizeText = (value: string) => value.trim().replace(/[‘’ʼ]/g, "'").replace(/\s+/g, " ").toLowerCase();
+const normalizeText = (value: string) => value.trim().replace(/[‘’ʼ]/g, "'").replace(/\s+/g, " ").replace(/[.!?]$/, "").trimEnd().toLowerCase();
 
 export function gradeTestExercise(test: TestDefinition, key: TestAnswerKey, exerciseId: string, answers: TestAnswers): TestExerciseResult {
   const exercise = test.exercises.find((item) => item.id === exerciseId);
@@ -87,7 +89,9 @@ export function gradeTestExercise(test: TestDefinition, key: TestAnswerKey, exer
         correct = selected !== null && [itemKey.answer, ...(itemKey.acceptedAnswers ?? [])].some((value) => normalizeText(value) === normalizeText(selected as string));
       } else {
         if (selected !== null && !question.options.includes(selected)) throw new Error("Invalid answer");
-        correct = selected === itemKey.answer;
+        const accepted = [itemKey.answer, ...(itemKey.acceptedAnswers ?? [])];
+        if (accepted.some((value) => !question.options.includes(value))) throw new Error("Invalid answer key");
+        correct = selected !== null && accepted.includes(selected);
       }
       if (selected !== null) reason = itemKey.reasons[selected];
     }

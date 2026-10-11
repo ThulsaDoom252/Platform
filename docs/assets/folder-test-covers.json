@@ -1,0 +1,53 @@
+{
+  "method": "Original code-native SVG artwork rendered to WebP; no remote assets or AI image edits",
+  "covers": [
+    {
+      "id": "a1-to-be",
+      "source": "docs/assets/tests/a1-to-be-v1.svg",
+      "output": "public/images/tests/a1-to-be-v1.webp",
+      "width": 1200,
+      "height": 600,
+      "bytes": 24738
+    },
+    {
+      "id": "a1-a-an-plurals",
+      "source": "docs/assets/tests/a1-a-an-plurals-v1.svg",
+      "output": "public/images/tests/a1-a-an-plurals-v1.webp",
+      "width": 1200,
+      "height": 600,
+      "bytes": 24874
+    },
+    {
+      "id": "a1-demonstratives",
+      "source": "docs/assets/tests/a1-demonstratives-v1.svg",
+      "output": "public/images/tests/a1-demonstratives-v1.webp",
+      "width": 1200,
+      "height": 600,
+      "bytes": 25696
+    },
+    {
+      "id": "a1-possessives",
+      "source": "docs/assets/tests/a1-possessives-v1.svg",
+      "output": "public/images/tests/a1-possessives-v1.webp",
+      "width": 1200,
+      "height": 600,
+      "bytes": 27788
+    },
+    {
+      "id": "a1-adjectives",
+      "source": "docs/assets/tests/a1-adjectives-v1.svg",
+      "output": "public/images/tests/a1-adjectives-v1.webp",
+      "width": 1200,
+      "height": 600,
+      "bytes": 26538
+    },
+    {
+      "id": "third-conditional",
+      "source": "docs/assets/tests/third-conditional-v1.svg",
+      "output": "public/images/tests/third-conditional-v1.webp",
+      "width": 1200,
+      "height": 600,
+      "bytes": 24192
+    }
+  ]
+}

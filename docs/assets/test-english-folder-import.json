@@ -1,0 +1,152 @@
+{
+  "source": "User-provided TestEnglish folder",
+  "answerKeys": "Reviewed independently: saved HTML contains tasks/options but no answer keys",
+  "tests": [
+    {
+      "id": "a1-to-be",
+      "pages": [
+        {
+          "file": "A1/Grammar/Am is are/Present simple forms of 'to be'_ am_is_are - Test-English.html",
+          "sha256": "a16057873706274356b28a75cc62c99d6b51e0004cc23c13c7643986fec139f1",
+          "exercise": 1,
+          "questions": 20
+        },
+        {
+          "file": "A1/Grammar/Am is are/Present simple forms of 'to be'_ am_is_are - Page 2 of 4 - Test-English.html",
+          "sha256": "bb7281abc8e11c6116c010fe0f442c9629c2526e7d11c41fe125f30a18a2c6c5",
+          "exercise": 2,
+          "questions": 10
+        },
+        {
+          "file": "A1/Grammar/Am is are/Present simple forms of 'to be'_ am_is_are - Page 3 of 4 - Test-English.html",
+          "sha256": "d2af0234a784c79d0ae12f2b98132128ea37bb4b491608d07a9f840c9aad5f43",
+          "exercise": 3,
+          "questions": 20
+        },
+        {
+          "file": "A1/Grammar/Am is are/Present simple forms of 'to be'_ am_is_are - Page 4 of 4 - Test-English.html",
+          "sha256": "4d77962620eacbbb6e39dc00f3e84ab39eba1d04e7ae2685c6cd5052a9f81c81",
+          "exercise": 4,
+          "questions": 20
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "a1-a-an-plurals",
+      "pages": [
+        {
+          "file": "A1/Grammar/a vs an. Singualar and plural forms/A_an, plurals_ Singular and plural forms - Test-English.html",
+          "sha256": "a830eed660b86125c95936c3b9ac0207405e2989d2602a2877e7fa7c1d52e8c9",
+          "exercise": 1,
+          "questions": 10
+        },
+        {
+          "file": "A1/Grammar/a vs an. Singualar and plural forms/A_an, plurals_ Singular and plural forms - Page 2 of 3 - Test-English.html",
+          "sha256": "b7455823115bb20dffe97af6e4261cbaa10aebc2edc2c5bfafd69eb550b1c199",
+          "exercise": 2,
+          "questions": 10
+        },
+        {
+          "file": "A1/Grammar/a vs an. Singualar and plural forms/A_an, plurals_ Singular and plural forms - Page 3 of 3 - Test-English.html",
+          "sha256": "d21cb1f130a4a353d501df219efb9429d67a158f54fff23b44f98ad25ffa2510",
+          "exercise": 3,
+          "questions": 20
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "a1-demonstratives",
+      "pages": [
+        {
+          "file": "A1/Grammar/Demonstrative pronouns/This, that, these, those - Test-English.html",
+          "sha256": "41c5a59948803ca08d1ada844c3cba9233f9d7fb5cae64327a713d9eac8b4ead",
+          "exercise": 1,
+          "questions": 10
+        },
+        {
+          "file": "A1/Grammar/Demonstrative pronouns/This, that, these, those - Page 2 of 3 - Test-English.html",
+          "sha256": "69b3a452eaab2f31b68b576bb406b0f9df744e008f0ef9c9d260c7f50530d5e7",
+          "exercise": 2,
+          "questions": 10
+        },
+        {
+          "file": "A1/Grammar/Demonstrative pronouns/This, that, these, those - Page 3 of 3 - Test-English.html",
+          "sha256": "852643660f2a8aeb95ececb61d60c8acf03498356d5c250ed5738ffb280d5aac",
+          "exercise": 3,
+          "questions": 10
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "a1-possessives",
+      "pages": [
+        {
+          "file": "A1/Grammar/Possesive adjectives vs subject pronouns/Possessive adjectives and subject pronouns (I_my, you_your, etc.) - Test-English.html",
+          "sha256": "6608984f651f3cfc821635f330fe86fa57779b34c091ed3e3540a6fcb50b96cf",
+          "exercise": 1,
+          "questions": 14
+        },
+        {
+          "file": "A1/Grammar/Possesive adjectives vs subject pronouns/Possessive adjectives and subject pronouns (I_my, you_your, etc.) - Page 2 of 3 - Test-English.html",
+          "sha256": "05e1fc44567935abda76cd4df5b542f0ecf9200353fd57b0c15cbdfc9bee4de3",
+          "exercise": 2,
+          "questions": 10
+        },
+        {
+          "file": "A1/Grammar/Possesive adjectives vs subject pronouns/Possessive adjectives and subject pronouns (I_my, you_your, etc.) - Page 3 of 3 - Test-English.html",
+          "sha256": "e41dd88848bc147ff4784c2a4044a305a04b8fdac7e51c7df3852b1824c4b54b",
+          "exercise": 3,
+          "questions": 10
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "a1-adjectives",
+      "pages": [
+        {
+          "file": "A1/Grammar/Adjectives  (basics)/Adjectives_ Old, interesting, expensive, etc. - Test-English.html",
+          "sha256": "63338b2dbbcaeb577a9b01d938f4784b5048c019cf595c9d3325d702a6fad0f2",
+          "exercise": 1,
+          "questions": 10
+        },
+        {
+          "file": "A1/Grammar/Adjectives  (basics)/Adjectives_ Old, interesting, expensive, etc. - Page 2 of 3 - Test-English.html",
+          "sha256": "fd343bd1d9dd7cb050665707fbefaedddc72d28dd2775e4d4a68f91fb045a7dc",
+          "exercise": 2,
+          "questions": 10
+        }
+      ],
+      "missing": [
+        3
+      ]
+    },
+    {
+      "id": "third-conditional",
+      "pages": [
+        {
+          "file": "B1/Grammar/Third conditional Past unreal situations/Third conditional_ Past unreal situations - Test-English.html",
+          "sha256": "933e17f0a65b287b51099c437e6e35754f767eea46cd99d02dddc436d4e54933",
+          "exercise": 1,
+          "questions": 10
+        },
+        {
+          "file": "B1/Grammar/Third conditional Past unreal situations/Third conditional_ Past unreal situations - Page 2 of 3 - Test-English.html",
+          "sha256": "d03aeea0e7efa322c7307a090bc91f1a845601eed589992c6d6b29632457349b",
+          "exercise": 2,
+          "questions": 10
+        },
+        {
+          "file": "B1/Grammar/Third conditional Past unreal situations/Third conditional_ Past unreal situations - Page 3 of 3 - Test-English.html",
+          "sha256": "3e11decd499d4177fb93e30ccea900e341c9b24745265378e648d08080db9fa3",
+          "exercise": 3,
+          "questions": 20
+        }
+      ],
+      "missing": []
+    }
+  ]
+}
