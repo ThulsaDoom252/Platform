@@ -1513,6 +1513,9 @@ export const en = {
   },
 
   settings: {
+    layoutView: "Interface view", layoutViewHint: "Personal choice, saved for this account in this browser.",
+    classicViewHint: "The current layout: top header and expanding sidebar.", updatedViewHint: "No top header. Profile, notifications and centered search in the left panel.",
+    navigation: "Navigation", openNavigation: "Open navigation",
     title: "Settings",
     subtitle: "Appearance and language. These are personal — only for you.",
     nightMode: "Night mode",

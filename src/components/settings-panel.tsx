@@ -2,6 +2,7 @@ import { getDict } from "@/lib/i18n/server";
 import { locales } from "@/lib/i18n";
 import { updateLocaleAction } from "@/lib/actions/profile";
 import { ThemeSettings } from "@/components/theme-settings";
+import { AppViewSettings } from "@/components/app-view-settings";
 import { IconCheck } from "@/components/icons";
 import type { ReactNode } from "react";
 
@@ -16,6 +17,7 @@ export async function SettingsPanel({ security, notifications }: { security?: Re
         <p className="mt-1 text-sm text-muted">{t.settings.subtitle}</p>
       </div>
 
+      <AppViewSettings />
       <ThemeSettings />
 
       {notifications}

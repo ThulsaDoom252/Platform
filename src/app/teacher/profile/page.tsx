@@ -4,6 +4,7 @@ import { users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { getDict } from "@/lib/i18n/server";
 import { ProfilePanel } from "@/components/profile-panel";
+import { ProfileLogout } from "@/components/profile-logout";
 
 export default async function TeacherProfilePage() {
   const session = await getSession();
@@ -38,6 +39,7 @@ export default async function TeacherProfilePage() {
           role: "TEACHER",
         }}
       />
+      <ProfileLogout />
     </div>
   );
 }

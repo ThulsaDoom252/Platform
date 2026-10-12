@@ -2065,6 +2065,7 @@ export function MaterialsExplorer({
           onClick={togglePathPanel}
           title={t.materials.openPanel}
           aria-label={t.materials.openPanel}
+          data-materials-tree-toggle
           className="fixed bottom-20 left-4 z-30 flex h-13 w-13 items-center justify-center rounded-full bg-accent text-white shadow-xl ring-4 ring-page/80 transition hover:-translate-y-0.5 hover:shadow-2xl focus-visible:outline-none focus-visible:ring-accent-soft lg:bottom-5 lg:left-[5.25rem]"
         >
           <IconSprout className="h-6 w-6" />

@@ -12,12 +12,16 @@ import {
 import { useT } from "@/components/i18n-provider";
 import { IconChevronRight, IconSearch } from "@/components/icons";
 import { cn } from "@/lib/utils";
-import { globalSearchPosition, type GlobalSearchPosition } from "@/lib/global-search-position";
+import { centeredSearchPosition, globalSearchPosition, type GlobalSearchPosition } from "@/lib/global-search-position";
+import { useAppView } from "./app-view-provider";
+import { useModalLayer } from "@/lib/use-modal-layer";
 
 const teacherCategories = [...SEARCH_CATEGORIES];
 
 export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
   const { t } = useT();
+  const { view } = useAppView();
+  const centered = view === "UPDATED";
   const available = role === "TEACHER" ? teacherCategories : (["MATERIALS"] as const);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -30,6 +34,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
   const [position, setPosition] = useState<GlobalSearchPosition | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const selectedKey = useMemo(() => [...selected].sort().join(","), [selected]);
 
   const updatePosition = useCallback(() => {
@@ -37,11 +42,12 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
     if (!trigger) return;
     const button = trigger.getBoundingClientRect();
     const header = trigger.closest("header")?.getBoundingClientRect();
-    setPosition(globalSearchPosition({ right: button.right, bottom: header?.bottom ?? button.bottom }, {
+    const viewport = { width: document.documentElement.clientWidth, height: window.visualViewport?.height ?? window.innerHeight };
+    setPosition(centered ? centeredSearchPosition(viewport) : globalSearchPosition({ right: button.right, bottom: header?.bottom ?? button.bottom }, {
       width: document.documentElement.clientWidth,
       height: window.innerHeight,
     }));
-  }, []);
+  }, [centered]);
 
   const closeSearch = useCallback(() => {
     setOpen(false);
@@ -52,22 +58,26 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
     triggerRef.current?.focus();
   }, []);
 
+  useModalLayer(open && centered, panelRef, closeSearch, 3);
+
   useEffect(() => {
     if (!open) return;
     updatePosition();
     inputRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeSearch();
+      if (!centered && event.key === "Escape") closeSearch();
     };
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
+    window.visualViewport?.addEventListener("resize", updatePosition);
     return () => {
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
     };
-  }, [open, closeSearch, updatePosition]);
+  }, [open, centered, closeSearch, updatePosition]);
 
   useEffect(() => {
     let current = true;
@@ -137,12 +147,13 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
             aria-label={t.globalSearch.close}
             onClick={closeSearch}
             className="fixed inset-0 z-[60] cursor-default bg-page/45 backdrop-blur-[2px]"
+            style={centered ? { zIndex: 99 } : undefined}
           />
-
+          <div ref={panelRef} role={centered ? "dialog" : undefined} aria-modal={centered || undefined} aria-label={centered ? t.globalSearch.open : undefined} data-centered-search={centered || undefined} data-modal-layer={centered ? "3" : undefined}>
           <section
             role="search"
             className="fixed left-3 right-3 top-16 z-[61] mx-auto flex max-h-[min(76dvh,680px)] max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-8 sm:mx-0 sm:w-[min(42rem,calc(100vw-4rem))]"
-            style={position ? { ...position, right: "auto", maxWidth: "none", margin: 0 } : undefined}
+            style={position ? { ...position, right: "auto", maxWidth: "none", margin: 0, ...(centered ? { transform: "translate(-50%, -50%)", zIndex: 100 } : {}) } : undefined}
           >
             <div className="flex items-center gap-2 border-b border-line p-3 sm:p-4 shrink-0">
               <IconSearch className="h-5 w-5 shrink-0 text-accent" />
@@ -243,6 +254,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
               )}
             </div>
           </section>
+          </div>
         </>,
         document.body,
       )}

@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import { useModalLayer } from "@/lib/use-modal-layer";
+import { notificationPanelPosition } from "@/lib/notification-panel-position";
 import { useRouter } from "next/navigation";
 import {
   clearMyNotificationsAction,
@@ -34,14 +37,24 @@ const kindStyle: Record<FeedKind, { Icon: typeof IconBell; cls: string }> = {
 export function NotificationBell({
   items,
   unreadCount,
+  panel = false,
 }: {
   items: FeedItem[];
   unreadCount: number;
+  panel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState<string[]>([]);
   const [busy, startAction] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<ReturnType<typeof notificationPanelPosition> | null>(null);
+  const close = useCallback(() => { setOpen(false); ref.current?.querySelector<HTMLButtonElement>("button")?.focus(); }, []);
+  useModalLayer(open && panel, dropdownRef, close, 2);
+  const updatePosition = useCallback(() => {
+    const button = ref.current?.querySelector("button")?.getBoundingClientRect();
+    if (button) setPosition(notificationPanelPosition(button, { width: document.documentElement.clientWidth, height: window.innerHeight }));
+  }, []);
   const router = useRouter();
   const { t } = useT();
   const visibleItems = items.filter((item) => !hidden.includes(item.id));
@@ -65,31 +78,23 @@ export function NotificationBell({
   useEffect(() => {
     if (!open) return;
     function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (!ref.current?.contains(e.target as Node) && !dropdownRef.current?.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="relative flex h-10 w-10 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2"
-        aria-label={t.notifications.title}
-      >
-        <IconBell className="h-5 w-5" />
-        {visibleUnread > 0 && (
-          <span className="absolute right-1 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-            {visibleUnread}
-          </span>
-        )}
-      </button>
+  useEffect(() => {
+    if (!open || !panel) return;
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => { window.removeEventListener("resize", updatePosition); window.removeEventListener("scroll", updatePosition, true); };
+  }, [open, panel, updatePosition]);
 
-      {open && (
-        <div className="absolute right-0 top-12 z-30 w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-line bg-surface shadow-xl shadow-black/10">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+  const dropdown = (
+<div ref={dropdownRef} role={panel ? "dialog" : undefined} aria-modal={panel || undefined} aria-label={panel ? t.notifications.title : undefined} data-modal-layer={panel ? "2" : undefined} className={panel ? "fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-xl shadow-black/10" : "absolute right-0 top-12 z-30 w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-line bg-surface shadow-xl shadow-black/10"} style={panel ? position ?? { left: 12, top: 64, width: 340, maxHeight: 400 } : undefined}>
+          <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
             <p className="text-sm font-semibold text-content">{t.notifications.title}</p>
             <div className="flex items-center gap-3">
             {visibleUnread > 0 && (
@@ -118,7 +123,7 @@ export function NotificationBell({
             </div>
           </div>
 
-          <div className="max-h-[400px] overflow-y-auto">
+          <div className="min-h-0 max-h-[400px] overflow-y-auto">
             {visibleItems.length === 0 && (
               <p className="px-4 py-8 text-center text-sm text-muted">
                 {t.notifications.empty}
@@ -212,7 +217,26 @@ export function NotificationBell({
             })}
           </div>
         </div>
-      )}
+  );
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => { if (panel) updatePosition(); setOpen((v) => !v); }}
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2"
+        aria-label={t.notifications.title}
+        aria-expanded={open}
+      >
+        <IconBell className="h-5 w-5" />
+        {visibleUnread > 0 && (
+          <span className="absolute right-1 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+            {visibleUnread}
+          </span>
+        )}
+      </button>
+
+      {open && (panel ? createPortal(dropdown, document.body) : dropdown)}
     </div>
   );
 }

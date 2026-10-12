@@ -4,9 +4,11 @@ import test from "node:test";
 
 test("teacher lesson stays on the left while twister and activities share a right-aligned, wrapping group", () => {
   const room = readFileSync("src/components/class/class-room.tsx", "utf8");
+  const toolbar = readFileSync("src/components/class/class-material-toolbar.tsx", "utf8");
   assert.ok(room.includes("{lessonTabButton(LESSON_TABS[0])}"));
   assert.ok(room.includes("{LESSON_TABS.slice(1).map(lessonTabButton)}"));
-  assert.ok(room.includes('className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1"'));
+  assert.ok(toolbar.includes('className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1"'));
+  assert.ok(room.includes("<ClassMaterialToolbar lesson={lessonTabButton(LESSON_TABS[0])}"));
   assert.ok(room.includes('"h-9 shrink-0 rounded-xl px-3.5 text-sm font-semibold transition"'));
   assert.ok(room.includes("onClick={() => setLessonTab(tab.key)}"));
   assert.ok(room.includes("aria-pressed={lessonTab === tab.key}"));

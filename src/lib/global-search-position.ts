@@ -1,5 +1,12 @@
 export type GlobalSearchPosition = { left: number; top: number; width: number; maxHeight: number };
 
+/** Updated mode uses the viewport centre, including short landscape screens. */
+export function centeredSearchPosition(viewport: { width: number; height: number }): GlobalSearchPosition {
+  const width = Number.isFinite(viewport.width) && viewport.width > 0 ? viewport.width : 320;
+  const height = Number.isFinite(viewport.height) && viewport.height > 0 ? viewport.height : 480;
+  return { left: width / 2, top: height / 2, width: Math.max(1, Math.min(672, width - 24)), maxHeight: Math.max(1, Math.min(680, height - 24)) };
+}
+
 /** Align to the search button, not to a different coordinate system than the app shell. */
 export function globalSearchPosition(anchor: { right: number; bottom: number }, viewport: { width: number; height: number }): GlobalSearchPosition {
   const width = Number.isFinite(viewport.width) && viewport.width > 0 ? viewport.width : 320;

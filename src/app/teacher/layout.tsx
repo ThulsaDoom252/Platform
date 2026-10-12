@@ -19,6 +19,8 @@ import { IconCap, IconLogout, IconChevronDown } from "@/components/icons";
 import { completeFinishedLessons } from "@/lib/lesson-completion";
 import { studentPresenceSnapshotAction } from "@/lib/actions/presence";
 import { StudentPresenceProvider } from "@/components/student-presence";
+import { AppViewProvider } from "@/components/app-view-provider";
+import { UpdatedNavigation } from "@/components/updated-navigation";
 
 export default async function TeacherLayout({
   children,
@@ -48,12 +50,13 @@ export default async function TeacherLayout({
         initial={presences}
         self={{ id: session.userId, name: me.name, role: "TEACHER" }}
       >
+        <AppViewProvider>
         <NotificationToastHost userId={session.userId} />
         <div className="min-h-screen bg-page">
           {/* Navigation belongs to the viewport; individual pages may limit their reading width. */}
           <div data-app-shell="teacher" className="flex w-full min-w-0">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}
-          <SidebarRail>
+          <div className="classic-navigation contents"><SidebarRail>
             <Link href="/teacher" className="flex shrink-0 items-center gap-3 px-1">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
                 <IconCap className="h-6 w-6" />
@@ -81,12 +84,13 @@ export default async function TeacherLayout({
                 <br />— Lingora
               </p>
             </div>
-          </SidebarRail>
+          </SidebarRail></div>
+          <UpdatedNavigation role="TEACHER" name={me.name} avatarUrl={me.avatarUrl} roleLine={t.topbar.roleTeacher} navigation={<SidebarNav />} notifications={<NotificationBell panel items={items} unreadCount={unreadCount} />} />
 
           {/* Main column */}
           <div className="flex min-w-0 flex-1 flex-col">
             {/* Notifications must sit above lesson toolbars (z-30), below the sidebar and dialogs. */}
-            <header className="sticky top-0 z-[35] flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-3.5">
+            <header className="sticky top-0 z-[35] flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-3.5" data-classic-header>
               {/* Логотип слева: боковая полоса свёрнута, и опознать
                   платформу больше негде. */}
               <Link href="/teacher" className="flex items-center gap-2">
@@ -139,6 +143,7 @@ export default async function TeacherLayout({
 
           <MobileNav />
         </div>
+        </AppViewProvider>
       </StudentPresenceProvider>
     </I18nProvider>
   );

@@ -15,6 +15,9 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
+import { useAppView } from "@/components/app-view-provider";
+import { classParticipantsPlacement } from "@/lib/app-view";
+import { ClassMaterialToolbar } from "./class-material-toolbar";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
@@ -118,6 +121,7 @@ export function ClassRoom({
   selfName: string;
 }) {
   const teacher = role === "TEACHER";
+  const { view } = useAppView();
   const livePresences = usePresenceMap();
 
   const [people, setPeople] = useState<ClassPerson[] | null>(null);
@@ -646,6 +650,145 @@ export function ClassRoom({
    * Ученику этот разбор не нужен — он видит только урок, поэтому вкладки
    * живут здесь, а не в общей нижней панели.
    */
+  const materialsLoaded = Boolean(activeLessonId || focusedWordDeck || focusedRevisionId || twisterSession);
+  const participantsPlacement = classParticipantsPlacement(view, teacher, materialsLoaded);
+  const participants = (
+<div className="class-participants flex min-w-0 flex-wrap items-center gap-3" data-class-participants>
+        <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
+          <PresenceIndicator presence="online" />
+          <span className="text-sm font-semibold text-content">{selfName}</span>
+          <span className="text-[11px] text-faint">{t.classRoom.youAre}</span>
+        </div>
+
+        {partner ? (
+          /* Аватар ученика раскрывается отдельно и не уводит учителя из
+             класса. Имя по-прежнему ведёт в рабочую карточку ученика. */
+          teacher ? (
+            <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
+              <button
+                type="button"
+                onClick={() => setAvatarPreview(true)}
+                title={fmt(t.classRoom.viewAvatar, { name: partner.name })}
+                aria-label={fmt(t.classRoom.viewAvatar, { name: partner.name })}
+                className="relative rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <Avatar
+                  name={partner.name}
+                  src={partner.avatarUrl}
+                  className="h-9 w-9 text-sm ring-1 ring-line"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5">
+                  <PresenceIndicator presence={partner.presence} showClassStatus />
+                </span>
+              </button>
+              <Link
+                href={`/teacher/students/${partner.id}`}
+                title={fmt(t.classRoom.profileOf, { name: partner.name })}
+                className="group flex items-center gap-2"
+              >
+                <span className="text-sm font-semibold text-content group-hover:text-accent">
+                  {partner.name}
+                </span>
+                <span className="text-[11px] text-faint">
+                  {presenceLabel(partner.presence)}
+                </span>
+                <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
+              </Link>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
+              <button
+                type="button"
+                disabled={profileBusy}
+                onClick={openTeacherProfile}
+                title={fmt(t.classRoom.openTeacherProfile, { name: partner.name })}
+                aria-label={fmt(t.classRoom.openTeacherProfile, { name: partner.name })}
+                className="relative rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
+              >
+                <Avatar
+                  name={partner.name}
+                  src={partner.avatarUrl}
+                  className="h-9 w-9 text-sm ring-1 ring-line"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5">
+                  <PresenceIndicator presence={partner.presence} showClassStatus />
+                </span>
+              </button>
+              <span className="text-sm font-semibold text-content">{partner.name}</span>
+              <span className="text-[11px] text-faint">
+                {profileBusy
+                  ? t.common.loading
+                  : presenceLabel(partner.presence)}
+              </span>
+            </div>
+          )
+        ) : (
+          <span className="text-[12px] text-faint">
+            {teacher ? t.classRoom.notStarted : t.classRoom.waitingTeacher}
+          </span>
+        )}
+
+        {profileError && (
+          <span className="text-xs font-semibold text-rose-500">{profileError}</span>
+        )}
+
+        {teacher && partner && (
+          <Link
+            href={`/teacher/homeworks?student=${encodeURIComponent(partner.id)}`}
+            title={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
+            aria-label={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
+            className="flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-bold text-content transition hover:border-accent hover:text-accent"
+          >
+            <IconFile className="h-4 w-4" />
+            {t.classRoom.studentHomework}
+          </Link>
+        )}
+
+        {teacher && partner && (
+          <button
+            type="button"
+            disabled={busy || platformPresence(partner.presence) === "offline"}
+            onClick={() => startBusy(async () => {
+              const result = await summonStudentToClassAction();
+              setSummonNotice(result.error ?? t.classRoom.bringToClassSent);
+            })}
+            title={
+              platformPresence(partner.presence) === "online"
+                ? t.classRoom.bringToClass
+                : t.classRoom.bringToClassOffline
+            }
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12px] font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <IconCap className="h-4 w-4" />
+            {t.classRoom.bringToClass}
+          </button>
+        )}
+
+        {summonNotice && (
+          <span className="text-xs font-semibold text-accent">{summonNotice}</span>
+        )}
+
+        {teacher && partner && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => startBusy(async () => {
+              await leaveClassAction();
+              setPartner(null);
+              setActiveLessonId(null);
+              setTimerState(null);
+              setShowTimer(false);
+              setShowReactions(false);
+              setNonce((n) => n + 1);
+            })}
+            className="ml-auto flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-content transition hover:border-rose-400 hover:text-rose-500"
+          >
+            <IconX className="h-4 w-4" /> {t.classRoom.leave}
+          </button>
+        )}
+      </div>
+  );
+
   const LESSON_TABS: { key: LessonTab; label: string }[] = [
     { key: "lesson", label: t.classRoom.lesson },
     { key: "twister", label: t.classRoom.tongueTwister },
@@ -671,12 +814,7 @@ export function ClassRoom({
 
   const lessonSection = (
     <section className="flex min-h-[420px] flex-col gap-3 rounded-2xl bg-surface p-3.5 ring-1 ring-line">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        {lessonTabButton(LESSON_TABS[0])}
-        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
-          {LESSON_TABS.slice(1).map(lessonTabButton)}
-        </div>
-      </div>
+      <ClassMaterialToolbar lesson={lessonTabButton(LESSON_TABS[0])} actions={LESSON_TABS.slice(1).map(lessonTabButton)} participants={participantsPlacement === "TEACHER_INLINE" ? participants : undefined} />
 
       <div className="flex flex-1 flex-col justify-center">
         {lessonTab === "lesson" && partner ? (
@@ -890,153 +1028,31 @@ export function ClassRoom({
     : t.classRoom.notes;
   const floatingReactions = studentReactions.filter((reaction) => reaction.mode === "float");
   const emergeReaction = studentReactions.find((reaction) => reaction.mode === "emerge") ?? null;
+  const panelOrderReset = view === "UPDATED"
+    ? dockedDictionary && dockedRight ? "2xl:order-none" : "xl:order-none"
+    : "lg:order-none";
 
   return (
-    <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24">
+    <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24" data-class-room>
       {!teacher && gameReviewNotice && (
         <ClassGameReviewBanner review={gameReviewNotice} floating onClose={() => setGameReviewNotice(null)} />
       )}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
-          <PresenceIndicator presence="online" />
-          <span className="text-sm font-semibold text-content">{selfName}</span>
-          <span className="text-[11px] text-faint">{t.classRoom.youAre}</span>
-        </div>
-
-        {partner ? (
-          /* Аватар ученика раскрывается отдельно и не уводит учителя из
-             класса. Имя по-прежнему ведёт в рабочую карточку ученика. */
-          teacher ? (
-            <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
-              <button
-                type="button"
-                onClick={() => setAvatarPreview(true)}
-                title={fmt(t.classRoom.viewAvatar, { name: partner.name })}
-                aria-label={fmt(t.classRoom.viewAvatar, { name: partner.name })}
-                className="relative rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                <Avatar
-                  name={partner.name}
-                  src={partner.avatarUrl}
-                  className="h-9 w-9 text-sm ring-1 ring-line"
-                />
-                <span className="absolute -bottom-0.5 -right-0.5">
-                  <PresenceIndicator presence={partner.presence} showClassStatus />
-                </span>
-              </button>
-              <Link
-                href={`/teacher/students/${partner.id}`}
-                title={fmt(t.classRoom.profileOf, { name: partner.name })}
-                className="group flex items-center gap-2"
-              >
-                <span className="text-sm font-semibold text-content group-hover:text-accent">
-                  {partner.name}
-                </span>
-                <span className="text-[11px] text-faint">
-                  {presenceLabel(partner.presence)}
-                </span>
-                <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
-              </Link>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
-              <button
-                type="button"
-                disabled={profileBusy}
-                onClick={openTeacherProfile}
-                title={fmt(t.classRoom.openTeacherProfile, { name: partner.name })}
-                aria-label={fmt(t.classRoom.openTeacherProfile, { name: partner.name })}
-                className="relative rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
-              >
-                <Avatar
-                  name={partner.name}
-                  src={partner.avatarUrl}
-                  className="h-9 w-9 text-sm ring-1 ring-line"
-                />
-                <span className="absolute -bottom-0.5 -right-0.5">
-                  <PresenceIndicator presence={partner.presence} showClassStatus />
-                </span>
-              </button>
-              <span className="text-sm font-semibold text-content">{partner.name}</span>
-              <span className="text-[11px] text-faint">
-                {profileBusy
-                  ? t.common.loading
-                  : presenceLabel(partner.presence)}
-              </span>
-            </div>
-          )
-        ) : (
-          <span className="text-[12px] text-faint">
-            {teacher ? t.classRoom.notStarted : t.classRoom.waitingTeacher}
-          </span>
-        )}
-
-        {profileError && (
-          <span className="text-xs font-semibold text-rose-500">{profileError}</span>
-        )}
-
-        {teacher && partner && (
-          <Link
-            href={`/teacher/homeworks?student=${encodeURIComponent(partner.id)}`}
-            title={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
-            aria-label={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
-            className="flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-bold text-content transition hover:border-accent hover:text-accent"
-          >
-            <IconFile className="h-4 w-4" />
-            {t.classRoom.studentHomework}
-          </Link>
-        )}
-
-        {teacher && partner && (
-          <button
-            type="button"
-            disabled={busy || platformPresence(partner.presence) === "offline"}
-            onClick={() => startBusy(async () => {
-              const result = await summonStudentToClassAction();
-              setSummonNotice(result.error ?? t.classRoom.bringToClassSent);
-            })}
-            title={
-              platformPresence(partner.presence) === "online"
-                ? t.classRoom.bringToClass
-                : t.classRoom.bringToClassOffline
-            }
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12px] font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <IconCap className="h-4 w-4" />
-            {t.classRoom.bringToClass}
-          </button>
-        )}
-
-        {summonNotice && (
-          <span className="text-xs font-semibold text-accent">{summonNotice}</span>
-        )}
-
-        {teacher && partner && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => startBusy(async () => {
-              await leaveClassAction();
-              setPartner(null);
-              setActiveLessonId(null);
-              setTimerState(null);
-              setShowTimer(false);
-              setShowReactions(false);
-              setNonce((n) => n + 1);
-            })}
-            className="ml-auto flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-content transition hover:border-rose-400 hover:text-rose-500"
-          >
-            <IconX className="h-4 w-4" /> {t.classRoom.leave}
-          </button>
-        )}
-      </div>
+      {participantsPlacement === "ABOVE" && <div data-participants-placement="above">{participants}</div>}
 
       {/* Закреплённые панели занимают свои колонки и идут вслед за экраном.
           Откреплённые становятся плавающими, поэтому урок сразу расширяется. */}
       <div
         className={cn(
           "grid gap-4",
-          dockedDictionary && dockedRight
+          view === "UPDATED" ? (
+            dockedDictionary && dockedRight
+              ? "2xl:grid-cols-[320px_minmax(0,1fr)_320px]"
+              : dockedDictionary
+                ? "xl:grid-cols-[320px_minmax(0,1fr)]"
+                : dockedRight
+                  ? "xl:grid-cols-[minmax(0,1fr)_320px]"
+                  : "grid-cols-1"
+          ) : dockedDictionary && dockedRight
             ? "lg:grid-cols-[360px_minmax(0,1fr)_360px]"
             : dockedDictionary
               ? "lg:grid-cols-[360px_minmax(0,1fr)]"
@@ -1049,7 +1065,7 @@ export function ClassRoom({
           <DockablePanel
             title={t.classRoom.dictionary}
             placement={dictionaryPlacement}
-            dockedClassName="order-2 h-[620px] max-h-[calc(100dvh-9rem)] lg:sticky lg:top-20 lg:order-none"
+            dockedClassName={cn("order-2 h-[620px] max-h-[calc(100dvh-9rem)] lg:sticky lg:top-20", panelOrderReset)}
             detachLabel={t.classRoom.detachPanel}
             dockLabel={t.classRoom.dockPanel}
             resizeLabel={t.classRoom.resizePanel}
@@ -1072,7 +1088,8 @@ export function ClassRoom({
           </DockablePanel>
         )}
 
-        <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-none">
+        <div className={cn("order-1 flex min-w-0 flex-col gap-4", panelOrderReset)}>
+          {participantsPlacement === "STUDENT_INLINE" && <ClassMaterialToolbar student participants={participants} />}
           {!teacher && gameReview && <ClassGameReviewBanner review={gameReview} />}
           {teacher && !partner ? (
             picker
@@ -1111,7 +1128,7 @@ export function ClassRoom({
 
         <div
           className={cn(
-            "order-3 flex min-w-0 flex-col gap-4 lg:order-none",
+            "order-3 flex min-w-0 flex-col gap-4", panelOrderReset,
             dockedRight
               ? "lg:sticky lg:top-20 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto"
               : "contents",
@@ -1363,7 +1380,7 @@ export function ClassRoom({
       )}
 
       {/* Нижняя панель — её видят оба, таймер только у учителя. */}
-      <div className="fixed inset-x-0 bottom-[56px] z-20 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur-md lg:bottom-0">
+      <div className="class-utility-bar fixed inset-x-0 bottom-[56px] z-20 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur-md lg:bottom-0">
         {/* Всё одной группой по центру: таймер такой же элемент панели. */}
         <div className="mx-auto flex max-w-[1920px] flex-wrap items-center justify-center gap-2">
           {tabBtn("chat", <IconMessage className="h-4 w-4" />, t.classRoom.chat, unread)}

@@ -25,6 +25,8 @@ import { completeFinishedLessons } from "@/lib/lesson-completion";
 import { StudentClassSummons } from "@/components/student/student-class-summons";
 import { NotificationToastHost } from "@/components/notification-toast-host";
 import { RealtimePresenceBeacon } from "@/components/student-presence";
+import { AppViewProvider } from "@/components/app-view-provider";
+import { UpdatedNavigation } from "@/components/updated-navigation";
 
 export default async function StudentLayout({
   children,
@@ -52,6 +54,7 @@ export default async function StudentLayout({
 
   return (
     <I18nProvider userId={session.userId} locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
+      <AppViewProvider>
       <RealtimePresenceBeacon name={me.name} />
       <StudentClassSummons userId={session.userId} />
       <NotificationToastHost userId={session.userId} />
@@ -59,7 +62,7 @@ export default async function StudentLayout({
         {/* Navigation belongs to the viewport; individual pages may limit their reading width. */}
         <div data-app-shell="student" className="flex w-full min-w-0">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}
-          <SidebarRail>
+          <div className="classic-navigation contents"><SidebarRail>
             <Link href="/student" className="flex shrink-0 items-center gap-3 px-1">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent text-white shadow-md">
                 <IconCap className="h-6 w-6" />
@@ -87,12 +90,13 @@ export default async function StudentLayout({
                 <br />— Lingora
               </p>
             </div>
-          </SidebarRail>
+          </SidebarRail></div>
+          <UpdatedNavigation role="STUDENT" name={me.name} avatarUrl={me.avatarUrl} roleLine={roleLine} navigation={<StudentSidebarNav />} notifications={<NotificationBell panel items={items} unreadCount={unreadCount} />} returnToTeacher={session.impersonatedBy && <form action={returnToTeacherAction}><button type="submit" className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-2 text-xs font-bold text-white" title={`Вернуться в аккаунт учителя ${session.impersonatedBy.teacherName}`}><IconChevronLeft className="h-4 w-4" />К учителю</button></form>} />
 
           {/* Main column */}
           <div className="flex min-w-0 flex-1 flex-col">
             {/* Notifications must sit above lesson toolbars (z-30), below the sidebar and dialogs. */}
-            <header className="sticky top-0 z-[35] flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-3.5">
+            <header className="sticky top-0 z-[35] flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-md sm:gap-4 sm:px-8 sm:py-3.5" data-classic-header>
               {/* Логотип слева: боковая полоса свёрнута, и опознать
                   платформу больше негде. */}
               <Link href="/student" className="flex items-center gap-2">
@@ -156,6 +160,7 @@ export default async function StudentLayout({
 
         <StudentMobileNav />
       </div>
+      </AppViewProvider>
     </I18nProvider>
   );
 }
