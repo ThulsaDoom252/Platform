@@ -56,7 +56,8 @@ export default async function StudentLayout({
       <StudentClassSummons userId={session.userId} />
       <NotificationToastHost userId={session.userId} />
       <div className="min-h-screen bg-page">
-        <div className="mx-auto flex w-full max-w-[1440px]">
+        {/* Navigation belongs to the viewport; individual pages may limit their reading width. */}
+        <div data-app-shell="student" className="flex w-full min-w-0">
           {/* Полоса иконок, раскрывается под курсором — см. SidebarRail */}
           <SidebarRail>
             <Link href="/student" className="flex shrink-0 items-center gap-3 px-1">
@@ -149,7 +150,7 @@ export default async function StudentLayout({
               </div>
             </header>
 
-            <main className="flex-1 px-4 py-6 pb-24 sm:px-8 lg:pb-6">{children}</main>
+            <main className="min-w-0 flex-1 px-4 py-6 pb-24 sm:px-8 lg:pb-6">{children}</main>
           </div>
         </div>
 

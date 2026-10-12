@@ -12,6 +12,7 @@ import {
 import { useT } from "@/components/i18n-provider";
 import { IconChevronRight, IconSearch } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { globalSearchPosition, type GlobalSearchPosition } from "@/lib/global-search-position";
 
 const teacherCategories = [...SEARCH_CATEGORIES];
 
@@ -26,9 +27,21 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
   const [items, setItems] = useState<GlobalSearchItem[]>([]);
   const [completedKey, setCompletedKey] = useState("");
   const [failed, setFailed] = useState(false);
+  const [position, setPosition] = useState<GlobalSearchPosition | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const selectedKey = useMemo(() => [...selected].sort().join(","), [selected]);
+
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const button = trigger.getBoundingClientRect();
+    const header = trigger.closest("header")?.getBoundingClientRect();
+    setPosition(globalSearchPosition({ right: button.right, bottom: header?.bottom ?? button.bottom }, {
+      width: document.documentElement.clientWidth,
+      height: window.innerHeight,
+    }));
+  }, []);
 
   const closeSearch = useCallback(() => {
     setOpen(false);
@@ -41,13 +54,20 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
 
   useEffect(() => {
     if (!open) return;
+    updatePosition();
     inputRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeSearch();
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, closeSearch]);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, closeSearch, updatePosition]);
 
   useEffect(() => {
     let current = true;
@@ -100,7 +120,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => { updatePosition(); setOpen(true); }}
         title={t.globalSearch.open}
         aria-label={t.globalSearch.open}
         aria-expanded={open}
@@ -122,8 +142,9 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
           <section
             role="search"
             className="fixed left-3 right-3 top-16 z-[61] mx-auto flex max-h-[min(76dvh,680px)] max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:left-auto sm:right-8 sm:mx-0 sm:w-[min(42rem,calc(100vw-4rem))]"
+            style={position ? { ...position, right: "auto", maxWidth: "none", margin: 0 } : undefined}
           >
-            <div className="flex items-center gap-2 border-b border-line p-3 sm:p-4">
+            <div className="flex items-center gap-2 border-b border-line p-3 sm:p-4 shrink-0">
               <IconSearch className="h-5 w-5 shrink-0 text-accent" />
               <input
                 ref={inputRef}
@@ -145,7 +166,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
             </div>
 
             {role === "TEACHER" && (
-              <div className="flex flex-wrap gap-2 border-b border-line px-3 py-3 sm:px-4">
+              <div className="flex shrink-0 flex-wrap gap-2 border-b border-line px-3 py-3 sm:px-4">
                 {available.map((category) => {
                   const active = selected.has(category);
                   return (
@@ -170,9 +191,9 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
               </div>
             )}
 
-            <div className="min-h-40 overflow-y-auto p-2 sm:p-3">
+            <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3">
               {!showResults ? (
-                <p className="px-3 py-10 text-center text-sm text-faint">
+                <p className="min-h-40 px-3 py-10 text-center text-sm text-faint">
                   {selected.size === 0
                     ? t.globalSearch.pickCategory
                     : t.globalSearch.hint}
