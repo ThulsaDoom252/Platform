@@ -11,6 +11,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { normalizeTimerSeconds } from "@/lib/timer-settings";
 import { scheduleNow } from "@/lib/schedule-time";
 import {
   CLASS_TIMER_END_SOUNDS,
@@ -73,7 +74,7 @@ function timerPresetValues(input: SaveClassTimerPresetInput) {
   return {
     name,
     topic: String(input.topic ?? "").trim().slice(0, 240),
-    durationSeconds: Math.max(5, Math.min(86_400, Math.round(Number(input.durationSeconds) || 300))),
+    durationSeconds: normalizeTimerSeconds(input.durationSeconds),
     theme: isOneOf(CLASS_TIMER_THEMES, input.theme) ? input.theme : "violet",
     tickSound: isOneOf(CLASS_TIMER_TICK_SOUNDS, input.tickSound) ? input.tickSound : "soft",
     endSound: isOneOf(CLASS_TIMER_END_SOUNDS, input.endSound) ? input.endSound : "bell",

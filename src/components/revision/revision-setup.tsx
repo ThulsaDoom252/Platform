@@ -17,6 +17,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Modal } from "@/components/modal";
 import { useT } from "@/components/i18n-provider";
+import { TimerNumberInput } from "@/components/timer-number-input";
+import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
 import { fmt } from "@/lib/i18n";
 import {
   copyRevisionBetweenClassAndHomeworkAction,
@@ -125,8 +127,9 @@ export function RevisionSetup({
   );
   const [due, setDue] = useState("");
   const [perAnswer, setPerAnswer] = useState<number | null>(initial?.answerSeconds ?? null);
+  const [wholeTimerEnabled, setWholeTimerEnabled] = useState(Boolean(initial?.totalSeconds));
   const [wholeMinutes, setWholeMinutes] = useState(
-    initial?.totalSeconds ? String(initial.totalSeconds / 60) : "",
+    initial?.totalSeconds != null ? String(initial.totalSeconds / 60) : String(DEFAULT_TIMER_SECONDS / 60),
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
@@ -295,7 +298,7 @@ export function RevisionSetup({
         modeWords,
         show,
         answerSeconds: perAnswer,
-        totalSeconds: minutes > 0 ? minutes * 60 : null,
+        totalSeconds: wholeTimerEnabled ? Math.max(0, minutes * 60) : null,
       };
       const result = purpose === "PRESET"
         ? await saveRevisionPresetAction(common)
@@ -667,6 +670,7 @@ export function RevisionSetup({
               {(
                 [
                   [null, t.revision.noLimit],
+                  [DEFAULT_TIMER_SECONDS, t.revision.defaultTimer],
                   [15, t.revision.easy],
                   [10, t.revision.hard],
                 ] as const
@@ -677,7 +681,7 @@ export function RevisionSetup({
                   onClick={() => setPerAnswer(value)}
                   className={cn(
                     "h-8 rounded-lg px-2.5 text-[12px] font-semibold transition",
-                    perAnswer === value
+                    (perAnswer === value || (value === null && perAnswer === 0))
                       ? "bg-accent text-white"
                       : "bg-surface-2 text-muted hover:text-content",
                   )}
@@ -686,26 +690,29 @@ export function RevisionSetup({
                 </button>
               ))}
             </div>
-            <input
-              type="number"
-              min={1}
-              max={180}
-              value={wholeMinutes}
-              onChange={(e) => setWholeMinutes(e.target.value)}
-              placeholder={t.revision.whole}
-              className={`${inputCls} mt-2`}
-            />
+            <label className="mt-2 block">
+              <span className="text-xs text-muted">{t.revision.answerSeconds}</span>
+              <TimerNumberInput min={0} max={3600} value={perAnswer ?? DEFAULT_TIMER_SECONDS} onChange={setPerAnswer} disabled={perAnswer === null} className={`${inputCls} mt-1 disabled:opacity-50`} />
+            </label>
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-content">
+              <input type="checkbox" checked={wholeTimerEnabled} onChange={(event) => setWholeTimerEnabled(event.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+              {t.revision.wholeTimer}
+            </label>
+            <label className="mt-2 block">
+              <span className="text-xs text-muted">{t.revision.whole}</span>
+              <TimerNumberInput min={0} max={180} value={Number(wholeMinutes) || 0} onChange={(number) => setWholeMinutes(String(number))} disabled={!wholeTimerEnabled} placeholder={t.revision.whole} className={`${inputCls} mt-1 disabled:opacity-50`} />
+            </label>
             {steps > 0 && (
               <p
                 className={cn(
                   "mt-1.5 text-[11px]",
-                  whole > 0 && whole < estimate
+                  wholeTimerEnabled && whole > 0 && whole < estimate
                     ? "font-semibold text-rose-500"
                     : "text-faint",
                 )}
               >
                 {fmt(t.revision.estimate, { minutes: estimate })}
-                {whole > 0 && whole < estimate && ` — ${t.revision.tooShort}`}
+                {wholeTimerEnabled && whole > 0 && whole < estimate && ` — ${t.revision.tooShort}`}
               </p>
             )}
           </div>

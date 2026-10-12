@@ -19,6 +19,8 @@ import {
   X,
 } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
+import { TimerNumberInput } from "@/components/timer-number-input";
+import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
 import {
   controlClassTimerAction,
   deleteClassStudentTimerAction,
@@ -361,7 +363,7 @@ export function StudentClassTimer({ state }: { state: ClassTimerState | null }) 
 const emptyPreset = (): SaveClassTimerPresetInput => ({
   name: "",
   topic: "",
-  durationSeconds: 300,
+  durationSeconds: DEFAULT_TIMER_SECONDS,
   theme: "violet",
   tickSound: "soft",
   endSound: "bell",
@@ -857,10 +859,10 @@ function TimerPresetEditor({
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t.classRoom.timerMinutes}>
-            <input type="number" min={0} max={1440} value={minutes} onChange={(event) => onChange({ ...value, durationSeconds: Math.max(5, Number(event.target.value) * 60 + seconds) })} className="timer-input" />
+            <TimerNumberInput min={0} max={1440} value={minutes} onChange={(number) => onChange({ ...value, durationSeconds: Math.max(0, number) * 60 + seconds })} className="timer-input" />
           </Field>
           <Field label={t.classRoom.timerSeconds}>
-            <input type="number" min={0} max={59} value={seconds} onChange={(event) => onChange({ ...value, durationSeconds: Math.max(5, minutes * 60 + Math.min(59, Number(event.target.value))) })} className="timer-input" />
+            <TimerNumberInput min={0} max={59} value={seconds} onChange={(number) => onChange({ ...value, durationSeconds: minutes * 60 + Math.max(0, Math.min(59, number)) })} className="timer-input" />
           </Field>
         </div>
         <Field label={t.classRoom.timerTheme}>

@@ -30,6 +30,7 @@ import type {
   ClassGameReviewNotice,
 } from "@/lib/class-game-meta";
 import { relations } from "drizzle-orm";
+import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
 
 // ---------- Enums ----------
 export const roleEnum = pgEnum("role", ["TEACHER", "STUDENT"]);
@@ -698,7 +699,7 @@ export const classTimerPresets = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     topic: text("topic").notNull().default(""),
-    durationSeconds: integer("duration_seconds").notNull().default(300),
+    durationSeconds: integer("duration_seconds").notNull().default(DEFAULT_TIMER_SECONDS),
     theme: text("theme").notNull().default("violet"),
     tickSound: text("tick_sound").notNull().default("soft"),
     endSound: text("end_sound").notNull().default("bell"),
@@ -724,7 +725,7 @@ export const classStudentTimers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     topic: text("topic").notNull().default(""),
-    durationSeconds: integer("duration_seconds").notNull().default(300),
+    durationSeconds: integer("duration_seconds").notNull().default(DEFAULT_TIMER_SECONDS),
     theme: text("theme").notNull().default("violet"),
     tickSound: text("tick_sound").notNull().default("soft"),
     endSound: text("end_sound").notNull().default("bell"),
@@ -1025,7 +1026,7 @@ export const activityGames = pgTable("activity_games", {
   at: integer("at").notNull().default(0),
   /** Перевёрнута ли текущая карта — ответ уже виден обоим. */
   revealed: boolean("revealed").notNull().default(false),
-  seconds: integer("seconds").notNull().default(10),
+  seconds: integer("seconds").notNull().default(DEFAULT_TIMER_SECONDS),
   /**
    * На паузе ли партия и сколько на карте оставалось, когда её нажали.
    *
@@ -1094,9 +1095,9 @@ export const wordRevisions = pgTable("word_revisions", {
    * Сколько секунд на один ответ. Пусто — без ограничения.
    * Отдельно от общего срока: они складываются, а не заменяют друг друга.
    */
-  answerSeconds: integer("answer_seconds"),
+  answerSeconds: integer("answer_seconds").default(DEFAULT_TIMER_SECONDS),
   /** Сколько секунд на всё задание. Пусто — без ограничения. */
-  totalSeconds: integer("total_seconds"),
+  totalSeconds: integer("total_seconds").default(DEFAULT_TIMER_SECONDS),
   /** До какого числа пройти. */
   dueAt: timestamp("due_at"),
   /**
@@ -1136,8 +1137,8 @@ export const wordRevisionPresets = pgTable("word_revision_presets", {
   modes: jsonb("modes").$type<string[]>().default([]).notNull(),
   modeWords: jsonb("mode_words").$type<Record<string, string[]>>(),
   show: jsonb("show").$type<Record<string, boolean>>(),
-  answerSeconds: integer("answer_seconds"),
-  totalSeconds: integer("total_seconds"),
+  answerSeconds: integer("answer_seconds").default(DEFAULT_TIMER_SECONDS),
+  totalSeconds: integer("total_seconds").default(DEFAULT_TIMER_SECONDS),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

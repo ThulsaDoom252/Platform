@@ -26,6 +26,7 @@ import {
 } from "@/lib/db/schema";
 import { visibleNodeIds } from "@/lib/material-grants";
 import { getSession } from "@/lib/session";
+import { normalizeTimerSeconds } from "@/lib/timer-settings";
 import { queueStudentNotification } from "@/lib/notifications";
 import {
   buildDeck,
@@ -239,7 +240,7 @@ export async function saveGuessPicturePresetAction(
   const mode: GameMode = input?.mode === "TRANSLATION" || input?.mode === "MIXED"
     ? input.mode
     : "PICTURE";
-  const seconds = Math.min(120, Math.max(3, Number(input?.seconds) || 10));
+  const seconds = normalizeTimerSeconds(input?.seconds, 120);
   if (!title) return { error: "Назови пресет" };
   if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
 
@@ -390,7 +391,7 @@ export async function updateClassGuessPictureGameAction(
   const mode: GameMode = input?.mode === "TRANSLATION" || input?.mode === "MIXED"
     ? input.mode
     : "PICTURE";
-  const seconds = Math.min(120, Math.max(3, Number(input?.seconds) || 10));
+  const seconds = normalizeTimerSeconds(input?.seconds, 120);
   if (!title) return { error: "Назови игру" };
   if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
 
@@ -565,7 +566,7 @@ export async function copyGuessPictureBetweenClassAndHomeworkAction(
   const mode: GameMode = input?.mode === "TRANSLATION" || input?.mode === "MIXED"
     ? input.mode
     : "PICTURE";
-  const seconds = Math.min(120, Math.max(3, Number(input?.seconds) || 10));
+  const seconds = normalizeTimerSeconds(input?.seconds, 120);
   if (!title) return { error: "Назови игру" };
   if (nodeIds.length === 0) return { error: "Выбери хотя бы один словник" };
   const groups = await guessPresetGroups(session.userId, nodeIds);
@@ -909,7 +910,7 @@ export async function startGameAction(setup: GameSetup): Promise<GameActionState
     mixFaces: mode === "MIXED",
   });
 
-  const seconds = Math.min(120, Math.max(3, Number(setup?.seconds) || 10));
+  const seconds = normalizeTimerSeconds(setup?.seconds, 120);
 
   /*
    * Партия встаёт в очередь на паузе и никого оттуда не выгоняет.

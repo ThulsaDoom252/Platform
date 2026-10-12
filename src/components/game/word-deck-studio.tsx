@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "@/components/i18n-provider";
+import { TimerNumberInput } from "@/components/timer-number-input";
 import { fmt } from "@/lib/i18n";
 import {
   addWordDeckToClassAction,
@@ -25,10 +26,12 @@ import {
 import {
   DEFAULT_WORD_DECK_SETTINGS,
   MIN_WORD_DECK_WORDS,
+  isWordDeckDescriptionGame,
   normalizeWordDeckSettings,
   randomWordDeckPercentage,
   suggestedWordDeckTitle,
   type WordDeckBackground,
+  type WordDeckGameType,
   type WordDeckSettings,
 } from "@/lib/word-deck";
 import {
@@ -193,7 +196,9 @@ export function WordDeckStudio({ initialActivities, initialActivityId, mode = "W
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-black text-content">{activity.title}</span>
                   <span className="mt-0.5 block text-xs text-faint">
-                    {activity.settings.gameType === "GUESS_DESCRIPTION"
+                    {activity.settings.gameType === "DESCRIPTION_SENTENCE"
+                      ? `${t.wordDeck.descriptionSentence} · `
+                      : activity.settings.gameType === "GUESS_DESCRIPTION"
                       ? `${t.wordDeck.guessByDescription} · `
                       : ""}
                     {fmt(t.wordDeck.cardCount, { n: activity.cards.length * activity.settings.repeats })}
@@ -394,6 +399,20 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
     ...(activity?.settings ?? DEFAULT_WORD_DECK_SETTINGS),
     ...(forcedGameType ? { gameType: forcedGameType } : {}),
   }));
+  const [combinedTimersConfigured, setCombinedTimersConfigured] = useState(
+    activity?.settings.gameType === "DESCRIPTION_SENTENCE" || Boolean(activity && (
+      activity.settings.guessSeconds !== activity.settings.cardSeconds || activity.settings.sentenceSeconds !== activity.settings.cardSeconds
+    )),
+  );
+  const descriptionGame = isWordDeckDescriptionGame(settings.gameType);
+  const selectGameType = (gameType: WordDeckGameType) => {
+    setSettings((value) => ({ ...value, gameType,
+      ...(gameType === "SPELLING" ? { alternate: false } : {}),
+      ...(gameType === "DESCRIPTION_SENTENCE" && !combinedTimersConfigured
+        ? { guessSeconds: value.cardSeconds, sentenceSeconds: value.cardSeconds } : {}),
+    }));
+    if (gameType === "DESCRIPTION_SENTENCE") setCombinedTimersConfigured(true);
+  };
   const [manualWords, setManualWords] = useState(() => (activity?.cards ?? [])
     .filter((card) => !card.nodeId)
     .map((card) => card.word)
@@ -488,7 +507,7 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
   const eligibleIds = new Set(
     groups
       .flatMap((group) => group.words)
-      .filter((word) => settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim())
+      .filter((word) => !descriptionGame || word.description?.trim())
       .map((word) => word.phraseId),
   );
   const selectedEligible = [...selected].filter((id) => eligibleIds.has(id));
@@ -514,7 +533,7 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
   const selectRandomPercentage = (percent: 25 | 50 | 75) => {
     if (!currentGroup) return;
     const available = currentGroup.words.filter(
-      (word) => settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim(),
+      (word) => !descriptionGame || word.description?.trim(),
     );
     const picked = new Set(
       randomWordDeckPercentage(available, percent).map((word) => word.phraseId),
@@ -576,12 +595,12 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
         <div className="flex flex-col gap-5">
           {!forcedGameType && <div>
             <p className="text-xs font-bold text-muted">{t.wordDeck.gameType}</p>
-            <div className={cn("mt-1.5 grid gap-2", includeSpellingType ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
-              {(["WORDS", "GUESS_DESCRIPTION", ...(includeSpellingType ? ["SPELLING" as const] : [])] as const).map((gameType) => (
+            <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+              {(["WORDS", "GUESS_DESCRIPTION", "DESCRIPTION_SENTENCE", ...(includeSpellingType ? ["SPELLING" as const] : [])] as const).map((gameType) => (
                 <button
                   key={gameType}
                   type="button"
-                  onClick={() => setSettings((value) => ({ ...value, gameType, ...(gameType === "SPELLING" ? { alternate: false } : {}) }))}
+                  onClick={() => selectGameType(gameType)}
                   className={cn(
                     "rounded-2xl border p-3 text-left transition",
                     settings.gameType === gameType
@@ -590,10 +609,10 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
                   )}
                 >
                   <span className="block text-sm font-black">
-                    {gameType === "WORDS" ? t.wordDeck.wordsGame : gameType === "SPELLING" ? t.wordDeck.spellingTitle : t.wordDeck.guessByDescription}
+                    {gameType === "WORDS" ? t.wordDeck.wordsGame : gameType === "SPELLING" ? t.wordDeck.spellingTitle : gameType === "DESCRIPTION_SENTENCE" ? t.wordDeck.descriptionSentence : t.wordDeck.guessByDescription}
                   </span>
                   <span className="mt-0.5 block text-[11px] leading-relaxed">
-                    {gameType === "WORDS" ? t.wordDeck.wordsGameHint : gameType === "SPELLING" ? t.wordDeck.spellingSubtitle : t.wordDeck.guessByDescriptionHint}
+                    {gameType === "WORDS" ? t.wordDeck.wordsGameHint : gameType === "SPELLING" ? t.wordDeck.spellingSubtitle : gameType === "DESCRIPTION_SENTENCE" ? t.wordDeck.descriptionSentenceHint : t.wordDeck.guessByDescriptionHint}
                   </span>
                 </button>
               ))}
@@ -665,14 +684,14 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
               <>
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
                   <span className="text-xs font-semibold text-faint">{fmt(t.wordDeck.selectedInVocab, {
-                    selected: currentGroup.words.filter((word) => selected.has(word.phraseId) && (settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim())).length,
-                    total: currentGroup.words.filter((word) => settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim()).length,
+                    selected: currentGroup.words.filter((word) => selected.has(word.phraseId) && (!descriptionGame || word.description?.trim())).length,
+                    total: currentGroup.words.filter((word) => !descriptionGame || word.description?.trim()).length,
                   })}</span>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setSelected((current) => {
                       const next = new Set(current);
                       currentGroup.words.forEach((word) => {
-                        if (settings.gameType !== "GUESS_DESCRIPTION" || word.description?.trim()) next.add(word.phraseId);
+                        if (!descriptionGame || word.description?.trim()) next.add(word.phraseId);
                       });
                       return next;
                     })} className="text-xs font-bold text-accent">{t.wordDeck.selectAll}</button>
@@ -697,7 +716,7 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
                 </div>
                 <div className="mt-2 grid max-h-64 gap-1 overflow-y-auto sm:grid-cols-2">
                   {currentGroup.words.map((word) => {
-                    const unavailable = settings.gameType === "GUESS_DESCRIPTION" && !word.description?.trim();
+                    const unavailable = descriptionGame && !word.description?.trim();
                     const checked = selected.has(word.phraseId) && !unavailable;
                     return (
                       <button key={word.phraseId} type="button" disabled={unavailable} onClick={() => toggleWord(word.phraseId)} className={cn("flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition", checked ? "bg-accent-soft text-accent" : "bg-surface text-muted", unavailable && "cursor-not-allowed opacity-45")}>
@@ -730,10 +749,23 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
             </div>
           </div>
 
-          {settings.timerMode !== "NONE" && (
+          {settings.timerMode === "CARD" && settings.gameType === "DESCRIPTION_SENTENCE" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {([
+                ["guessSeconds", t.wordDeck.guessSeconds],
+                ["sentenceSeconds", t.wordDeck.sentenceSeconds],
+              ] as const).map(([key, label]) => (
+                <label key={key}>
+                  <span className="text-xs font-bold text-muted">{label}</span>
+                  <TimerNumberInput min={0} max={300} value={settings[key]} onChange={(number) => setSettings((value) => ({ ...value, [key]: number }))} className={`${input} mt-1.5`} />
+                </label>
+              ))}
+              <p className="text-xs text-faint sm:col-span-2">{t.wordDeck.phaseTimerHint}</p>
+            </div>
+          ) : settings.timerMode !== "NONE" && (
             <label>
               <span className="text-xs font-bold text-muted">{settings.timerMode === "GAME" ? t.wordDeck.gameSeconds : t.wordDeck.cardSeconds}</span>
-              <input type="number" min={settings.timerMode === "GAME" ? 10 : 3} max={settings.timerMode === "GAME" ? 3600 : 300} value={settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds} onChange={(event) => setSettings((value) => settings.timerMode === "GAME" ? { ...value, gameSeconds: Number(event.target.value) } : { ...value, cardSeconds: Number(event.target.value) })} className={`${input} mt-1.5 max-w-xs`} />
+              <TimerNumberInput min={0} max={settings.timerMode === "GAME" ? 3600 : 300} value={settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds} onChange={(number) => setSettings((value) => settings.timerMode === "GAME" ? { ...value, gameSeconds: number } : { ...value, cardSeconds: number, ...(!combinedTimersConfigured ? { guessSeconds: number, sentenceSeconds: number } : {}) })} className={`${input} mt-1.5 max-w-xs`} />
             </label>
           )}
 
@@ -753,7 +785,7 @@ export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, 
                   </label>
                 ))}
               </div>
-            ) : settings.gameType === "GUESS_DESCRIPTION" ? (
+            ) : descriptionGame ? (
               <div className="mb-4 grid gap-4 border-b border-line pb-4 sm:grid-cols-2">
                 <label className="flex cursor-pointer items-start gap-3">
                   <input type="checkbox" checked={settings.descriptionIcons} onChange={(event) => setSettings((value) => ({ ...value, descriptionIcons: event.target.checked }))} className="mt-1 h-4 w-4 accent-[var(--accent)]" />

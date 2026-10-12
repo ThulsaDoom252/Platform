@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, asc, count, eq, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, max, min, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   materialNodes,
@@ -18,6 +18,9 @@ import {
 } from "@/lib/db/schema";
 import { sanitizeBlocks } from "@/lib/rule-blocks";
 import type { ExportPhrase } from "@/lib/export-material";
+import type { Report } from "@/lib/export-material";
+import { studentReportEntries, studentReportMeta } from "@/lib/student-material-report";
+import { studentMaterialReportGroups } from "@/lib/student-material-report-data";
 import { authorKeyedSource, type KeyedKind } from "@/lib/format-author";
 import {
   getOwnedTree,
@@ -3573,19 +3576,7 @@ export async function saveRuleEditAction(
 
 // ---------------------------------------------------------------- отчёт
 
-export type ReportPayload = {
-  studentName: string;
-  meta: string[];
-  entries: {
-    path: string[];
-    page: {
-      title: string;
-      description: string | null;
-      phrases: MaterialPhrase[];
-      blocks: RuleBlock[];
-    };
-  }[];
-};
+export type ReportPayload = Report;
 
 /**
  * Всё пройденное учеником одним куском: личные материалы, открытые
@@ -3596,6 +3587,9 @@ export async function buildStudentReportAction(
   studentId: string,
 ): Promise<ReportPayload> {
   await requireTeacher();
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(String(studentId ?? ""))) {
+    throw new Error("Не выбран ученик для отчёта");
+  }
 
   const [student] = await db
     .select({
@@ -3606,62 +3600,19 @@ export async function buildStudentReportAction(
       approximate: users.statsApproximate,
     })
     .from(users)
-    .where(eq(users.id, studentId))
+    .where(and(eq(users.id, studentId), eq(users.role, "STUDENT")))
     .limit(1);
-  if (!student) return { studentName: "", meta: [], entries: [] };
-
-  const [own, shared, mistakes] = await Promise.all([
-    getOwnedTree("STUDENT", studentId),
-    getMaterialsTree(studentId),
-    getOwnedTree("MISTAKE", studentId),
+  if (!student) throw new Error("Ученик для отчёта не найден");
+  const [groups, stats] = await Promise.all([
+    studentMaterialReportGroups(studentId),
+    db.select({ done: count(), firstAt: min(lessons.startTime) }).from(lessons)
+      .where(and(eq(lessons.studentId, studentId), eq(lessons.status, "COMPLETED"))),
   ]);
-
-  const [{ done } = { done: 0 }] = await db
-    .select({ done: sql<number>`count(*)::int` })
-    .from(lessons)
-    .where(and(eq(lessons.studentId, studentId), eq(lessons.status, "COMPLETED")));
-
-  const [{ firstAt } = { firstAt: null }] = await db
-    .select({ firstAt: sql<Date | null>`min(${lessons.startTime})` })
-    .from(lessons)
-    .where(and(eq(lessons.studentId, studentId), eq(lessons.status, "COMPLETED")));
-
-  const total = done + student.lessonsBefore;
-  const since = student.startedAt ?? firstAt;
-  const about = student.approximate ? "≈ " : "";
-
-  const meta = [
-    student.level ? `Уровень: ${student.level}` : null,
-    `Проведено уроков: ${about}${Math.max(0, total)}`,
-    since ? `Занимаемся с: ${since.toLocaleDateString("ru-RU")}` : null,
-    `Отчёт составлен: ${new Date().toLocaleDateString("ru-RU")}`,
-  ].filter((s): s is string => !!s);
-
-  // Обходим дерево вглубь, запоминая путь — он идёт заголовком в отчёте.
-  const entries: ReportPayload["entries"] = [];
-  const walk = (nodes: MaterialNode[], path: string[]) => {
-    for (const n of nodes) {
-      const here = [...path, n.name];
-      if (n.phrases.length > 0 || n.blocks.length > 0) {
-        entries.push({
-          path: here,
-          page: {
-            title: n.name,
-            description: n.description,
-            phrases: n.phrases,
-            blocks: n.blocks,
-          },
-        });
-      }
-      if (n.children.length) walk(n.children, here);
-    }
+  return {
+    studentName: student.name,
+    meta: studentReportMeta(student, stats[0] ?? { done: 0, firstAt: null }),
+    entries: studentReportEntries(groups),
   };
-
-  walk(own, ["Личные материалы"]);
-  walk(shared, ["Общая база"]);
-  walk(mistakes, ["Ошибки"]);
-
-  return { studentName: student.name, meta, entries };
 }
 
 // ---------------------------------------------------------------- копирование

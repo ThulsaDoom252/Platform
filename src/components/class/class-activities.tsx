@@ -32,6 +32,7 @@ import { GuessPicturePresetForm } from "@/components/game/guess-picture-studio";
 import { GameStatsCard } from "@/components/game/game-stats";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
 import { WordDeckForm } from "@/components/game/word-deck-studio";
+import { isWordDeckFinished } from "@/lib/word-deck";
 import { ClassActivityPicker } from "@/components/class/class-activity-picker";
 import {
   copyWordDeckBetweenClassAndHomeworkAction,
@@ -580,15 +581,13 @@ export function ClassActivities({ studentId }: { studentId: string }) {
         {activityItems.map((item, itemIndex) => {
           const review = meta.reviews[item.key];
           const answerEligible = item.kind === "PICTURE" || (
-            item.kind === "DECK" && ["WORDS", "GUESS_DESCRIPTION", "GUESS_PICTURE"].includes(item.deck.settings.gameType)
+            item.kind === "DECK" && ["WORDS", "GUESS_DESCRIPTION", "DESCRIPTION_SENTENCE", "GUESS_PICTURE"].includes(item.deck.settings.gameType)
           );
           const finished = item.kind === "PICTURE"
             ? item.game.status === "DONE"
             : item.kind === "REVISION"
               ? item.revision.attempts > 0
-              : Boolean(item.deck.liveState && item.deck.liveState.at >= item.deck.liveState.deck.length - 1 && (
-                  !["GUESS_DESCRIPTION", "GUESS_PICTURE"].includes(item.deck.settings.gameType) || item.deck.liveState.faceUp
-                ));
+              : Boolean(item.deck.liveState && isWordDeckFinished(item.deck.liveState, item.deck.settings));
 
           return (
             <div

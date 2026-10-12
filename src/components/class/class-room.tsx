@@ -976,6 +976,18 @@ export function ClassRoom({
         )}
 
         {teacher && partner && (
+          <Link
+            href={`/teacher/homeworks?student=${encodeURIComponent(partner.id)}`}
+            title={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
+            aria-label={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
+            className="flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-bold text-content transition hover:border-accent hover:text-accent"
+          >
+            <IconFile className="h-4 w-4" />
+            {t.classRoom.studentHomework}
+          </Link>
+        )}
+
+        {teacher && partner && (
           <button
             type="button"
             disabled={busy || platformPresence(partner.presence) === "offline"}

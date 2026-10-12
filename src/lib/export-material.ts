@@ -19,6 +19,8 @@ export type ExportPhrase = {
   translation: string | null;
   /** Жёлтая подсказка «что стоит знать» под словом. */
   note?: string | null;
+  /** English definition used by vocabulary activities. */
+  description?: string | null;
   examples: { en: string; tr: string }[];
 };
 
@@ -31,7 +33,23 @@ export type ExportPage = {
   lang?: "UK" | "RU";
   /** Текст, из которого страницу разобрали. */
   sourceText?: string | null;
+  verbs?: ExportVerb[];
 };
+
+export type ExportVerb = {
+  category?: string | null;
+  base: string;
+  baseIpa?: string | null;
+  past: string;
+  pastIpa?: string | null;
+  participle: string;
+  participleIpa?: string | null;
+  translation?: string | null;
+};
+
+const textValue = (value: unknown): string => typeof value === "string" ? value : typeof value === "number" ? String(value) : "";
+const arrayValue = <T>(value: T[] | undefined | null): T[] => Array.isArray(value) ? value : [];
+const exampleText = (en: unknown, tr?: unknown) => `• ${textValue(en)}${textValue(tr) ? ` — ${textValue(tr)}` : ""}`;
 
 /** Цвета выгрузки. Те же роли, что на странице: шапка, раздел, перевод. */
 const DOCX = {
@@ -54,10 +72,10 @@ function reversoUrl(word: string, lang: "UK" | "RU"): string {
 
 /** Произношение одной строкой: два варианта показываем, только если разные. */
 function transcriptionOf(p: ExportPhrase): string {
-  const us = p.transcriptionUs?.trim();
-  const uk = p.transcriptionUk?.trim();
+  const us = textValue(p.transcriptionUs).trim();
+  const uk = textValue(p.transcriptionUk).trim();
   if (us && uk && us !== uk) return `us ${us} uk ${uk}`;
-  return (us || uk || p.transcription || "").trim();
+  return (us || uk || textValue(p.transcription)).trim();
 }
 
 /** Словник в текст: «слово /транскрипция/ — перевод» и примеры маркерами. */
@@ -65,7 +83,8 @@ function phrasesToText(phrases: ExportPhrase[]): string[] {
   const out: string[] = [];
   let section: string | null = null;
 
-  for (const p of phrases) {
+  for (const p of arrayValue(phrases)) {
+    if (!p || typeof p !== "object") continue;
     if ((p.section ?? null) !== section) {
       section = p.section ?? null;
       if (section) {
@@ -80,8 +99,9 @@ function phrasesToText(phrases: ExportPhrase[]): string[] {
 
     const head = [p.phrase, transcriptionOf(p)].filter(Boolean).join(" ");
     out.push(`${head}${p.translation ? ` — ${p.translation}` : ""}`);
-    for (const ex of p.examples) {
-      out.push(`• ${ex.en}${ex.tr ? ` — ${ex.tr}` : ""}`);
+    if (p.description) out.push(`Definition: ${p.description}`);
+    for (const ex of arrayValue(p.examples)) {
+      if (ex && typeof ex === "object") out.push(exampleText(ex.en, ex.tr));
     }
     if (p.note) out.push(`💡 ${p.note}`);
   }
@@ -92,7 +112,8 @@ function phrasesToText(phrases: ExportPhrase[]): string[] {
 function blocksToText(blocks: RuleBlock[]): string[] {
   const out: string[] = [];
 
-  for (const b of blocks) {
+  for (const b of arrayValue(blocks)) {
+    if (!b || typeof b !== "object") continue;
     switch (b.type) {
       case "heading":
         out.push("", b.text);
@@ -105,19 +126,69 @@ function blocksToText(blocks: RuleBlock[]): string[] {
         out.push(b.text);
         break;
       case "example":
-        out.push(`• ${b.en}${b.tr ? ` — ${b.tr}` : ""}`);
+        out.push(exampleText(b.en, b.tr));
+        if (b.why) out.push(`Почему: ${b.why}`);
         break;
       case "list":
-        for (const item of b.items) out.push(`• ${item}`);
+        for (const item of arrayValue(b.items)) out.push(`• ${textValue(item)}`);
         break;
       case "table":
-        if (b.headers.length) out.push(b.headers.join("\t"));
-        for (const row of b.rows) out.push(row.join("\t"));
+      case "grid":
+        if (b.type === "grid" && b.title) out.push("", b.title);
+        if (arrayValue(b.headers).length) out.push(arrayValue(b.headers).map(textValue).join("\t"));
+        for (const row of arrayValue(b.rows)) out.push(arrayValue(row).map(textValue).join("\t"));
         out.push("");
+        break;
+      case "word": {
+        const ipa = transcriptionOf({ phrase: b.word, kind: "PHRASE", icon: null, section: null, transcription: null, transcriptionUs: b.us, transcriptionUk: b.uk, translation: null, examples: [] });
+        out.push("", `${b.word}${ipa ? ` ${ipa}` : ""}${b.tr ? ` — ${b.tr}` : ""}`);
+        if (b.sense) out.push(`Meaning: ${b.sense}`);
+        if (b.pattern) out.push(`Pattern: ${b.pattern}`);
+        for (const ex of arrayValue(b.examples)) if (ex && typeof ex === "object") out.push(exampleText(ex.en, ex.tr));
+        for (const note of arrayValue(b.notes)) out.push(`💡 ${textValue(note)}`);
+        break;
+      }
+      case "form":
+        out.push(`${b.sign} ${b.formula}`, exampleText(b.en, b.tr));
+        break;
+      case "marker":
+        out.push("", `${b.word}${b.tr ? ` — ${b.tr}` : ""}`);
+        if (b.en || b.ru) out.push(exampleText(b.en, b.ru));
+        if (b.hintText) out.push(`💡 ${b.hintText}`);
+        break;
+      case "link":
+        out.push(b.label);
+        if (b.ru) out.push(`RU: ${b.ru}`);
+        if (b.uk) out.push(`UA: ${b.uk}`);
         break;
     }
   }
   return out;
+}
+
+function verbsToText(verbs: ExportVerb[]): string[] {
+  if (!arrayValue(verbs).length) return [];
+  const out = ["Неправильные глаголы", "Base form\tPast Simple\tPast Participle\tПеревод"];
+  let category: string | null = null;
+  for (const verb of verbs) {
+    if (!verb || typeof verb !== "object") continue;
+    if ((verb.category ?? null) !== category) {
+      category = verb.category ?? null;
+      if (category) out.push("", category);
+    }
+    const form = (word: unknown, ipa: unknown) => [textValue(word), textValue(ipa)].filter(Boolean).join(" ");
+    out.push([form(verb.base, verb.baseIpa), form(verb.past, verb.pastIpa), form(verb.participle, verb.participleIpa), textValue(verb.translation)].join("\t"));
+  }
+  return out;
+}
+
+function pageContentParts(page: Pick<ExportPage, "blocks" | "phrases" | "verbs">): string[][] {
+  return [blocksToText(page.blocks), phrasesToText(page.phrases), verbsToText(page.verbs ?? [])]
+    .filter((part) => part.some((line) => textValue(line).trim()));
+}
+
+export function pageHasStructuredContent(page: Pick<ExportPage, "blocks" | "phrases" | "verbs">): boolean {
+  return pageContentParts(page).length > 0;
 }
 
 /** Готовый текст страницы — его же показываем в окне и кладём в буфер. */
@@ -126,9 +197,13 @@ export function pageToText(page: ExportPage): string {
   if (page.description) lines.push(page.description);
   lines.push("");
 
-  lines.push(
-    ...(page.blocks.length > 0 ? blocksToText(page.blocks) : phrasesToText(page.phrases)),
-  );
+  // Mixed pages exist: exporting grammar must not hide their vocabulary.
+  const content = pageContentParts(page);
+  if (content.length) {
+    content.forEach((part, index) => lines.push(...(index ? [""] : []), ...part));
+  } else if (page.sourceText?.trim()) {
+    lines.push(page.sourceText.trim());
+  }
 
   return lines
     .join("\n")
@@ -169,6 +244,9 @@ export function reportToText(report: Report): string {
     ...report.meta,
     `Разделов и страниц: ${report.entries.length}`,
     "",
+    "СОДЕРЖАНИЕ",
+    ...report.entries.map(({ path }, index) => `${index + 1}. ${path.join(" / ")}`),
+    "",
     "=".repeat(48),
   ];
 
@@ -180,9 +258,14 @@ export function reportToText(report: Report): string {
 }
 
 /** Имя файла без символов, которые не любит файловая система. */
-export function safeFileName(title: string): string {
+export function safeFileName(title: string, extension: "docx" | "txt" = "docx"): string {
   const clean = title.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
-  return `${clean || "material"}.docx`;
+  return `${clean || "material"}.${extension}`;
+}
+
+/** UTF-8 BOM keeps Russian/Ukrainian text readable in desktop text editors. */
+export function reportToTextBlob(report: Report): Blob {
+  return new Blob(["\uFEFF", reportToText(report).replace(/\r?\n/g, "\r\n")], { type: "text/plain;charset=utf-8" });
 }
 
 /**
@@ -583,7 +666,8 @@ async function pageToDocxChildren(
           break;
       }
     }
-  } else {
+  }
+  if (page.phrases.length > 0) {
     const lang = page.lang ?? "UK";
     let section: string | null = null;
 
@@ -645,6 +729,7 @@ async function pageToDocxChildren(
         }),
       );
 
+      if (p.description) children.push(para(`Definition: ${p.description}`));
       for (const ex of p.examples) {
         children.push(
           new Paragraph({
@@ -682,6 +767,10 @@ async function pageToDocxChildren(
     }
   }
 
+  for (const line of verbsToText(page.verbs ?? [])) children.push(para(line));
+  if (!page.blocks.length && !page.phrases.length && !page.verbs?.length && page.sourceText?.trim()) {
+    for (const line of page.sourceText.split(/\r?\n/)) children.push(para(line));
+  }
   return children;
 }
 
@@ -712,7 +801,12 @@ export async function reportToDocxBlob(report: Report): Promise<Blob> {
     children.push(
       new Paragraph({ text: path.join(" / "), heading: HeadingLevel.HEADING_1 }),
     );
-    children.push(...(await pageToDocxChildren(page, "h2")));
+    try {
+      children.push(...(await pageToDocxChildren(page, "h2")));
+    } catch {
+      // A legacy malformed block must not prevent exporting other materials.
+      children.push(...pageToText(page).split(/\r?\n/).map((text) => new Paragraph({ text })));
+    }
     children.push(new Paragraph({ text: "" }));
   }
 

@@ -20,6 +20,7 @@ import { getSession } from "@/lib/session";
 import {
   DEFAULT_WORD_DECK_SETTINGS,
   minimumWordDeckWords,
+  isWordDeckFinished,
   nextWordDeckHomeworkTracking,
   normalizeWordDeckLiveState,
   normalizeWordDeckSettings,
@@ -841,8 +842,7 @@ export async function saveWordDeckHomeworkStateAction(
   const now = new Date();
   const state = { ...normalized, updatedAt: now.toISOString() };
   const settings = normalizeWordDeckSettings(row.wordDeck.settings);
-  const needsReveal = settings.gameType === "GUESS_DESCRIPTION" || settings.gameType === "GUESS_PICTURE";
-  const finished = state.at >= state.deck.length - 1 && state.at >= 0 && (!needsReveal || state.faceUp);
+  const finished = isWordDeckFinished(state, settings);
   const tracking = nextWordDeckHomeworkTracking(row.wordDeck, {
     started: state.at >= 0,
     finished,

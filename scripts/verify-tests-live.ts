@@ -1,12 +1,14 @@
 /** Read-only against real users: exercises server actions on the LOCAL build only. */
+import "dotenv/config";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { config } from "dotenv";
 import { SignJWT } from "jose";
 import { Pool } from "pg";
-import { FIRST_CONDITIONAL, SECOND_CONDITIONAL } from "../src/lib/tests/catalog";
+import { FIRST_CONDITIONAL, SECOND_CONDITIONAL, FIRST_AND_SECOND_CONDITIONALS } from "../src/lib/tests/catalog";
 import { FIRST_CONDITIONAL_KEY } from "../src/lib/tests/grading";
 import { SECOND_CONDITIONAL_KEY } from "../src/lib/tests/second-conditional-key";
+import { FIRST_AND_SECOND_CONDITIONALS_KEY } from "../src/lib/tests/first-and-second-conditionals-key";
 
 async function main() {
   const base = process.argv[2] ?? "http://localhost:3100";
@@ -24,7 +26,7 @@ async function main() {
     const { rows } = await pool.query("select distinct on (role) id, name, role from users where not access_blocked order by role, created_at");
     const tokens = new Map<string, string>();
     for (const user of rows) tokens.set(user.role, await new SignJWT({ userId: user.id, name: user.name, role: user.role })
-      .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("5m").sign(new TextEncoder().encode(loaded.parsed.SESSION_SECRET)));
+      .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("5m").sign(new TextEncoder().encode(process.env.SESSION_SECRET ?? loaded.parsed.SESSION_SECRET)));
     assert.ok(tokens.get("TEACHER") && tokens.get("STUDENT"));
     const call = async (name: string, args: unknown[], role?: string) => {
       const path = role === "STUDENT" ? "/student/homework" : "/teacher/tests/first-conditional";
@@ -92,7 +94,29 @@ async function main() {
     const libraryPage = await fetch(`${base}/teacher/tests?level=b1&category=grammar`, { headers: { cookie: `ewv_session=${tokens.get("TEACHER")}` } });
     assert.equal(libraryPage.status, 200);
     assert.ok((await libraryPage.text()).includes('data-library-test="second-conditional"'));
-    console.log("PASS: First and Second conditional, all six exercises, teacher/student authorization, scoring, double and paired choices, contractions, omissions, input validation, real pages and private answer keys");
+    for (const exercise of FIRST_AND_SECOND_CONDITIONALS.exercises) {
+      const correct = Object.fromEntries(Object.entries(FIRST_AND_SECOND_CONDITIONALS_KEY[exercise.id]).map(([id, item]) => [id, item.answer]));
+      for (const [answers, percent] of [[{}, 0], [correct, 100]] as const) {
+        const result = await call("checkPracticeTestAction", [FIRST_AND_SECOND_CONDITIONALS.id, { exerciseId: exercise.id, answers }], "TEACHER");
+        assert.equal(result.ok, true); assert.equal(result.value.percent, percent); assert.equal(result.value.total, 10);
+      }
+    }
+    const mixedPairs = Object.fromEntries(Object.entries(FIRST_AND_SECOND_CONDITIONALS_KEY["exercise-2"]).map(([id, item]) => [id, item.answer]));
+    assert.equal((await call("checkPracticeTestAction", [FIRST_AND_SECOND_CONDITIONALS.id, { exerciseId: "exercise-2", answers: { ...mixedPairs, q10: ["will taste / add", "would taste / added"] } }], "TEACHER")).value.percent, 100);
+    assert.equal((await call("checkPracticeTestAction", [FIRST_AND_SECOND_CONDITIONALS.id, { exerciseId: "exercise-2", answers: { ...mixedPairs, q10: ["will taste / add"] } }], "TEACHER")).value.percent, 90);
+    const mixedText = Object.fromEntries(Object.entries(FIRST_AND_SECOND_CONDITIONALS_KEY["exercise-3"]).map(([id, item]) => [id, item.answer]));
+    assert.equal((await call("checkPracticeTestAction", [FIRST_AND_SECOND_CONDITIONALS.id, { exerciseId: "exercise-3", answers: { ...mixedText, q6: " WASN’T ", q7: "won’t repair", q10: "wouldn’t get" } }], "TEACHER")).value.percent, 100);
+    assert.equal((await call("checkPracticeTestAction", [FIRST_AND_SECOND_CONDITIONALS.id, { exerciseId: "exercise-1", answers: {} }], "STUDENT")).error, "forbidden");
+    const mixedPage = await fetch(`${base}/teacher/tests/first-and-second-conditionals`, { headers: { cookie: `ewv_session=${tokens.get("TEACHER")}` } });
+    assert.equal(mixedPage.status, 200);
+    const mixedHtml = await mixedPage.text();
+    assert.equal((mixedHtml.match(/data-test-question=/g) ?? []).length, 10);
+    assert.ok(mixedHtml.includes("First and second conditionals"));
+    assert.ok(!mixedHtml.includes(FIRST_AND_SECOND_CONDITIONALS_KEY["exercise-1"].q1.rule.en));
+    const mixedLibrary = await fetch(`${base}/teacher/tests?level=b1&category=grammar`, { headers: { cookie: `ewv_session=${tokens.get("TEACHER")}` } });
+    assert.equal(mixedLibrary.status, 200);
+    assert.ok((await mixedLibrary.text()).includes('data-library-test="first-and-second-conditionals"'));
+    console.log("PASS: all three conditional tests, nine exercises, teacher/student authorization, scoring, double and paired choices, dialogue contractions, omissions, input validation, real pages and private answer keys");
   } finally { await pool.end(); }
 }
 main().catch((error: unknown) => { console.error("Test integration failed", { type: (error as Error).name, message: (error as Error).message }); process.exitCode = 1; });

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Modal } from "@/components/modal";
 import { buildStudentReportAction } from "@/lib/actions/materials";
 import {
   reportToText,
   reportToDocxBlob,
+  reportToTextBlob,
+  safeFileName,
   type Report,
 } from "@/lib/export-material";
 import { IconFile, IconCheck } from "@/components/icons";
@@ -23,21 +25,27 @@ export function ReportButton({
 }) {
   const [report, setReport] = useState<Report | null>(null);
   const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"txt" | "docx" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, startLoad] = useTransition();
 
-  const text = report ? reportToText(report) : "";
+  const text = useMemo(() => report ? reportToText(report) : "", [report]);
 
   function open() {
     setError(null);
+    setCopied(false);
     startLoad(async () => {
-      const data = await buildStudentReportAction(studentId);
-      setReport(data);
+      try {
+        const data = await buildStudentReportAction(studentId);
+        setReport(data);
+      } catch {
+        setError("Не удалось собрать отчёт. Обнови страницу и попробуй ещё раз. Материалы не изменены.");
+      }
     });
   }
 
   async function copy() {
+    setError(null);
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -47,22 +55,24 @@ export function ReportButton({
     }
   }
 
-  async function download() {
+  async function download(format: "txt" | "docx") {
     if (!report) return;
     setError(null);
-    setBusy(true);
+    setBusy(format);
     try {
-      const blob = await reportToDocxBlob(report);
+      const blob = format === "txt" ? reportToTextBlob(report) : await reportToDocxBlob(report);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Отчёт — ${studentName}.docx`;
+      a.download = safeFileName(`Отчёт — ${report.studentName || studentName}`, format);
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       setError("Не удалось собрать файл. Попробуй ещё раз.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -78,6 +88,8 @@ export function ReportButton({
         {loading ? "Собираю…" : "Отчёт: всё пройденное"}
       </button>
 
+      {!report && error && <p role="alert" className="w-full text-sm text-rose-500">{error}</p>}
+
       {report && (
         <Modal
           open
@@ -88,8 +100,9 @@ export function ReportButton({
         >
           <div className="flex flex-col gap-4">
             <p className="text-[12px] text-muted">
-              Страниц в отчёте: {report.entries.length}. Пригодится и как сводка
-              для ученика, и как вводные для ИИ при подготовке уроков.
+              Страниц в отчёте: {report.entries.length}. Личные материалы,
+              выданные разделы общей базы и разбор ошибок: словари, правила,
+              лексика, времена и неправильные глаголы. Скачать можно одним текстовым файлом.
             </p>
 
             {report.entries.length === 0 ? (
@@ -106,7 +119,7 @@ export function ReportButton({
               />
             )}
 
-            {error && <p className="text-sm text-rose-500">{error}</p>}
+            {error && <p role="alert" className="text-sm text-rose-500">{error}</p>}
 
             <div className="flex flex-wrap gap-2.5">
               <button
@@ -132,11 +145,19 @@ export function ReportButton({
               </button>
               <button
                 type="button"
-                onClick={download}
-                disabled={busy || report.entries.length === 0}
+                onClick={() => void download("docx")}
+                disabled={Boolean(busy) || report.entries.length === 0}
+                className="h-11 flex-1 rounded-xl border border-line text-sm font-semibold text-content transition hover:bg-surface-2 disabled:opacity-50"
+              >
+                {busy === "docx" ? "Собираю…" : "Скачать .docx"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void download("txt")}
+                disabled={Boolean(busy) || report.entries.length === 0}
                 className="h-11 flex-1 rounded-xl bg-accent text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
               >
-                {busy ? "Собираю…" : "Скачать .docx"}
+                {busy === "txt" ? "Собираю…" : "Скачать .txt"}
               </button>
             </div>
           </div>

@@ -2,7 +2,9 @@ import type { TestCatalogEntry } from "./types";
 import { SECOND_CONDITIONAL } from "./second-conditional";
 import { FOLDER_TESTS } from "./folder-tests";
 import { A1_GRAMMAR_TESTS } from "./a1-grammar-tests";
+import { FIRST_AND_SECOND_CONDITIONALS } from "./first-and-second-conditionals";
 export { SECOND_CONDITIONAL } from "./second-conditional";
+export { FIRST_AND_SECOND_CONDITIONALS } from "./first-and-second-conditionals";
 
 export const FIRST_CONDITIONAL: TestCatalogEntry = {
   id: "first-conditional", version: 2, level: "b1", category: "grammar",
@@ -60,5 +62,5 @@ export const FIRST_CONDITIONAL: TestCatalogEntry = {
   ],
 };
 
-export const TEST_CATALOG: TestCatalogEntry[] = [FIRST_CONDITIONAL, SECOND_CONDITIONAL, ...FOLDER_TESTS.filter(test => test.level !== "a1"), ...A1_GRAMMAR_TESTS];
+export const TEST_CATALOG: TestCatalogEntry[] = [FIRST_CONDITIONAL, SECOND_CONDITIONAL, FIRST_AND_SECOND_CONDITIONALS, ...FOLDER_TESTS.filter(test => test.level !== "a1"), ...A1_GRAMMAR_TESTS];
 export function findLibraryTest(id: string) { return TEST_CATALOG.find((test) => test.id === id) ?? null; }

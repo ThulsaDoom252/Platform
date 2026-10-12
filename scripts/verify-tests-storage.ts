@@ -6,9 +6,10 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, inArray } from "drizzle-orm";
 import * as schema from "../src/lib/db/schema";
-import { FIRST_CONDITIONAL, SECOND_CONDITIONAL } from "../src/lib/tests/catalog";
+import { FIRST_CONDITIONAL, SECOND_CONDITIONAL, FIRST_AND_SECOND_CONDITIONALS } from "../src/lib/tests/catalog";
 import { FIRST_CONDITIONAL_KEY, gradeTestExercise } from "../src/lib/tests/grading";
 import { SECOND_CONDITIONAL_KEY } from "../src/lib/tests/second-conditional-key";
+import { FIRST_AND_SECOND_CONDITIONALS_KEY } from "../src/lib/tests/first-and-second-conditionals-key";
 import { saveTestExerciseCheck } from "../src/lib/tests/persistence";
 
 async function main() {
@@ -20,7 +21,7 @@ async function main() {
   if (production) connection.searchParams.set("sslmode", "verify-full");
   const pool = new Pool({ connectionString: connection.toString(), max: 1, connectionTimeoutMillis: 10_000, statement_timeout: 20_000 });
   const database = drizzle(pool, { schema });
-  const ids = { teacher: randomUUID(), student: randomUUID(), assignment: randomUUID(), other: randomUUID(), attempt: randomUUID(), second: randomUUID(), secondConditional: randomUUID(), secondConditionalAttempt: randomUUID(), selectedAssignment: randomUUID(), selectedAttempt: randomUUID() };
+  const ids = { teacher: randomUUID(), student: randomUUID(), assignment: randomUUID(), other: randomUUID(), attempt: randomUUID(), second: randomUUID(), secondConditional: randomUUID(), secondConditionalAttempt: randomUUID(), selectedAssignment: randomUUID(), selectedAttempt: randomUUID(), mixedAssignment: randomUUID(), mixedAttempt: randomUUID(), mixedSelected: randomUUID(), mixedSelectedAttempt: randomUUID() };
   const rollback = new Error("ROLLBACK_VERIFICATION_FIXTURES");
   try {
     try {
@@ -78,13 +79,32 @@ async function main() {
           }
           if (exercise.id === "exercise-3") { assert.equal(saved.total, 40); assert.ok(saved.completedAt); }
         }
+        const mixed = { ...assignment, id: ids.mixedAssignment, testId: FIRST_AND_SECOND_CONDITIONALS.id,
+          definition: FIRST_AND_SECOND_CONDITIONALS, grading: FIRST_AND_SECOND_CONDITIONALS_KEY };
+        const mixedSelected = { ...mixed, id: ids.mixedSelected, exerciseIds: ["exercise-2"] };
+        await tx.insert(schema.testAssignments).values([mixed, mixedSelected]);
+        const [storedMixed] = await tx.select().from(schema.testAssignments).where(eq(schema.testAssignments.id, mixed.id));
+        assert.deepEqual(storedMixed.definition, FIRST_AND_SECOND_CONDITIONALS);
+        assert.deepEqual(storedMixed.grading, FIRST_AND_SECOND_CONDITIONALS_KEY);
+        for (const exercise of FIRST_AND_SECOND_CONDITIONALS.exercises) {
+          const answers = Object.fromEntries(Object.entries(FIRST_AND_SECOND_CONDITIONALS_KEY[exercise.id]).map(([id, item]) => [id, item.answer]));
+          const checked = gradeTestExercise(FIRST_AND_SECOND_CONDITIONALS, FIRST_AND_SECOND_CONDITIONALS_KEY, exercise.id, answers);
+          const saved = await saveTestExerciseCheck(tx, mixed, ids.mixedAttempt, checked);
+          assert.equal(saved.percent, 100);
+          if (exercise.id === "exercise-2") {
+            assert.deepEqual(saved.results[exercise.id].questions[9].selected, ["would taste / added", "will taste / add"]);
+            const individual = await saveTestExerciseCheck(tx, mixedSelected, ids.mixedSelectedAttempt, checked);
+            assert.equal(individual.total, 10); assert.equal(individual.percent, 100); assert.ok(individual.completedAt);
+          }
+          if (exercise.id === "exercise-3") { assert.equal(saved.total, 30); assert.ok(saved.completedAt); }
+        }
         throw rollback;
       });
     } catch (error) { if (error !== rollback) throw error; }
     assert.equal((await database.select({ id: schema.users.id }).from(schema.users).where(inArray(schema.users.id, [ids.teacher, ids.student]))).length, 0);
-    assert.equal((await database.select({ id: schema.testAssignments.id }).from(schema.testAssignments).where(inArray(schema.testAssignments.id, [ids.assignment, ids.other, ids.secondConditional, ids.selectedAssignment]))).length, 0);
-    assert.equal((await database.select({ id: schema.testAttempts.id }).from(schema.testAttempts).where(inArray(schema.testAttempts.id, [ids.attempt, ids.second, ids.secondConditionalAttempt, ids.selectedAttempt]))).length, 0);
-    console.log("PASS: both conditional tests, whole and selected exercises, paired/array/text answer round trips, immutable checks, weighted scores, separate histories, assignment isolation; all fixtures rolled back");
+    assert.equal((await database.select({ id: schema.testAssignments.id }).from(schema.testAssignments).where(inArray(schema.testAssignments.id, [ids.assignment, ids.other, ids.secondConditional, ids.selectedAssignment, ids.mixedAssignment, ids.mixedSelected]))).length, 0);
+    assert.equal((await database.select({ id: schema.testAttempts.id }).from(schema.testAttempts).where(inArray(schema.testAttempts.id, [ids.attempt, ids.second, ids.secondConditionalAttempt, ids.selectedAttempt, ids.mixedAttempt, ids.mixedSelectedAttempt]))).length, 0);
+    console.log("PASS: all three conditional tests, whole and selected exercises, paired/array/text answer round trips, immutable checks, weighted scores, separate histories, assignment isolation; all fixtures rolled back");
   } finally { await pool.end(); }
 }
 main().catch((error: unknown) => { console.error("Tests persistence verification failed", { type: (error as Error).name, message: (error as Error).message }); process.exitCode = 1; });

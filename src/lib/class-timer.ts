@@ -1,4 +1,5 @@
 import { CLASS_GAME_GRADES, type ClassGameGrade } from "@/lib/class-game-meta";
+import { normalizeTimerSeconds } from "@/lib/timer-settings";
 
 export const CLASS_TIMER_THEMES = ["violet", "ocean", "mint", "sunset"] as const;
 export const CLASS_TIMER_TICK_SOUNDS = ["soft", "wood", "digital", "pulse"] as const;
@@ -48,7 +49,7 @@ const oneOf = <T extends readonly string[]>(values: T, value: unknown, fallback:
 export function normalizeClassTimerState(value: unknown): ClassTimerState | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
-  const durationSeconds = Math.max(5, Math.min(86_400, Number(raw.durationSeconds) || 300));
+  const durationSeconds = normalizeTimerSeconds(raw.durationSeconds);
   const suppliedRemaining = Number(raw.remainingMs);
   const remainingMs = Number.isFinite(suppliedRemaining)
     ? Math.max(0, Math.min(durationSeconds * 1000, suppliedRemaining))

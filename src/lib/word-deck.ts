@@ -1,7 +1,13 @@
 /** Чистая логика активности «Колода слов». */
+import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
 
 export type WordDeckTimerMode = "NONE" | "GAME" | "CARD";
-export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE" | "SPELLING";
+export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION" | "DESCRIPTION_SENTENCE" | "GUESS_PICTURE" | "SPELLING";
+export type WordDeckPhase = "GUESS" | "SENTENCE" | "COMPLETE";
+
+export function isWordDeckDescriptionGame(gameType: WordDeckGameType) {
+  return gameType === "GUESS_DESCRIPTION" || gameType === "DESCRIPTION_SENTENCE";
+}
 export type GuessPictureMode = "PICTURE" | "TRANSLATION" | "MIXED";
 export type WordDeckOwner = "TEACHER" | "STUDENT" | null;
 export type WordDeckVerdict = "RIGHT" | "WRONG" | null;
@@ -43,8 +49,11 @@ export function canDealNextWordDeckCard(state: {
   at: number;
   expired: boolean;
   observer: boolean;
+  gameType?: WordDeckGameType;
+  phase?: WordDeckPhase;
 }): boolean {
-  return !state.observer && state.cardCount > 0 && state.at < state.cardCount - 1;
+  return !state.observer && state.cardCount > 0 && state.at < state.cardCount - 1 &&
+    !(state.gameType === "DESCRIPTION_SENTENCE" && state.at >= 0 && state.phase !== "SENTENCE");
 }
 
 export type WordDeckRuntimeCard = WordDeckSourceCard & {
@@ -57,6 +66,8 @@ export type WordDeckLiveState = {
   deck: WordDeckRuntimeCard[];
   at: number;
   faceUp: boolean;
+  /** Combined mode: reveal starts sentence practice; revealing alone is not completion. */
+  phase?: WordDeckPhase;
   sound: boolean;
   time: number;
   expired: boolean;
@@ -87,17 +98,39 @@ export function wordDeckTimerPaused(state: Pick<WordDeckLiveState, "timerPaused"
   return state.timerPaused ?? Boolean(state.verdict && settings.timerMode === "CARD");
 }
 
-export function wordDeckTimerSeconds(settings: Pick<WordDeckSettings, "timerMode" | "cardSeconds" | "gameSeconds">) {
-  return settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds;
+type WordDeckTimerSettings = Pick<WordDeckSettings, "timerMode" | "cardSeconds" | "gameSeconds"> &
+  Partial<Pick<WordDeckSettings, "gameType" | "guessSeconds" | "sentenceSeconds">>;
+
+export function wordDeckTimerSeconds(settings: WordDeckTimerSettings, phase: WordDeckPhase = "GUESS") {
+  if (settings.timerMode === "GAME") return settings.gameSeconds;
+  if (settings.gameType === "DESCRIPTION_SENTENCE") {
+    return (phase === "GUESS" ? settings.guessSeconds : settings.sentenceSeconds) ?? settings.cardSeconds;
+  }
+  return settings.cardSeconds;
 }
 
 type WordDeckTimerState = Pick<WordDeckLiveState, "time" | "expired" | "feedback" | "updatedAt"> & { timerPaused: boolean };
 
 /** Restart the clock only; retain the card, its revealed side and any judgement. */
-export function restartWordDeckTimer<T extends Pick<WordDeckLiveState, "feedback">>(state: T,
-  settings: Pick<WordDeckSettings, "timerMode" | "cardSeconds" | "gameSeconds">, now = Date.now()): Omit<T, keyof WordDeckTimerState> & WordDeckTimerState {
-  return { ...state, time: wordDeckTimerSeconds(settings), expired: false, timerPaused: false,
+export function restartWordDeckTimer<T extends Pick<WordDeckLiveState, "feedback" | "phase">>(state: T,
+  settings: WordDeckTimerSettings, now = Date.now()): Omit<T, keyof WordDeckTimerState> & WordDeckTimerState {
+  return { ...state, time: wordDeckTimerSeconds(settings, state.phase), expired: false, timerPaused: false,
     feedback: state.feedback === "TIME_UP" ? null : state.feedback, updatedAt: new Date(now).toISOString() };
+}
+
+/** The sentence has a fresh per-card clock, even after a wrong guess or timeout. */
+export function startWordDeckSentence<T extends Pick<WordDeckLiveState, "time" | "expired" | "timerPaused" | "feedback">>(
+  state: T, settings: WordDeckTimerSettings, now = Date.now(),
+) {
+  const sentence = { ...state, phase: "SENTENCE" as const, faceUp: true, feedback: null };
+  return settings.timerMode === "CARD" ? restartWordDeckTimer(sentence, settings, now) : sentence;
+}
+
+export function isWordDeckFinished(state: Pick<WordDeckLiveState, "at" | "faceUp" | "phase"> & { deck: readonly unknown[] },
+  settings: Pick<WordDeckSettings, "gameType">) {
+  if (state.at < 0 || state.at < state.deck.length - 1 || state.deck.length === 0) return false;
+  if (settings.gameType === "DESCRIPTION_SENTENCE") return state.faceUp && state.phase === "COMPLETE";
+  return settings.gameType === "GUESS_DESCRIPTION" || settings.gameType === "GUESS_PICTURE" ? state.faceUp : true;
 }
 
 export type WordDeckHomeworkTracking = {
@@ -154,6 +187,8 @@ export type WordDeckSettings = {
   timerMode: WordDeckTimerMode;
   gameSeconds: number;
   cardSeconds: number;
+  guessSeconds: number;
+  sentenceSeconds: number;
   repeats: number;
   alternate: boolean;
   studentPercent: number;
@@ -177,8 +212,10 @@ export type WordDeckSettings = {
 export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
   gameType: "WORDS",
   timerMode: "NONE",
-  gameSeconds: 120,
-  cardSeconds: 10,
+  gameSeconds: DEFAULT_TIMER_SECONDS,
+  cardSeconds: DEFAULT_TIMER_SECONDS,
+  guessSeconds: DEFAULT_TIMER_SECONDS,
+  sentenceSeconds: DEFAULT_TIMER_SECONDS,
   repeats: 1,
   alternate: false,
   studentPercent: 50,
@@ -218,12 +255,14 @@ export function normalizeWordDeckSettings(
   ];
   return {
     gameType:
-      value?.gameType === "GUESS_DESCRIPTION" || value?.gameType === "GUESS_PICTURE" || value?.gameType === "SPELLING"
+      value?.gameType === "GUESS_DESCRIPTION" || value?.gameType === "DESCRIPTION_SENTENCE" || value?.gameType === "GUESS_PICTURE" || value?.gameType === "SPELLING"
         ? value.gameType
         : "WORDS",
     timerMode,
-    gameSeconds: clamp(value?.gameSeconds, 10, 3600, 120),
-    cardSeconds: clamp(value?.cardSeconds, 3, 300, 10),
+    gameSeconds: clamp(value?.gameSeconds, 0, 3600, DEFAULT_TIMER_SECONDS),
+    cardSeconds: clamp(value?.cardSeconds, 0, 300, DEFAULT_TIMER_SECONDS),
+    guessSeconds: clamp(value?.guessSeconds, 0, 300, clamp(value?.cardSeconds, 0, 300, DEFAULT_TIMER_SECONDS)),
+    sentenceSeconds: clamp(value?.sentenceSeconds, 0, 300, clamp(value?.cardSeconds, 0, 300, DEFAULT_TIMER_SECONDS)),
     repeats: clamp(value?.repeats, 1, 20, 1),
     alternate: value?.alternate === true,
     studentPercent: clamp(value?.studentPercent, 0, 100, 50),
@@ -260,7 +299,7 @@ export function playableWordDeckCards(
   rawSettings: Partial<WordDeckSettings>,
 ): WordDeckSourceCard[] {
   const settings = normalizeWordDeckSettings(rawSettings);
-  return settings.gameType === "GUESS_DESCRIPTION"
+  return isWordDeckDescriptionGame(settings.gameType)
     ? source.filter((card) => Boolean(card.description?.trim()))
     : [...source];
 }
@@ -363,7 +402,10 @@ export function normalizeWordDeckLiveState(
   }
 
   const at = Math.min(deck.length - 1, Math.max(-1, Math.trunc(Number(value.at) || 0)));
-  const maxTime = settings.timerMode === "GAME" ? settings.gameSeconds : settings.cardSeconds;
+  const phase: WordDeckPhase = settings.gameType === "DESCRIPTION_SENTENCE" && at >= 0 && value.faceUp === true
+    ? value.phase === "COMPLETE" && at === deck.length - 1 ? "COMPLETE" : "SENTENCE"
+    : "GUESS";
+  const maxTime = wordDeckTimerSeconds(settings, phase);
   const time = Math.min(maxTime, Math.max(0, Math.trunc(Number(value.time) || 0)));
   const verdict: WordDeckVerdict = value.verdict === "RIGHT" || value.verdict === "WRONG"
     ? value.verdict
@@ -376,10 +418,11 @@ export function normalizeWordDeckLiveState(
     deck,
     at,
     faceUp: value.faceUp === true && at >= 0,
+    phase,
     sound: value.sound !== false,
     time,
     expired: value.expired === true,
-    timerPaused: typeof value.timerPaused === "boolean" ? value.timerPaused : Boolean(verdict && settings.timerMode === "CARD"),
+    timerPaused: phase === "COMPLETE" || (typeof value.timerPaused === "boolean" ? value.timerPaused : Boolean(verdict && settings.timerMode === "CARD" && phase === "GUESS")),
     readDescriptions: value.readDescriptions === true,
     verdict,
     feedback,

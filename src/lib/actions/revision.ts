@@ -23,6 +23,7 @@ import {
   wordRevisions,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { normalizeOptionalTimerSeconds } from "@/lib/timer-settings";
 import { buildRevision, type RevisionSection } from "@/lib/revision-build";
 import {
   readShow,
@@ -161,8 +162,8 @@ export async function createRevisionAction(setup: RevisionSetup): Promise<Revisi
       modes,
       modeWords,
       show: setup?.show ?? {},
-      answerSeconds: setup?.answerSeconds ?? null,
-      totalSeconds: setup?.totalSeconds ?? null,
+      answerSeconds: normalizeOptionalTimerSeconds(setup?.answerSeconds, 3600),
+      totalSeconds: normalizeOptionalTimerSeconds(setup?.totalSeconds, 10_800),
       dueAt: due && !Number.isNaN(due.getTime()) ? due : null,
     })
     .returning({ id: wordRevisions.id });
@@ -264,8 +265,8 @@ export async function saveRevisionPresetAction(
       modes,
       modeWords,
       show: setup?.show ?? {},
-      answerSeconds: setup?.answerSeconds ?? null,
-      totalSeconds: setup?.totalSeconds ?? null,
+      answerSeconds: normalizeOptionalTimerSeconds(setup?.answerSeconds, 3600),
+      totalSeconds: normalizeOptionalTimerSeconds(setup?.totalSeconds, 10_800),
       updatedAt: new Date(),
     }).where(eq(wordRevisionPresets.id, id));
     revalidatePath("/teacher/activities");
@@ -282,8 +283,8 @@ export async function saveRevisionPresetAction(
       modes,
       modeWords,
       show: setup?.show ?? {},
-      answerSeconds: setup?.answerSeconds ?? null,
-      totalSeconds: setup?.totalSeconds ?? null,
+      answerSeconds: normalizeOptionalTimerSeconds(setup?.answerSeconds, 3600),
+      totalSeconds: normalizeOptionalTimerSeconds(setup?.totalSeconds, 10_800),
       updatedAt: new Date(),
     })
     .returning({ id: wordRevisionPresets.id });
@@ -490,8 +491,8 @@ export async function copyRevisionBetweenClassAndHomeworkAction(
     modes,
     modeWords,
     show: setup?.show ?? {},
-    answerSeconds: setup?.answerSeconds ?? null,
-    totalSeconds: setup?.totalSeconds ?? null,
+    answerSeconds: normalizeOptionalTimerSeconds(setup?.answerSeconds, 3600),
+    totalSeconds: normalizeOptionalTimerSeconds(setup?.totalSeconds, 10_800),
     dueAt: null,
     placement: destination,
     reopened: false,
@@ -679,8 +680,8 @@ export async function updateClassRevisionAction(
       modes,
       modeWords,
       show: setup?.show ?? {},
-      answerSeconds: setup?.answerSeconds ?? null,
-      totalSeconds: setup?.totalSeconds ?? null,
+      answerSeconds: normalizeOptionalTimerSeconds(setup?.answerSeconds, 3600),
+      totalSeconds: normalizeOptionalTimerSeconds(setup?.totalSeconds, 10_800),
       reopened: true,
     }).where(eq(wordRevisions.id, id));
   });

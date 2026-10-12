@@ -1,0 +1,55 @@
+import type { TestCatalogEntry } from "./types";
+
+/** Public content from the supplied HTML files; no imported scripts or answer keys. */
+export const FIRST_AND_SECOND_CONDITIONALS: TestCatalogEntry = {
+  id: "first-and-second-conditionals", version: 1, level: "b1", category: "grammar",
+  title: "First and second conditionals", subtitle: "Real possibilities & imaginary situations",
+  cover: { src: "/images/tests/first-and-second-conditionals-v1.webp", width: 1200, height: 600,
+    alt: "B1 conditionals: If you do it again, I'll call the police! If I were you, I wouldn't do that." },
+  exercises: [
+    { id: "exercise-1", number: 1, instruction: "Choose the correct form of the verbs to make first or second conditional sentences.", questions: [
+      { id: "q1", before: "If you ", after: " free tonight, we might go out for a drink, or to the cinema.", options: ["would be", "will be", "are"] },
+      { id: "q2", before: "He ", after: " depressed if he fails the exam.", options: ["will be", "is", "would be"] },
+      { id: "q3", before: "If I didn't know you, I ", after: " you were crazy.", options: ["will think", "would think", "thought"] },
+      { id: "q4", before: "Tell me the truth if you ", after: ".", options: ["can", "could", "will"] },
+      { id: "q5", before: "If you had a bigger salary, you ", after: " more unnecessary things.", options: ["would buy", "will buy", "buy"] },
+      { id: "q6", before: "If it ", after: " for Tom, I wouldn't be here.", options: ["weren't", "won't be", "isn't"] },
+      { id: "q7", before: "You should call me if you ", after: " anything unusual.", options: ["will see", "see", "saw"] },
+      { id: "q8", before: "If they had this player, they ", after: " a single match.", options: ["wouldn't lose", "didn't lose", "won't lose"] },
+      { id: "q9", before: "Our lives would be much easier if you ", after: " closer to home.", options: ["worked", "would work", "work"] },
+      { id: "q10", before: "If I got a job in France, we ", after: " crêpes every day.", options: ["will eat", "might eat", "can eat"] },
+    ] },
+    { id: "exercise-2", number: 2, instruction: "Choose the correct form for each gap to make either the first or the second conditional. Where indicated, choose TWO correct options.", questions: [
+      { id: "q1", before: "If your boss ", after: ", you might lose your job.", options: ["finds out", "would find out", "found out"], kind: "multiple", selectionCount: 2 },
+      { id: "q2", before: "We ", after: " the keys if we don't look for them.", options: ["will never find", "'d never find", "never find"] },
+      { id: "q3", before: "Shall we go to the beach if the weather ", after: " OK?", options: ["is", "were", "was"] },
+      { id: "q4", before: "If we both saved enough money, we ", after: " go to Japan.", options: ["could", "can", "might"], kind: "multiple", selectionCount: 2 },
+      { id: "q5", before: "If you ", after: " the job, you should tell her.", options: ["didn't want", "don't want", "won't want"] },
+      { id: "q6", before: "We couldn't afford the house even if we both ", after: " double our salaries.", options: ["earn", "would earn", "earned"] },
+      { id: "q7", before: "You ", after: " it more interesting if you paid more attention.", options: ["will find", "might find", "would find"], kind: "multiple", selectionCount: 2 },
+      { id: "q8", before: "", after: "", prompt: "I ___ you my secret unless you ___ me yours.", options: ["won't tell / tell", "wouldn't tell / tell", "told / would tell"] },
+      { id: "q9", before: "Do you think he ", after: " if we invited him?", options: ["will come", "come", "would come"] },
+      { id: "q10", before: "", after: "", prompt: "It ___ better if you ___ a bit of salt.", options: ["would taste / added", "should taste / would add", "will taste / add"], kind: "multiple", selectionCount: 2 },
+    ] },
+    { id: "exercise-3", number: 3, instruction: "Fill in the gaps with the verbs in brackets in the present/past or with will/won't/would/wouldn't to make first or second conditional sentences.", questions: [
+      { id: "q1", kind: "text", before: "If you ", after: " (have) time, can you go and pick up Bridget at the station?", options: [] },
+      { id: "q2", kind: "text", before: "If she takes the 4 o'clock train, as she said, she ", after: " (arrive) at 5.15.", options: [] },
+      { id: "q3", kind: "text", before: "I ", after: " (pick) her up if I could, but I have a meeting at 4.30.", options: [] },
+      { id: "q4", kind: "text", before: "It wouldn't look serious if a few hours before the meeting I ", after: " (tell) them that I have to put it off.", options: [] },
+      { id: "q5", kind: "text", before: "I'll make quite a lot of money if everything ", after: " (go) well.", options: [] },
+      { id: "q6", kind: "text", before: "I would pick her up if my car ", after: " (not be) at the garage.", options: [] },
+      { id: "q7", kind: "text", before: "Unless there's a miracle, they ", after: " (not repair) it today.", options: [] },
+      { id: "q8", kind: "text", before: "They won't be able to fix it until they ", after: " (find) the spare part they need.", options: [] },
+      { id: "q9", kind: "text", before: "Do you think Bridget ", after: " (get) angry if nobody goes to the station to pick her up?", options: [] },
+      { id: "q10", kind: "text", before: "If it were me, I ", after: " (not get) angry.", options: [] },
+    ], passage: [
+      [{ text: "TERRY: Hey, RAY. If you " }, { questionId: "q1" }, { text: " (have) time, can you go and pick up Bridget at the station? If she takes the 4 o'clock train, as she said, she " }, { questionId: "q2" }, { text: " (arrive) at 5.15." }],
+      [{ text: "RAY: I " }, { questionId: "q3" }, { text: " (pick) her up if I could, but I have a meeting at 4.30." }],
+      [{ text: "TERRY: Can't you postpone it? You are the boss after all." }],
+      [{ text: "RAY: Yes, but I'm meeting some important clients, and it wouldn't look serious if a few hours before the meeting I " }, { questionId: "q4" }, { text: " (tell) them that I have to put it off. And the meeting is important. I'll make quite a lot of money if everything " }, { questionId: "q5" }, { text: " (go) well. Why don't you pick her up?" }],
+      [{ text: "TERRY: I would pick her up if my car " }, { questionId: "q6" }, { text: " (not be) at the garage. It's been there for days, and unless there's a miracle, they " }, { questionId: "q7" }, { text: " (not repair) it today. Something is broken and they won't be able to fix it until they " }, { questionId: "q8" }, { text: " (find) the spare part they need." }],
+      [{ text: "RAY: That's unlucky. Well, do you think Bridget " }, { questionId: "q9" }, { text: " (get) angry if nobody goes to the station to pick her up?" }],
+      [{ text: "TERRY: Well, if it were me, I " }, { questionId: "q10" }, { text: " (not get) angry." }],
+    ] },
+  ],
+};

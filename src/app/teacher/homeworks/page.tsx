@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { HomeworkResultReactionBadge } from "@/components/homework-result-reaction";
 import { latestCompletedHomeworkScore, resolveHomeworkFeedback } from "@/lib/homework-feedback";
 import { Avatar } from "@/components/avatar";
@@ -35,6 +36,7 @@ import {
 } from "@/lib/actions/lesson-homework";
 import {
   teacherWordDeckHomeworkAssignmentsAction,
+  listWordDeckStudentsAction,
   type TeacherWordDeckHomeworkCard,
 } from "@/lib/actions/word-deck";
 import {
@@ -125,7 +127,16 @@ export default async function TeacherHomeworksPage({
   const items: TeacherHomeworkListItem[] = [...lessonItems, ...activityItems, ...revisionItems, ...testItems];
   const localeName = locale === "ru" ? "ru-RU" : locale === "uk" ? "uk-UA" : "en-US";
   const groups = groupTeacherHomeworksByStudent(items, localeName);
-  const selectedGroup = groups.find((group) => group.studentId === params.student) ?? null;
+  let selectedGroup = groups.find((group) => group.studentId === params.student) ?? null;
+  // A direct class shortcut must never fall back to other students' folders.
+  if (params.student && !selectedGroup) {
+    const student = (await listWordDeckStudentsAction()).find((row) => row.id === params.student);
+    if (!student) notFound();
+    selectedGroup = {
+      studentId: student.id, studentName: student.name, studentAvatarUrl: null,
+      items: [], counts: { total: 0, notStarted: 0, inProgress: 0, submitted: 0, reviewed: 0 },
+    };
+  }
   const initialSort = readTeacherHomeworkSort(params.sort, params.dir, selectedGroup ? "assigned" : "name");
   const sortLabels: HomeworkSortLabels = {
     sortBy: selectedGroup ? t.teacherHomeworks.sortFolderBy : t.teacherHomeworks.sortBy,
@@ -134,8 +145,9 @@ export default async function TeacherHomeworksPage({
     waiting: t.teacherHomeworks.waiting, notStarted: t.teacherHomeworks.notStarted,
     inProgress: t.teacherHomeworks.inProgress, reverseSort: t.teacherHomeworks.reverseSort,
   };
-  const students = groups.length;
-  const waiting = items.filter((item) => item.submittedAt && !item.reviewedAt).length;
+  const summaryItems = selectedGroup?.items ?? items;
+  const students = selectedGroup ? 1 : groups.length;
+  const waiting = summaryItems.filter((item) => item.submittedAt && !item.reviewedAt).length;
   const dateOptions: Intl.DateTimeFormatOptions = {
     day: "numeric",
     month: "short",
@@ -163,12 +175,12 @@ export default async function TeacherHomeworksPage({
         </div>
         <div className="grid grid-cols-3 gap-2">
           <Summary value={students} label={t.teacherHomeworks.students} Icon={IconUsers} />
-          <Summary value={items.length} label={t.teacherHomeworks.assignments} Icon={IconCheckCircle} />
+          <Summary value={summaryItems.length} label={t.teacherHomeworks.assignments} Icon={IconCheckCircle} />
           <Summary value={waiting} label={t.teacherHomeworks.waiting} Icon={IconClock} accent />
         </div>
       </header>
 
-      {items.length === 0 ? (
+      {items.length === 0 && !selectedGroup ? (
         <section className="rounded-2xl bg-surface p-10 text-center ring-1 ring-line">
           <IconCheckCircle className="mx-auto h-11 w-11 text-accent/60" />
           <p className="mt-3 text-sm font-bold text-content">{t.teacherHomeworks.empty}</p>
@@ -191,7 +203,12 @@ export default async function TeacherHomeworksPage({
 
           <StudentFolderHeader group={selectedGroup} labels={t.teacherHomeworks} />
 
-          <HomeworkGroupedList
+          {selectedGroup.items.length === 0 ? (
+            <section className="rounded-2xl bg-surface p-10 text-center ring-1 ring-line">
+              <IconCheckCircle className="mx-auto h-11 w-11 text-accent/60" />
+              <p className="mt-3 text-sm font-bold text-content">{t.teacherHomeworks.empty}</p>
+            </section>
+          ) : <HomeworkGroupedList
             locale={localeName}
             initialSort={initialSort}
             sortLabels={sortLabels}
@@ -247,7 +264,7 @@ export default async function TeacherHomeworksPage({
               />
               ),
             }))}
-          />
+          />}
         </>
       ) : (
         <>
@@ -580,6 +597,7 @@ function HomeworkCard({
     spellingTitle: string;
     guessByPicture: string;
     guessByDescription: string;
+    descriptionSentence: string;
     title: string;
   };
   assignedDateFormat: Intl.DateTimeFormat;
@@ -592,6 +610,8 @@ function HomeworkCard({
       ? activityLabels.spellingTitle
       : item.activityType === "GUESS_PICTURE"
         ? activityLabels.guessByPicture
+        : item.activityType === "DESCRIPTION_SENTENCE"
+          ? activityLabels.descriptionSentence
         : item.activityType === "GUESS_DESCRIPTION"
           ? activityLabels.guessByDescription
           : activityLabels.title

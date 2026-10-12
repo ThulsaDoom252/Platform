@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
+import { TimerNumberInput } from "@/components/timer-number-input";
+import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
 import { fmt } from "@/lib/i18n";
 import {
   addGuessPicturePresetToClassAction,
@@ -263,7 +265,7 @@ export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, 
   const [mode, setMode] = useState<GameMode>(preset?.mode ?? "PICTURE");
   const [shuffleWords, setShuffleWords] = useState(preset?.shuffleWords ?? true);
   const [shuffleDecks, setShuffleDecks] = useState(preset?.shuffleDecks ?? false);
-  const [seconds, setSeconds] = useState(preset?.seconds ?? 10);
+  const [seconds, setSeconds] = useState(preset?.seconds ?? DEFAULT_TIMER_SECONDS);
   const [customTitle, setCustomTitle] = useState<string | null>(preset?.title ?? null);
   const [error, setError] = useState<string | null>(null);
 
@@ -359,7 +361,7 @@ export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, 
           </div>
         </div>
         <aside className="flex flex-col gap-3">
-          <label className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 p-3"><span className="text-sm font-bold text-content">{t.game.seconds}</span><input type="number" min={3} max={120} value={seconds} onChange={(event) => setSeconds(Number(event.target.value) || 10)} className="h-9 w-20 rounded-xl border border-line bg-surface px-3 text-sm text-content" /></label>
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 p-3"><span className="text-sm font-bold text-content">{t.game.seconds}</span><TimerNumberInput min={0} max={120} value={seconds} onChange={setSeconds} className="h-9 w-20 rounded-xl border border-line bg-surface px-3 text-sm text-content" /></label>
           <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-surface-2 p-3"><input type="checkbox" checked={shuffleWords} onChange={(event) => setShuffleWords(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)]" /><span><span className="block text-sm font-bold text-content">{t.game.shuffleWords}</span><span className="block text-xs text-faint">{t.game.shuffleWordsHint}</span></span></label>
           <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-surface-2 p-3"><input type="checkbox" checked={shuffleDecks} onChange={(event) => setShuffleDecks(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)]" /><span><span className="block text-sm font-bold text-content">{t.game.shuffleDecks}</span><span className="block text-xs text-faint">{t.game.shuffleDecksHint}</span></span></label>
           <div className={cn("rounded-2xl p-4", selectedEligible.length > 0 ? "bg-surface-2" : "bg-amber-500/10 ring-1 ring-amber-500/40")}><p className="text-xs font-bold text-muted">{t.wordDeck.summary}</p><p className="mt-2 text-3xl font-black text-content">{selectedEligible.length * (mode === "MIXED" ? 2 : 1)}</p><p className="text-xs text-faint">{t.wordDeck.cardsShort}</p></div>

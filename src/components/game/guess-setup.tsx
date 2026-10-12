@@ -9,6 +9,8 @@
  */
 import { useEffect, useState, useTransition } from "react";
 import { useT } from "@/components/i18n-provider";
+import { TimerNumberInput } from "@/components/timer-number-input";
+import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
 import { fmt } from "@/lib/i18n";
 import {
   listGameVocabAction,
@@ -38,7 +40,7 @@ export function GuessSetup({
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [shuffleWords, setShuffleWords] = useState(true);
   const [shuffleDecks, setShuffleDecks] = useState(false);
-  const [seconds, setSeconds] = useState(10);
+  const [seconds, setSeconds] = useState(DEFAULT_TIMER_SECONDS);
   const [error, setError] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
 
@@ -301,12 +303,11 @@ export function GuessSetup({
 
       <label className="flex items-center gap-3">
         <span className="text-sm font-medium text-content">{t.game.seconds}</span>
-        <input
-          type="number"
-          min={3}
+        <TimerNumberInput
+          min={0}
           max={120}
           value={seconds}
-          onChange={(e) => setSeconds(Number(e.target.value) || 10)}
+          onChange={setSeconds}
           className="h-9 w-20 rounded-xl border border-line bg-surface-2 px-3 text-sm text-content outline-none focus:border-accent"
         />
       </label>

@@ -30,6 +30,8 @@ const ACTIVITY_ORDER: TeacherHomeworkActivityGroupType[] = [
 function activityType(item: TeacherHomeworkGroupable): TeacherHomeworkActivityGroupType {
   if (item.kind === "REVISION") return "REVISION";
   if (item.kind === "TEST") return "TEST";
+  // Both description modes share the description group; cards retain their specific mode label.
+  if (item.activityType === "DESCRIPTION_SENTENCE") return "GUESS_DESCRIPTION";
   return ACTIVITY_ORDER.includes(item.activityType as TeacherHomeworkActivityGroupType)
     ? item.activityType as TeacherHomeworkActivityGroupType
     : "OTHER";

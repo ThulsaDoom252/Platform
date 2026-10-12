@@ -103,6 +103,8 @@ export function HomeworkSourceAssigner({
           title: deck.title,
           meta: deck.settings.gameType === "SPELLING"
             ? t.wordDeck.spellingTitle
+            : deck.settings.gameType === "DESCRIPTION_SENTENCE"
+              ? t.wordDeck.descriptionSentence
             : deck.settings.gameType === "GUESS_DESCRIPTION"
               ? t.wordDeck.guessByDescription
               : t.wordDeck.wordsGame,
