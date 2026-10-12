@@ -8,7 +8,7 @@ export type TeacherHomeworkGroupable = {
 };
 
 export type TeacherHomeworkActivityGroupType =
-  | "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE" | "SPELLING" | "REVISION" | "TEST" | "OTHER";
+  | "WORDS" | "GUESS_DESCRIPTION" | "GUESS_PICTURE" | "SPELLING" | "TENSE_CORRECTION" | "REVISION" | "TEST" | "OTHER";
 
 export type TeacherHomeworkDateGroup<T> = {
   /** School-local calendar day; null means a flat list or an invalid old date. */
@@ -24,7 +24,7 @@ export type TeacherHomeworkContentGroup<T> = {
 };
 
 const ACTIVITY_ORDER: TeacherHomeworkActivityGroupType[] = [
-  "WORDS", "GUESS_DESCRIPTION", "GUESS_PICTURE", "SPELLING", "REVISION", "TEST", "OTHER",
+  "WORDS", "GUESS_DESCRIPTION", "GUESS_PICTURE", "SPELLING", "TENSE_CORRECTION", "REVISION", "TEST", "OTHER",
 ];
 
 function activityType(item: TeacherHomeworkGroupable): TeacherHomeworkActivityGroupType {

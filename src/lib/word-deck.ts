@@ -1,12 +1,13 @@
 /** Чистая логика активности «Колода слов». */
 import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
+import { normalizeTenseCorrectionSettings, type TenseCorrectionCardInfo, type TenseCorrectionSettings } from "./tense-correction-settings";
 
 export type WordDeckTimerMode = "NONE" | "GAME" | "CARD";
-export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION" | "DESCRIPTION_SENTENCE" | "GUESS_PICTURE" | "SPELLING";
+export type WordDeckGameType = "WORDS" | "GUESS_DESCRIPTION" | "DESCRIPTION_SENTENCE" | "GUESS_PICTURE" | "SPELLING" | "TENSE_CORRECTION";
 export type WordDeckPhase = "GUESS" | "SENTENCE" | "COMPLETE";
 
 export function isWordDeckDescriptionGame(gameType: WordDeckGameType) {
-  return gameType === "GUESS_DESCRIPTION" || gameType === "DESCRIPTION_SENTENCE";
+  return gameType === "GUESS_DESCRIPTION" || gameType === "DESCRIPTION_SENTENCE" || gameType === "TENSE_CORRECTION";
 }
 export type GuessPictureMode = "PICTURE" | "TRANSLATION" | "MIXED";
 export type WordDeckOwner = "TEACHER" | "STUDENT" | null;
@@ -36,6 +37,7 @@ export type WordDeckSourceCard = {
   transcriptionUk?: string | null;
   tip?: string | null;
   examples?: { en: string; tr: string }[];
+  correction?: TenseCorrectionCardInfo;
 };
 
 export const MIN_WORD_DECK_WORDS = 4;
@@ -130,7 +132,7 @@ export function isWordDeckFinished(state: Pick<WordDeckLiveState, "at" | "faceUp
   settings: Pick<WordDeckSettings, "gameType">) {
   if (state.at < 0 || state.at < state.deck.length - 1 || state.deck.length === 0) return false;
   if (settings.gameType === "DESCRIPTION_SENTENCE") return state.faceUp && state.phase === "COMPLETE";
-  return settings.gameType === "GUESS_DESCRIPTION" || settings.gameType === "GUESS_PICTURE" ? state.faceUp : true;
+  return settings.gameType === "GUESS_DESCRIPTION" || settings.gameType === "GUESS_PICTURE" || settings.gameType === "TENSE_CORRECTION" ? state.faceUp : true;
 }
 
 export type WordDeckHomeworkTracking = {
@@ -207,6 +209,7 @@ export type WordDeckSettings = {
   allowUkAudio: boolean;
   showTips: boolean;
   autoPronounceUk: boolean;
+  correction?: TenseCorrectionSettings;
 };
 
 export const DEFAULT_WORD_DECK_SETTINGS: WordDeckSettings = {
@@ -255,7 +258,7 @@ export function normalizeWordDeckSettings(
   ];
   return {
     gameType:
-      value?.gameType === "GUESS_DESCRIPTION" || value?.gameType === "DESCRIPTION_SENTENCE" || value?.gameType === "GUESS_PICTURE" || value?.gameType === "SPELLING"
+      value?.gameType === "GUESS_DESCRIPTION" || value?.gameType === "DESCRIPTION_SENTENCE" || value?.gameType === "GUESS_PICTURE" || value?.gameType === "SPELLING" || value?.gameType === "TENSE_CORRECTION"
         ? value.gameType
         : "WORDS",
     timerMode,
@@ -263,8 +266,8 @@ export function normalizeWordDeckSettings(
     cardSeconds: clamp(value?.cardSeconds, 0, 300, DEFAULT_TIMER_SECONDS),
     guessSeconds: clamp(value?.guessSeconds, 0, 300, clamp(value?.cardSeconds, 0, 300, DEFAULT_TIMER_SECONDS)),
     sentenceSeconds: clamp(value?.sentenceSeconds, 0, 300, clamp(value?.cardSeconds, 0, 300, DEFAULT_TIMER_SECONDS)),
-    repeats: clamp(value?.repeats, 1, 20, 1),
-    alternate: value?.alternate === true,
+    repeats: value?.gameType === "TENSE_CORRECTION" ? 1 : clamp(value?.repeats, 1, 20, 1),
+    alternate: value?.gameType !== "TENSE_CORRECTION" && value?.alternate === true,
     studentPercent: clamp(value?.studentPercent, 0, 100, 50),
     sound: value?.sound !== false,
     showIcons: value?.showIcons === true,
@@ -284,11 +287,13 @@ export function normalizeWordDeckSettings(
     allowUkAudio: value?.allowUkAudio === true,
     showTips: value?.showTips !== false,
     autoPronounceUk: value?.autoPronounceUk === true,
+    ...(value?.gameType === "TENSE_CORRECTION" ? { correction: normalizeTenseCorrectionSettings(value.correction) } : {}),
   };
 }
 
 export function minimumWordDeckWords(rawSettings: Partial<WordDeckSettings>): number {
-  return normalizeWordDeckSettings(rawSettings).gameType === "SPELLING"
+  const kind = normalizeWordDeckSettings(rawSettings).gameType;
+  return kind === "SPELLING" || kind === "TENSE_CORRECTION"
     ? 1
     : MIN_WORD_DECK_WORDS;
 }

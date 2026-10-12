@@ -1,6 +1,8 @@
 import type { Locale } from "@/lib/i18n";
 
 const en = {
+  teacherFeedback: "Teacher feedback", feedbackHint: "Optional. The test is already completed; feedback does not change the score.",
+  editFeedback: "Reaction & comment", teacherComment: "Teacher comment", noReaction: "No reaction", saveFeedback: "Save feedback", feedbackSaved: "Feedback saved.",
   tests: "Tests", exercise: "Exercise", questions: "questions", exercises: "exercises",
   open: "Open test", practice: "Teacher practice", practiceHint: "Try the test yourself. Your answers do not change any student's results.",
   assign: "Assign to a student", student: "Student", chooseStudent: "Choose a student", all: "Whole test", selected: "Selected exercises",
@@ -25,6 +27,8 @@ const en = {
 };
 export type TestLabels = typeof en;
 const ru: TestLabels = {
+  teacherFeedback: "Обратная связь учителя", feedbackHint: "Необязательно. Тест уже завершён; обратная связь не меняет балл.",
+  editFeedback: "Реакция и комментарий", teacherComment: "Комментарий учителя", noReaction: "Без реакции", saveFeedback: "Сохранить", feedbackSaved: "Обратная связь сохранена.",
   tests: "Тесты", exercise: "Упражнение", questions: "вопросов", exercises: "упражнений",
   open: "Открыть тест", practice: "Пройти самому", practiceHint: "Твои ответы не изменяют результаты учеников.",
   assign: "Назначить ученику", student: "Ученик", chooseStudent: "Выбери ученика", all: "Весь тест", selected: "Выбранные упражнения",
@@ -48,6 +52,8 @@ const ru: TestLabels = {
   error: "Не удалось сохранить. Попробуй ещё раз — твои ответы остались на месте.", invalid: "Выбери ученика и хотя бы одно готовое упражнение.", forbidden: "Нет доступа к этому тесту.",
 };
 const uk: TestLabels = {
+  teacherFeedback: "Зворотний зв'язок учителя", feedbackHint: "Необов'язково. Тест уже завершено; зворотний зв'язок не змінює бал.",
+  editFeedback: "Реакція та коментар", teacherComment: "Коментар учителя", noReaction: "Без реакції", saveFeedback: "Зберегти", feedbackSaved: "Зворотний зв'язок збережено.",
   tests: "Тести", exercise: "Вправа", questions: "запитань", exercises: "вправ",
   open: "Відкрити тест", practice: "Пройти самостійно", practiceHint: "Твої відповіді не змінюють результати учнів.",
   assign: "Призначити учню", student: "Учень", chooseStudent: "Вибери учня", all: "Увесь тест", selected: "Вибрані вправи",

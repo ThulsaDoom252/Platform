@@ -5,6 +5,7 @@ import {
 import { listGuessPicturePresetsAction } from "@/lib/actions/guess-picture";
 import { listRevisionPresetsAction } from "@/lib/actions/revision";
 import { WordDeckStudio } from "@/components/game/word-deck-studio";
+import { TenseCorrectionStudio } from "@/components/game/tense-correction-studio";
 import { GuessPictureStudio } from "@/components/game/guess-picture-studio";
 import { RevisionActivityStudio } from "@/components/revision/revision-activity-studio";
 
@@ -35,7 +36,7 @@ export default async function ActivitiesPage({
       </div>
 
       <WordDeckStudio
-        initialActivities={wordDeckActivities.filter((activity) => activity.settings.gameType !== "SPELLING")}
+        initialActivities={wordDeckActivities.filter((activity) => activity.settings.gameType !== "SPELLING" && activity.settings.gameType !== "TENSE_CORRECTION")}
         initialActivityId={initialActivityId}
       />
       <WordDeckStudio
@@ -44,6 +45,7 @@ export default async function ActivitiesPage({
         initialActivityId={initialActivityId}
       />
       <RevisionActivityStudio initialPresets={revisionPresets} />
+      <TenseCorrectionStudio initialActivities={wordDeckActivities.filter((activity) => activity.settings.gameType === "TENSE_CORRECTION")} initialActivityId={initialActivityId} />
       <GuessPictureStudio initialPresets={guessPicturePresets} />
     </div>
   );

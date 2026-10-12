@@ -13,6 +13,7 @@ import {
   GuessPicturePresetForm,
 } from "@/components/game/guess-picture-studio";
 import { WordDeckForm } from "@/components/game/word-deck-studio";
+import { TenseCorrectionStudio } from "@/components/game/tense-correction-studio";
 import {
   addGuessPicturePresetToClassAction,
   deleteGuessPicturePresetAction,
@@ -37,7 +38,7 @@ import {
 } from "@/lib/actions/revision";
 
 type GameKind = "WORD_DECK" | "GUESS_PICTURE" | "REVISION";
-type PickerStage = "CATALOG" | "WORD_PRESETS" | "GUESS_PRESETS" | "REVISION_PRESETS" | "WORD_CREATE" | "GUESS_CREATE" | "SAVE_OFFER";
+type PickerStage = "CATALOG" | "WORD_PRESETS" | "GUESS_PRESETS" | "REVISION_PRESETS" | "WORD_CREATE" | "GUESS_CREATE" | "SAVE_OFFER" | "TENSE_CORRECTION";
 
 type PendingPreset = {
   kind: GameKind;
@@ -87,7 +88,7 @@ export function ClassActivityPicker({
   }, [t.activityPicker.loadFailed]);
 
   const sortedWords = useMemo(
-    () => [...(wordPresets ?? [])].sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: "base" })),
+    () => [...(wordPresets ?? [])].filter((row) => row.settings.gameType !== "TENSE_CORRECTION").sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: "base" })),
     [wordPresets],
   );
   const sortedGuesses = useMemo(
@@ -190,6 +191,13 @@ export function ClassActivityPicker({
       await onAdded();
     });
   };
+
+  if (stage === "TENSE_CORRECTION") {
+    return wordPresets === null ? <p className="text-sm text-faint">{t.common.loading}</p> : <TenseCorrectionStudio
+      initialActivities={wordPresets.filter((row) => row.settings.gameType === "TENSE_CORRECTION")}
+      studentId={studentId} onAdded={onAdded} onCancel={() => go("CATALOG")}
+    />;
+  }
 
   if (stage === "WORD_CREATE") {
     return (
@@ -375,7 +383,7 @@ export function ClassActivityPicker({
         <GameCard
           title={t.wordDeck.title}
           description={t.wordDeck.subtitle}
-          count={wordPresets?.length}
+          count={wordPresets === null ? undefined : sortedWords.length}
           color="violet"
           icon={<span className="text-3xl">♠</span>}
           onClick={() => go("WORD_PRESETS")}
@@ -399,6 +407,10 @@ export function ClassActivityPicker({
           onClick={() => go("GUESS_PRESETS")}
           presetLabel={t.activityPicker.presetsAvailable}
         />
+        <GameCard title={t.tenseCorrection.title} description={t.tenseCorrection.subtitle}
+          count={wordPresets?.filter((row) => row.settings.gameType === "TENSE_CORRECTION").length}
+          color="emerald" icon={<span className="text-3xl">✏️</span>}
+          onClick={() => go("TENSE_CORRECTION")} presetLabel={t.activityPicker.presetsAvailable} />
       </div>
     </section>
   );

@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { readClassLive } from "@/lib/class-live-request";
 import { wordDeckTextSize } from "@/lib/word-deck-display";
+import { TENSE_NAMES, tenseCorrectionExplanation } from "@/lib/tense-correction-settings";
 
 export type WordDeckPlayable = {
   id: string;
@@ -129,7 +130,7 @@ export function WordDeckBoard({
   /** Teacher rating control shown only after the last card. */
   reviewEditor?: ReactNode;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const settings = useMemo(() => normalizeWordDeckSettings(activity.settings), [activity.settings]);
   const initial = useMemo(
     () => buildWordDeck(activity.cards, settings),
@@ -157,6 +158,7 @@ export function WordDeckBoard({
   const canControlTimer = timerControls && !observer && !homework && settings.timerMode !== "NONE";
   const descriptionGame = isWordDeckDescriptionGame(settings.gameType);
   const combinedGame = settings.gameType === "DESCRIPTION_SENTENCE";
+  const correctionGame = settings.gameType === "TENSE_CORRECTION";
   const spellingGame = settings.gameType === "SPELLING";
   const pictureGame = settings.gameType === "GUESS_PICTURE";
   const finished = isWordDeckFinished({ deck, at, faceUp, phase }, settings);
@@ -422,6 +424,7 @@ export function WordDeckBoard({
 
   const showAnswer = () => {
     if (observer || (!descriptionGame && !pictureGame) || !started) return;
+    if (correctionGame && settings.timerMode === "CARD") setTimerPaused(true);
     if (combinedGame && phase === "GUESS") revealSentence();
     else setFaceUp(true);
   };
@@ -444,7 +447,7 @@ export function WordDeckBoard({
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
           <p className="text-[11px] font-black uppercase tracking-[.22em] text-white/55">
-            {spellingGame ? t.wordDeck.spellingEyebrow : t.wordDeck.eyebrow}
+            {correctionGame ? t.tenseCorrection.title : spellingGame ? t.wordDeck.spellingEyebrow : t.wordDeck.eyebrow}
           </p>
           <h3 className="truncate text-xl font-black sm:text-2xl">{activity.title}</h3>
         </div>
@@ -482,7 +485,7 @@ export function WordDeckBoard({
                   onChange={(event) => setReadDescriptions(event.target.checked)}
                   className="h-3.5 w-3.5 accent-white"
                 />
-                🔊 {t.wordDeck.readDescriptions}
+                🔊 {correctionGame ? t.tenseCorrection.readSentences : t.wordDeck.readDescriptions}
               </label>
             )}
             <button
@@ -598,6 +601,16 @@ export function WordDeckBoard({
                 )}>
                   {current?.word}
                 </span>
+                {correctionGame && faceUp && current?.correction && (
+                  <span data-tense-correction-answer className="mt-4 block w-full text-center">
+                    <span className={cn("inline-block rounded-lg px-3 py-2 text-sm font-black", current.correction.originallyCorrect ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900")}>
+                      {current.correction.originallyCorrect ? `✓ ${t.tenseCorrection.initiallyCorrect}` : `✏️ ${t.tenseCorrection.needsCorrection}`}
+                    </span>
+                    <span className="mt-3 block text-base font-black text-indigo-700">{TENSE_NAMES[current.correction.tenseId]}</span>
+                    <span className="mt-2 block text-sm font-bold text-slate-800">{t.tenseCorrection.explanation}</span>
+                    <span className="mt-1 block break-words text-sm leading-relaxed text-slate-600">{tenseCorrectionExplanation(current.correction, locale)}</span>
+                  </span>
+                )}
                 {spellingGame && (
                   <div className="mt-4 w-full max-w-2xl text-center">
                     {(current?.transcriptionUs || current?.transcriptionUk) && (
@@ -619,7 +632,7 @@ export function WordDeckBoard({
             </span>
           </button>
         )}
-        {descriptionGame && !combinedGame && feedback && feedback !== "TIME_UP" && (
+        {descriptionGame && !correctionGame && !combinedGame && feedback && feedback !== "TIME_UP" && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
             {feedback === "RIGHT" ? (
               <div className="word-deck-correct text-center drop-shadow-2xl">
@@ -639,6 +652,8 @@ export function WordDeckBoard({
           </div>
         )}
       </div>
+
+      {correctionGame && started && !faceUp && <p className="mx-auto mt-3 max-w-xl text-center text-sm font-semibold text-white/80">{t.tenseCorrection.prompt}</p>}
 
       {combinedGame && started && (
         <div data-word-deck-phase={phase} role="status" aria-live="polite" className="mx-auto mt-3 max-w-xl rounded-xl border border-white/20 bg-black/20 px-4 py-3 text-center text-sm font-bold">
@@ -721,13 +736,13 @@ export function WordDeckBoard({
         </div>
       )}
 
-      {!observer && descriptionGame && started && !faceUp && (combinedGame || expired || !!verdict) && (
+      {!observer && descriptionGame && started && !faceUp && (correctionGame || combinedGame || expired || !!verdict) && (
         <button
           type="button"
           onClick={showAnswer}
           className="mt-2 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-white backdrop-blur transition hover:bg-white/20"
         >
-          {combinedGame ? t.wordDeck.startSentence : t.wordDeck.openAnswer}
+          {correctionGame ? t.tenseCorrection.reveal : combinedGame ? t.wordDeck.startSentence : t.wordDeck.openAnswer}
         </button>
       )}
 

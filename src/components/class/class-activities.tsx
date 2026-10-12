@@ -581,7 +581,7 @@ export function ClassActivities({ studentId }: { studentId: string }) {
         {activityItems.map((item, itemIndex) => {
           const review = meta.reviews[item.key];
           const answerEligible = item.kind === "PICTURE" || (
-            item.kind === "DECK" && ["WORDS", "GUESS_DESCRIPTION", "DESCRIPTION_SENTENCE", "GUESS_PICTURE"].includes(item.deck.settings.gameType)
+            item.kind === "DECK" && ["WORDS", "GUESS_DESCRIPTION", "DESCRIPTION_SENTENCE", "GUESS_PICTURE", "TENSE_CORRECTION"].includes(item.deck.settings.gameType)
           );
           const finished = item.kind === "PICTURE"
             ? item.game.status === "DONE"

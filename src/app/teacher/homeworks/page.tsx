@@ -63,7 +63,7 @@ import { getSession } from "@/lib/session";
 type TeacherHomeworkListItem = TeacherHomeworkAssignmentCard | TeacherWordDeckHomeworkCard | TeacherRevisionHomeworkCard | TestHomeworkCard;
 
 function homeworkSortData(item: TeacherHomeworkListItem): TeacherHomeworkOrderable {
-  return { id: item.id, title: item.title, studentName: item.studentName, nextLessonAt: item.nextLessonAt,
+  return { id: item.id, kind: item.kind, title: item.title, studentName: item.studentName, nextLessonAt: item.nextLessonAt,
     assignedAt: item.assignedAt, submittedAt: item.submittedAt, reviewedAt: item.reviewedAt, started: item.started };
 }
 
@@ -147,7 +147,7 @@ export default async function TeacherHomeworksPage({
   };
   const summaryItems = selectedGroup?.items ?? items;
   const students = selectedGroup ? 1 : groups.length;
-  const waiting = summaryItems.filter((item) => item.submittedAt && !item.reviewedAt).length;
+  const waiting = summaryItems.filter((item) => teacherHomeworkOverviewState(item) === "submitted").length;
   const dateOptions: Intl.DateTimeFormatOptions = {
     day: "numeric",
     month: "short",
@@ -226,6 +226,7 @@ export default async function TeacherHomeworksPage({
                 GUESS_DESCRIPTION: t.wordDeck.guessByDescription,
                 GUESS_PICTURE: t.wordDeck.guessByPicture,
                 SPELLING: t.wordDeck.spellingTitle,
+                TENSE_CORRECTION: t.tenseCorrection.title,
                 REVISION: t.revision.title,
                 TEST: t.nav.tests,
                 OTHER: t.teacherHomeworks.otherActivities,
@@ -258,7 +259,7 @@ export default async function TeacherHomeworksPage({
                 key={item.id}
                 item={item}
                 labels={t.teacherHomeworks}
-                activityLabels={t.wordDeck}
+                activityLabels={{ ...t.wordDeck, tenseCorrection: t.tenseCorrection.title }}
                 assignedDateFormat={assignedDateFormat}
                 lessonDateFormat={lessonDateFormat}
               />
@@ -598,6 +599,7 @@ function HomeworkCard({
     guessByPicture: string;
     guessByDescription: string;
     descriptionSentence: string;
+    tenseCorrection: string;
     title: string;
   };
   assignedDateFormat: Intl.DateTimeFormat;
@@ -606,7 +608,9 @@ function HomeworkCard({
   const state = teacherHomeworkOverviewState(item);
   const activity = item.kind === "ACTIVITY";
   const activityName = activity
-    ? item.activityType === "SPELLING"
+    ? item.activityType === "TENSE_CORRECTION"
+      ? activityLabels.tenseCorrection
+      : item.activityType === "SPELLING"
       ? activityLabels.spellingTitle
       : item.activityType === "GUESS_PICTURE"
         ? activityLabels.guessByPicture

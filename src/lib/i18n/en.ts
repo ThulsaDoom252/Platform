@@ -1732,6 +1732,14 @@ export const en = {
     signingIn: "Signing in…",
   },
 
+  tenseCorrection: {
+    title: "Tense correction", subtitle: "Open the brackets, correct the verb form or explain why it is already correct.",
+    create: "Create a game", tenses: "Choose tenses", count: "Sentences per tense (1–10)",
+    correctCount: "Initially correct sentences", correctHint: "An exact number across the whole mixed deck. All other cards show an infinitive in brackets.",
+    total: "Total sentences: {n}", choose: "Choose at least one tense.", initiallyCorrect: "The original form is correct", needsCorrection: "The original form needs correction",
+    explanation: "Why this tense?", reveal: "Open the answer", prompt: "Use the correct tense. Is the verb form in brackets already correct?",
+    noPresets: "No saved games yet.", timer: "Timer", timerSentence: "Per sentence", readSentences: "Read sentences aloud", seconds: "Seconds", name: "Game name",
+  },
   comingSoon: {
     title: "Section in progress",
     text: "This block is coming in the next iteration.",

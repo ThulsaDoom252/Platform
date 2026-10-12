@@ -7,6 +7,7 @@ import { TEST_LABELS } from "@/lib/tests/labels";
 import { testTone } from "./test-result-view";
 import { TestAssignmentControls } from "./test-assignment-controls";
 import { TestDeadlineBadge } from "./test-deadline-badge";
+import { TestTeacherFeedbackPanel } from "./test-teacher-feedback";
 
 export function TestAssignmentCard({ item, teacher, locale }: { item: TestHomeworkCard; teacher?: boolean; locale: Locale }) {
   const labels = TEST_LABELS[locale];
@@ -19,6 +20,8 @@ export function TestAssignmentCard({ item, teacher, locale }: { item: TestHomewo
     <TestDeadlineBadge dueAt={item.dueAt} locale={locale} completed={!!item.submittedAt} />
     <div className="flex flex-wrap justify-between gap-2 border-t border-line pt-3 text-[10px] font-semibold text-faint"><span>{labels.assignedOn}: {new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "Europe/Simferopol" }).format(new Date(item.assignedAt))}</span><span>{labels.attempt}: {item.attemptCount}</span></div>
   </Link>
+  {!!item.submittedAt && (teacher || item.teacherFeedback) && <div className="border-t border-line p-4"><TestTeacherFeedbackPanel key={item.latestAttemptId}
+    assignmentId={item.id} attemptId={item.latestAttemptId} completed feedback={item.teacherFeedback} teacher={teacher} locale={locale} /></div>}
   {teacher && <div className="border-t border-line p-4"><TestAssignmentControls assignmentId={item.id} dueAt={item.dueAt} completed={!!item.submittedAt} /></div>}
   </section>;
 }

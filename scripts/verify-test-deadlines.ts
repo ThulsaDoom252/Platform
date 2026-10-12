@@ -16,6 +16,9 @@ import * as types from "../src/lib/tests/types";
 import * as persistence from "../src/lib/tests/persistence";
 import { testAssignmentNotification } from "../src/lib/tests/assignment-notification";
 import { parseTestDeadlineInput } from "../src/lib/tests/deadline";
+import { isHomeworkResultReaction } from "../src/lib/homework-feedback";
+import { readTestTeacherFeedback } from "../src/lib/tests/feedback";
+import { teacherHomeworkOverviewState } from "../src/lib/teacher-homework-order";
 
 async function main() {
   const production = process.argv.includes("--production");
@@ -48,6 +51,7 @@ async function main() {
           "@/lib/notifications": { queueStudentNotification: async () => {} }, "@/lib/realtime-server": { publishUserRealtime: async (...args: unknown[]) => { events.push(args); } },
           "@/lib/tests/catalog": { findLibraryTest }, "@/lib/tests/grading": { gradeTestExercise, libraryTestKey },
           "@/lib/tests/types": types, "@/lib/tests/persistence": persistence, "@/lib/tests/assignment-notification": { testAssignmentNotification },
+          "@/lib/homework-feedback": { isHomeworkResultReaction }, "@/lib/tests/feedback": { readTestTeacherFeedback },
         };
         const env = { exports: {}, require: (name: string) => { assert.ok(name in modules); return modules[name]; } };
         runInNewContext(ts.transpileModule(readFileSync("src/lib/actions/tests.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, env);
@@ -72,6 +76,19 @@ async function main() {
         const complete = await actions.checkAssignedTestAction({ assignmentId: ids.assignment, attemptId: ids.attempt, exerciseId: "exercise-1", answers: {} });
         assert.ok(complete.ok); if (!complete.ok) throw new Error("Fixture failed to complete");
         assert.ok(complete.value.completedAt); assert.equal(complete.value.percent, 0);
+        const feedbackInput = { assignmentId: ids.assignment, attemptId: ids.attempt, manualReaction: "good" as const, teacherNote: "Check present tense after when.\nGood effort." };
+        assert.equal((await actions.saveTestFeedbackAction(feedbackInput)).ok, false, "student cannot edit feedback");
+        session = { userId: ids.teacher, role: "TEACHER" };
+        assert.equal(teacherHomeworkOverviewState((await actions.testHomeworkCardsAction(ids.student))[0]), "reviewed", "completed 0% test is Done, not awaiting review");
+        const feedbackSaved = await actions.saveTestFeedbackAction(feedbackInput);
+        assert.ok(feedbackSaved.ok); if (!feedbackSaved.ok) throw new Error("Feedback was not saved");
+        assert.equal(feedbackSaved.value.teacherFeedback?.manualReaction, "good");
+        for (const key of ["results", "completedAt", "total", "correct", "percent"] as const) assert.deepEqual(feedbackSaved.value[key], complete.value[key]);
+        assert.equal((await actions.testHomeworkCardsAction(ids.student))[0].teacherFeedback?.teacherNote, feedbackInput.teacherNote);
+        session = { userId: ids.student, role: "STUDENT" };
+        assert.equal((await actions.assignedTestDetailAction(ids.assignment))?.latestAttempt?.teacherFeedback?.manualReaction, "good");
+        session = { userId: ids.otherTeacher, role: "TEACHER" };
+        assert.equal((await actions.saveTestFeedbackAction(feedbackInput)).ok, false);
         session = { userId: ids.teacher, role: "TEACHER" };
         const forbidden = await actions.updateTestDeadlineAction({ assignmentId: ids.assignment, dueAt });
         assert.ok(!forbidden.ok); if (!forbidden.ok) assert.equal(forbidden.error, "completed");
@@ -79,7 +96,11 @@ async function main() {
         assert.ok((await actions.testHomeworkCardsAction(ids.student))[0].submittedAt);
         assert.ok((await actions.restartAssignedTestAction({ assignmentId: ids.assignment, requestId: ids.restart, notifyStudent: false })).ok);
         assert.ok((await actions.updateTestDeadlineAction({ assignmentId: ids.assignment, dueAt })).ok);
-        assert.deepEqual(await actions.testAttemptDetailAction(ids.assignment, ids.attempt), complete.value);
+        assert.deepEqual(await actions.testAttemptDetailAction(ids.assignment, ids.attempt), feedbackSaved.value);
+        assert.equal((await actions.assignedTestDetailAction(ids.assignment))?.latestAttempt?.teacherFeedback, null);
+        assert.equal((await actions.saveTestFeedbackAction({ ...feedbackInput, attemptId: ids.restart })).ok, false, "unfinished attempt rejects feedback");
+        assert.ok((await actions.saveTestFeedbackAction({ ...feedbackInput, teacherNote: "Historical attempt comment" })).ok);
+        assert.equal((await actions.testAttemptDetailAction(ids.assignment, ids.attempt))?.teacherFeedback?.teacherNote, "Historical attempt comment");
         assert.equal((await actions.testHomeworkCardsAction(ids.student))[0].submittedAt, null);
         assert.ok(events.some((event) => event[0] === ids.student && (event[2] as { deadlineChanged?: boolean }).deadlineChanged));
         throw rollback;

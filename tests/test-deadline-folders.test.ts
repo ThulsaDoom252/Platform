@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { dictionaries } from "../src/lib/i18n";
 import { parseTestDeadlineInput, testDeadlineInputValue, testDeadlineOverdue, formatTestDeadline } from "../src/lib/tests/deadline";
 import { studentTestFolders } from "../src/lib/tests/student-folders";
-import { TESTS_STORAGE_SQL, TESTS_DEADLINE_SQL } from "../src/lib/db/tests-storage-schema";
+import { TESTS_STORAGE_SQL, TESTS_DEADLINE_SQL, TESTS_FEEDBACK_SQL } from "../src/lib/db/tests-storage-schema";
 import type { TestHomeworkCard } from "../src/lib/tests/types";
 import { StudentTestFolders } from "../src/components/tests/student-test-folders";
 import { TestDeadlineBadge } from "../src/components/tests/test-deadline-badge";
@@ -57,10 +57,12 @@ test("overdue deadlines are visible but completed tests are never marked overdue
   assert.equal(renderToStaticMarkup(createElement(TestDeadlineBadge, { locale: "en" })), "");
 });
 
-test("storage setup adds only a nullable deadline; folder route checks role and scoped non-empty assignments", () => {
+test("storage setup adds only nullable deadline/feedback metadata; folder route checks role and scoped non-empty assignments", () => {
   assert.equal(TESTS_DEADLINE_SQL, "ALTER TABLE test_assignments ADD COLUMN IF NOT EXISTS due_at timestamp;");
   assert.equal(TESTS_STORAGE_SQL.split(TESTS_DEADLINE_SQL).length, 2);
-  assert.ok(!/^\s*(ALTER|DROP|TRUNCATE|UPDATE|DELETE FROM)\b/im.test(TESTS_STORAGE_SQL.replace(TESTS_DEADLINE_SQL, "")));
+  assert.equal(TESTS_FEEDBACK_SQL, "ALTER TABLE test_attempts ADD COLUMN IF NOT EXISTS teacher_feedback jsonb;");
+  assert.equal(TESTS_STORAGE_SQL.split(TESTS_FEEDBACK_SQL).length, 2);
+  assert.ok(!/^\s*(ALTER|DROP|TRUNCATE|UPDATE|DELETE FROM)\b/im.test(TESTS_STORAGE_SQL.replace(TESTS_DEADLINE_SQL, "").replace(TESTS_FEEDBACK_SQL, "")));
   const route = readFileSync("src/app/teacher/tests/assigned/[studentId]/page.tsx", "utf8");
   assert.ok(route.includes('session?.role !== "TEACHER"')); assert.ok(route.includes("testHomeworkCardsAction(studentId)")); assert.ok(route.includes("if (!items.length) notFound()"));
   const editor = readFileSync("src/components/tests/test-deadline-editor.tsx", "utf8");

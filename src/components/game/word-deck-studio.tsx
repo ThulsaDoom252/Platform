@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, useTransition, type ComponentProps } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "@/components/i18n-provider";
 import { TimerNumberInput } from "@/components/timer-number-input";
@@ -46,6 +46,7 @@ import {
   IconX,
 } from "@/components/icons";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
+import { TenseCorrectionForm } from "./tense-correction-studio";
 import { StudentPresence } from "@/components/student-presence";
 import { cn } from "@/lib/utils";
 import { useUiChoice } from "@/components/ui-preferences-provider";
@@ -90,7 +91,7 @@ export function WordDeckStudio({ initialActivities, initialActivityId, mode = "W
 
   const reload = async (openId?: string) => {
     const rows = await listWordDeckActivitiesAction();
-    const filtered = rows.filter((row) => (row.settings.gameType === "SPELLING") === spelling);
+    const filtered = rows.filter((row) => row.settings.gameType !== "TENSE_CORRECTION" && (row.settings.gameType === "SPELLING") === spelling);
     setActivities(filtered);
     if (openId) setPreview(filtered.find((row) => row.id === openId) ?? null);
   };
@@ -368,7 +369,13 @@ function initialNodeIds(activity: WordDeckActivity | null): string[] {
   return [...new Set(fromCards?.length ? fromCards : activity?.nodeId ? [activity.nodeId] : [])];
 }
 
-export function WordDeckForm({ activity, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint, forcedGameType, includeSpellingType = false }: {
+export function WordDeckForm(props: ComponentProps<typeof VocabularyWordDeckForm>) {
+  return props.activity?.settings.gameType === "TENSE_CORRECTION"
+    ? <TenseCorrectionForm activity={props.activity} busy={props.busy} externalError={props.externalError} onCancel={props.onCancel} onSave={(payload) => props.onSave(payload, null)} submitLabel={props.submitLabel} />
+    : <VocabularyWordDeckForm {...props} />;
+}
+
+function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint, forcedGameType, includeSpellingType = false }: {
   activity: WordDeckActivity | null;
   busy: boolean;
   externalError: string | null;

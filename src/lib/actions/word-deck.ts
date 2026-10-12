@@ -35,6 +35,7 @@ import { scheduleNow } from "@/lib/schedule-time";
 import { enrichSpellingMistake } from "@/lib/spelling-mistake";
 import { queueStudentNotification } from "@/lib/notifications";
 import { publishClassRealtime } from "@/lib/realtime-server";
+import { buildTenseCorrectionCards, tenseCorrectionWordDeckSettings } from "@/lib/tense-correction";
 import {
   removeStoredImage,
   storeUploadedImage,
@@ -1115,6 +1116,12 @@ async function prepareWordDeck(
   settings: WordDeckSettings;
 } | { error: string }> {
   const title = String(input?.title ?? "").trim().slice(0, 120);
+  if (input?.settings?.gameType === "TENSE_CORRECTION") {
+    if (!title) return { error: "Назови игру" };
+    const settings = tenseCorrectionWordDeckSettings(input.settings.correction ?? {}, DEFAULT_WORD_DECK_SETTINGS);
+    if (!settings.correction?.tenses.length) return { error: "Выбери хотя бы одно время" };
+    return { title, nodeIds: [], cards: buildTenseCorrectionCards(settings.correction), settings };
+  }
   const nodeIds = [
     ...new Set(
       (input?.nodeIds?.length ? input.nodeIds : [input?.nodeId])
@@ -1199,7 +1206,7 @@ export async function saveWordDeckActivityAction(
     if (!mine) return { error: "Игра не найдена" };
     await db
       .update(wordDeckActivities)
-      .set({ title, nodeId: nodeIds[0], cards, settings, updatedAt: new Date() })
+      .set({ title, nodeId: nodeIds[0] ?? null, cards, settings, updatedAt: new Date() })
       .where(eq(wordDeckActivities.id, id));
     revalidatePath("/teacher/activities");
     return { id };
@@ -1207,7 +1214,7 @@ export async function saveWordDeckActivityAction(
 
   const [created] = await db
     .insert(wordDeckActivities)
-    .values({ authorId: session.userId, title, nodeId: nodeIds[0], cards, settings })
+    .values({ authorId: session.userId, title, nodeId: nodeIds[0] ?? null, cards, settings })
     .returning({ id: wordDeckActivities.id });
   revalidatePath("/teacher/activities");
   return { id: created?.id };

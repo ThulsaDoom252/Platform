@@ -14,6 +14,8 @@ import { gradeTestExercise, libraryTestKey } from "@/lib/tests/grading";
 import { selectedTestExerciseIds, type TestAnswers, type TestAssignmentDetail, type TestAttempt, type TestAttemptSummary, type TestExerciseResult, type TestHomeworkCard, type TestReply } from "@/lib/tests/types";
 import { saveTestExerciseCheck, serialTestAttempt, startTestAttempt, TestAttemptStaleError } from "@/lib/tests/persistence";
 import { testAssignmentNotification } from "@/lib/tests/assignment-notification";
+import { isHomeworkResultReaction, type HomeworkResultReaction } from "@/lib/homework-feedback";
+import { readTestTeacherFeedback } from "@/lib/tests/feedback";
 
 const idSchema = z.uuid();
 const checkSchema = z.object({
@@ -34,6 +36,38 @@ function refreshTestPaths(id: string) {
   for (const path of ["/student/tests", "/student/homework", "/teacher/tests", "/teacher/tests/assigned", "/teacher/homeworks",
     `/student/tests/${id}`, `/student/homework/tests/${id}`, `/teacher/homeworks/tests/${id}`]) revalidatePath(path);
   revalidatePath("/teacher/tests/assigned", "layout");
+}
+
+/** Feedback is optional and cannot change grades, answers or completion. */
+export async function saveTestFeedbackAction(input: { assignmentId: string; attemptId: string; manualReaction: HomeworkResultReaction | null; teacherNote: string }): Promise<TestReply<TestAttempt>> {
+  const session = await getSession();
+  if (session?.role !== "TEACHER") return { ok: false, error: "forbidden" };
+  const parsed = z.object({ assignmentId: idSchema, attemptId: idSchema,
+    manualReaction: z.string().nullable().refine((value) => value === null || isHomeworkResultReaction(value)),
+    teacherNote: z.string().trim().max(4_000) }).strict().safeParse(input);
+  if (!parsed.success) return { ok: false, error: "invalid" };
+  try {
+    await ensureTestsTables();
+    const outcome = await db.transaction(async (tx) => {
+      // The same parent lock as restart/checking. Historical completed attempts
+      // can receive feedback too; a restart never transfers it to the new one.
+      const [assignment] = await tx.select({ id: testAssignments.id, studentId: testAssignments.studentId })
+        .from(testAssignments).where(and(eq(testAssignments.id, parsed.data.assignmentId), eq(testAssignments.teacherId, session.userId))).for("update");
+      if (!assignment) return { ok: false as const, error: "forbidden" as const };
+      const [attempt] = await tx.select().from(testAttempts).where(and(eq(testAttempts.id, parsed.data.attemptId),
+        eq(testAttempts.assignmentId, assignment.id))).for("update");
+      if (!attempt) return { ok: false as const, error: "forbidden" as const };
+      if (!attempt.completedAt) return { ok: false as const, error: "invalid" as const };
+      const teacherFeedback = readTestTeacherFeedback({ ...parsed.data, updatedAt: new Date().toISOString() });
+      const [saved] = await tx.update(testAttempts).set({ teacherFeedback }).where(eq(testAttempts.id, attempt.id)).returning();
+      return { ok: true as const, value: serialTestAttempt(saved), studentId: assignment.studentId };
+    });
+    if (!outcome.ok) return outcome;
+    refreshTestPaths(parsed.data.assignmentId);
+    await Promise.all([session.userId, outcome.studentId].map((userId) => publishUserRealtime(userId, "homework-review",
+      { kind: "TEST", id: parsed.data.assignmentId, attemptId: parsed.data.attemptId, feedbackChanged: true }).catch(() => {})));
+    return { ok: true, value: outcome.value };
+  } catch { return { ok: false, error: "failed" }; }
 }
 
 /** Parent lock serializes deadlines with completion/restart; only the owning teacher may edit. */
@@ -252,6 +286,8 @@ export async function testHomeworkCardsAction(studentId?: string): Promise<TestH
     studentId: users.id, studentName: users.name, studentAvatarUrl: users.avatarUrl, assignedAt: testAssignments.assignedAt, dueAt: testAssignments.dueAt,
     latestPercent: sql<number | null>`(SELECT CASE WHEN total > 0 THEN percent ELSE NULL END FROM test_attempts WHERE assignment_id = ${testAssignments.id} ORDER BY created_at DESC, id DESC LIMIT 1)`,
     submittedAt: sql<Date | null>`(SELECT completed_at FROM test_attempts WHERE assignment_id = ${testAssignments.id} ORDER BY created_at DESC, id DESC LIMIT 1)`,
+    latestAttemptId: sql<string | null>`(SELECT id FROM test_attempts WHERE assignment_id = ${testAssignments.id} ORDER BY created_at DESC, id DESC LIMIT 1)`,
+    teacherFeedback: sql<unknown>`(SELECT teacher_feedback FROM test_attempts WHERE assignment_id = ${testAssignments.id} ORDER BY created_at DESC, id DESC LIMIT 1)`,
     attemptCount: sql<number>`(SELECT count(*)::int FROM test_attempts WHERE assignment_id = ${testAssignments.id})`,
     nextLessonAt: sql<Date | null>`(SELECT min(${lessons.startTime}) FROM ${lessons} WHERE ${lessons.studentId} = ${users.id} AND ${lessons.status} = 'SCHEDULED' AND ${gte(lessons.startTime, new Date())})`,
   }).from(testAssignments).innerJoin(users, eq(users.id, testAssignments.studentId)).where(and(
@@ -261,6 +297,7 @@ export async function testHomeworkCardsAction(studentId?: string): Promise<TestH
   return rows.map((row) => ({ id: row.id, kind: "TEST", activityType: "TEST", title: row.title,
     exerciseIds: row.exerciseIds, studentId: row.studentId, studentName: row.studentName, studentAvatarUrl: row.studentAvatarUrl,
     assignedAt: row.assignedAt.toISOString(), submittedAt: row.submittedAt ? new Date(row.submittedAt).toISOString() : null,
-    reviewedAt: null, nextLessonAt: row.nextLessonAt ? new Date(row.nextLessonAt).toISOString() : null,
+    reviewedAt: null, latestAttemptId: row.latestAttemptId, teacherFeedback: readTestTeacherFeedback(row.teacherFeedback),
+    nextLessonAt: row.nextLessonAt ? new Date(row.nextLessonAt).toISOString() : null,
     dueAt: row.dueAt?.toISOString() ?? null, started: row.latestPercent !== null, latestPercent: row.latestPercent, attemptCount: row.attemptCount, cover: row.cover ?? undefined, level: row.level }));
 }

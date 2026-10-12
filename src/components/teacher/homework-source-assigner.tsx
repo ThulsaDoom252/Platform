@@ -101,7 +101,9 @@ export function HomeworkSourceAssigner({
           id: deck.id,
           kind: "WORD_DECK",
           title: deck.title,
-          meta: deck.settings.gameType === "SPELLING"
+          meta: deck.settings.gameType === "TENSE_CORRECTION"
+            ? t.tenseCorrection.title
+            : deck.settings.gameType === "SPELLING"
             ? t.wordDeck.spellingTitle
             : deck.settings.gameType === "DESCRIPTION_SENTENCE"
               ? t.wordDeck.descriptionSentence

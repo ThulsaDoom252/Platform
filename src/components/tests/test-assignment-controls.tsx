@@ -48,7 +48,7 @@ export function TestAssignmentControls({ assignmentId, onRestarted, perform = ac
 
   return <div className="flex flex-col gap-3">
     <div className="flex flex-wrap gap-2">
-      <button type="button" disabled={busy} onClick={() => act("reminder")} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 text-xs font-bold text-accent disabled:opacity-50"><Bell aria-hidden className="h-4 w-4" />{labels.remind}</button>
+      {!completed && <button type="button" disabled={busy} onClick={() => act("reminder")} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 text-xs font-bold text-accent disabled:opacity-50"><Bell aria-hidden className="h-4 w-4" />{labels.remind}</button>}
       <button type="button" disabled={busy} aria-expanded={confirm} onClick={() => { setConfirm((value) => !value); setMessage(null); }} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 text-xs font-bold text-muted hover:text-accent disabled:opacity-50"><RotateCcw aria-hidden className="h-4 w-4" />{labels.restart}</button>
     </div>
     {confirm && <div className="rounded-2xl border border-accent/30 bg-surface-2 p-4">

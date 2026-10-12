@@ -7,6 +7,7 @@ import type { RegularLessonSection } from "@/lib/regular-lesson";
 import type { LessonHomeworkEntry } from "@/lib/lesson-homework";
 import type { HomeworkFeedbackSettings } from "@/lib/homework-feedback";
 import type { TestAnswerKey, TestDefinition, TestResults } from "@/lib/tests/types";
+import type { TestTeacherFeedback } from "@/lib/tests/feedback";
 import type {
   WordDeckLiveState,
   WordDeckHomeworkAttempt,
@@ -246,6 +247,7 @@ export const testAttempts = pgTable("test_attempts", {
   percent: integer("percent").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
+  teacherFeedback: jsonb("teacher_feedback").$type<TestTeacherFeedback>(),
 }, (table) => [index("test_attempts_assignment_date_idx").on(table.assignmentId, table.createdAt)]);
 
 // ---------- Пакеты уроков ----------

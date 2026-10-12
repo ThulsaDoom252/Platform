@@ -76,7 +76,7 @@ async function activityRows(studentId: string) {
       teacherAnswers:
         game.kind === "GUESS_PICTURE" ||
         (game.kind === "WORD_DECK" &&
-          ["WORDS", "GUESS_DESCRIPTION", "DESCRIPTION_SENTENCE", "GUESS_PICTURE"].includes(
+          ["WORDS", "GUESS_DESCRIPTION", "DESCRIPTION_SENTENCE", "GUESS_PICTURE", "TENSE_CORRECTION"].includes(
             normalizeWordDeckSettings(game.wordDeck?.settings).gameType,
           )),
     })),

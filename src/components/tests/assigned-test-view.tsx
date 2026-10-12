@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { TestRunner } from "./test-runner";
 import { TestAssignmentControls } from "./test-assignment-controls";
 import { TestDeadlineBadge } from "./test-deadline-badge";
+import { TestTeacherFeedbackPanel } from "./test-teacher-feedback";
 
 export function AssignedTestView({ initial, teacher, userId }: { initial: TestAssignmentDetail; teacher?: boolean; userId: string }) {
   const { locale } = useT();
@@ -36,7 +37,7 @@ export function AssignedTestView({ initial, teacher, userId }: { initial: TestAs
     startAction(async () => {
       setError(false);
       try {
-        const attempt = cache.current.get(id) ?? await testAttemptDetailAction(initial.id, id);
+        const attempt = await testAttemptDetailAction(initial.id, id);
         if (!attempt) { setError(true); return; }
         cache.current.set(id, attempt); setViewed(attempt); setReadOnly(!!teacher || id !== latestId.current); setRunKey((key) => key + 1);
       } catch { setError(true); }
@@ -86,9 +87,18 @@ export function AssignedTestView({ initial, teacher, userId }: { initial: TestAs
         cache.current.set(current.latestAttempt.id, current.latestAttempt);
         if (latestId.current !== current.latestAttempt.id) {
           restarted(current.latestAttempt);
-        } else if (teacher && (!previous || previous.total !== current.latestAttempt.total)) {
+        } else if (teacher && (!previous || previous.total !== current.latestAttempt.total) && viewed?.id === latestId.current) {
           setViewed(current.latestAttempt); setReadOnly(true); setRunKey((key) => key + 1);
         }
+        if (viewed?.id === current.latestAttempt.id && JSON.stringify(viewed.teacherFeedback) !== JSON.stringify(current.latestAttempt.teacherFeedback)) {
+          setViewed(current.latestAttempt);
+        }
+      }
+      // Feedback to an older completed attempt is refreshed without switching
+      // the selected attempt or resetting an unfinished student's answers.
+      if (viewed?.completedAt && viewed.id !== current.latestAttempt?.id) {
+        const historical = await testAttemptDetailAction(initial.id, viewed.id);
+        if (historical) { cache.current.set(historical.id, historical); setViewed(historical); }
       }
     } catch { setError(true); }
     finally { liveBusy.current = false; }
@@ -103,6 +113,10 @@ export function AssignedTestView({ initial, teacher, userId }: { initial: TestAs
     <TestDeadlineBadge dueAt={dueAt} locale={locale} completed={completed} />
     {teacher && <section className="rounded-2xl border border-line bg-surface p-4"><TestAssignmentControls assignmentId={initial.id} onRestarted={restarted} dueAt={dueAt} completed={completed} onDeadlineSaved={setDueAt} /></section>}
     <TestRunner key={runKey} test={initial.definition} assignmentId={initial.id} exerciseIds={initial.exerciseIds} initialAttempt={viewed} readOnly={readOnly} onSaved={saved} onRetry={retry} onStale={() => { void pull(); }} externalBusy={busy} />
+    {viewed?.completedAt && <TestTeacherFeedbackPanel key={viewed.id} assignmentId={initial.id} attemptId={viewed.id} completed
+      feedback={viewed.teacherFeedback} teacher={teacher} locale={locale} onSaved={(attempt) => {
+        cache.current.set(attempt.id, attempt); setViewed((current) => current?.id === attempt.id ? attempt : current);
+      }} />}
     <section className="rounded-3xl border border-line bg-surface p-5 sm:p-6"><h2 className="mb-4 flex items-center gap-2 text-base font-bold text-content"><History aria-hidden className="h-5 w-5 text-accent" />{labels.history}</h2>
       {!attempts.length ? <p className="text-sm text-muted">{labels.emptyHistory}</p> : <div className="flex flex-col gap-2">{attempts.map((attempt) => <button key={attempt.id} type="button" disabled={busy} onClick={() => selectAttempt(attempt.id)} aria-pressed={viewed?.id === attempt.id} className={cn("flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60", viewed?.id === attempt.id ? "border-accent/30 bg-accent-soft" : "border-line bg-surface-2 hover:border-accent/30")}><span className="text-xs font-semibold text-muted">{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/Simferopol" }).format(new Date(attempt.createdAt))} · {attempt.completedAt ? labels.done : attempt.total ? labels.inProgress : labels.notStarted}{attempt.id === latestId.current && ` · ${labels.currentAttempt}`}</span><span className="text-sm font-black text-content">{attempt.total ? `${attempt.correct}/${attempt.total} · ${attempt.percent}%` : "—"}</span></button>)}</div>}
       {hasMore && <button type="button" disabled={busy} onClick={() => startAction(async () => {

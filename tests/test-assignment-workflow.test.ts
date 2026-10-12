@@ -9,6 +9,9 @@ import { FIRST_CONDITIONAL_KEY, gradeTestExercise, libraryTestKey } from "../src
 import * as types from "../src/lib/tests/types";
 import { testAssignmentNotification } from "../src/lib/tests/assignment-notification";
 import { TEST_LABELS } from "../src/lib/tests/labels";
+import { isHomeworkResultReaction } from "../src/lib/homework-feedback";
+import { readTestTeacherFeedback } from "../src/lib/tests/feedback";
+import { groupTeacherHomeworksByStudent, groupTeacherHomeworkPriorities, teacherHomeworkOverviewState } from "../src/lib/teacher-homework-order";
 
 const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -22,7 +25,7 @@ function harness() {
   const schema = {
     users: table("users", ["id", "name", "role", "locale", "avatarUrl"]),
     testAssignments: table("assignments", ["id", "studentId", "teacherId", "testId", "definition", "exerciseIds", "assignedAt", "dueAt"]),
-    testAttempts: table("attempts", ["id", "assignmentId", "createdAt", "completedAt", "correct", "total", "percent", "checkedExerciseIds"]),
+    testAttempts: table("attempts", ["id", "assignmentId", "createdAt", "completedAt", "correct", "total", "percent", "checkedExerciseIds", "teacherFeedback"]),
     notifications: table("notices", ["id", "recipientId", "senderId", "href", "data"]),
     lessons: table("lessons", ["startTime", "studentId", "status"]),
   };
@@ -54,6 +57,8 @@ function harness() {
       const attempts = store.attempts.filter((item) => item.assignmentId === row["assignments.id"]).sort((a, b) => Number(b.createdAt) - Number(a.createdAt) || String(b.id).localeCompare(String(a.id)));
       if (key === "latestPercent") return [key, attempts[0]?.total ? attempts[0].percent : null];
       if (key === "submittedAt") return [key, attempts[0]?.completedAt ?? null];
+      if (key === "latestAttemptId") return [key, attempts[0]?.id ?? null];
+      if (key === "teacherFeedback") return [key, attempts[0]?.teacherFeedback ?? null];
       if (key === "attemptCount") return [key, attempts.length];
       return [key, undefined];
     }));
@@ -105,6 +110,8 @@ function harness() {
     "@/lib/notifications": { queueStudentNotification: async () => {} }, "@/lib/realtime-server": { publishUserRealtime: async (...args: unknown[]) => events.push(args) },
     "@/lib/tests/catalog": { findLibraryTest }, "@/lib/tests/grading": { gradeTestExercise, libraryTestKey },
     "@/lib/tests/types": types, "./types": types, "@/lib/tests/assignment-notification": { testAssignmentNotification },
+    "@/lib/homework-feedback": { isHomeworkResultReaction },
+    "@/lib/tests/feedback": { readTestTeacherFeedback }, "./feedback": { readTestTeacherFeedback },
   };
   function load<T>(path: string): T {
     const env = { exports: {}, require: (name: string) => { assert.ok(name in modules, `Unexpected import: ${name}`); return modules[name]; } };
@@ -118,6 +125,63 @@ function harness() {
 }
 const assignmentInput = (request = 10, student = 2, notifyStudent = true) => ({ testId: FIRST_CONDITIONAL.id,
   studentId: uuid(student), requestId: uuid(request), exerciseIds: ["exercise-1", "exercise-3"], notifyStudent });
+
+test("completed tests are Done immediately, not submitted for teacher review or folder waiting counters", async () => {
+  const h = harness(); await h.actions.assignTestAction(assignmentInput()); h.login("STUDENT", uuid(2));
+  await h.actions.checkAssignedTestAction({ assignmentId: uuid(10), attemptId: uuid(20), exerciseId: "exercise-1", answers: {} });
+  assert.equal(teacherHomeworkOverviewState((await h.actions.testHomeworkCardsAction())[0]), "inProgress");
+  await h.actions.checkAssignedTestAction({ assignmentId: uuid(10), attemptId: uuid(20), exerciseId: "exercise-3", answers: {} });
+  h.login("TEACHER");
+  const [card] = await h.actions.testHomeworkCardsAction();
+  assert.equal(card.reviewedAt, null, "no teacher-review timestamp is invented");
+  assert.equal(teacherHomeworkOverviewState(card), "reviewed");
+  assert.equal(groupTeacherHomeworksByStudent([card])[0].counts.submitted, 0);
+  assert.equal(groupTeacherHomeworksByStudent([card])[0].counts.reviewed, 1);
+  assert.equal(groupTeacherHomeworkPriorities([card], "waiting", false)[0].state, "reviewed");
+  assert.equal(card.teacherFeedback, null, "completion needs no feedback");
+});
+
+test("optional teacher feedback persists per attempt for both sides without changing grades; restart retains it", async () => {
+  const h = harness(); await h.actions.assignTestAction(assignmentInput()); h.login("STUDENT", uuid(2));
+  for (const exerciseId of ["exercise-1", "exercise-3"]) await h.actions.checkAssignedTestAction({ assignmentId: uuid(10), attemptId: uuid(20), exerciseId, answers: { q1: "will give" } });
+  const original = structuredClone(h.store.attempts[0]); h.login("TEACHER");
+  const input = { assignmentId: uuid(10), attemptId: uuid(20), manualReaction: "good" as const, teacherNote: "  Watch the verb after when.\nTry again.  " };
+  const response = await h.actions.saveTestFeedbackAction(input); assert.ok(response.ok);
+  if (response.ok) assert.equal(response.value.teacherFeedback?.teacherNote, input.teacherNote.trim());
+  for (const key of ["results", "correct", "total", "percent", "completedAt", "checkedExerciseIds"]) assert.deepEqual(h.store.attempts[0][key], original[key]);
+  assert.equal(teacherHomeworkOverviewState((await h.actions.testHomeworkCardsAction())[0]), "reviewed");
+  const noticeCount = h.store.notices.length;
+  h.login("STUDENT", uuid(2));
+  assert.equal((await h.actions.assignedTestDetailAction(uuid(10)))?.latestAttempt?.teacherFeedback?.manualReaction, "good");
+  assert.equal((await h.actions.testHomeworkCardsAction())[0].teacherFeedback?.teacherNote, input.teacherNote.trim());
+  h.login("TEACHER");
+  await h.actions.restartAssignedTestAction({ assignmentId: uuid(10), requestId: uuid(21), notifyStudent: false });
+  assert.equal(h.store.notices.length, noticeCount, "feedback does not send an unsolicited notification");
+  assert.equal((await h.actions.assignedTestDetailAction(uuid(10)))?.latestAttempt?.teacherFeedback, null);
+  assert.equal((await h.actions.testAttemptDetailAction(uuid(10), uuid(20)))?.teacherFeedback?.manualReaction, "good");
+  assert.ok((await h.actions.saveTestFeedbackAction({ ...input, teacherNote: "Historical feedback edited" })).ok);
+  assert.ok((await h.actions.saveTestFeedbackAction({ ...input, manualReaction: null, teacherNote: "" })).ok);
+  assert.equal((await h.actions.testAttemptDetailAction(uuid(10), uuid(20)))?.teacherFeedback, null);
+  assert.deepEqual(h.store.attempts[0].results, original.results);
+});
+
+test("feedback rejects students, other teachers, wrong attempts, unfinished tests and forged score changes", async () => {
+  const h = harness(); await h.actions.assignTestAction(assignmentInput()); await h.actions.assignTestAction(assignmentInput(11, 3, false));
+  h.login("STUDENT", uuid(2));
+  for (const exerciseId of ["exercise-1", "exercise-3"]) await h.actions.checkAssignedTestAction({ assignmentId: uuid(10), attemptId: uuid(20), exerciseId, answers: {} });
+  const input = { assignmentId: uuid(10), attemptId: uuid(20), manualReaction: "good" as const, teacherNote: "Nice" };
+  for (const [role, id] of [[null, uuid(1)], ["STUDENT", uuid(2)], ["TEACHER", uuid(9)]] as const) {
+    h.login(role, id); const reply = await h.actions.saveTestFeedbackAction(input); assert.ok(!reply.ok); if (!reply.ok) assert.equal(reply.error, "forbidden");
+  }
+  h.login("TEACHER");
+  for (const bad of [{ ...input, assignmentId: "bad" }, { ...input, manualReaction: "evil" }, { ...input, teacherNote: "a".repeat(4001) }, { ...input, percent: 100 }]) {
+    const reply = await h.actions.saveTestFeedbackAction(bad as typeof input); assert.ok(!reply.ok); if (!reply.ok) assert.equal(reply.error, "invalid");
+  }
+  assert.equal((await h.actions.saveTestFeedbackAction({ ...input, assignmentId: uuid(11) })).ok, false);
+  await h.actions.restartAssignedTestAction({ assignmentId: uuid(10), requestId: uuid(21), notifyStudent: false });
+  assert.equal((await h.actions.saveTestFeedbackAction({ ...input, attemptId: uuid(21) })).ok, false);
+  assert.ok(h.store.attempts.every((attempt) => !attempt.teacherFeedback));
+});
 
 test("deadline changes lock the parent, persist for both sides and never change answers or create notices", async () => {
   const h = harness(); await h.actions.assignTestAction(assignmentInput());

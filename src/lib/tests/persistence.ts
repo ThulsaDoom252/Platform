@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import type { db } from "@/lib/db";
 import { testAssignments, testAttempts } from "@/lib/db/schema";
 import { testResultsScore, type TestAttempt, type TestExerciseResult } from "./types";
+import { readTestTeacherFeedback } from "./feedback";
 
 type TestTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export class TestAttemptStaleError extends Error {}
@@ -33,7 +34,8 @@ export async function startTestAttempt(tx: TestTransaction, assignmentId: string
 }
 export function serialTestAttempt(row: typeof testAttempts.$inferSelect): TestAttempt {
   return { id: row.id, createdAt: row.createdAt.toISOString(), completedAt: row.completedAt?.toISOString() ?? null,
-    correct: row.correct, total: row.total, percent: row.percent, checkedExerciseIds: row.checkedExerciseIds, results: row.results };
+    correct: row.correct, total: row.total, percent: row.percent, checkedExerciseIds: row.checkedExerciseIds, results: row.results,
+    teacherFeedback: readTestTeacherFeedback(row.teacherFeedback) };
 }
 
 /** Internal only: the action verifies ownership and grades on the server before calling this. */

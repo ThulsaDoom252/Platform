@@ -15,6 +15,7 @@ export function readTeacherHomeworkSort(key: unknown, dir: unknown, defaultKey: 
 
 export type TeacherHomeworkOrderable = {
   id: string;
+  kind?: "TEST" | "LESSON" | "ACTIVITY" | "REVISION";
   studentName: string;
   title?: string;
   nextLessonAt: string | null;
@@ -95,8 +96,11 @@ export function sortTeacherHomeworkStudentGroups<T extends TeacherHomeworkOrdera
 }
 
 export function teacherHomeworkOverviewState(
-  item: Pick<TeacherHomeworkOrderable, "submittedAt" | "reviewedAt" | "started">,
+  item: Pick<TeacherHomeworkOrderable, "submittedAt" | "reviewedAt" | "started" | "kind">,
 ): TeacherHomeworkOverviewState {
+  // Tests are graded automatically. "reviewed" is the shared Done bucket,
+  // not a fabricated teacher-review timestamp or a required feedback action.
+  if (item.kind === "TEST" && item.submittedAt) return "reviewed";
   if (item.reviewedAt) return "reviewed";
   if (item.submittedAt) return "submitted";
   if (item.started) return "inProgress";

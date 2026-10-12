@@ -1,5 +1,6 @@
 import type { Locale } from "@/lib/i18n";
 import type { TestCategoryId, TestLevelId } from "@/lib/test-library";
+import type { TestTeacherFeedback } from "./feedback";
 
 export type TestText = Record<Locale, string>;
 export type TestQuestion = {
@@ -43,7 +44,7 @@ export type TestAttemptSummary = {
   id: string; createdAt: string; completedAt: string | null;
   correct: number; total: number; percent: number; checkedExerciseIds: string[];
 };
-export type TestAttempt = TestAttemptSummary & { results: TestResults };
+export type TestAttempt = TestAttemptSummary & { results: TestResults; teacherFeedback?: TestTeacherFeedback | null };
 export type TestAssignmentDetail = {
   id: string; studentId: string; studentName: string; definition: TestDefinition;
   exerciseIds: string[]; assignedAt: string; attempts: TestAttemptSummary[]; latestAttempt: TestAttempt | null;
@@ -56,6 +57,8 @@ export type TestHomeworkCard = {
   nextLessonAt: string | null; started: boolean; exerciseIds: string[];
   latestPercent: number | null; attemptCount: number; cover?: TestCover; level?: TestLevelId;
   dueAt?: string | null;
+  latestAttemptId?: string | null;
+  teacherFeedback?: TestTeacherFeedback | null;
 };
 export type TestActionError = "invalid" | "forbidden" | "failed" | "stale" | "completed";
 export type TestReply<T> = { ok: true; value: T } | { ok: false; error: TestActionError };
