@@ -1568,6 +1568,14 @@ export const en = {
   },
 
   profile: {
+    learningLanguage: "Learning language",
+    learningLanguageHint: "Russian or Ukrainian for translations in your vocabulary, materials, lessons and homework. Independent of the interface language. English originals, answers and results stay unchanged.",
+    learningChoose: "Choose a language",
+    learningTranslating: "Translating existing content:",
+    learningResumeHint: "The new language takes effect once translations are ready. Keep studying; if you close this page, preparation resumes when you return.",
+    learningComplete: "Learning language saved. Existing translations are ready; new content will use this language too.",
+    learningFailed: "Could not finish translating. Your answers and original content are safe.",
+    learningRetry: "Continue translation",
     title: "My profile",
     subtitle: "Contact details and photo.",
     photo: "Photo",

@@ -71,7 +71,8 @@ test("class UI keeps data on errors, ignores stale loads and offers a localized 
   const source = readFileSync("src/components/class/class-activities.tsx", "utf8");
   assert(!/set(?:Queue|Decks|Revisions)\(\[\]\)/.test(source));
   assert.match(source, /generation !== loadGeneration.current/);
-  assert.match(source, /if \(result.decks !== undefined\) setDecks\(result.decks\)/);
+  assert.match(source, /if \(result.decks !== undefined\)\s*\{\s*setDecks\(result.decks\)/);
+  assert.match(source, /setOpenDeck\(current => current \? result.decks!\.find/);
   assert.match(source, /!loading && !loadError && queue/);
   assert.match(source, /t.activityPicker.retryLoad/);
   const room = readFileSync("src/components/class/class-room.tsx", "utf8");

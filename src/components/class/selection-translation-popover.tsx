@@ -37,10 +37,10 @@ export function SelectionTranslationPopover({
   const speech = useSpeech();
   const root = useRef<HTMLDivElement>(null);
   const run = useRef(0);
-  const [lang, setLang] = useState<ClassVocabularyLang>("UK");
+  const [lang, setLang] = useState<ClassVocabularyLang | null>(null);
   const [draft, setDraft] = useState<ClassVocabularyDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(request));
   const [position, setPosition] = useState({ left: 12, top: 12 });
   const [adding, startAdding] = useTransition();
 
@@ -71,7 +71,7 @@ export function SelectionTranslationPopover({
   useEffect(() => {
     if (!request) return;
     const ticket = ++run.current;
-    void translateClassVocabularyAction(request.text, "UK")
+    void translateClassVocabularyAction(request.text)
       .then((result) => {
         if (ticket !== run.current) return;
         if (!result.draft) {
@@ -79,6 +79,7 @@ export function SelectionTranslationPopover({
           return;
         }
         setDraft(result.draft);
+        setLang(result.draft.translationLang);
       })
       .catch(() => {
         if (ticket === run.current) setError(t.classVocabulary.translateFailed);

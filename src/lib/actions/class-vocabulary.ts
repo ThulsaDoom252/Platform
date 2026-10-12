@@ -5,6 +5,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { classVocabularyWords, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { personalizeLearningContent, studentLearningLanguage } from "@/lib/student-learning-language";
+import { detectTranslationLang } from "@/lib/translation-lang";
 import {
   classVocabularyDirection,
   cleanClassVocabularyText,
@@ -65,25 +67,38 @@ const wordOf = (row: typeof classVocabularyWords.$inferSelect): ClassVocabularyW
 });
 
 export async function listClassVocabularyAction(): Promise<ClassVocabularyWord[]> {
+  return (await classVocabularyDataAction()).words;
+}
+
+/** Read the words and their preferred language in one client action. */
+export async function classVocabularyDataAction(): Promise<{ words: ClassVocabularyWord[]; preferred: ClassVocabularyLang | null }> {
   const current = await currentStudent();
-  if (!current) return [];
+  if (!current) return { words: [], preferred: null };
+  const preferred = await studentLearningLanguage(current.studentId);
   const rows = await db
     .select()
     .from(classVocabularyWords)
     .where(eq(classVocabularyWords.studentId, current.studentId))
     .orderBy(desc(classVocabularyWords.createdAt));
-  return rows.map(wordOf);
+  return { words: await personalizeLearningContent(current.studentId, rows.map(wordOf), preferred), preferred };
+}
+
+export async function classVocabularyPreferredLanguageAction(): Promise<ClassVocabularyLang | null> {
+  const current = await currentStudent();
+  return current ? studentLearningLanguage(current.studentId) : null;
 }
 
 export async function translateClassVocabularyAction(
   value: string,
-  rawLang: ClassVocabularyLang,
+  rawLang?: ClassVocabularyLang,
 ): Promise<{ draft?: ClassVocabularyDraft; error?: string }> {
-  if (!(await currentStudent())) return { error: "Сначала выбери ученика" };
+  const current = await currentStudent();
+  if (!current) return { error: "Сначала выбери ученика" };
   const text = cleanClassVocabularyText(value);
   const direction = classVocabularyDirection(text);
   if (!text || !direction) return { error: "Введите слово или фразу" };
-  const translationLang = normalizeClassVocabularyLang(rawLang);
+  const translationLang = rawLang ?? await studentLearningLanguage(current.studentId) ?? "UK";
+  if (translationLang !== "RU" && translationLang !== "UK") return { error: "Неизвестный язык" };
 
   try {
     if (direction === "FROM_ENGLISH") {
@@ -92,9 +107,13 @@ export async function translateClassVocabularyAction(
         draft: { english: text, translation, translationLang, direction },
       };
     }
-    const english = await translateShortText(text, "EN", translationLang);
+    const source = detectTranslationLang([text]);
+    const english = await translateShortText(text, "EN", source ?? undefined);
+    // Short Cyrillic words often have no distinguishing RU/UK letters. Do not
+    // label an undetected source as the student's target language.
+    const translation = source === translationLang ? text : await translateShortText(english, translationLang, "EN");
     return {
-      draft: { english, translation: text, translationLang, direction },
+      draft: { english, translation, translationLang, direction },
     };
   } catch (error) {
     return {
@@ -187,8 +206,14 @@ export async function addClassVocabularyAction(input: {
   const current = await currentStudent();
   if (!current) return { error: "Сначала выбери ученика" };
   const english = cleanClassVocabularyText(input?.english);
-  const translation = cleanClassVocabularyText(input?.translation);
+  let translation = cleanClassVocabularyText(input?.translation);
   if (!english || !translation) return { error: "Заполните слово и перевод" };
+  const preferred = await studentLearningLanguage(current.studentId);
+  const translationLang = preferred ?? normalizeClassVocabularyLang(input?.translationLang);
+  if (preferred && (detectTranslationLang([translation]) ?? normalizeClassVocabularyLang(input?.translationLang)) !== preferred) {
+    try { translation = await translateShortText(english, preferred, "EN"); }
+    catch (error) { return { error: error instanceof Error ? error.message : "Не удалось получить перевод" }; }
+  }
 
   const [created] = await db
     .insert(classVocabularyWords)
@@ -197,7 +222,7 @@ export async function addClassVocabularyAction(input: {
       addedById: current.userId,
       english,
       translation,
-      translationLang: normalizeClassVocabularyLang(input?.translationLang),
+      translationLang,
     })
     .returning();
   revalidatePath("/teacher/class");
@@ -213,12 +238,18 @@ export async function updateClassVocabularyAction(
   const current = await currentStudent();
   if (!current) return { error: "Сначала выбери ученика" };
   const english = cleanClassVocabularyText(input?.english);
-  const translation = cleanClassVocabularyText(input?.translation);
+  let translation = cleanClassVocabularyText(input?.translation);
   if (!english || !translation) return { error: "Заполните слово и перевод" };
+
+  const preferred = await studentLearningLanguage(current.studentId);
+  if (preferred && detectTranslationLang([translation]) && detectTranslationLang([translation]) !== preferred) {
+    try { translation = await translateShortText(english, preferred, "EN"); }
+    catch (error) { return { error: error instanceof Error ? error.message : "Не удалось получить перевод" }; }
+  }
 
   const [updated] = await db
     .update(classVocabularyWords)
-    .set({ english, translation, updatedAt: new Date() })
+    .set({ english, translation, ...(preferred ? { translationLang: preferred } : {}), updatedAt: new Date() })
     .where(
       and(
         eq(classVocabularyWords.id, String(id ?? "")),

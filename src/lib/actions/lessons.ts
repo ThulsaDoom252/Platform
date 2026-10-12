@@ -124,6 +124,7 @@ import {
   type MaterialTranslationLang,
 } from "@/lib/material-translation";
 import { managedUploadPath, removePublicFile } from "@/lib/public-file-store";
+import { personalizeAssignedLearningContent, personalizeLearningContent, studentLearningLanguage } from "@/lib/student-learning-language";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -1132,6 +1133,11 @@ export async function addLessonVocabularyToMaterialsAction(
     if (!parent) return { error: "Папка ученика не найдена" };
   }
 
+  const language = await studentLearningLanguage(studentId);
+  let studentWords = words;
+  try { studentWords = await personalizeLearningContent(studentId, words, language); }
+  catch { return { error: "Не удалось подготовить перевод словника. Попробуй ещё раз." }; }
+
   const [{ value: lastOrder } = { value: 0 }] = await db
     .select({ value: max(materialNodes.sortOrder) })
     .from(materialNodes)
@@ -1156,15 +1162,16 @@ export async function addLessonVocabularyToMaterialsAction(
         icon,
         type: "FILE",
         pageKind: "VOCAB",
+        ...(language ? { translationLang: language } : {}),
         sortOrder: (lastOrder ?? 0) + 1,
       })
       .returning({ id: materialNodes.id });
 
-    const phraseIds = words.map(() => randomUUID());
+    const phraseIds = studentWords.map(() => randomUUID());
     await tx
       .insert(materialPhrases)
       .values(
-        words.map((word, index) => ({
+        studentWords.map((word, index) => ({
           id: phraseIds[index],
           nodeId: node.id,
           sortOrder: index + 1,
@@ -3294,8 +3301,7 @@ export async function assignedLessonAction(
       finishedAt: row.a.finishedAt?.toISOString() ?? null,
       createdAt: row.a.createdAt.toISOString(),
     },
-    lesson,
-    answers: row.a.answers ?? {},
+    ...(await personalizeAssignedLearningContent(row.a.studentId, lesson, row.a.answers ?? {})),
     open:
       lesson.kind === "REGULAR"
         ? [

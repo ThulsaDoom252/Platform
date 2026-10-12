@@ -23,6 +23,7 @@ import {
   wordRevisions,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { personalizeLearningContent } from "@/lib/student-learning-language";
 import { normalizeOptionalTimerSeconds } from "@/lib/timer-settings";
 import { buildRevision, type RevisionSection } from "@/lib/revision-build";
 import {
@@ -874,7 +875,7 @@ export async function startRevisionAction(
     .limit(1);
   if (running) return { ok: true, attemptId: running.id };
 
-  const words = await wordsOf(revision.phraseIds ?? []);
+  const words = await personalizeLearningContent(revision.studentId, await wordsOf(revision.phraseIds ?? []));
   const plan = buildRevision(words, (revision.modes ?? []) as RevisionMode[], {
     byMode: revision.modeWords ?? undefined,
   });
@@ -963,7 +964,7 @@ export async function attemptAction(attemptId: string): Promise<AttemptView | nu
     id: row.attempt.id,
     revisionId: row.revision.id,
     title: row.revision.title,
-    plan: (row.attempt.plan ?? []) as RevisionSection[],
+    plan: await personalizeLearningContent(row.revision.studentId, (row.attempt.plan ?? []) as RevisionSection[]),
     answers: (row.attempt.answers ?? []) as RevisionAnswer[],
     strugglingWords: validateRevisionStrugglingIds((row.attempt.plan ?? []) as RevisionSection[], row.attempt.strugglingWords) ?? [],
     startedAt: row.attempt.startedAt.toISOString(),

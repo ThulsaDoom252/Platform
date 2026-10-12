@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/schema";
 import { getVisibleGrantIds } from "@/lib/material-grants";
 import { pageTranslationLang } from "@/lib/translation-lang";
+import { personalizeLearningContent } from "@/lib/student-learning-language";
 
 export type { RuleBlock };
 
@@ -241,7 +242,7 @@ async function buildTree(rows: NodeRow[]): Promise<{
  * Общая библиотека материалов.
  * Если передан studentId — только назначенные ему ветки, иначе всё дерево.
  */
-export async function getMaterialsTree(studentId?: string): Promise<MaterialNode[]> {
+export async function getMaterialsTree(studentId?: string, personalize = true): Promise<MaterialNode[]> {
   const rows = await db
     .select()
     .from(materialNodes)
@@ -256,16 +257,18 @@ export async function getMaterialsTree(studentId?: string): Promise<MaterialNode
     .from(studentMaterials)
     .where(eq(studentMaterials.studentId, studentId));
 
-  return getVisibleGrantIds(
+  const visible = getVisibleGrantIds(
     rows.map((row) => ({ id: row.id, parentId: row.parentId })),
     assigned.map(({ nodeId }) => nodeId),
   ).map((nodeId) => byId.get(nodeId)!);
+  return personalize ? personalizeLearningContent(studentId, visible) : visible;
 }
 
 /** Дерево, принадлежащее одному человеку: ошибки ученика или личные материалы. */
 export async function getOwnedTree(
   scope: "MISTAKE" | "PERSONAL" | "STUDENT",
   ownerId: string,
+  personalize = true,
 ): Promise<MaterialNode[]> {
   const rows = await db
     .select()
@@ -274,7 +277,7 @@ export async function getOwnedTree(
     .orderBy(asc(materialNodes.sortOrder), asc(materialNodes.name));
 
   const { roots } = await buildTree(rows);
-  return roots;
+  return personalize && scope !== "PERSONAL" ? personalizeLearningContent(ownerId, roots) : roots;
 }
 
 /** Личное дерево ошибок ученика. */
@@ -325,12 +328,13 @@ export async function getSharedSections(studentId: string): Promise<{
  * Всё, что видит ученик: своё личное дерево плюс открытые ему
  * разделы общей базы. Деревья независимы, поэтому просто ставим их рядом.
  */
-export async function getStudentLibrary(studentId: string): Promise<MaterialNode[]> {
+export async function getStudentLibrary(studentId: string, personalize = true): Promise<MaterialNode[]> {
   const [own, shared] = await Promise.all([
-    getOwnedTree("STUDENT", studentId),
-    getMaterialsTree(studentId),
+    getOwnedTree("STUDENT", studentId, false),
+    getMaterialsTree(studentId, false),
   ]);
-  return [...own, ...shared];
+  const roots = [...own, ...shared];
+  return personalize ? personalizeLearningContent(studentId, roots) : roots;
 }
 
 /** Плоский подсчёт файлов в ветке — для подписи «N материалов». */

@@ -26,6 +26,7 @@ import {
 } from "@/lib/db/schema";
 import { visibleNodeIds } from "@/lib/material-grants";
 import { getSession } from "@/lib/session";
+import { personalizeLearningContent } from "@/lib/student-learning-language";
 import { normalizeTimerSeconds } from "@/lib/timer-settings";
 import { queueStudentNotification } from "@/lib/notifications";
 import {
@@ -1045,7 +1046,7 @@ export async function gameStateAction(
   const row = gameId
     ? await gameById(String(gameId))
     : await currentGame(String(studentId ?? ""));
-  return row ? toState(row) : null;
+  return row ? personalizeLearningContent(row.studentId, toState(row)) : null;
 }
 
 /**
@@ -1071,7 +1072,7 @@ export async function listGamesAction(studentId: string): Promise<QueuedGame[]> 
     )
     .orderBy(asc(activityGames.createdAt));
 
-  return rows.map(({ game: row, templateSettings }) => {
+  const games = rows.map(({ game: row, templateSettings }) => {
     const cards = row.cards ?? [];
     const seen = new Set<string>();
     const sourceCards = cards.flatMap((card): WordDeckSourceCard[] => {
@@ -1110,6 +1111,7 @@ export async function listGamesAction(studentId: string): Promise<QueuedGame[]> 
       createdAt: row.createdAt.toISOString(),
     };
   });
+  return personalizeLearningContent(student, games);
 }
 
 /**
@@ -1221,7 +1223,7 @@ export async function myGameStateAction(): Promise<GameState | null> {
   const session = await getSession();
   if (!session) return null;
   const row = await currentGame(session.userId);
-  return row ? toState(row) : null;
+  return row ? personalizeLearningContent(row.studentId, toState(row)) : null;
 }
 
 /** Оценить ответ и перевернуть карту. */

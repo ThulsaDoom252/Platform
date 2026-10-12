@@ -5,6 +5,7 @@ import { irregularVerbs, materialBlocks, materialNodes, materialPhrases, student
 import { visibleNodeIds } from "./material-grants";
 import { pageHasStructuredContent } from "./export-material";
 import type { ReportMaterialNode } from "./student-material-report";
+import { personalizeLearningContent } from "./student-learning-language";
 
 /** Report-only read: no images or content from unassigned library branches. */
 export async function studentMaterialReportGroups(studentId: string) {
@@ -65,7 +66,7 @@ export async function studentMaterialReportGroups(studentId: string) {
       roots.set(row.scope, list);
     }
   }
-  return [
+  const groups = [
     { scope: "STUDENT", title: "Личные материалы" },
     { scope: "MATERIAL", title: "Общая база" },
     { scope: "MISTAKE", title: "Ошибки" },
@@ -75,4 +76,5 @@ export async function studentMaterialReportGroups(studentId: string) {
     // a legacy cyclic/orphaned branch; the collector deduplicates by node id.
     nodes: [...(roots.get(scope) ?? []), ...visible.filter((row) => row.scope === scope).map((row) => byId.get(row.id)!)],
   }));
+  return personalizeLearningContent(studentId, groups);
 }

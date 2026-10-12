@@ -35,6 +35,7 @@ import type { RevisionMode } from "@/lib/revision-modes";
 import { RevisionStepScreen } from "@/components/revision/revision-steps";
 import { IconCheck, IconChevronLeft, IconClock } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { HomeworkFeedbackPanel } from "@/components/homework-feedback-panel";
 import { uniqueRevisionWords, revisionStrugglingWords } from "@/lib/revision-struggling";
 import { RevisionStrugglingPanel, RevisionStrugglingSummary } from "@/components/revision/revision-struggling-panel";
@@ -68,6 +69,14 @@ export function RevisionRunner({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const words = useMemo(() => uniqueRevisionWords(attempt?.plan ?? []), [attempt?.plan]);
+  useRealtimeSubscription({
+    channel: card.studentId ? `class:${card.studentId}` : null, events: "learning-language", enabled: !preview && Boolean(attempt),
+    onMessage: async () => {
+      if (!attempt) return;
+      const view = await attemptAction(attempt.id);
+      if (view) setAttempt(current => current?.id === view.id ? { ...current, plan: view.plan } : current);
+    },
+  });
 
   useEffect(() => {
     if (preview || (!saving && !saveError)) return;

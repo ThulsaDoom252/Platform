@@ -30,7 +30,7 @@ export type VocabularyTranslationResult = {
 
 type SourceLanguage = MaterialTranslationLang | "EN";
 type TargetLanguage = MaterialTranslationLang | "EN";
-type TranslationSegment = {
+export type TranslationSegment = {
   id: string;
   text: string;
   source?: SourceLanguage;
@@ -110,7 +110,7 @@ async function requestDeepL(
 export async function translateShortText(
   text: string,
   target: TargetLanguage,
-  source: SourceLanguage,
+  source?: SourceLanguage,
 ): Promise<string> {
   const [translated] = await requestDeepL([text], target, source, "English lesson vocabulary");
   return translated;
@@ -161,8 +161,15 @@ async function translateSegments(
   }
 
   for (const [sourceKey, grouped] of groups) {
-    for (let offset = 0; offset < grouped.length; offset += BATCH_SIZE) {
-      const batch = grouped.slice(offset, offset + BATCH_SIZE);
+    for (let offset = 0; offset < grouped.length;) {
+      // Bound UTF-8/XML payload size too, not just the number of strings.
+      const batch: TranslationSegment[] = [];
+      let characters = 0;
+      while (offset < grouped.length && batch.length < BATCH_SIZE) {
+        const item = grouped[offset];
+        if (batch.length && characters + item.text.length > 20_000) break;
+        batch.push(item); characters += item.text.length; offset++;
+      }
       const context = Array.from(
         new Set(batch.map((item) => item.context?.trim()).filter(Boolean)),
       ).join("\n\n");
@@ -177,6 +184,19 @@ async function translateSegments(
   }
 
   return result;
+}
+
+/** Reuses term protection, batching and DeepL errors for per-student translation variants. */
+export async function translateLearningSegments(
+  values: import("@/lib/learning-language-content").LearningSegment[],
+  target: MaterialTranslationLang,
+): Promise<string[]> {
+  const result = await translateSegments(values.map((value, index) => ({ id: String(index), ...value })), target);
+  return values.map((_, index) => {
+    const text = result.get(String(index));
+    if (!text) throw new Error("DeepL вернул неполный перевод");
+    return text;
+  });
 }
 
 /**

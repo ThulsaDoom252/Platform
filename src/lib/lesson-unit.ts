@@ -581,6 +581,8 @@ export function richLineWords(text: string): RichLineWord[] {
 /* ------------------------------------------------------------------ */
 
 export type LessonWord = {
+  /** Personalized translation language; absent on shared legacy templates. */
+  translationLang?: "RU" | "UK";
   id: string;
   category: string;
   icon: string | null;

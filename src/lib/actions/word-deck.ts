@@ -17,6 +17,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { personalizeLearningContent } from "@/lib/student-learning-language";
 import {
   DEFAULT_WORD_DECK_SETTINGS,
   minimumWordDeckWords,
@@ -495,10 +496,11 @@ export async function myWordDeckHomeworkAction(): Promise<WordDeckHomework[]> {
     eq(activityGames.studentId, session.userId),
     eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
   )).orderBy(desc(activityGames.createdAt));
-  return rows.flatMap((row) => {
+  const items = rows.flatMap((row) => {
     const item = homeworkWordDeckOf(row);
     return item ? [item] : [];
   });
+  return personalizeLearningContent(session.userId, items);
 }
 
 export async function wordDeckHomeworkAction(id: string): Promise<WordDeckHomework | null> {
@@ -509,7 +511,7 @@ export async function wordDeckHomeworkAction(id: string): Promise<WordDeckHomewo
     eq(activityGames.studentId, session.userId),
     eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
   )).limit(1);
-  return row ? homeworkWordDeckOf(row) : null;
+  return row ? personalizeLearningContent(session.userId, homeworkWordDeckOf(row)) : null;
 }
 
 function teacherOwnsWordDeckHomework(
@@ -612,12 +614,12 @@ export async function teacherWordDeckHomeworkAction(id: string): Promise<Teacher
   ]);
   if (!row || !teacherOwnsWordDeckHomework(session.userId, row, legacyOwnerId)) return null;
   const item = homeworkWordDeckOf(row.game);
-  return item ? {
+  return item ? personalizeLearningContent(row.game.studentId, {
     ...item,
     studentId: row.game.studentId,
     studentName: row.studentName,
     studentAvatarUrl: row.studentAvatarUrl,
-  } : null;
+  }) : null;
 }
 
 /**
@@ -863,7 +865,7 @@ export async function saveWordDeckHomeworkStateAction(
   }).where(eq(activityGames.id, row.id));
   revalidatePath("/student/homework");
   revalidatePath("/teacher/homeworks");
-  return { state };
+  return { state: await personalizeLearningContent(session.userId, state) };
 }
 
 export type AssignSpellingNotesHomeworkInput = {
@@ -964,10 +966,11 @@ export async function listClassWordDeckActivitiesAction(
     .where(and(eq(activityGames.studentId, target), eq(activityGames.kind, "WORD_DECK")))
     .orderBy(asc(activityGames.createdAt));
 
-  return rows.flatMap((row) => {
+  const activities = rows.flatMap((row) => {
     const activity = classWordDeckOf(row);
     return activity ? [activity] : [];
   });
+  return personalizeLearningContent(target, activities);
 }
 
 /** Колода показывается ученику только по явной команде учителя. */
@@ -996,7 +999,7 @@ export async function focusedClassWordDeckAction(): Promise<ClassWordDeckActivit
       ),
     )
     .limit(1);
-  return row ? classWordDeckOf(row) : null;
+  return row ? personalizeLearningContent(session.userId, classWordDeckOf(row)) : null;
 }
 
 /** Текущий стол для учителя и наблюдающего ученика выбранного класса. */
@@ -1027,7 +1030,7 @@ export async function classWordDeckLiveStateAction(
       ),
     )
     .limit(1);
-  return row ? classWordDeckOf(row)?.liveState ?? null : null;
+  return row ? personalizeLearningContent(studentId, classWordDeckOf(row)?.liveState ?? null) : null;
 }
 
 /** Учитель публикует стол; ученик не может прислать ни карту, ни ход. */
@@ -1069,9 +1072,9 @@ export async function saveClassWordDeckLiveStateAction(
     .where(eq(activityGames.id, row.id));
   await publishClassRealtime(teacher.classWithId, "word-deck", {
     gameId: row.id,
-    state,
+    state: await personalizeLearningContent(teacher.classWithId, state),
   });
-  return { state };
+  return { state: await personalizeLearningContent(teacher.classWithId, state) };
 }
 
 /** Удаляется только назначение из класса; сохранённый шаблон остаётся. */

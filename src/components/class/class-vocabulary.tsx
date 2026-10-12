@@ -7,7 +7,7 @@ import { SpeakPair, useSpeech } from "@/components/materials/speech";
 import {
   addClassVocabularyAction,
   deleteClassVocabularyAction,
-  listClassVocabularyAction,
+  classVocabularyDataAction,
   translateClassVocabularyAction,
   translateClassVocabularyLanguageAction,
   updateClassVocabularyAction,
@@ -60,11 +60,12 @@ export function ClassVocabulary({
       return;
     }
     try {
-      const words = await listClassVocabularyAction();
+      const { words, preferred } = await classVocabularyDataAction();
       if (!languageSwitching.current) setRows(words);
+      if (preferred && !languageSwitching.current) setLang(preferred);
       if (!languageInitialized.current) {
         languageInitialized.current = true;
-        if (words[0]) setLang(words[0].translationLang);
+        if (words[0] && !preferred) setLang(words[0].translationLang);
       }
     } finally {
       setLoaded(true);

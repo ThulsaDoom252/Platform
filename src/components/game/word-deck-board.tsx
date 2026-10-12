@@ -177,6 +177,21 @@ export function WordDeckBoard({
   const lastRemoteAt = useRef(saved?.updatedAt ?? "");
   const publishQueue = useRef(Promise.resolve());
 
+  useEffect(() => {
+    const translations = new Map(activity.cards.map(card => [card.phraseId, card.translation]));
+    let alive = true;
+    void Promise.resolve().then(() => { if (alive) setDeck(current => {
+      let changed = false;
+      const next = current.map(card => {
+        if (!translations.has(card.phraseId) || translations.get(card.phraseId) === card.translation) return card;
+        changed = true;
+        return { ...card, translation: translations.get(card.phraseId) ?? null };
+      });
+      return changed ? next : current;
+    }); });
+    return () => { alive = false; };
+  }, [activity.cards]);
+
   const deal = useCallback(() => {
     if (!canDeal) return;
     if (sound) beep("deal");

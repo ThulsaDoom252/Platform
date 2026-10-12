@@ -1,4 +1,5 @@
 "use server";
+import { personalizeLearningContent } from "@/lib/student-learning-language";
 
 import { randomInt, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
@@ -1121,7 +1122,8 @@ export async function submitHomeworkAutoAnswerAction(
     return { error: "Домашняя работа не найдена" };
   }
 
-  const found = findHomeworkItem(row.plan, String(itemId ?? ""));
+  const localizedPlan = await personalizeLearningContent(row.assignment.studentId, row.plan);
+  const found = findHomeworkItem(localizedPlan, String(itemId ?? ""));
   if (!found || !isHomeworkAutoKind(found.exercise.kind) || !found.item.answer) {
     return { error: "Задание не найдено" };
   }

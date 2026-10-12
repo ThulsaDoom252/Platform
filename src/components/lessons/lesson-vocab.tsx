@@ -86,6 +86,8 @@ export function LessonVocab({
   const groups = useMemo(() => groupWords(words), [words]);
   const categories = useMemo(() => groups.map((g) => g.category), [groups]);
   const translationLanguage = useMemo(() => {
+    const preferred = words.find(word => word.translationLang)?.translationLang;
+    if (preferred) return preferred;
     const joined = words.map((word) => word.translation ?? "").join(" ");
     return /[іїєґ]/i.test(joined) ? "UK" : "RU";
   }, [words]);

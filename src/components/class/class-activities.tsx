@@ -31,6 +31,7 @@ import { GuessPlay } from "@/components/game/guess-play";
 import { GuessPicturePresetForm } from "@/components/game/guess-picture-studio";
 import { GameStatsCard } from "@/components/game/game-stats";
 import { WordDeckBoard } from "@/components/game/word-deck-board";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { WordDeckForm } from "@/components/game/word-deck-studio";
 import { isWordDeckFinished } from "@/lib/word-deck";
 import { ClassActivityPicker } from "@/components/class/class-activity-picker";
@@ -109,7 +110,10 @@ export function ClassActivities({ studentId }: { studentId: string }) {
       if (generation !== loadGeneration.current || result.studentId !== studentId) return;
       // Only successful reads replace saved UI state; a failure is not an empty list.
       if (result.queue !== undefined) setQueue(result.queue);
-      if (result.decks !== undefined) setDecks(result.decks);
+      if (result.decks !== undefined) {
+        setDecks(result.decks);
+        setOpenDeck(current => current ? result.decks!.find(deck => deck.id === current.id) ?? current : null);
+      }
       if (result.revisions !== undefined) setRevisions(result.revisions);
       if (result.meta !== undefined) setMeta(result.meta);
       setLoadError(result.failed.length > 0);
@@ -129,6 +133,7 @@ export function ClassActivities({ studentId }: { studentId: string }) {
       loadGeneration.current += 1;
     };
   }, [reload]);
+  useRealtimeSubscription({ channel: `class:${studentId}`, events: "learning-language", onMessage: reload });
 
   const modeLabel: Record<GameMode, string> = {
     PICTURE: t.game.modePicture,

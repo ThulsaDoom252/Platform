@@ -13,8 +13,9 @@ import { quickVerbsAction, type QuickVerb } from "@/lib/actions/class";
 import { IconSearch } from "@/components/icons";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
+import { useRealtimeSubscription } from "@/lib/use-realtime";
 
-export function QuickVerbs() {
+export function QuickVerbs({ studentId }: { studentId?: string }) {
   const { t } = useT();
   const [verbs, setVerbs] = useState<QuickVerb[] | null>(null);
   const [query, setQuery] = useState("");
@@ -27,7 +28,8 @@ export function QuickVerbs() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [studentId]);
+  useRealtimeSubscription({ channel: studentId ? `class:${studentId}` : null, events: "learning-language", onMessage: async () => setVerbs(await quickVerbsAction()) });
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();

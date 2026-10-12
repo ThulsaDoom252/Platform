@@ -11,6 +11,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { personalizeLearningContent, studentLearningLanguage } from "@/lib/student-learning-language";
 import { normalizeTimerSeconds } from "@/lib/timer-settings";
 import { scheduleNow } from "@/lib/schedule-time";
 import {
@@ -535,7 +536,7 @@ export async function listClassLessonNotesAction(): Promise<ClassLessonNote[]> {
       ),
     )
     .orderBy(desc(classLessonNotes.lessonDay), asc(classLessonNotes.createdAt));
-  return rows.map(noteCard);
+  return personalizeLearningContent(studentId, rows.map(noteCard));
 }
 
 async function currentLessonContext(studentId: string) {
@@ -576,7 +577,7 @@ export async function createClassLessonNoteAction(
       .orderBy(desc(classVocabularyWords.updatedAt))
       .limit(1);
     try {
-      spelling = await enrichSpellingMistake(body, latestWord?.translationLang ?? "RU");
+      spelling = await enrichSpellingMistake(body, await studentLearningLanguage(studentId) ?? latestWord?.translationLang ?? "RU");
     } catch (error) {
       return {
         error: error instanceof Error ? error.message : "Could not prepare the spelling card",
@@ -624,7 +625,7 @@ export async function updateClassLessonNoteAction(
   let spelling: Awaited<ReturnType<typeof enrichSpellingMistake>> | null = null;
   if (existing.kind === "SPELLING" && existing.body !== body) {
     try {
-      spelling = await enrichSpellingMistake(body, existing.translationLang);
+      spelling = await enrichSpellingMistake(body, await studentLearningLanguage(studentId) ?? existing.translationLang);
     } catch (error) {
       return {
         error: error instanceof Error ? error.message : "Could not prepare the spelling card",

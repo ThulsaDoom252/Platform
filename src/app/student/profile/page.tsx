@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { getDict } from "@/lib/i18n/server";
 import { ProfilePanel } from "@/components/profile-panel";
 import { ProfileLogout } from "@/components/profile-logout";
+import { LearningLanguagePanel } from "@/components/learning-language-panel";
 
 export default async function StudentProfilePage() {
   const session = await getSession();
@@ -22,6 +23,7 @@ export default async function StudentProfilePage() {
         <h1 className="text-2xl font-bold text-content">{t.profile.title}</h1>
         <p className="mt-1 text-sm text-muted">{t.profile.subtitle}</p>
       </div>
+      <LearningLanguagePanel studentId={me.id} language={me.learningLanguage} />
       <ProfilePanel
         user={{
           name: me.name,

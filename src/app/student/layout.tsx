@@ -27,6 +27,7 @@ import { NotificationToastHost } from "@/components/notification-toast-host";
 import { RealtimePresenceBeacon } from "@/components/student-presence";
 import { AppViewProvider } from "@/components/app-view-provider";
 import { UpdatedNavigation } from "@/components/updated-navigation";
+import { LearningLanguageRefresh } from "@/components/learning-language-refresh";
 
 export default async function StudentLayout({
   children,
@@ -55,6 +56,7 @@ export default async function StudentLayout({
   return (
     <I18nProvider userId={session.userId} locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
       <AppViewProvider>
+      <LearningLanguageRefresh userId={session.userId} />
       <RealtimePresenceBeacon name={me.name} />
       <StudentClassSummons userId={session.userId} />
       <NotificationToastHost userId={session.userId} />

@@ -8,7 +8,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   users,
@@ -19,8 +19,12 @@ import {
   classVocabularyWords,
   lessons,
   lessonPackages,
+  materialNodes,
+  irregularVerbs,
 } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
+import { personalizeLearningContent } from "@/lib/student-learning-language";
+import { getOwnedTree, getStudentLibrary, type MaterialNode } from "@/lib/materials";
 import { daysLeftInWeek } from "@/lib/class-order";
 import { IRREGULAR_VERBS_BASE, verbKey } from "@/lib/irregular-verbs-base";
 import {
@@ -662,6 +666,7 @@ export type QuickVerb = {
   past: string;
   participle: string;
   translation: string | null;
+  translationLang?: "RU" | "UK";
   /** Глагол взят из списков учителя, а не из общего справочника. */
   own: boolean;
 };
@@ -675,40 +680,45 @@ export type QuickVerb = {
  * свой вариант — в нём может быть уточнённый перевод.
  */
 export async function quickVerbsAction(): Promise<QuickVerb[]> {
-  await requireUser();
+  const session = await requireUser();
+  const [teacher] = session.role === "TEACHER" ? await db.select({ studentId: users.classWithId }).from(users).where(eq(users.id, session.userId)).limit(1) : [];
+  const studentId = session.role === "STUDENT" ? session.userId : teacher?.studentId;
 
-  const rows = await db.execute<{
-    base: string;
-    past: string;
-    participle: string;
-    translation: string | null;
-  }>(sql`
-    select distinct on (lower(base), lower(past), lower(participle))
-      base, past, participle, translation
-    from irregular_verbs
-    order by lower(base), lower(past), lower(participle)
-  `);
+  // Personal language variants must never read somebody else's private lists.
+  // The complete public reference remains available even without any grants.
+  const visibleNodes: MaterialNode[] = [];
+  const flatten = (nodes: MaterialNode[]) => { for (const node of nodes) { visibleNodes.push(node); flatten(node.children); } };
+  if (studentId) {
+    const trees = await Promise.all([getStudentLibrary(studentId, false), getOwnedTree("MISTAKE", studentId, false)]);
+    trees.forEach(flatten);
+  }
+  const rows = await db.select({ base: irregularVerbs.base, past: irregularVerbs.past, participle: irregularVerbs.participle, translation: irregularVerbs.translation, translationLang: materialNodes.translationLang, nodeId: irregularVerbs.nodeId })
+    .from(irregularVerbs).innerJoin(materialNodes, eq(materialNodes.id, irregularVerbs.nodeId))
+    .where(studentId ? inArray(irregularVerbs.nodeId, visibleNodes.map(node => node.id)) : or(and(eq(materialNodes.scope, "MATERIAL"), isNull(materialNodes.ownerId)), and(eq(materialNodes.scope, "PERSONAL"), eq(materialNodes.ownerId, session.userId))));
+  const languageOf = new Map(visibleNodes.map(node => [node.id, node.translationLang]));
 
   const byKey = new Map<string, QuickVerb>();
   for (const v of IRREGULAR_VERBS_BASE) {
-    byKey.set(verbKey(v), { ...v, own: false });
+    byKey.set(verbKey(v), { ...v, translationLang: "RU", own: false });
   }
-  for (const v of rows.rows) {
+  for (const v of rows) {
     const key = verbKey(v);
     byKey.set(key, {
       base: v.base,
       past: v.past,
       participle: v.participle,
       translation: v.translation ?? byKey.get(key)?.translation ?? null,
+      translationLang: languageOf.get(v.nodeId) ?? v.translationLang,
       own: true,
     });
   }
 
-  return [...byKey.values()].sort(
+  const verbs = [...byKey.values()].sort(
     (a, b) =>
       a.base.localeCompare(b.base, "en") ||
       a.past.localeCompare(b.past, "en"),
   );
+  return studentId ? personalizeLearningContent(studentId, verbs) : verbs;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1028,11 +1038,11 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
         : me.classFocus?.videoState,
     ),
     timer,
-    noteFocus,
+    noteFocus: noteFocus?.kind === "SPELLING" && studentId ? await personalizeLearningContent(studentId, noteFocus) : noteFocus,
     gameReview: me.role === "STUDENT" ? visibleGameReview.review : null,
     gameReviewNotice: me.role === "STUDENT" ? visibleGameReview.notice : null,
     reactions,
-    vocabularyEvents: vocabularyEvents.map((event) => ({
+    vocabularyEvents: (studentId ? await personalizeLearningContent(studentId, vocabularyEvents) : vocabularyEvents).map((event) => ({
       ...event,
       createdAt: event.createdAt.toISOString(),
     })),

@@ -50,7 +50,7 @@ export function useGameState(
 
   useRealtimeSubscription({
     channel: realtime?.channel,
-    events: "game-state",
+    events: ["game-state", "learning-language"],
     onMessage: (message) => {
       const changed = (message.data as { gameId?: string } | undefined)?.gameId;
       if (!realtime?.gameId || !changed || changed === realtime.gameId) void refresh();

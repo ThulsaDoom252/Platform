@@ -17,6 +17,7 @@ export type RealtimeEvent =
   | "homework-review"
   | "homework-feedback"
   | "lesson"
+  | "learning-language"
   | "notification"
   | "presence"
   | "summon"

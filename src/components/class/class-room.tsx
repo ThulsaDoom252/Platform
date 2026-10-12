@@ -575,6 +575,15 @@ export function ClassRoom({
     fallbackMs: 500,
   });
 
+  useRealtimeSubscription({
+    channel: conversation ? `class:${conversation}` : null,
+    events: "learning-language",
+    onMessage: async () => {
+      if (!teacher) setFocusedWordDeck(await focusedClassWordDeckAction());
+      await classSyncRef.current();
+    },
+  });
+
   /*
    * Сегодня и завтра называем словами, остальные дни — днём недели: на
    * «Wednesday» в середине списка взгляд цепляется хуже, чем на «Завтра».
@@ -1187,7 +1196,7 @@ export function ClassRoom({
               onMove={(x, y) => movePanel("verbs", x, y)}
               onResize={(width, height) => resizePanel("verbs", width, height)}
             >
-              <QuickVerbs />
+              <QuickVerbs studentId={teacher ? partner?.id : selfId} />
             </DockablePanel>
           )}
 

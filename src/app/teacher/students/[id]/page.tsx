@@ -28,6 +28,7 @@ import { listWordDeckActivitiesAction } from "@/lib/actions/word-deck";
 import { StudentPasswordPanel } from "@/components/teacher/student-password-panel";
 import { DeleteStudentPanel } from "@/components/teacher/delete-student-panel";
 import { StudentPresence } from "@/components/student-presence";
+import { LearningLanguagePanel } from "@/components/learning-language-panel";
 
 export default async function StudentDetailPage({
   params,
@@ -85,6 +86,7 @@ export default async function StudentDetailPage({
         </Badge>
       </div>
 
+      <LearningLanguagePanel studentId={student.id} language={student.learningLanguage} />
       <StudentNotes
         studentId={student.id}
         card={{

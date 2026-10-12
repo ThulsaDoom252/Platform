@@ -88,6 +88,7 @@ test("the real copy action saves manual/automatic icons and preserves all vocabu
     };
     const tables = Object.fromEntries(["lessonUnits", "lessonWords", "materialNodes", "materialPhrases", "phraseImages", "users"].map((table) => [table, { table, id: `${table}.id` }]));
     const context = { exports: {} as { addLessonVocabularyToMaterialsAction: (unitId: string, input: unknown) => Promise<{ nodeId?: string; error?: string }> }, db, ...tables, requireTeacher: async () => ({ userId: "teacher-local" }), resolveMaterialIcon, eq: () => null, and: () => null, isNull: () => null, asc: () => null, max: () => null, randomUUID: () => "phrase-local", revalidatePath: () => {} };
+    Object.assign(context, { studentLearningLanguage: async () => null, personalizeLearningContent: async (_studentId: string, value: unknown) => value });
     runInNewContext(code, context);
     const result = await context.exports.addLessonVocabularyToMaterialsAction("lesson-local", { studentId: "student-local", name: "Travel", icon: selected });
     if (selected === "<script>") { assert.ok(result.error); assert.equal(writes.length, 0); assert.equal(selectCount, 0); continue; }

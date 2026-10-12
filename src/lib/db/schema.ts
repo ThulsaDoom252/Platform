@@ -32,6 +32,7 @@ import type {
 } from "@/lib/class-game-meta";
 import { relations } from "drizzle-orm";
 import { DEFAULT_TIMER_SECONDS } from "@/lib/timer-settings";
+import type { LearningSegment } from "@/lib/learning-language-content";
 
 // ---------- Enums ----------
 export const roleEnum = pgEnum("role", ["TEACHER", "STUDENT"]);
@@ -77,6 +78,8 @@ export const users = pgTable("users", {
   theme: themeEnum("theme").notNull().default("LIGHT"),
   // Язык интерфейса — у каждого пользователя свой, по умолчанию английский
   locale: localeEnum("locale").notNull().default("en"),
+  /** Independent of UI locale. Null preserves legacy content until a language is chosen. */
+  learningLanguage: vocabLangEnum("learning_language"),
   phone: text("phone"),
   contactNote: text("contact_note"),
   email: text("email"),
@@ -192,6 +195,29 @@ export const users = pgTable("users", {
   /** Всё остальное, что учителю стоит помнить. */
   teacherNote: text("teacher_note"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/** Personal translation cache; shared templates and historical attempts are never rewritten. */
+export const studentLearningTranslations = pgTable("student_learning_translations", {
+  id: text("id").primaryKey(),
+  studentId: uuid("student_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  language: vocabLangEnum("language").notNull(),
+  translation: text("translation").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => [index("student_learning_translations_student_lang_idx").on(table.studentId, table.language)]);
+
+/** Resumable warm-up: closing a profile does not lose work already translated. */
+export const studentLearningTranslationJobs = pgTable("student_learning_translation_jobs", {
+  studentId: uuid("student_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  token: uuid("token").notNull(),
+  language: vocabLangEnum("language").notNull(),
+  segments: jsonb("segments").$type<LearningSegment[]>().default([]).notNull(),
+  cursor: integer("cursor").notNull().default(0),
+  total: integer("total").notNull().default(0),
+  status: text("status").notNull().default("RUNNING"),
+  processingUntil: timestamp("processing_until"),
+  error: text("error"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
