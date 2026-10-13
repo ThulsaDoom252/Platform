@@ -15,14 +15,15 @@ const headerClasses = (role: string) => {
 };
 
 for (const role of ["teacher", "student"]) {
-  test(`${role} notifications escape above both sticky Highlight toolbars through the header layer`, () => {
+  test(`${role} notifications remain above the floating Highlight palette through the header layer`, () => {
     const header = headerClasses(role);
     assert.match(header, /sticky top-0/);
     for (const file of ["assigned-lesson.tsx", "interactive-homework.tsx"]) {
-      const toolbar = source(`components/lessons/${file}`).match(/className="(sticky top-20 [^"]+)"/)?.[1];
-      assert.ok(toolbar);
-      assert.ok(zIndex(header) > zIndex(toolbar), `${role} header must cover ${file}`);
+      assert.ok(source(`components/lessons/${file}`).includes("<FloatingHighlightToolbar"));
     }
+    const toolbar = source("components/lessons/floating-highlight-toolbar.tsx").match(/className="(fixed z-30 [^"]+)"/)?.[1];
+    assert.ok(toolbar);
+    assert.ok(zIndex(header) > zIndex(toolbar), `${role} notifications must cover the palette`);
     assert.match(source(`app/${role}/layout.tsx`), /<NotificationBell items=\{items\} unreadCount=\{unreadCount\}/);
   });
 }

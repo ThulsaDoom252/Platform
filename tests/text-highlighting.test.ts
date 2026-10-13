@@ -137,16 +137,24 @@ test("native input, textarea and dropdown stay identical when highlighting switc
   }
 });
 
-test("lesson and homework highlight bars have no caption or backdrop and retain right-aligned controls", () => {
+test("lesson and homework use one floating highlight palette, with a bottom launcher and no inline row", () => {
   for (const file of ["assigned-lesson.tsx", "interactive-homework.tsx"]) {
     const source = readFileSync(`src/components/lessons/${file}`, "utf8");
     assert(!source.includes("highlightToolsHint"));
-    assert(source.includes("<HighlightToolButtons tools={highlightTools} />"));
-    assert(source.includes("sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2"));
-    const toolbar = source.match(/className="(sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2[^"]*)"/)?.[1];
-    assert(toolbar);
-    assert(!/\b(bg-|border|shadow|backdrop)/.test(toolbar));
-    assert(toolbar.includes("px-3 py-2"));
+    assert(source.includes("<HighlightToolButtons tools={highlightTools} showToggle={false} large />"));
+    assert(source.includes("<FloatingHighlightToolbar tools={highlightTools}"));
+    assert(!source.includes("sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2"));
+  }
+  const homework = readFileSync("src/components/lessons/interactive-homework.tsx", "utf8");
+  assert(homework.includes("teacherReviewTools && !inheritedHighlightTools"));
+});
+
+test("the larger floating palette has only three color buttons, never another Highlight label/toggle", () => {
+  for (const locale of ["en", "ru", "uk"] as const) {
+    const html = render(createElement(HighlightToolButtons, { tools: fakeTools(true), showToggle: false, large: true }), fakeTools(true), locale);
+    assert.equal([...html.matchAll(/<button /g)].length, 3);
+    assert(html.includes("h-8 w-8"));
+    assert(!html.includes(dictionaries[locale].interactiveHomework.highlightToggle));
   }
 });
 

@@ -1051,6 +1051,7 @@ export const en = {
     highlightPhrase: "Line",
     highlightUndo: "Undo",
     highlightUndoHint: "Undo the last highlight. Press again to keep going back.",
+    highlightMoveHint: "Move panel: drag or use arrow keys. Home returns it to the top right.",
     highlightClear: "Clear",
     highlightClearHint: "Remove every highlight from this page.",
     showBritish: "Show UK to student",

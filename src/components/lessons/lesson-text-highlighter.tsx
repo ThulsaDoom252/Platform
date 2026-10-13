@@ -232,6 +232,7 @@ export function LessonTextHighlighter({
     return null;
   };
   const chooseWord = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element && event.target.closest("[data-highlight-controls]")) return;
     if (!enabled || (!onHighlight && !onReplaceHighlights)) return;
     if (gesture.current.consumeClick(event.detail > 0)) {
       event.preventDefault(); event.stopPropagation();

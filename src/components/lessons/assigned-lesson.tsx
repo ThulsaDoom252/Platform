@@ -40,6 +40,7 @@ import { LessonView } from "@/components/lessons/lesson-view";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { LessonTextHighlighter } from "@/components/lessons/lesson-text-highlighter";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools } from "./highlight-tools";
+import { FloatingHighlightToolbar } from "./floating-highlight-toolbar";
 const LiveLessonEditor = dynamic(() => import("@/components/lessons/live-lesson-editor").then((m) => m.LiveLessonEditor));
 import { IconPencil, IconReset, IconTrash } from "@/components/icons";
 import type { ClassVideoState } from "@/lib/class-video";
@@ -287,32 +288,29 @@ export function AssignedLesson({
     />
   ) : null;
   const highlightToolbar = teacher ? (
-    <div
-      data-no-lesson-highlight
-      className="sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2 px-3 py-2"
-    >
-      <HighlightToolButtons tools={highlightTools} />
+    <FloatingHighlightToolbar tools={highlightTools} liveClass={liveClass}>
+      <HighlightToolButtons tools={highlightTools} showToggle={false} large />
       <button
         type="button"
         disabled={busy || highlightHistorySize === 0}
         onClick={undoHighlight}
-        className="flex h-9 items-center gap-1.5 rounded-lg bg-surface px-3 text-[11px] font-bold text-muted ring-1 ring-line transition hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-11 items-center gap-2 rounded-xl bg-surface px-3 text-sm font-bold text-muted ring-1 ring-line transition hover:text-content disabled:cursor-not-allowed disabled:opacity-40"
         title={t.lessonUnits.highlightUndoHint}
       >
-        <IconReset className="h-3.5 w-3.5" />
+        <IconReset className="h-4 w-4" />
         {t.lessonUnits.highlightUndo}
       </button>
       <button
         type="button"
         disabled={busy || Object.keys(dialogueHighlights(marks)).length === 0}
         onClick={clearHighlights}
-        className="flex h-9 items-center gap-1.5 rounded-lg bg-surface px-3 text-[11px] font-bold text-muted ring-1 ring-line transition hover:bg-rose-50 hover:text-rose-600 hover:ring-rose-200 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-rose-950/30"
+        className="flex h-11 items-center gap-2 rounded-xl bg-surface px-3 text-sm font-bold text-muted ring-1 ring-line transition hover:bg-rose-50 hover:text-rose-600 hover:ring-rose-200 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-rose-950/30"
         title={t.lessonUnits.highlightClearHint}
       >
-        <IconTrash className="h-3.5 w-3.5" />
+        <IconTrash className="h-4 w-4" />
         {t.lessonUnits.highlightClear}
       </button>
-    </div>
+    </FloatingHighlightToolbar>
   ) : null;
 
   if (data.lesson.kind === "REGULAR") {

@@ -1124,6 +1124,7 @@ export const ru: Dict = {
     highlightPhrase: "Фраза",
     highlightUndo: "Отменить",
     highlightUndoHint: "Отменяет последнюю подсветку. Нажимай ещё, чтобы идти назад по цепочке.",
+    highlightMoveHint: "Переместить панель: перетаскивай или нажимай стрелки. Home вернёт её вправо вверх.",
     highlightClear: "Очистить",
     highlightClearHint: "Убирает все подсветки на этой странице.",
     showBritish: "Показывать UK ученику",

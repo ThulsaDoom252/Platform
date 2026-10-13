@@ -22,6 +22,7 @@ import { MarkHomeworkDoneButton } from "@/components/teacher/mark-homework-done-
 import { mergeHomeworkCompletion } from "@/lib/homework-completion";
 import { HOMEWORK_TITLE_KEY, assignedHomeworkTitle, mergeHomeworkTitle } from "@/lib/homework-title";
 import { HighlightToolButtons, HighlightToolsContext, useHighlightTools, useSharedHighlightTools } from "./highlight-tools";
+import { FloatingHighlightToolbar } from "./floating-highlight-toolbar";
 import { selectedOffsets, wordAtPoint } from "@/lib/text-highlight-dom";
 import { createHighlightGestureGuard } from "@/lib/highlight-gesture";
 import {
@@ -362,6 +363,7 @@ export function InteractiveHomework({
 
   const highlightSelection = (event: SyntheticEvent<HTMLDivElement>) => {
     if (!canHighlight || !highlightMode || !rootRef.current) return;
+    if (event.target instanceof Element && event.target.closest("[data-highlight-controls]")) return;
     if (event.target instanceof Element && event.target.closest("input, textarea, select, [data-homework-answer-field]")) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount) return;
@@ -392,6 +394,7 @@ export function InteractiveHomework({
       data-highlight-active={canHighlight && highlightMode ? "true" : undefined}
       onMouseDownCapture={() => highlightGesture.current.begin()}
       onClickCapture={(event) => {
+        if (event.target instanceof Element && event.target.closest("[data-highlight-controls]")) return;
         if (!canHighlight || !highlightMode || !highlightGesture.current.consumeClick(event.detail > 0)) return;
         event.preventDefault(); event.stopPropagation();
       }}
@@ -530,10 +533,10 @@ export function InteractiveHomework({
         )}
       </section>
 
-      {session.teacher && teacherReviewTools && (
-        <div className="sticky top-20 z-30 flex flex-wrap items-center justify-end gap-2 px-3 py-2">
-          <HighlightToolButtons tools={highlightTools} />
-        </div>
+      {session.teacher && teacherReviewTools && !inheritedHighlightTools && (
+        <FloatingHighlightToolbar tools={highlightTools} liveClass={session.liveClass}>
+          <HighlightToolButtons tools={highlightTools} showToggle={false} large />
+        </FloatingHighlightToolbar>
       )}
 
       {session.teacher && interactionError && (

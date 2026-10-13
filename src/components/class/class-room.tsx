@@ -1398,6 +1398,7 @@ export function ClassRoom({
           {teacher && tabBtn("script", <IconFile className="h-4 w-4" />, t.classRoom.script)}
           {tabBtn("board", <IconGrid className="h-4 w-4" />, t.classRoom.board)}
           {teacher && tabBtn("notes", <NotebookPen className="h-4 w-4" />, t.classRoom.notes)}
+          {teacher && <div data-class-highlight-launcher className="contents" />}
 
           {teacher && (
             <button

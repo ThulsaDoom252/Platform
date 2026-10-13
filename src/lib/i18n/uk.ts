@@ -1124,6 +1124,7 @@ export const uk: Dict = {
     highlightPhrase: "Фраза",
     highlightUndo: "Скасувати",
     highlightUndoHint: "Скасовує останнє виділення. Натискай ще, щоб іти назад по ланцюжку.",
+    highlightMoveHint: "Перемістити панель: перетягуй або натискай стрілки. Home поверне її вправо вгору.",
     highlightClear: "Очистити",
     highlightClearHint: "Прибирає всі виділення на цій сторінці.",
     showBritish: "Показувати UK учню",
