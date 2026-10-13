@@ -31,11 +31,31 @@ test("mixed Cyrillic explanations preserve English grammar terms through XML rou
     const payload = JSON.parse(String(options!.body));
     assert.equal(payload.tag_handling, "xml"); assert.deepEqual(payload.ignore_tags, ["k"]);
     assert.ok(payload.text[0].includes("<k>Present Perfect</k>"));
+    assert.ok(payload.text[0].includes("&amp;"));
+    assert.doesNotMatch(payload.text[0], /&(?!(?:amp|lt|gt);)/, "DeepL v2 rejects malformed XML entities");
     return new Response(JSON.stringify({ translations: payload.text.map((text: string) => ({ text: text.replace("Используй", "Використовуй").replace("после", "після") })) }), { status: 200 });
   });
   const result = await api.translateLearningSegments([{ text: "Используй Present Perfect после already & just", source: "RU", context: "Grammar" }], "UK");
   assert.equal(result[0], "Використовуй Present Perfect після already & just");
   assert.ok(!result[0].includes("<k>"));
+});
+
+test("every string in a protected batch has valid XML escaping, even without English terms", async () => {
+  const api = translator(async (_input, options) => {
+    const payload = JSON.parse(String(options!.body));
+    assert.equal(payload.tag_handling, "xml");
+    for (const xml of payload.text) {
+      assert.doesNotMatch(xml, /&(?!(?:amp|lt|gt);)/);
+      assert.doesNotMatch(xml.replace(/<\/?k>/g, ""), /[<>]/);
+    }
+    return new Response(JSON.stringify({ translations: payload.text.map((text: string) => ({ text })) }), { status: 200 });
+  });
+  const values: LearningSegment[] = [
+    { text: "Используй on <-> in & at.", source: "RU" },
+    { text: "Один < два & три > два", source: "RU" },
+    { text: "Буквальное &nbsp; и <b>word</b>", source: "RU" },
+  ];
+  assert.deepEqual(await api.translateLearningSegments(values, "UK"), values.map(value => value.text));
 });
 test("quota failures and incomplete responses reject the batch instead of writing partial content", async () => {
   for (const response of [new Response("quota", { status: 456 }), new Response(JSON.stringify({ translations: [] }), { status: 200 })]) {

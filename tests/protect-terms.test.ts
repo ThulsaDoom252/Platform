@@ -49,7 +49,28 @@ test("текст без английского остаётся собой", () 
 
 test("угловые скобки и амперсанд переживают защиту", () => {
   const source = "Порівняй on <-> in & at.";
+  assert.equal(
+    protectTerms(source),
+    "Порівняй <k>on</k> &lt;-&gt; <k>in</k> &amp; <k>at</k>.",
+    "XML entities must stay intact, not acquire protection tags inside them",
+  );
   assert.equal(visible(source), source);
+});
+
+test("XML escaping is applied after matching real English terms, including entity-like text", () => {
+  const sources = [
+    "Используй Present Perfect после already & just",
+    "Порівняй x < y та y > z.",
+    "Текст &amp; &lt; &#39; &nbsp; <k>word</k> — це буквальний запис.",
+    "Повтори on & at, але знак < не є тегом.",
+  ];
+  for (const source of sources) {
+    const xml = protectTerms(source);
+    assert.doesNotMatch(xml, /&(?!(?:amp|lt|gt);)/, "No bare or interrupted XML entities");
+    const escapedText = xml.replace(/<\/?k>/g, "");
+    assert.doesNotMatch(escapedText, /[<>]/, "Only generated protection tags may be markup");
+    assert.equal(restoreTerms(xml), source, "Original text survives the XML round trip");
+  }
 });
 
 test("снятие тегов переживает переводчик, который их переставил", () => {

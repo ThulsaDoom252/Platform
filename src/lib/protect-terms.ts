@@ -41,9 +41,18 @@ export function needsProtection(text: string): boolean {
  * безопасным, как текст с тегами.
  */
 export function protectTerms(text: string): string {
-  const escaped = escapeXml(text);
-  if (!needsProtection(text)) return escaped;
-  return escaped.replace(TERM, (term) => `<${KEEP_TAG}>${term}</${KEEP_TAG}>`);
+  if (!needsProtection(text)) return escapeXml(text);
+  // Match the original text, not escaped XML: matching the letters in &amp;
+  // would produce &<k>amp</k>; and make DeepL's XML parser reject the batch.
+  const parts: string[] = [];
+  let offset = 0;
+  for (const match of text.matchAll(TERM)) {
+    parts.push(escapeXml(text.slice(offset, match.index)));
+    parts.push(`<${KEEP_TAG}>${escapeXml(match[0])}</${KEEP_TAG}>`);
+    offset = match.index + match[0].length;
+  }
+  parts.push(escapeXml(text.slice(offset)));
+  return parts.join("");
 }
 
 /** Снять теги и экранирование с переведённого текста. */
