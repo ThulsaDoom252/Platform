@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import * as drizzleOrm from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pg-proxy";
+import { PgDialect } from "drizzle-orm/pg-core";
 import * as actualSchema from "../src/lib/db/schema";
+import * as learningCache from "../src/lib/global-search-learning-cache";
+import { pageTranslationLang } from "../src/lib/translation-lang";
+import { collectLearningTranslations, type LearningLanguage } from "../src/lib/learning-language-content";
 import { dictionaryEntrySearchItem, searchVisibleDictionaryEntries } from "../src/lib/global-search-vocabulary";
 import { SEARCH_CATEGORIES, type GlobalSearchResponse } from "../src/lib/global-search-types";
 import type { MaterialNode, MaterialPhrase, MaterialVerb } from "../src/lib/materials";
@@ -33,7 +38,7 @@ type Row = Record<string, unknown>;
 type Column = { table: string; key: string };
 type Predicate = { op: string; values: unknown[]; strings?: string[] };
 type QueryLog = { table?: string; limit?: number };
-const tableNames = ["users", "materialNodes", "materialPhrases", "materialBlocks", "irregularVerbs", "lessonUnits", "wordDeckActivities", "tongueTwisters"];
+const tableNames = ["users", "materialNodes", "materialPhrases", "materialBlocks", "irregularVerbs", "studentLearningTranslations", "lessonUnits", "wordDeckActivities", "tongueTwisters"];
 const tables = Object.fromEntries(tableNames.map((name) => [name, new Proxy({ table: name }, {
   get: (target, key) => key === "table" ? target.table : { table: target.table, key: String(key) },
 })]));
@@ -51,7 +56,46 @@ function actionHarness({ session = { userId: "teacher-one", role: "TEACHER" }, r
       const column = value as Column;
       return context[column.table]?.[column.key];
     }
+    if (value && typeof value === "object" && "op" in value) {
+      const expression = value as Predicate;
+      if (expression.op === "pageHint") {
+        const nodeId = context.materialNodes.id;
+        const texts = (rows.materialPhrases ?? []).filter((row) => row.nodeId === nodeId)
+          .flatMap((row) => [row.translation, row.section, row.note] as (string | null)[]);
+        texts.push(...(rows.materialBlocks ?? []).filter((row) => row.nodeId === nodeId).map((row) => JSON.stringify(row.data)));
+        return pageTranslationLang(texts, (context.materialNodes.translationLang ?? "RU") as "RU" | "UK");
+      }
+      if (expression.op === "cachedTitle") {
+        const phrase = context.materialPhrases;
+        return phrase.kind === "NOTE" ? cachedValue(phrase.phrase, null, valueOf(expression.values[0], context), context) : phrase.phrase;
+      }
+      if (expression.op === "cachedText" || expression.op === "cachedTranslation") {
+        const current = valueOf(expression.values[0], context);
+        let english = expression.values[1] === null ? null : valueOf(expression.values[1], context);
+        if (expression.op === "cachedTranslation" && ((typeof english === "string" && /[\u0400-\u04ff]/.test(english))
+          || (expression.values[3] && matches(expression.values[3] as Predicate, context)))) english = null;
+        return cachedValue(current, english, valueOf(expression.values[2], context), context);
+      }
+      if (expression.op === "sql") {
+        if (expression.strings!.join("").trim() === "example->>'en'") return context.example?.en;
+        if (expression.strings!.join("").trim() === "example->>'tr'") return context.example?.tr;
+        if (expression.values.length === 1 && expression.strings!.join("").trim() === "") return valueOf(expression.values[0], context);
+      }
+    }
     return value;
+  };
+  const cachedValue = (current: unknown, english: unknown, hint: unknown, context: Record<string, Row>): unknown => {
+    const language = context.users?.learningLanguage;
+    if (context.materialNodes.scope !== "STUDENT" || (language !== "RU" && language !== "UK")) return current;
+    const cache = new Map((rows.studentLearningTranslations ?? [])
+      .filter((row) => row.studentId === context.users.id && row.language === language)
+      .map((row) => [String(row.id), String(row.translation)]));
+    if (english === null) {
+      const value = { translationLang: hint, phrases: [{ kind: "NOTE", phrase: "", translation: current }] };
+      return learningCache.applyCachedDictionaryTranslations(value, String(context.users.id), language, cache).phrases[0].translation;
+    }
+    const value = { translationLang: hint, examples: [{ en: english, tr: current }] };
+    return learningCache.applyCachedDictionaryTranslations(value, String(context.users.id), language, cache).examples[0].tr;
   };
   const like = (value: unknown, pattern: unknown) => {
     if (typeof value !== "string" || typeof pattern !== "string") return false;
@@ -78,7 +122,7 @@ function actionHarness({ session = { userId: "teacher-one", role: "TEACHER" }, r
         const text = predicate.strings!.join("?");
         if (text.includes("coalesce(")) return (values[0] ?? "") !== "VERBS";
         if (text.includes("jsonb_array_elements(")) return (values[0] as { en: string; tr: string }[])
-          .some((example) => like(example.en, values[1]) || like(example.tr, values[2]));
+          .some((example) => like(example.en, values[1]) || like(valueOf(predicate.values[2], { ...context, example }), values[3]));
         if (text.startsWith("not exists")) {
           const table = (predicate.values[0] as { table: string }).table;
           const key = (predicate.values[1] as Column).key;
@@ -107,6 +151,14 @@ function actionHarness({ session = { userId: "teacher-one", role: "TEACHER" }, r
           contexts = contexts.flatMap((context) => (rows[table.table] ?? [])
             .map((row) => ({ ...context, [table.table]: row }))
             .filter((joined) => matches(condition, joined)));
+          return query;
+        },
+        leftJoin: (table: { table: string }, condition: Predicate) => {
+          contexts = contexts.flatMap((context) => {
+            const joined = (rows[table.table] ?? []).map((row) => ({ ...context, [table.table]: row }))
+              .filter((row) => matches(condition, row));
+            return joined.length ? joined : [{ ...context, [table.table]: {} }];
+          });
           return query;
         },
         where: (condition: Predicate) => { contexts = contexts.filter((context) => matches(condition, context)); return query; },
@@ -139,6 +191,12 @@ function actionHarness({ session = { userId: "teacher-one", role: "TEACHER" }, r
     "@/lib/session": { getSession: async () => session },
     "@/lib/global-search-types": { SEARCH_CATEGORIES },
     "@/lib/global-search-vocabulary": { dictionaryEntrySearchItem, searchVisibleDictionaryEntries },
+    "@/lib/global-search-learning-cache": {
+      dictionaryPageTranslationHintSql: () => ({ op: "pageHint", values: [] }),
+      cachedDictionaryPhraseTitleSql: (hint: unknown) => ({ op: "cachedTitle", values: [hint] }),
+      cachedDictionaryTextSql: (current: unknown, english: unknown, hint: unknown) => ({ op: "cachedText", values: [current, english, hint] }),
+      cachedDictionaryTranslationSql: (current: unknown, english: unknown, hint: unknown, note: unknown) => ({ op: "cachedTranslation", values: [current, english, hint, note] }),
+    },
   };
   const exports = {} as { globalSearchAction: (input: { query: unknown; categories: unknown; includeVocabularyEntries?: unknown }) => Promise<GlobalSearchResponse> };
   const code = ts.transpileModule(readFileSync("src/lib/actions/global-search.ts", "utf8"), {
@@ -329,6 +387,7 @@ test("the real Drizzle PostgreSQL compiler emits parameterized, scoped and bound
     "@/lib/session": { getSession: async () => ({ userId: "00000000-0000-0000-0000-000000000001", role: "TEACHER" }) },
     "@/lib/global-search-types": { SEARCH_CATEGORIES },
     "@/lib/global-search-vocabulary": { dictionaryEntrySearchItem, searchVisibleDictionaryEntries },
+    "@/lib/global-search-learning-cache": learningCache,
   };
   const exports = {} as { globalSearchAction: (input: unknown) => Promise<GlobalSearchResponse> };
   const code = ts.transpileModule(readFileSync("src/lib/actions/global-search.ts", "utf8"), {
@@ -353,4 +412,139 @@ test("the real Drizzle PostgreSQL compiler emits parameterized, scoped and bound
   }
   assert.match(entryQueries.find((request) => request.sql.includes('from "material_phrases"'))!.sql,
     /jsonb_array_elements\("material_phrases"\."examples"\) as example/);
+});
+
+function cachedRows(value: unknown, studentId: string, language: LearningLanguage, translations: Record<string, string>): Row[] {
+  return collectLearningTranslations(value, language).segments.map((segment) => ({
+    id: learningCache.dictionaryLearningSegmentId(studentId, language, segment),
+    studentId, language, translation: translations[segment.text] ?? assert.fail(`Missing fixture translation for ${segment.text}`),
+  }));
+}
+
+test("teacher student-owned dictionary matches and previews the saved display-language overlay, not obsolete source translations", async () => {
+  const item = { id: "rattle-entry", nodeId: "student-dictionary", phrase: "rattle", translation: "волноваться",
+    kind: "PHRASE", note: "Обычный совет", section: "Feelings", description: null, icon: null, sortOrder: 0,
+    examples: [{ en: "She felt rattled.", tr: "Она испытывала тревогу." }] };
+  const payload = { translationLang: "RU", phrases: [item] };
+  const rows = {
+    users: [{ id: "student-one", role: "STUDENT", name: "Victoria", learningLanguage: "UK" }],
+    materialNodes: [{ id: "student-dictionary", scope: "STUDENT", ownerId: "student-one", type: "FILE",
+      fileKind: null, pageKind: "VOCAB", translationLang: "RU", name: "Feelings", icon: "📚" }],
+    materialPhrases: [item],
+    studentLearningTranslations: cachedRows(payload, "student-one", "UK", {
+      rattle: "знервуватися", "Обычный совет": "Підказка для розмови", "She felt rattled.": "Вона почувалася збентеженою.",
+    }),
+  };
+  const originalRows = JSON.stringify(rows);
+  const harness = actionHarness({ rows });
+  for (const query of ["rattle", "знерв", "підказка", "збентеженою", "She felt"]) {
+    const result = await harness.search({ query, categories: ["MATERIALS"], includeVocabularyEntries: true });
+    assert.equal(result.items.length, 1, query);
+    assert.equal(result.items[0].title, "rattle");
+    assert.equal(result.items[0].subtitle, "Feelings · знервуватися · Victoria");
+    assert.equal(result.items[0].href, "/teacher/materials?view=students&student=student-one&node=student-dictionary&entry=rattle-entry");
+  }
+  for (const query of ["волноваться", "обычный", "испытывала"])
+    assert.equal((await harness.search({ query, categories: ["MATERIALS"], includeVocabularyEntries: true })).items.length, 0, query);
+  assert.equal(JSON.stringify(rows), originalRows, "Search changed a source row or cache");
+});
+
+test("saved explanatory NOTE titles and irregular-verb translations follow the student's language without translating English/category text", async () => {
+  const note = { id: "note-entry", nodeId: "notes", phrase: "Полезные слова", translation: "Важные нюансы",
+    kind: "NOTE", note: null, section: "Stored category", description: null, icon: null, examples: [], sortOrder: 0 };
+  const entry = { id: "verb-entry", nodeId: "verbs", base: "go", past: "went", participle: "gone", translation: "идти",
+    category: "Motion category", icon: null, sortOrder: 0 };
+  const roots = [
+    { translationLang: "RU", phrases: [note] },
+    { translationLang: "RU", verbs: [entry] },
+  ];
+  const harness = actionHarness({ rows: {
+    users: [{ id: "student-one", role: "STUDENT", learningLanguage: "UK", name: "Victoria" }],
+    materialNodes: ["notes", "verbs"].map((id) => ({ id, scope: "STUDENT", ownerId: "student-one", type: "FILE",
+      fileKind: null, pageKind: id === "verbs" ? "VERBS" : "VOCAB", translationLang: "RU", name: id })),
+    materialPhrases: [note], irregularVerbs: [entry],
+    studentLearningTranslations: cachedRows(roots, "student-one", "UK", {
+      "Полезные слова": "Корисні слова", "Важные нюансы": "Важливі нюанси", go: "іти",
+    }),
+  } });
+  const translatedNote = (await harness.search({ query: "корисні", categories: ["MATERIALS"], includeVocabularyEntries: true })).items[0];
+  assert.equal(translatedNote.title, "Корисні слова"); assert.equal(translatedNote.subtitle, "notes · Важливі нюанси · Victoria");
+  const translatedVerb = (await harness.search({ query: "іти", categories: ["MATERIALS"], includeVocabularyEntries: true })).items[0];
+  assert.equal(translatedVerb.title, "go · went · gone"); assert.equal(translatedVerb.subtitle, "verbs · іти · Victoria");
+  for (const query of ["went", "Motion category", "Stored category"])
+    assert.equal((await harness.search({ query, categories: ["MATERIALS"], includeVocabularyEntries: true })).items.length, 1, query);
+  assert.equal((await harness.search({ query: "полезные", categories: ["MATERIALS"], includeVocabularyEntries: true })).items.length, 0);
+});
+
+test("missing, stale, other-student and other-language cache records preserve stored fields without a cache fill", async () => {
+  const item = { id: "entry", nodeId: "dict", phrase: "rattle", translation: "волноваться", kind: "PHRASE",
+    note: null, section: null, examples: [], icon: null, sortOrder: 0 };
+  const key = cachedRows({ translationLang: "RU", phrases: [item] }, "student-one", "UK", { rattle: "знервуватися" })[0];
+  for (const cache of [[], [{ ...key, studentId: "student-two" }], [{ ...key, language: "RU" }], [{ ...key, id: "stale-source-key" }]]) {
+    const harness = actionHarness({ rows: {
+      users: [{ id: "student-one", role: "STUDENT", learningLanguage: "UK", name: "Victoria" }],
+      materialNodes: [{ id: "dict", scope: "STUDENT", ownerId: "student-one", type: "FILE", fileKind: null,
+        pageKind: "VOCAB", translationLang: "RU", name: "Feelings" }],
+      materialPhrases: [item], studentLearningTranslations: cache,
+    } });
+    const result = await harness.search({ query: "rattle", categories: ["MATERIALS"], includeVocabularyEntries: true });
+    assert.equal(result.items[0].subtitle, "Feelings · волноваться · Victoria");
+    assert.equal((await harness.search({ query: "знерв", categories: ["MATERIALS"], includeVocabularyEntries: true })).items.length, 0);
+  }
+});
+
+test("cached dictionary keys stay identical to the canonical learningSegmentId with escaped, multilingual and UTF-16-boundary text", () => {
+  const canonicalSource = readFileSync("src/lib/student-learning-language.ts", "utf8");
+  const start = canonicalSource.indexOf("export function learningSegmentId(");
+  const end = canonicalSource.indexOf("\nconst pending", start);
+  const canonical = {} as { learningSegmentId: typeof learningCache.dictionaryLearningSegmentId };
+  runInNewContext(ts.transpileModule(canonicalSource.slice(start, end), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { exports: canonical, createHash });
+  const originals = ["rattle", 'quote " slash \\ newline\nКирилиця', "\u00a0\ufeff🙂\u2028text",
+    "x".repeat(999) + "🙂", "🙂".repeat(501), "a🙂".repeat(501), "ы".repeat(1001)];
+  for (const phrase of originals) {
+    const plan = collectLearningTranslations({ translationLang: "RU", phrases: [{ phrase, translation: null }] }, "UK");
+    for (const segment of plan.segments) {
+      assert.equal(learningCache.dictionaryLearningSegmentId("student-one", "UK", segment), canonical.learningSegmentId("student-one", "UK", segment));
+    }
+    const { sql } = new PgDialect().sqlToQuery(learningCache.learningJsonPrefixSql(drizzleOrm.sql`${phrase}::text`));
+    assert.match(sql, /sum\(case when octet_length\(character\) = 4 then 2 else 1 end\)/);
+    assert.match(sql, /units = 1001/); assert.match(sql, /chr\(92\) \|\| 'u' \|\| to_hex\(55296/);
+  }
+});
+
+test("bounded pure cached hydration uses page hints, preserves uncached fields and does not change originals or hidden/source metadata", () => {
+  const value = { translationLang: "RU", sourceText: "Original source", phrases: [
+    { phrase: "rattle", translation: "волноваться", note: "Обычный совет", description: "A game clue", section: "Category",
+      examples: [{ en: "She felt rattled.", tr: "Она испытывала тревогу." }] },
+    { phrase: "cat", translation: "кот", note: null, examples: [] },
+  ] };
+  const original = JSON.stringify(value);
+  const plan = collectLearningTranslations(value, "UK");
+  assert.equal(plan.segments.find((segment) => segment.text === "cat")!.source, "EN");
+  const noteSegment = plan.segments.find((segment) => segment.text === "Обычный совет")!;
+  assert.equal(noteSegment.source, "RU"); assert.equal(noteSegment.context, "English learning translation");
+  const rattle = plan.segments.find((segment) => segment.text === "rattle")!;
+  const cache = new Map([[learningCache.dictionaryLearningSegmentId("student-one", "UK", rattle), "знервуватися"]]);
+  const hydrated = learningCache.applyCachedDictionaryTranslations(value, "student-one", "UK", cache);
+  assert.equal(hydrated.phrases[0].translation, "знервуватися");
+  assert.equal(hydrated.phrases[1].translation, "кот");
+  assert.equal(hydrated.phrases[0].phrase, "rattle"); assert.equal(hydrated.phrases[0].description, "A game clue");
+  assert.equal(hydrated.phrases[0].section, "Category"); assert.equal(hydrated.sourceText, "Original source");
+  assert.equal(JSON.stringify(value), original);
+});
+
+test("cached SQL is read-only and guards cache by exact key, student and current language without calling translation services", () => {
+  const source = readFileSync("src/lib/global-search-learning-cache.ts", "utf8");
+  for (const forbidden of [/db\.insert\(/, /db\.update\(/, /db\.delete\(/, /translateLearningSegments/, /resolveLearningSegments/, /ensure.*Schema/])
+    assert.doesNotMatch(source, forbidden);
+  const { sql } = new PgDialect().sqlToQuery(learningCache.cachedDictionaryTextSql(
+    drizzleOrm.sql`${actualSchema.materialPhrases.translation}`, drizzleOrm.sql`${actualSchema.materialPhrases.phrase}`,
+    learningCache.dictionaryPageTranslationHintSql(),
+  ));
+  assert.match(sql, /"student_learning_translations"\."id" = encode\(sha256/);
+  assert.match(sql, /"student_learning_translations"\."student_id" = "users"\."id"/);
+  assert.match(sql, /"student_learning_translations"\."language"::text = "users"\."learning_language"::text/);
+  assert.match(sql, /coalesce\(\(select "student_learning_translations"\."translation"/);
 });

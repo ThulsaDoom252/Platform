@@ -21,6 +21,7 @@ import {
   type SearchCategory,
 } from "@/lib/global-search-types";
 import { dictionaryEntrySearchItem, searchVisibleDictionaryEntries } from "@/lib/global-search-vocabulary";
+import { cachedDictionaryPhraseTitleSql, cachedDictionaryTextSql, cachedDictionaryTranslationSql, dictionaryPageTranslationHintSql } from "@/lib/global-search-learning-cache";
 
 const MAX_PER_CATEGORY = 12;
 
@@ -156,21 +157,30 @@ async function searchTeacherDictionaryEntries(
     scope: materialNodes.scope,
     ownerId: materialNodes.ownerId,
   };
+  const pageHint = dictionaryPageTranslationHintSql();
+  const phraseTitle = cachedDictionaryPhraseTitleSql(pageHint);
+  const phraseTranslation = cachedDictionaryTranslationSql(
+    sql`${materialPhrases.translation}`, sql`${materialPhrases.phrase}`, pageHint, eq(materialPhrases.kind, "NOTE"),
+  );
+  const phraseNote = cachedDictionaryTextSql(sql`${materialPhrases.note}`, null, pageHint);
+  const exampleTranslation = cachedDictionaryTextSql(sql`example->>'tr'`, sql`example->>'en'`, pageHint);
+  const verbTranslation = cachedDictionaryTranslationSql(sql`${irregularVerbs.translation}`, sql`${irregularVerbs.base}`, pageHint);
   const [phrases, verbs] = await Promise.all([
     db.select({
-      ...nodeColumns, id: materialPhrases.id, title: materialPhrases.phrase,
-      translation: materialPhrases.translation, icon: materialPhrases.icon,
+      ...nodeColumns, id: materialPhrases.id, title: phraseTitle,
+      translation: phraseTranslation, icon: materialPhrases.icon,
     }).from(materialPhrases)
       .innerJoin(materialNodes, eq(materialPhrases.nodeId, materialNodes.id))
+      .leftJoin(users, eq(users.id, materialNodes.ownerId))
       .where(and(
         accessible,
         sql`not exists (select 1 from ${irregularVerbs} where ${irregularVerbs.nodeId} = ${materialNodes.id})`,
         sql`not exists (select 1 from ${materialBlocks} where ${materialBlocks.nodeId} = ${materialNodes.id})`,
         or(
-          ilike(materialPhrases.phrase, pattern), ilike(materialPhrases.translation, pattern),
-          ilike(materialPhrases.note, pattern), ilike(materialPhrases.section, pattern),
+          ilike(phraseTitle, pattern), ilike(phraseTranslation, pattern),
+          ilike(phraseNote, pattern), ilike(materialPhrases.section, pattern),
           ilike(materialPhrases.description, pattern),
-          sql`exists (select 1 from jsonb_array_elements(${materialPhrases.examples}) as example where example->>'en' ilike ${pattern} or example->>'tr' ilike ${pattern})`,
+          sql`exists (select 1 from jsonb_array_elements(${materialPhrases.examples}) as example where example->>'en' ilike ${pattern} or ${exampleTranslation} ilike ${pattern})`,
         ),
       ))
       .orderBy(asc(materialNodes.name), asc(materialPhrases.sortOrder), asc(materialPhrases.id))
@@ -178,12 +188,13 @@ async function searchTeacherDictionaryEntries(
     db.select({
       ...nodeColumns, id: irregularVerbs.id, base: irregularVerbs.base,
       past: irregularVerbs.past, participle: irregularVerbs.participle,
-      translation: irregularVerbs.translation, icon: irregularVerbs.icon,
+      translation: verbTranslation, icon: irregularVerbs.icon,
     }).from(irregularVerbs)
       .innerJoin(materialNodes, eq(irregularVerbs.nodeId, materialNodes.id))
+      .leftJoin(users, eq(users.id, materialNodes.ownerId))
       .where(and(accessible, or(
         ilike(irregularVerbs.base, pattern), ilike(irregularVerbs.past, pattern),
-        ilike(irregularVerbs.participle, pattern), ilike(irregularVerbs.translation, pattern),
+        ilike(irregularVerbs.participle, pattern), ilike(verbTranslation, pattern),
         ilike(irregularVerbs.category, pattern),
       )))
       .orderBy(asc(materialNodes.name), asc(irregularVerbs.sortOrder), asc(irregularVerbs.id))
