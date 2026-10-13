@@ -51,9 +51,9 @@ test("every string in a protected batch has valid XML escaping, even without Eng
     return new Response(JSON.stringify({ translations: payload.text.map((text: string) => ({ text })) }), { status: 200 });
   });
   const values: LearningSegment[] = [
-    { text: "Используй on <-> in & at.", source: "RU" },
-    { text: "Один < два & три > два", source: "RU" },
-    { text: "Буквальное &nbsp; и <b>word</b>", source: "RU" },
+    { text: "Используй on <-> in & at.", source: "RU", context: "Grammar explanation" },
+    { text: "Один < два & три > два", source: "RU", context: "Grammar explanation" },
+    { text: "Буквальное &nbsp; и <b>word</b>", source: "RU", context: "Grammar explanation" },
   ];
   assert.deepEqual(await api.translateLearningSegments(values, "UK"), values.map(value => value.text));
 });
