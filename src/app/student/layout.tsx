@@ -55,7 +55,7 @@ export default async function StudentLayout({
 
   return (
     <I18nProvider userId={session.userId} locale={locale} dictionary={t} realtimeConfigured={Boolean(process.env.ABLY_API_KEY?.trim())}>
-      <AppViewProvider>
+      <AppViewProvider role="STUDENT">
       <LearningLanguageRefresh userId={session.userId} />
       <RealtimePresenceBeacon name={me.name} />
       <StudentClassSummons userId={session.userId} />

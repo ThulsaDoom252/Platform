@@ -6,7 +6,7 @@ import ts from "typescript";
 import React from "react";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
-import { APP_VIEWS, classParticipantsPlacement, normalizeAppView } from "../src/lib/app-view";
+import { APP_VIEWS, appViewPreference, classParticipantsPlacement, normalizeAppView, type AppView } from "../src/lib/app-view";
 import { centeredSearchPosition } from "../src/lib/global-search-position";
 import { notificationPanelPosition } from "../src/lib/notification-panel-position";
 import { uiPreferenceKey } from "../src/lib/ui-preferences";
@@ -23,11 +23,99 @@ function compile(path: string, imports: Record<string, unknown>, globals: Record
   return exports;
 }
 
-test("Classic is the safe default; only the two explicit views are accepted", () => {
+test("only the two explicit views are accepted; students roll out to Updated without changing teacher preferences", () => {
   assert.deepEqual(APP_VIEWS, ["CLASSIC", "UPDATED"]);
   for (const value of [null, undefined, {}, [], "updated", "bad", "CLASSIC"]) assert.equal(normalizeAppView(value), "CLASSIC");
   assert.equal(normalizeAppView("UPDATED"), "UPDATED");
-  assert.match(source("components/app-view-provider.tsx"), /useUiChoice\("application:view", APP_VIEWS, "CLASSIC"\)/);
+  assert.deepEqual(appViewPreference(), { setting: "application:view", fallback: "CLASSIC" });
+  assert.deepEqual(appViewPreference("TEACHER"), appViewPreference());
+  assert.deepEqual(appViewPreference("STUDENT"), { setting: "application:view:student-updated-v1", fallback: "UPDATED" });
+});
+
+function viewHarness(server: boolean) {
+  // Exercise the real providers and persistence hook, substituting only the
+  // browser/server snapshot selection because this test renders without a DOM.
+  const useLocalJson = compile("lib/use-local-json.ts", {
+    react: { ...React, useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown, serverSnapshot: () => unknown) => server ? serverSnapshot() : snapshot() },
+    "@/lib/local-json-store": { readLocalJson, writeLocalJson },
+  }).useLocalJson;
+  const preferences = compile("components/ui-preferences-provider.tsx", {
+    react: React, "react/jsx-runtime": jsx,
+    "@/lib/use-local-json": { useLocalJson }, "@/lib/ui-preferences": { uiPreferenceKey },
+  });
+  const provider = compile("components/app-view-provider.tsx", {
+    react: React, "react/jsx-runtime": jsx,
+    "./ui-preferences-provider": preferences,
+    "@/lib/app-view": { APP_VIEWS, appViewPreference },
+  });
+  const UiPreferences = preferences.UiPreferencesProvider as React.ComponentType<React.PropsWithChildren<{ userId: string }>>;
+  const AppView = provider.AppViewProvider as React.ComponentType<React.PropsWithChildren<{ role?: "TEACHER" | "STUDENT" }>>;
+  const useView = provider.useAppView as () => { view: AppView; setView: (view: AppView) => void };
+  return (userId: string, role?: "TEACHER" | "STUDENT") => {
+    let choice!: ReturnType<typeof useView>;
+    function Probe() { choice = useView(); return React.createElement("span", null, choice.view); }
+    const html = renderToStaticMarkup(React.createElement(UiPreferences, { userId }, React.createElement(AppView, { role }, React.createElement(Probe))));
+    return { ...choice, html };
+  };
+}
+
+test("all existing students start Updated, but an explicit Classic choice survives a new provider and browser read", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) } });
+  try {
+    for (const [id, legacy] of [["rollout-classic-student", "CLASSIC"], ["rollout-updated-student", "UPDATED"]]) {
+      storage.set(uiPreferenceKey(id, "application:view"), JSON.stringify(legacy));
+      storage.set(uiPreferenceKey(id, "materials:view"), '"list"');
+      storage.set(uiPreferenceKey(id, "homeworks:assignments:sort"), '{"key":"assigned","desc":true}');
+      const initial = viewHarness(false)(id, "STUDENT");
+      assert.equal(initial.view, "UPDATED");
+      assert.match(initial.html, /data-app-view="updated"/);
+      initial.setView("CLASSIC");
+      assert.equal(viewHarness(false)(id, "STUDENT").view, "CLASSIC");
+      assert.equal(storage.get(uiPreferenceKey(id, "application:view:student-updated-v1")), '"CLASSIC"');
+      assert.equal(storage.get(uiPreferenceKey(id, "application:view")), JSON.stringify(legacy));
+      assert.equal(storage.get(uiPreferenceKey(id, "materials:view")), '"list"');
+      assert.equal(storage.get(uiPreferenceKey(id, "homeworks:assignments:sort")), '{"key":"assigned","desc":true}');
+    }
+    assert.equal(viewHarness(false)("rollout-new-student", "STUDENT").view, "UPDATED");
+    for (const view of APP_VIEWS) {
+      const id = `rollout-teacher-${view}`;
+      storage.set(uiPreferenceKey(id, "application:view"), JSON.stringify(view));
+      assert.equal(viewHarness(false)(id, "TEACHER").view, view);
+      assert.equal(viewHarness(false)(id).view, view);
+    }
+    assert.equal(viewHarness(false)("rollout-new-teacher", "TEACHER").view, "CLASSIC");
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original); else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
+
+test("server rendering uses Updated for students and Classic for teachers without reading browser storage", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw Error("SSR must not read localStorage"); } });
+  try {
+    const render = viewHarness(true);
+    assert.match(render("ssr-student", "STUDENT").html, /data-app-view="updated"/);
+    assert.match(render("ssr-teacher", "TEACHER").html, /data-app-view="classic"/);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original); else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
+
+test("an invalid student preference falls back to Updated instead of a stale Classic choice", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) } });
+  try {
+    const key = uiPreferenceKey("rollout-invalid-student", "application:view:student-updated-v1");
+    for (const raw of ['"bad"', '{', 'null']) {
+      storage.set(key, raw);
+      assert.equal(viewHarness(false)("rollout-invalid-student", "STUDENT").view, "UPDATED");
+    }
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original); else Reflect.deleteProperty(globalThis, "localStorage");
+  }
 });
 
 test("view persists without leaking to another account or replacing material preferences", () => {
@@ -145,10 +233,10 @@ test("the Settings selector is accessible and translated for every language and 
   }
 });
 
-test("Updated shell is opt-in for both roles, logout is in profile, and impersonation remains usable", () => {
+test("Updated shell is the student default, teacher stays opt-in, logout is in profile, and impersonation remains usable", () => {
   for (const role of ["teacher", "student"]) {
     const layout = source(`app/${role}/layout.tsx`);
-    assert.match(layout, /<AppViewProvider>/);
+    assert.match(layout, role === "student" ? /<AppViewProvider role="STUDENT">/ : /<AppViewProvider>/);
     assert.match(layout, /<UpdatedNavigation/);
     assert.match(layout, /data-classic-header/);
     assert.match(layout, /notifications=\{<NotificationBell panel/);
