@@ -161,6 +161,7 @@ export const en = {
     inputLabel: "Search query",
     teacherPlaceholder: "Students, materials, lessons, games…",
     studentPlaceholder: "Folders and materials…",
+    includeVocabularyEntries: "Search entries inside vocabularies",
     hint: "Enter at least two characters.",
     pickCategory: "Select at least one category.",
     loading: "Searching…",

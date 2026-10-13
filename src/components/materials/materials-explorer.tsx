@@ -44,6 +44,7 @@ import {
 import { Modal } from "@/components/modal";
 
 import { PhraseReader, type MaterialPhrase } from "./phrase-reader";
+import { dictionaryEntryId } from "./dictionary-entry-focus";
 import type { MaterialVerb } from "@/lib/materials";
 import { RuleReader } from "./rule-reader";
 import type { RuleBlock } from "@/lib/rule-parser";
@@ -250,6 +251,7 @@ export function MaterialsExplorer({
   emptyText,
   canExport = false,
   initialNodeId,
+  initialEntryId,
 }: {
   tree: MaterialNode[];
   progress?: number;
@@ -267,6 +269,8 @@ export function MaterialsExplorer({
   canExport?: boolean;
   /** Узел, к которому привёл глобальный поиск. */
   initialNodeId?: string;
+  /** Exact record from search, validated only against the selected visible node. */
+  initialEntryId?: string;
 }) {
   const { t } = useT();
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
@@ -1339,6 +1343,9 @@ export function MaterialsExplorer({
   // Страница материала (FILE без типа файла) открывается как читалка фраз,
   // а обычный файл (PDF/DOC/MP3) остаётся элементом списка папки.
   const isPhrasePage = selected?.type === "FILE" && !selected.fileKind;
+  const focusedEntryId = selected?.id === initialNodeId && isPhrasePage
+    ? dictionaryEntryId(initialEntryId, selected.verbs.length ? selected.verbs : selected.blocks.length ? [] : selected.phrases)
+    : undefined;
   const contentNode =
     selected?.type === "FILE" ? breadcrumb[breadcrumb.length - 2] ?? null : selected;
   const items = view === "interactive" && !selected
@@ -2279,6 +2286,7 @@ export function MaterialsExplorer({
         {isPhrasePage && selected && selected.verbs.length > 0 && (
           <VerbsReader
             verbs={selected.verbs}
+            focusedEntryId={focusedEntryId}
             busy={moving}
             lang={selected.translationLang}
             onTranslate={editable ? (language) => translatePage(selected, language) : undefined}
@@ -2593,6 +2601,7 @@ export function MaterialsExplorer({
                 description={selected.description}
                 coverImageUrl={selected.imageUrl}
                 phrases={selected.phrases}
+                focusedEntryId={focusedEntryId}
                 nodeId={selected.id}
                 imageScale={selected.imageScale}
                 onEditPhrase={editable ? setEditPhrase : undefined}

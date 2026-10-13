@@ -158,6 +158,7 @@ export const ru: Dict = {
     inputLabel: "Поисковый запрос",
     teacherPlaceholder: "Ученики, материалы, уроки, игры…",
     studentPlaceholder: "Папки и материалы…",
+    includeVocabularyEntries: "Искать записи внутри словарей",
     hint: "Введи минимум два символа.",
     pickCategory: "Выбери хотя бы одну категорию.",
     loading: "Ищу…",

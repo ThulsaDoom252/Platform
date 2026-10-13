@@ -17,6 +17,7 @@ import type { MaterialVerb } from "@/lib/materials";
 import { useSpeech } from "./speech";
 import { IconVolume, IconPencil } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { dictionaryEntryAnchor, dictionaryEntryId, useDictionaryEntryFocus } from "./dictionary-entry-focus";
 
 const NO_CATEGORY = "Без категории";
 
@@ -59,6 +60,7 @@ export function VerbsReader({
   lang,
   onTranslate,
   busy = false,
+  focusedEntryId,
 }: {
   verbs: MaterialVerb[];
   /** Открыть правку. Аргумент — группа, с которой открыть; null — «без категории». */
@@ -73,8 +75,12 @@ export function VerbsReader({
   lang?: "RU" | "UK";
   onTranslate?: (lang: "RU" | "UK") => void;
   busy?: boolean;
+  /** Exact search record, independent of the alphabetical/category view. */
+  focusedEntryId?: string;
 }) {
   const [alphabetical, setAlphabetical] = useState(false);
+  const targetEntryId = dictionaryEntryId(focusedEntryId, verbs);
+  const targetEntryRef = useDictionaryEntryFocus(targetEntryId, alphabetical);
   const speech = useSpeech();
 
   /*
@@ -144,7 +150,15 @@ export function VerbsReader({
     return (
       <div
         key={key}
-        className="flex items-center gap-3 border-t border-line px-3 py-2.5 first:border-t-0"
+        id={dictionaryEntryAnchor("verb", v.id)}
+        ref={v.id === targetEntryId ? targetEntryRef : undefined}
+        data-dictionary-entry={v.id}
+        data-search-target={v.id === targetEntryId ? "true" : undefined}
+        tabIndex={-1}
+        className={cn(
+          "flex scroll-mt-40 items-center gap-3 border-t border-line px-3 py-2.5 outline-none first:border-t-0",
+          v.id === targetEntryId && "relative bg-accent-soft ring-2 ring-accent",
+        )}
       >
         <span className="w-7 shrink-0 text-center text-lg leading-none">{v.icon ?? ""}</span>
 

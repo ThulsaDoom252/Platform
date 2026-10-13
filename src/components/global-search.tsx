@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { centeredSearchPosition, globalSearchPosition, type GlobalSearchPosition } from "@/lib/global-search-position";
 import { useAppView } from "./app-view-provider";
 import { useModalLayer } from "@/lib/use-modal-layer";
+import { useUiPreference } from "./ui-preferences-provider";
 
 const teacherCategories = [...SEARCH_CATEGORIES];
 
@@ -27,6 +28,9 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<SearchCategory>>(
     () => new Set(available),
+  );
+  const [includeVocabularyEntries, setIncludeVocabularyEntries] = useUiPreference<boolean>(
+    "search:include-vocabulary-entries", false, (value) => typeof value === "boolean",
   );
   const [items, setItems] = useState<GlobalSearchItem[]>([]);
   const [completedKey, setCompletedKey] = useState("");
@@ -84,12 +88,13 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
     const clean = query.trim();
     if (!open || clean.length < 2 || selected.size === 0) return;
 
-    const requestKey = `${clean}\n${selectedKey}`;
+    const requestKey = `${clean}\n${selectedKey}\n${includeVocabularyEntries}`;
     const timer = window.setTimeout(async () => {
       try {
         const response = await globalSearchAction({
           query: clean,
           categories: [...selected],
+          includeVocabularyEntries,
         });
         if (!current) return;
         setItems(response.items);
@@ -107,7 +112,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
     };
     // selectedKey is the stable value representation of the Set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, query, selectedKey]);
+  }, [open, query, selectedKey, includeVocabularyEntries]);
 
   function toggleCategory(category: SearchCategory) {
     setSelected((before) => {
@@ -123,7 +128,7 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
 
   const cleanQuery = query.trim();
   const showResults = cleanQuery.length >= 2 && selected.size > 0;
-  const loading = showResults && completedKey !== `${cleanQuery}\n${selectedKey}`;
+  const loading = showResults && completedKey !== `${cleanQuery}\n${selectedKey}\n${includeVocabularyEntries}`;
 
   return (
     <div className="relative z-50">
@@ -201,6 +206,22 @@ export function GlobalSearch({ role }: { role: "TEACHER" | "STUDENT" }) {
                 })}
               </div>
             )}
+
+            <label className={cn("flex shrink-0 cursor-pointer items-start gap-2.5 border-b border-line px-3 py-3 text-sm font-semibold text-muted sm:px-4", !selected.has("MATERIALS") && "cursor-default opacity-50")}>
+              <input
+                type="checkbox"
+                checked={includeVocabularyEntries}
+                disabled={!selected.has("MATERIALS")}
+                onChange={(event) => {
+                  setIncludeVocabularyEntries(event.target.checked);
+                  setItems([]);
+                  setCompletedKey("");
+                  setFailed(false);
+                }}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+              />
+              <span>{t.globalSearch.includeVocabularyEntries}</span>
+            </label>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3">
               {!showResults ? (

@@ -158,6 +158,7 @@ export const uk: Dict = {
     inputLabel: "Пошуковий запит",
     teacherPlaceholder: "Учні, матеріали, уроки, ігри…",
     studentPlaceholder: "Теки та матеріали…",
+    includeVocabularyEntries: "Шукати записи всередині словників",
     hint: "Введи щонайменше два символи.",
     pickCategory: "Обери хоча б одну категорію.",
     loading: "Шукаю…",

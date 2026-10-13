@@ -9,11 +9,12 @@ import { MaterialsExplorer } from "@/components/materials/materials-explorer";
 export default async function StudentMaterialsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ node?: string }>;
+  searchParams: Promise<{ node?: string; entry?: string | string[] }>;
 }) {
   const session = await getSession();
   const { t } = await getDict();
-  const { node: initialNodeId } = await searchParams;
+  const { node: initialNodeId, entry } = await searchParams;
+  const initialEntryId = typeof entry === "string" && entry.length <= 128 ? entry : undefined;
   // Своё личное дерево плюс открытые разделы общей базы.
   const tree = await getStudentLibrary(session!.userId);
 
@@ -30,9 +31,10 @@ export default async function StudentMaterialsPage({
         <p className="mt-1 text-sm text-muted">{t.materials.subtitle}</p>
       </div>
       <MaterialsExplorer
-        key={initialNodeId ?? "root"}
+        key={`${initialNodeId ?? "root"}:${initialEntryId ?? ""}`}
         tree={tree}
         initialNodeId={initialNodeId}
+        initialEntryId={initialEntryId}
         progress={me?.progress ?? 0}
         canExport={me?.allowExport ?? false}
       />

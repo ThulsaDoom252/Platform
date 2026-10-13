@@ -17,6 +17,7 @@ import { fmt } from "@/lib/i18n";
 import { useSpeech } from "./speech";
 import { cn } from "@/lib/utils";
 import { categoryColor } from "@/lib/category-color";
+import { dictionaryEntryAnchor, dictionaryEntryId, useDictionaryEntryFocus } from "./dictionary-entry-focus";
 import {
   IconVolume,
   IconChevronDown,
@@ -445,6 +446,7 @@ export function PhraseReader({
   onImageScale,
   onEditImage,
   nodeId,
+  focusedEntryId,
 }: {
   title: string;
   icon: string | null;
@@ -455,6 +457,8 @@ export function PhraseReader({
   onEditPhrase?: (p: MaterialPhrase) => void;
   /** Страница, которой принадлежат записи: нужна для правки категорий. */
   nodeId?: string;
+  /** A matched record from global search; never changes the reader's visibility toggles. */
+  focusedEntryId?: string;
   /** Размер картинок слов в процентах; 100 — обычный. */
   imageScale?: number;
   /** Передаётся только учителю: размер картинок хранится у страницы. */
@@ -463,6 +467,8 @@ export function PhraseReader({
   onEditImage?: () => void;
 }) {
   const { t } = useT();
+  const targetEntryId = dictionaryEntryId(focusedEntryId, phrases);
+  const targetEntryRef = useDictionaryEntryFocus(targetEntryId);
   /*
    * Что спрятано на карточках. Либо-либо: прятать разом обе стороны
    * бессмысленно — на карточке не осталось бы ничего.
@@ -875,9 +881,15 @@ export function PhraseReader({
             {g.items.map((p, i) => (
               <div
                 key={p.id}
+                id={dictionaryEntryAnchor("phrase", p.id)}
+                ref={p.id === targetEntryId ? targetEntryRef : undefined}
+                data-dictionary-entry={p.id}
+                data-search-target={p.id === targetEntryId ? "true" : undefined}
+                tabIndex={-1}
                 {...cardDrag(p)}
                 className={cn(
-                  "relative transition",
+                  "relative scroll-mt-40 rounded-2xl outline-none transition",
+                  p.id === targetEntryId && "ring-2 ring-accent ring-offset-2 ring-offset-page",
                   dragId === p.id && "opacity-40",
                   editable && "cursor-grab active:cursor-grabbing",
                 )}
