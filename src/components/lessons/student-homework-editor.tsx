@@ -194,6 +194,7 @@ export function StudentHomeworkExerciseEditor({
       id: original?.id ?? newId("exercise"),
       title: title.trim(),
       instruction: original?.instruction ?? "",
+      ...(original?.referenceText ? { referenceText: original.referenceText, referenceTitle: original.referenceTitle } : {}),
       kind,
       optional,
       ...(kind === "fill" && !items.every((item) => item.choices?.length)

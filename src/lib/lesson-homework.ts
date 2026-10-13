@@ -36,6 +36,9 @@ export type HomeworkExercise = {
   title: string;
   instruction: string;
   kind: HomeworkExerciseKind;
+  /** Complete student reading/dialogue used by this exercise; plain text, no keys. */
+  referenceText?: string;
+  referenceTitle?: string;
   /** Direction for translation tasks; old homework defaults to translating into English. */
   translationDirection?: "to-english" | "from-english";
   /** Language of the non-English side of a translation task. */
@@ -914,6 +917,9 @@ export function normalizeInteractiveHomework(
       title,
       instruction,
       kind,
+      ...(typeof item.referenceText === "string" && item.referenceText.trim()
+        ? { referenceText: item.referenceText.trim().slice(0, 20_000), referenceTitle: String(item.referenceTitle ?? title).trim().slice(0, 240) }
+        : {}),
       translationDirection:
         kind === "translate" && item.translationDirection === "from-english"
           ? "from-english"

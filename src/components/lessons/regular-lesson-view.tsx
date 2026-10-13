@@ -455,6 +455,11 @@ export function RegularLessonView({
   const showingAnswers = !!active && teacher && answersFor === active.id;
   const nativeVocabulary = !!active && active.tone === "vocab" && words.length > 0;
   const nativeVoice = active?.voiceExercise ?? null;
+  // Controls are added to the imported DOM below. An unrelated render must not
+  // reapply innerHTML and erase them after the wiring effect has already run.
+  const bodyMarkup = useMemo(() => ({
+    __html: active ? (showingAnswers || active.teacherOnly ? active.teacherHtml : active.studentHtml) : "",
+  }), [active, showingAnswers]);
 
   useEffect(() => {
     const root = contentRef.current;
@@ -1379,11 +1384,7 @@ export function RegularLessonView({
             <div
               className="regular-lesson-body"
               onClick={chooseFromBody}
-              dangerouslySetInnerHTML={{
-                __html: showingAnswers || active.teacherOnly
-                  ? active.teacherHtml
-                  : active.studentHtml,
-              }}
+              dangerouslySetInnerHTML={bodyMarkup}
             />
           )}
         </article>

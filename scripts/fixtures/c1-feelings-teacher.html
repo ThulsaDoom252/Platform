@@ -1,0 +1,1678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TEACHER — Feelings & Emotions</title>
+<style>
+:root{--ink:#1f2933;--muted:#5f6b7a;--bg:#f3f1ec;--card:#fff;--line:#e3ded4;
+--accent:#2d4a7a;--accent2:#c2512f;--key:#e9f6ee;--keyb:#2e8b57;--tip:#fff7df;--tipb:#d4a017;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Segoe UI",Arial,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:24px 16px 80px}
+header.hdr{background:linear-gradient(135deg,#22385f,#2d4a7a 60%,#c2512f);color:#fff;border-radius:16px;padding:28px 30px;margin-bottom:26px}
+header.hdr h1{margin:0 0 6px;font-size:28px}
+header.hdr p{margin:0;opacity:.88}
+.badge{display:inline-block;background:rgba(255,255,255,.18);border-radius:999px;padding:3px 12px;font-size:13px;margin:10px 6px 0 0}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:0 0 22px}
+h2{margin:0 0 14px;font-size:22px;color:var(--accent);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .num{background:var(--accent);color:#fff;border-radius:8px;padding:2px 10px;font-size:15px}
+h3{color:var(--accent2);font-size:18px;margin:22px 0 10px}
+.instr{color:var(--muted);font-style:italic;margin:0 0 14px}
+.vgroup{margin-bottom:18px}
+.vgroup-title{font-weight:700;padding:6px 12px;border-radius:8px;color:#fff;display:inline-block;margin-bottom:10px}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.vcard{border:1px solid var(--line);border-left:5px solid var(--c);border-radius:10px;padding:12px 14px;background:#fffdf9}
+.vcard .emo{font-size:30px;line-height:1}
+.vcard .w{font-weight:700;font-size:18px;margin-top:4px}
+.vcard .tr{color:var(--muted);font-size:14px}
+.vcard .pos{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--c)}
+.vcard .def{margin:6px 0}
+.vcard .ex{font-style:italic;color:#333;border-top:1px dashed var(--line);padding-top:6px}
+ol.items{padding-left:26px;margin:0}
+ol.items>li{margin:0 0 14px}
+.ans{width:100%;border:1px solid #cfc8bb;border-radius:8px;padding:8px 10px;font:inherit;margin-top:6px;background:#fcfbf8;min-height:38px}
+textarea.ans{min-height:58px;resize:vertical}
+.key{background:var(--key);border-left:4px solid var(--keyb);border-radius:6px;padding:6px 10px;margin-top:6px;font-size:15px}
+.key b.k{color:var(--keyb)}
+.cite{color:#456;font-size:14px;font-style:italic;display:block}
+.tip{background:var(--tip);border-left:4px solid var(--tipb);border-radius:8px;padding:10px 14px;margin:12px 0}
+.tf{display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap}
+.tf button{border:1px solid #bdb5a6;background:#fff;border-radius:8px;padding:5px 16px;cursor:pointer;font:inherit}
+.tf button.on-t{background:#2e8b57;color:#fff;border-color:#2e8b57}
+.tf button.on-f{background:#c0392b;color:#fff;border-color:#c0392b}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.choice label{border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;background:#fcfbf8;display:flex;gap:8px;align-items:flex-start}
+.choice label:has(input:checked){border-color:var(--accent);background:#eef2fa}
+.choice .correct{border-color:var(--keyb);background:var(--key)}
+@media(max-width:640px){.choice{grid-template-columns:1fr}}
+table.g{width:100%;border-collapse:collapse;margin:10px 0 16px;font-size:15px}
+table.g th,table.g td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;text-align:left}
+table.g th{background:#eef2fa;color:var(--accent)}
+.ex-list{margin:4px 0 0;padding-left:20px}
+.ex-list li{margin:2px 0}
+.ok{color:#2e8b57;font-weight:700}.no{color:#c0392b;font-weight:700}
+.reading p{margin:0 0 12px}
+.headline{font-family:Georgia,serif;font-size:21px;font-weight:700;border-bottom:3px double var(--ink);padding-bottom:6px;margin-bottom:12px}
+.dlg{display:grid;grid-template-columns:auto 1fr;gap:6px 14px}
+.dlg .sp{font-weight:700;color:var(--accent2);white-space:nowrap}
+.score{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:var(--muted);margin-left:auto;background:#f6f4ef;border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.score input{width:52px;border:1px solid #cfc8bb;border-radius:6px;padding:2px 6px;font:inherit;text-align:center}
+.total{position:sticky;bottom:12px;background:var(--accent);color:#fff;border-radius:14px;padding:14px 20px;font-size:18px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 6px 18px rgba(0,0,0,.18);flex-wrap:wrap;gap:8px}
+.total .big{font-size:24px;font-weight:700}
+.corr td:first-child{color:#c0392b;text-decoration:line-through}
+.warm li{margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hdr">
+<h1>Feelings & Emotions — Advanced Present Simple & Continuous</h1>
+<p>Level: B1+ → confident B2</p>
+<span class="badge">👩‍🏫 TEACHER FILE — keys included</span>
+<span class="badge">Vocabulary: 16 emotion expressions</span>
+<span class="badge">Grammar: advanced present simple & continuous</span>
+<span class="badge">Bonus: want / like / see + object + -ing</span>
+</header>
+<section>
+<h2>
+<span class="num">0</span>Warm-up (teacher only)</h2>
+<h3>1. Greeting & small talk (3–4 min)</h3>
+<ul class="warm">
+<li>“Hey Danil! How’s it going? How’s business this week?”</li>
+<li>“What’s the most stressful thing you’re dealing with at the moment?”</li>
+<li>“Have you had any meetings this week that went better — or worse — than you expected?”</li>
+<li>“If you could have anything done for you this week, what would it be?” (causative check)</li>
+</ul>
+<h3>2. Review — translate (previous grammar)</h3>
+<ol class="items">
+<li>Якби я знав про дедлайн, я б не погодився.<div class="key">
+<b class="k">Key:</b> If I’d known about the deadline, I wouldn’t have agreed. (3rd conditional)</div>
+</li>
+<li>Мені треба полагодити ноутбук (у майстра).<div class="key">
+<b class="k">Key:</b> I need to have / get my laptop repaired. (causative)</div>
+</li>
+<li>Ніколи раніше я не бачив такої сильної команди.<div class="key">
+<b class="k">Key:</b> Never before have I seen such a strong team. (inversion)</div>
+</li>
+<li>Що мене дратує — так це люди, які запізнюються.<div class="key">
+<b class="k">Key:</b> What annoys me is people being late. (cleft)</div>
+</li>
+<li>Він порадив мені змінити стратегію.<div class="key">
+<b class="k">Key:</b> He advised me to change the strategy. (reporting verb)</div>
+</li>
+<li>Тобі краще поговорити з інвестором сьогодні.<div class="key">
+<b class="k">Key:</b> You’d better talk to the investor today. (had better)</div>
+</li>
+<li>Я змусив розробника все переписати.<div class="key">
+<b class="k">Key:</b> I got the developer to rewrite / had the developer rewrite everything. (causative)</div>
+</li>
+<li>Якби я тоді не звільнився, зараз у мене не було б стартапу.<div class="key">
+<b class="k">Key:</b> If I hadn’t quit my job, I wouldn’t have a startup now. (mixed conditional)</div>
+</li>
+</ol>
+<h3>3. Lead-in to today’s topic</h3>
+<p>Show the emojis and ask Danil to describe a real situation for each: 😳 😤 😂 🥹 😱 🤐</p>
+<p>“On a scale of 1 to 10, how good are you at hiding your emotions at work? Is it a good thing for a founder?”</p>
+<div class="tip">
+<b>Teacher note — fixes to the original word list:</b>
+<table class="g corr">
+<tr>
+<th>In the list</th>
+<th>Correct form</th>
+</tr>
+<tr>
+<td>cringed</td>
+<td>
+<b>cringe</b> (verb). <i>Cringed</i> is just the past form. Adjectives: <i>cringey / cringeworthy</i>.</td>
+</tr>
+<tr>
+<td>to be clammed up</td>
+<td>
+<b>to clam up</b> — a phrasal verb, used without <i>be</i>: <i>She clammed up.</i>
+</td>
+</tr>
+<tr>
+<td>to loose one’s temper</td>
+<td>
+<b>to lose</b> one’s temper (<i>loose</i> = not tight).</td>
+</tr>
+<tr>
+<td>to laugh smbd’s head off</td>
+<td>
+<b>to laugh one’s head off</b> — you laugh <u>your own</u> head off: <i>We laughed our heads off.</i>
+</td>
+</tr>
+<tr>
+<td>to feel gutted (×2)</td>
+<td>appeared twice in the list — kept once. 16 items in total.</td>
+</tr>
+</table>
+</div>
+</section>
+<section>
+<h2>
+<span class="num">1</span>Vocabulary</h2>
+<p class="instr">Read the expressions, their meanings and examples. Which of these feelings have you had this month?</p>
+<div class="vgroup">
+<span class="vgroup-title" style="background:#c0392b">Shock, stress & anger</span>
+<div class="vgrid">
+<div class="vcard" style="--c:#c0392b">
+<div class="emo">😱</div>
+<div class="w">freak out</div>
+<div class="tr">/friːk aʊt/</div>
+<div class="pos">phrasal verb</div>
+<div class="def">to suddenly become extremely scared, upset or angry and lose control</div>
+<div class="ex">Don’t <b>freak out</b>, but the server has been down for an hour.</div>
+</div>
+<div class="vcard" style="--c:#c0392b">
+<div class="emo">😯</div>
+<div class="w">be taken aback</div>
+<div class="tr">/bi ˈteɪkən əˈbæk/</div>
+<div class="pos">phrase</div>
+<div class="def">to be so surprised or shocked that for a moment you don’t know how to react</div>
+<div class="ex">I <b>was taken aback</b> when the client asked for a refund on day one.</div>
+</div>
+<div class="vcard" style="--c:#c0392b">
+<div class="emo">😬</div>
+<div class="w">be on edge</div>
+<div class="tr">/bi ɒn ˈedʒ/</div>
+<div class="pos">idiom</div>
+<div class="def">to be nervous and unable to relax, usually because you are waiting for something</div>
+<div class="ex">The whole team <b>is on edge</b> this week — we’re waiting for the investors' answer.</div>
+</div>
+<div class="vcard" style="--c:#c0392b">
+<div class="emo">😤</div>
+<div class="w">lose one’s temper</div>
+<div class="tr">/luːz wʌnz ˈtempə/</div>
+<div class="pos">idiom</div>
+<div class="def">to suddenly become very angry and show it</div>
+<div class="ex">He rarely <b>loses his temper</b>, but the third bug in a row did it.</div>
+</div>
+<div class="vcard" style="--c:#c0392b">
+<div class="emo">🤐</div>
+<div class="w">clam up</div>
+<div class="tr">/ˌklæm ˈʌp/</div>
+<div class="pos">phrasal verb</div>
+<div class="def">to suddenly stop talking or refuse to talk, because you are nervous or don’t want to reveal something</div>
+<div class="ex">She <b>clams up</b> whenever someone asks about her salary.</div>
+</div>
+<div class="vcard" style="--c:#c0392b">
+<div class="emo">😞</div>
+<div class="w">feel gutted</div>
+<div class="tr">/fiːl ˈɡʌtɪd/</div>
+<div class="pos">phrase (BrE, informal)</div>
+<div class="def">to feel extremely disappointed or sad</div>
+<div class="ex">I <b>feel</b> absolutely <b>gutted</b> — we lost the contract to a competitor.</div>
+</div>
+</div>
+</div>
+<div class="vgroup">
+<span class="vgroup-title" style="background:#8e44ad">Embarrassment</span>
+<div class="vgrid">
+<div class="vcard" style="--c:#8e44ad">
+<div class="emo">🫣</div>
+<div class="w">cringe</div>
+<div class="tr">/krɪndʒ/</div>
+<div class="pos">verb</div>
+<div class="def">to feel very embarrassed or uncomfortable about something (often your body or face tightens a little)</div>
+<div class="ex">I still <b>cringe</b> when I watch my first pitch video.</div>
+</div>
+<div class="vcard" style="--c:#8e44ad">
+<div class="emo">😵‍💫</div>
+<div class="w">be flustered</div>
+<div class="tr">/bi ˈflʌstəd/</div>
+<div class="pos">adjective phrase</div>
+<div class="def">to be nervous and confused, so you can’t think or act calmly</div>
+<div class="ex">He <b>got flustered</b> when the camera suddenly turned on.</div>
+</div>
+<div class="vcard" style="--c:#8e44ad">
+<div class="emo">🙈</div>
+<div class="w">be mortified</div>
+<div class="tr">/bi ˈmɔːtɪfaɪd/</div>
+<div class="pos">adjective phrase</div>
+<div class="def">to be extremely embarrassed or ashamed (stronger than 'embarrassed')</div>
+<div class="ex">I <b>was mortified</b> when I realised I’d sent the message to the wrong chat.</div>
+</div>
+<div class="vcard" style="--c:#8e44ad">
+<div class="emo">😳</div>
+<div class="w">go red</div>
+<div class="tr">/ɡəʊ ˈred/</div>
+<div class="pos">phrase</div>
+<div class="def">your face becomes red because you are embarrassed (or angry)</div>
+<div class="ex">She <b>went red</b> when everyone started clapping.</div>
+</div>
+</div>
+</div>
+<div class="vgroup">
+<span class="vgroup-title" style="background:#e67e22">Laughter</span>
+<div class="vgrid">
+<div class="vcard" style="--c:#e67e22">
+<div class="emo">😆</div>
+<div class="w">burst out laughing</div>
+<div class="tr">/bɜːst aʊt ˈlɑːfɪŋ/</div>
+<div class="pos">phrase</div>
+<div class="def">to suddenly start laughing loudly</div>
+<div class="ex">When the demo crashed, the CEO just <b>burst out laughing</b>.</div>
+</div>
+<div class="vcard" style="--c:#e67e22">
+<div class="emo">😂</div>
+<div class="w">crack up</div>
+<div class="tr">/ˌkræk ˈʌp/</div>
+<div class="pos">phrasal verb (informal)</div>
+<div class="def">to start laughing a lot; <i>crack sb up</i> = to make somebody laugh a lot</div>
+<div class="ex">His impressions of our clients always <b>crack me up</b>.</div>
+</div>
+<div class="vcard" style="--c:#e67e22">
+<div class="emo">🤣</div>
+<div class="w">laugh one’s head off</div>
+<div class="tr">/lɑːf wʌnz ˈhed ɒf/</div>
+<div class="pos">idiom</div>
+<div class="def">to laugh very loudly and for a long time</div>
+<div class="ex">We <b>laughed our heads off</b> at the office party.</div>
+</div>
+</div>
+</div>
+<div class="vgroup">
+<span class="vgroup-title" style="background:#27ae60">Strong positive feelings</span>
+<div class="vgrid">
+<div class="vcard" style="--c:#27ae60">
+<div class="emo">🥳</div>
+<div class="w">be thrilled to bits</div>
+<div class="tr">/bi θrɪld tə ˈbɪts/</div>
+<div class="pos">idiom (BrE, informal)</div>
+<div class="def">to be extremely happy and pleased</div>
+<div class="ex">My mum <b>was thrilled to bits</b> when I told her about the funding.</div>
+</div>
+<div class="vcard" style="--c:#27ae60">
+<div class="emo">🥹</div>
+<div class="w">be moved</div>
+<div class="tr">/bi ˈmuːvd/</div>
+<div class="pos">adjective phrase</div>
+<div class="def">to feel strong emotions (sadness, sympathy, admiration) because of something touching</div>
+<div class="ex">I <b>was</b> really <b>moved</b> by his speech.</div>
+</div>
+<div class="vcard" style="--c:#27ae60">
+<div class="emo">🌊</div>
+<div class="w">be overwhelmed</div>
+<div class="tr">/bi ˌəʊvəˈwelmd/</div>
+<div class="pos">adjective phrase</div>
+<div class="def">to feel an emotion so strongly, or to have so much to deal with, that you can’t cope</div>
+<div class="ex">She <b>was overwhelmed</b> by all the support. / I’m <b>overwhelmed</b> with work.</div>
+</div>
+</div>
+</div>
+<div class="tip">
+<b>Collocations to notice:</b> <i>absolutely gutted · deeply / really moved · completely overwhelmed · utterly mortified · go bright red · get flustered · totally freak out · crack sb up · make sb cringe</i>
+</div>
+</section>
+<section>
+<h2>
+<span class="num">2</span>Vocabulary practice 1 — Guess the expression<span class="score">Score <input type="number" min="0" max="16" data-max="16"> / 16</span>
+</h2>
+<p class="instr">Read the description and name the expression.</p>
+<ol class="items">
+<li>Your face changes colour because you feel embarrassed — for example, when someone pays you a compliment in front of everyone.<div class="key">
+<b class="k">Key:</b> <b>go red</b>
+</div>
+</li>
+<li>You feel this when you are so disappointed that it’s like being punched in the stomach — e.g. your team loses the final in the last minute.<div class="key">
+<b class="k">Key:</b> <b>feel gutted</b>
+</div>
+</li>
+<li>You suddenly stop talking and refuse to say anything, usually because you’re nervous or hiding something.<div class="key">
+<b class="k">Key:</b> <b>clam up</b>
+</div>
+</li>
+<li>You are so happy and pleased that you can’t stop smiling — a very British way to say it.<div class="key">
+<b class="k">Key:</b> <b>be thrilled to bits</b>
+</div>
+</li>
+<li>You laugh so loudly and for so long that people around you start staring.<div class="key">
+<b class="k">Key:</b> <b>laugh one’s head off</b>
+</div>
+</li>
+<li>You are tense and can’t relax because you are waiting for important news.<div class="key">
+<b class="k">Key:</b> <b>be on edge</b>
+</div>
+</li>
+<li>You feel so ashamed and embarrassed that you want the ground to swallow you.<div class="key">
+<b class="k">Key:</b> <b>be mortified</b>
+</div>
+</li>
+<li>You suddenly lose control because you are very scared, upset or angry — you panic.<div class="key">
+<b class="k">Key:</b> <b>freak out</b>
+</div>
+</li>
+<li>Something surprises you so much that for a second you don’t know what to say.<div class="key">
+<b class="k">Key:</b> <b>be taken aback</b>
+</div>
+</li>
+<li>A sad film or a kind gesture touches your heart, and you might even cry a little.<div class="key">
+<b class="k">Key:</b> <b>be moved</b>
+</div>
+</li>
+<li>You get nervous and confused, so you start dropping things and forgetting your words.<div class="key">
+<b class="k">Key:</b> <b>be flustered</b>
+</div>
+</li>
+<li>You suddenly become very angry and start shouting.<div class="key">
+<b class="k">Key:</b> <b>lose one’s temper</b>
+</div>
+</li>
+<li>Something is so awkward that your whole body wants to hide — e.g. watching your old videos.<div class="key">
+<b class="k">Key:</b> <b>cringe</b>
+</div>
+</li>
+<li>Informal: you start laughing a lot; a funny friend can do this to you.<div class="key">
+<b class="k">Key:</b> <b>crack up</b>
+</div>
+</li>
+<li>You feel too much at once — too many emotions or too much work — and you can’t cope.<div class="key">
+<b class="k">Key:</b> <b>be overwhelmed</b>
+</div>
+</li>
+<li>You suddenly start laughing out loud, e.g. in a quiet meeting where you really shouldn’t.<div class="key">
+<b class="k">Key:</b> <b>burst out laughing</b>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">3</span>Vocabulary practice 2 — Personal questions<span class="score">Score <input type="number" min="0" max="16" data-max="16"> / 16</span>
+</h2>
+<p class="instr">Answer in 2–3 sentences. Use the expression in your answer.</p>
+<ol class="items">
+<li>Is there anything you did as a teenager that makes you <b>cringe</b> now?</li>
+<li>Who or what always <b>cracks you up</b>?</li>
+<li>Are you <b>on edge</b> before important calls? What do you do to calm down?</li>
+<li>When did you last <b>feel gutted</b>? What happened?</li>
+<li>What would make you <b>thrilled to bits</b> this year?</li>
+<li>In what situations do you <b>clam up</b>?</li>
+<li>What kind of question <b>takes you aback</b> in a business meeting?</li>
+<li>Do you ever <b>feel overwhelmed</b> running a business? How do you deal with it?</li>
+<li>What makes you <b>lose your temper</b> — and are you losing it more or less often these days?</li>
+<li>When was the last time you <b>freaked out</b>? Tell the story!</li>
+<li>Has anyone ever <b>burst out laughing</b> during a serious meeting you were in?</li>
+<li>What situations make you <b>flustered</b> — public speaking, speaking English, dates?</li>
+<li>What’s the last video that made you <b>laugh your head off</b>?</li>
+<li>Have you ever been <b>mortified</b> at work? Tell it in the present tense: <i>So I’m sitting in a meeting…</i>
+</li>
+<li>Do you <b>go red</b> easily? When does it happen?</li>
+<li>When was the last time you were <b>moved</b> by a film, book or speech?</li>
+</ol>
+<div class="tip">💡 Push for full answers with the expression + a present form: <i>“I’m always going red when…” → “I always go red when…” (neutral habit) vs “I’m always going red!” (complaint)</i>. Correct wrong forms such as “I was clammed up”.</div>
+</section>
+<section>
+<h2>
+<span class="num">4</span>Vocabulary practice 3 — True or false?<span class="score">Score <input type="number" min="0" max="12" data-max="12"> / 12</span>
+</h2>
+<p class="instr">True or false? If false, correct the definition.</p>
+<ol class="items">
+<li>If you are <b>taken aback</b>, you are surprised and not sure how to react.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+</div>
+</li>
+<li>
+<b>Freak out</b> means to stay calm in a difficult situation.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">It’s the opposite — you panic / lose control.</span>
+</div>
+</li>
+<li>
+<b>Feeling gutted</b> means feeling extremely disappointed.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+</div>
+</li>
+<li>If you <b>clam up</b>, you start talking a lot because you’re excited.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">You stop talking.</span>
+</div>
+</li>
+<li>
+<b>Crack up</b> can mean to start laughing a lot.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+</div>
+</li>
+<li>If you are <b>thrilled to bits</b>, you are slightly annoyed.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">Extremely happy.</span>
+</div>
+</li>
+<li>
+<b>Be mortified</b> is stronger than <i>be embarrassed</i>.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+</div>
+</li>
+<li>If you <b>go red</b>, your face turns pale because you’re scared.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">It turns red — usually from embarrassment.</span>
+</div>
+</li>
+<li>If you are <b>on edge</b>, you feel relaxed and confident.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">Nervous, tense.</span>
+</div>
+</li>
+<li>If you are <b>overwhelmed</b>, you may feel too much emotion at once.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+</div>
+</li>
+<li>
+<b>Laugh one’s head off</b> means to laugh quietly and politely.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">Very loudly and for a long time.</span>
+</div>
+</li>
+<li>If you are <b>flustered</b>, you are calm and well organised.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">Nervous and confused.</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">5</span>Grammar — Advanced present simple & present continuous</h2>
+<h3>Quick review — the basics</h3>
+<table class="g">
+<tr>
+<th>Present simple</th>
+<th>Present continuous</th>
+</tr>
+<tr>
+<td>habits & routines — <i>I check emails at 8.</i>
+</td>
+<td>actions in progress now — <i>I’m reading your proposal.</i>
+</td>
+</tr>
+<tr>
+<td>facts — <i>Stress affects sleep.</i>
+</td>
+<td>temporary situations — <i>I’m working from Lviv this month.</i>
+</td>
+</tr>
+<tr>
+<td>state verbs — <i>I know what you mean.</i>
+</td>
+<td>changing trends — <i>Prices are going up.</i>
+</td>
+</tr>
+<tr>
+<td>timetables — <i>The flight leaves at 6.</i>
+</td>
+<td>arrangements — <i>I’m meeting the investors on Friday.</i>
+</td>
+</tr>
+</table>
+<h3>A. Advanced uses of the PRESENT SIMPLE</h3>
+<table class="g">
+<tr>
+<th>Use</th>
+<th>Examples</th>
+</tr>
+<tr>
+<td>
+<b>1. Narrative present</b> — stories, jokes, anecdotes (sounds more alive than the past). Simple = the main events.</td>
+<td>
+<ul class="ex-list">
+<li>So I <b>walk</b> into the office, and everyone <b>bursts</b> out laughing.</li>
+<li>He <b>opens</b> the email and <b>goes</b> bright red.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>2. Live commentary & demonstrations</b> — fast, short actions described as they happen.</td>
+<td>
+<ul class="ex-list">
+<li>And Silva <b>takes</b> the ball… he <b>shoots</b>… goal!</li>
+<li>First you <b>open</b> the dashboard, then you <b>click</b> “Export”.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>3. Performative verbs</b> — saying the words <u>is</u> the action: <i>promise, apologise, agree, admit, deny, suggest, recommend, warn, guarantee, refuse, thank, advise, invite</i>.</td>
+<td>
+<ul class="ex-list">
+<li>I <b>promise</b> I won’t freak out.</li>
+<li>We <b>apologise</b> for the delay.</li>
+<li>⚠️ In the negative, continuous is also fine: <i>I don’t deny / I’m not denying it.</i>
+</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>4. Headlines & summaries</b> — to sound immediate.</td>
+<td>
+<ul class="ex-list">
+<li>AI start-up <b>raises</b> $20m.</li>
+<li>CEO <b>loses</b> temper on live TV.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>5. Reporting news you received</b> — <i>hear, tell, say, understand</i>.</td>
+<td>
+<ul class="ex-list">
+<li>I <b>hear</b> you’re thrilled to bits with the new office.</li>
+<li>Max <b>tells</b> me you’re on edge before the launch.</li>
+<li>They <b>say</b> the market is cooling down.</li>
+</ul>
+</td>
+</tr>
+</table>
+<h3>B. Advanced uses of the PRESENT CONTINUOUS</h3>
+<table class="g">
+<tr>
+<th>Use</th>
+<th>Examples</th>
+</tr>
+<tr>
+<td>
+<b>1. Narrative present (background)</b> — continuous sets the scene, simple interrupts.</td>
+<td>
+<ul class="ex-list">
+<li>So <b>I’m standing</b> at the bus stop, and this guy <b>starts</b> singing…</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>2. State verbs → temporary</b> — <i>be, love, like, hate, look, sound</i> to show it’s temporary / unusual.</td>
+<td>
+<ul class="ex-list">
+<li>You’re impatient. (character) → <b>You’re being</b> impatient today. (behaviour now)</li>
+<li>I love my job. → <b>I’m loving</b> this new project. (informal, current)</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>3. Verbs with a state AND an action meaning</b> — <i>think, have, see, taste, smell, feel, weigh, expect, appear, imagine, fit</i>.</td>
+<td>
+<ul class="ex-list">
+<li>I <b>think</b> he’s mortified. (opinion) / I’<b>m thinking</b> about it. (considering)</li>
+<li>I <b>see</b> what you mean. (understand) / I’<b>m seeing</b> the client at 3. (meeting)</li>
+<li>I <b>feel</b> that we should wait. (opinion) / I’<b>m feeling</b> overwhelmed. (emotion now — both <i>I feel / I’m feeling</i> work)</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>4. Mental-state verbs → a NEW feeling</b> — <i>realise, regret, find, think</i> = it has just started / is developing.</td>
+<td>
+<ul class="ex-list">
+<li>
+<b>I’m realising</b> how hard it is to manage people.</li>
+<li>
+<b>I’m regretting</b> that tattoo.</li>
+<li>
+<b>I’m finding</b> this job more stressful than I expected.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>5. Politeness / tentativeness</b> — <i>wonder, hope</i> sound softer.</td>
+<td>
+<ul class="ex-list">
+<li>
+<b>I’m wondering</b> if you could send the deck today.</li>
+<li>
+<b>We’re hoping</b> to close the round in May.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>6. always / constantly / forever + continuous</b> — repeated behaviour; usually <b>irritation</b>, sometimes praise.</td>
+<td>
+<ul class="ex-list">
+<li>
+<b>You’re always losing</b> your temper over nothing! 😤</li>
+<li>
+<b>She’s constantly helping</b> new people on the team. 👍</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>7. usually + continuous</b> — a routine action that is in progress at a certain time.</td>
+<td>
+<ul class="ex-list">
+<li>Don’t call at 9 — <b>I’m usually driving</b> to the office.</li>
+</ul>
+</td>
+</tr>
+</table>
+<div class="tip">
+<b>⛔ Almost never continuous:</b> <i>believe, know, prefer, agree, own, belong, possess, consist of, doubt</i>.<br>
+<span class="ok">✔ I prefer to work late these days.</span> &nbsp; <span class="no">✘ I’m preferring to work late these days.</span>
+</div>
+<div class="tip">💡 <b>Teaching tip:</b> elicit with contrast pairs first — write <i>“He’s rude” / “He’s being rude”</i> and ask what the difference is. Then ask Danil to tell a 30-second anecdote in the narrative present before showing section A1/B1.</div>
+</section>
+<section>
+<h2>
+<span class="num">6</span>Grammar practice A — Which one fits?<span class="score">Score <input type="number" min="0" max="12" data-max="12"> / 12</span>
+</h2>
+<p class="instr">Choose the option (A or B) that fits the situation better.</p>
+<ol class="items">
+<li>
+<b>Telling a friend a story:</b>
+<div class="choice">
+<label class=" correct">
+<input type="radio" name="gc0"> A. So I’m standing at the door, and suddenly my ex walks in.</label>
+<label class="">
+<input type="radio" name="gc0"> B. So I stand at the door, and suddenly my ex is walking in.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>A</b> — Narrative present: <b>continuous</b> for the background, <b>simple</b> for the main event.</div>
+</li>
+<li>
+<b>Showing annoyance:</b>
+<div class="choice">
+<label class="">
+<input type="radio" name="gc1"> A. My co-founder always loses his temper in meetings.</label>
+<label class=" correct">
+<input type="radio" name="gc1"> B. My co-founder is always losing his temper in meetings!</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>B</b> — <b>always + continuous</b> = irritation.</div>
+</li>
+<li>
+<b>A polite email:</b>
+<div class="choice">
+<label class="">
+<input type="radio" name="gc2"> A. We wonder if you could move the call to Friday.</label>
+<label class=" correct">
+<input type="radio" name="gc2"> B. We’re wondering if you could move the call to Friday.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>B</b> — Continuous makes requests softer / more tentative.</div>
+</li>
+<li>
+<b>A news headline:</b>
+<div class="choice">
+<label class="">
+<input type="radio" name="gc3"> A. Local startup is raising $5m</label>
+<label class=" correct">
+<input type="radio" name="gc3"> B. Local startup raises $5m</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>B</b> — Headlines use the present simple.</div>
+</li>
+<li>
+<b>About someone’s behaviour right now (not their character):</b>
+<div class="choice">
+<label class="">
+<input type="radio" name="gc4"> A. You’re so rude.</label>
+<label class=" correct">
+<input type="radio" name="gc4"> B. You’re being so rude tonight.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>B</b> — <b>be being + adjective</b> = temporary behaviour.</div>
+</li>
+<li>
+<b>A feeling that has just started:</b>
+<div class="choice">
+<label class=" correct">
+<input type="radio" name="gc5"> A. I’m realising how stressful running a company is.</label>
+<label class="">
+<input type="radio" name="gc5"> B. I realise how stressful running a company is.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>A</b> — Mental-state verbs in the continuous = a new / developing feeling.</div>
+</li>
+<li>
+<b>Making a promise:</b>
+<div class="choice">
+<label class="">
+<input type="radio" name="gc6"> A. I’m promising I won’t freak out.</label>
+<label class=" correct">
+<input type="radio" name="gc6"> B. I promise I won’t freak out.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>B</b> — Performative verb — saying it = doing it → present simple.</div>
+</li>
+<li>
+<b>Passing on news you received:</b>
+<div class="choice">
+<label class=" correct">
+<input type="radio" name="gc7"> A. I hear you’re thrilled to bits with the new office.</label>
+<label class="">
+<input type="radio" name="gc7"> B. I’m hearing you’re thrilled to bits with the new office.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>A</b> — <b>hear / tell / say</b> in the present simple to report information. (<i>I’m hearing that…</i> exists in business jargon, but A is the standard choice.)</div>
+</li>
+<li>
+<b>A state verb:</b>
+<div class="choice">
+<label class="">
+<input type="radio" name="gc8"> A. This laptop is belonging to Max.</label>
+<label class=" correct">
+<input type="radio" name="gc8"> B. This laptop belongs to Max.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>B</b> — <b>belong, own, consist of, believe</b> — (almost) never continuous.</div>
+</li>
+<li>
+<b>Giving a demonstration:</b>
+<div class="choice">
+<label class=" correct">
+<input type="radio" name="gc9"> A. First, you click 'Export', then you choose the format.</label>
+<label class="">
+<input type="radio" name="gc9"> B. First, you’re clicking 'Export', then you’re choosing the format.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>A</b> — Demonstrations / instructions → present simple.</div>
+</li>
+<li>
+<b>A routine action in progress at a certain time:</b>
+<div class="choice">
+<label class=" correct">
+<input type="radio" name="gc10"> A. Don’t call at 8 — I’m usually driving the kids to school then.</label>
+<label class="">
+<input type="radio" name="gc10"> B. Don’t call at 8 — I usually drive the kids to school.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>A</b> — Both are grammatical, but A stresses that you are <i>in the middle of it</i> at 8, so you can’t talk.</div>
+</li>
+<li>
+<b>Meaning 'meet':</b>
+<div class="choice">
+<label class="">
+<input type="radio" name="gc11"> A. I see the client at 3.</label>
+<label class=" correct">
+<input type="radio" name="gc11"> B. I’m seeing the client at 3.</label>
+</div>
+<div class="key">
+<b class="k">Key:</b> <b>B</b> — <b>see</b> = meet (action meaning) → continuous for an arrangement.</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">7</span>Grammar practice B — Simple or continuous?<span class="score">Score <input type="number" min="0" max="15" data-max="15"> / 15</span>
+</h2>
+<p class="instr">Put the verb in brackets into the present simple or the present continuous.</p>
+<ol class="items">
+<li>Why ___ you ___ (be) so flustered today? It’s just a short presentation.<div class="key">
+<b class="k">Key:</b> <b>are you being</b>
+<span class="cite">💡 Temporary behaviour.</span>
+</div>
+</li>
+<li>This soup ___ (taste) amazing — what’s in it?<div class="key">
+<b class="k">Key:</b> <b>tastes</b>
+<span class="cite">💡 State meaning (= has a flavour).</span>
+</div>
+</li>
+<li>Hold on, the chef ___ (taste) the sauce.<div class="key">
+<b class="k">Key:</b> <b>is tasting</b>
+<span class="cite">💡 Action meaning (= trying it).</span>
+</div>
+</li>
+<li>Breaking news: Tech giant ___ (cut) 2,000 jobs.<div class="key">
+<b class="k">Key:</b> <b>cuts</b>
+<span class="cite">💡 Headline.</span>
+</div>
+</li>
+<li>Laura ___ (tell) me you’re moving to Lisbon.<div class="key">
+<b class="k">Key:</b> <b>tells</b>
+<span class="cite">💡 Reporting information.</span>
+</div>
+</li>
+<li>I ___ (regret) not hiring her — she’s doing brilliantly at our competitor’s.<div class="key">
+<b class="k">Key:</b> <b>'m regretting</b>
+<span class="cite">💡 A feeling that has started recently. (<i>regret</i> also possible as a general statement.)</span>
+</div>
+</li>
+<li>I ___ (not / deny) that I lost my temper, but he started it.<div class="key">
+<b class="k">Key:</b> <b>don’t deny / 'm not denying</b>
+<span class="cite">💡 Both possible in the negative, no change in meaning.</span>
+</div>
+</li>
+<li>We ___ (hope) you can join us for the launch on Friday.<div class="key">
+<b class="k">Key:</b> <b>'re hoping</b>
+<span class="cite">💡 Polite / tentative.</span>
+</div>
+</li>
+<li>You ___ (always / interrupt) me when I’m in the middle of a sentence!<div class="key">
+<b class="k">Key:</b> <b>'re always interrupting</b>
+<span class="cite">💡 Annoying habit.</span>
+</div>
+</li>
+<li>I ___ (think) about quitting my job.<div class="key">
+<b class="k">Key:</b> <b>'m thinking</b>
+<span class="cite">💡 Action meaning (= considering).</span>
+</div>
+</li>
+<li>I ___ (think) she was mortified by your joke.<div class="key">
+<b class="k">Key:</b> <b>think</b>
+<span class="cite">💡 Opinion → state.</span>
+</div>
+</li>
+<li>So the lights go off, and everyone ___ (freak out).<div class="key">
+<b class="k">Key:</b> <b>freaks out</b>
+<span class="cite">💡 Narrative present — main event.</span>
+</div>
+</li>
+<li>I ___ (love) working from the new office these days.<div class="key">
+<b class="k">Key:</b> <b>'m loving</b>
+<span class="cite">💡 Temporary / current situation (informal).</span>
+</div>
+</li>
+<li>We ___ (apologise) for any inconvenience caused.<div class="key">
+<b class="k">Key:</b> <b>apologise</b>
+<span class="cite">💡 Performative verb.</span>
+</div>
+</li>
+<li>He ___ (have) a really hard time at work at the moment.<div class="key">
+<b class="k">Key:</b> <b>'s having</b>
+<span class="cite">💡 <i>have</i> = experience (action meaning).</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">8</span>Grammar practice C — Spot the mistake<span class="score">Score <input type="number" min="0" max="10" data-max="10"> / 10</span>
+</h2>
+<p class="instr">Find and correct the mistake. Careful — some sentences are correct!</p>
+<ol class="items">
+<li>
+<i>I’m believing you now.</i>
+<div class="key">
+<b class="k">Key:</b> I <b>believe</b> you now.<span class="cite">💡 <i>believe</i> is never continuous.</span>
+</div>
+</li>
+<li>
+<i>He is always forget his keys.</i>
+<div class="key">
+<b class="k">Key:</b> He is always <b>forgetting</b> his keys.<span class="cite">💡 always + be + -ing.</span>
+</div>
+</li>
+<li>
+<i>I want that you call me back.</i>
+<div class="key">
+<b class="k">Key:</b> I want <b>you to call</b> me back.<span class="cite">💡 No <i>that</i>-clause after <i>want</i>.</span>
+</div>
+</li>
+<li>
+<i>She was clammed up during the interview.</i>
+<div class="key">
+<b class="k">Key:</b> She <b>clammed up</b> during the interview.<span class="cite">💡 Phrasal verb, no <i>be</i>.</span>
+</div>
+</li>
+<li>
+<i>I was very taken aback by his reaction.</i>
+<div class="key">
+<b class="k">Key:</b> ✅ Correct.<span class="cite">💡 Trick item.</span>
+</div>
+</li>
+<li>
+<i>Don’t loose your temper!</i>
+<div class="key">
+<b class="k">Key:</b> Don’t <b>lose</b> your temper!<span class="cite">💡 Spelling: lose / loose.</span>
+</div>
+</li>
+<li>
+<i>I’m knowing what you mean.</i>
+<div class="key">
+<b class="k">Key:</b> I <b>know</b> what you mean.<span class="cite">💡 State verb.</span>
+</div>
+</li>
+<li>
+<i>I don’t want you to working late.</i>
+<div class="key">
+<b class="k">Key:</b> I don’t want you <b>working</b> / <b>to work</b> late.<span class="cite">💡 Either <i>-ing</i> or <i>to + inf.</i>, not both.</span>
+</div>
+</li>
+<li>
+<i>Prime minister is resigning after scandal.</i>
+<div class="key">
+<b class="k">Key:</b> Prime minister <b>resigns</b> after scandal.<span class="cite">💡 Headline → present simple.</span>
+</div>
+</li>
+<li>
+<i>You’re being very patient with them lately.</i>
+<div class="key">
+<b class="k">Key:</b> ✅ Correct.<span class="cite">💡 Temporary behaviour.</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">9</span>Bonus — Object + -ing (want / like / see sb doing)<span class="score">Score <input type="number" min="0" max="12" data-max="12"> / 12</span>
+</h2>
+<h3>want + object + …</h3>
+<table class="g">
+<tr>
+<th>Structure</th>
+<th>When</th>
+<th>Examples</th>
+</tr>
+<tr>
+<td>
+<b>want sb to do</b>
+</td>
+<td>the normal, neutral structure — a wish or a request</td>
+<td>
+<ul class="ex-list">
+<li>I <b>want you to tell</b> me the truth.</li>
+<li>Investors <b>want founders to look</b> strong.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>(not) want sb doing</b>
+</td>
+<td>an <b>ongoing or repeated situation</b> you (don’t) want to see happening; most common in the <b>negative</b>, informal. In the positive it’s rarer and means “I want this to be the situation”.</td>
+<td>
+<ul class="ex-list">
+<li>I <b>don’t want you working</b> till midnight every day.</li>
+<li>I <b>don’t want people freaking out</b> about this.</li>
+<li>I <b>want you sitting</b> at your desk by nine. (= be in that state)</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>want sth done</b>
+</td>
+<td>passive meaning — someone else should do it (like <i>have sth done</i>)</td>
+<td>
+<ul class="ex-list">
+<li>I <b>want this bug fixed</b> by Friday.</li>
+</ul>
+</td>
+</tr>
+</table>
+<div class="tip">
+<span class="no">✘ I want that you call me.</span> &nbsp; <span class="ok">✔ I want you to call me.</span>
+<br>
+<span class="no">✘ I’d like you doing…</span> — <b>would like</b> only takes <b>to + infinitive</b>: <span class="ok">✔ I’d like you to meet Anna.</span>
+</div>
+<h3>Other verbs + object + -ing</h3>
+<table class="g">
+<tr>
+<th>Verbs</th>
+<th>Examples</th>
+</tr>
+<tr>
+<td>
+<b>like, love, hate, can’t stand, don’t mind</b> + sb doing</td>
+<td>
+<ul class="ex-list">
+<li>I <b>can’t stand people laughing</b> their heads off in the cinema.</li>
+<li>I <b>don’t mind you calling</b> me late.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>mind, imagine, remember</b> + sb doing</td>
+<td>
+<ul class="ex-list">
+<li>
+<b>Do you mind me asking</b> how old you are? (formal: <i>my asking</i>)</li>
+<li>I <b>can’t imagine him losing</b> his temper.</li>
+<li>I <b>remember her going</b> bright red.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>
+<b>see, hear, watch, notice, feel</b> + sb doing / do</td>
+<td>
+<ul class="ex-list">
+<li>I <b>saw him losing</b> his temper. (part of the action, in progress)</li>
+<li>I <b>saw him lose</b> his temper. (the whole action, start to finish)</li>
+<li>I <b>heard her burst</b> out laughing. (short, complete)</li>
+</ul>
+</td>
+</tr>
+</table>
+<div class="tip">💡 Answer to your question: yes, <i>want sb doing</i> exists and is correct, but it’s marked — mostly negative (“I don’t want you doing that”), about ongoing/repeated situations, and informal. <i>Want sb to do</i> stays the default. <i>Would like sb doing</i> is wrong.</div>
+<h3>Practice — complete with the correct form</h3>
+<p class="instr">Use: <b>to do / doing / done / do</b>.</p>
+<ol class="items">
+<li>The investors want us ___ (show) real revenue, not promises.<div class="key">
+<b class="k">Key:</b> <b>to show</b>
+<span class="cite">💡 Neutral want + obj + to-inf.</span>
+</div>
+</li>
+<li>I don’t want you ___ (work) every weekend — you’re burning out.<div class="key">
+<b class="k">Key:</b> <b>working</b>
+<span class="cite">💡 Ongoing situation, negative (<i>to work</i> also OK).</span>
+</div>
+</li>
+<li>I want the presentation ___ (finish) by tomorrow morning.<div class="key">
+<b class="k">Key:</b> <b>finished</b>
+<span class="cite">💡 want + obj + past participle (passive meaning).</span>
+</div>
+</li>
+<li>I can’t stand people ___ (check) their phones during meetings.<div class="key">
+<b class="k">Key:</b> <b>checking</b>
+<span class="cite">💡 can’t stand + obj + -ing.</span>
+</div>
+</li>
+<li>Did you see him ___ (go) red when the boss praised him?<div class="key">
+<b class="k">Key:</b> <b>go (going also OK)</b>
+<span class="cite">💡 Whole action → bare infinitive.</span>
+</div>
+</li>
+<li>I heard someone ___ (cry) in the next room, so I knocked.<div class="key">
+<b class="k">Key:</b> <b>crying</b>
+<span class="cite">💡 Action in progress → -ing.</span>
+</div>
+</li>
+<li>Do you mind me ___ (ask) why you clammed up?<div class="key">
+<b class="k">Key:</b> <b>asking</b>
+<span class="cite">💡 mind + obj + -ing (formal: <i>my asking</i>).</span>
+</div>
+</li>
+<li>I want you ___ (call) the client and apologise.<div class="key">
+<b class="k">Key:</b> <b>to call</b>
+<span class="cite">💡 Neutral request.</span>
+</div>
+</li>
+<li>I don’t want anyone ___ (freak out) about the audit.<div class="key">
+<b class="k">Key:</b> <b>freaking out</b>
+<span class="cite">💡 Negative, ongoing reaction.</span>
+</div>
+</li>
+<li>Imagine Max ___ (lose) his temper — he’s the calmest guy I know!<div class="key">
+<b class="k">Key:</b> <b>losing</b>
+<span class="cite">💡 imagine + obj + -ing.</span>
+</div>
+</li>
+<li>I’d like you ___ (meet) our new designer.<div class="key">
+<b class="k">Key:</b> <b>to meet</b>
+<span class="cite">💡 would like + obj + to-inf. (never -ing).</span>
+</div>
+</li>
+<li>I watched the audience ___ (laugh) their heads off for five minutes.<div class="key">
+<b class="k">Key:</b> <b>laughing</b>
+<span class="cite">💡 In progress for a period → -ing.</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">10</span>Translation<span class="score">Score <input type="number" min="0" max="12" data-max="12"> / 12</span>
+</h2>
+<p class="instr">Translate into English. Use today’s vocabulary, grammar and bonus.</p>
+<ol class="items">
+<li>Ти постійно втрачаєш самовладання через дрібниці!<div class="key">
+<b class="k">Key:</b> You’re <b>always / constantly losing your temper</b> over little things!</div>
+</li>
+<li>Я починаю шкодувати, що погодився на цей проєкт.<div class="key">
+<b class="k">Key:</b> <b>I’m regretting</b> agreeing to this project. / I’m starting to regret…</div>
+</li>
+<li>Чую, ти в захваті від нової квартири.<div class="key">
+<b class="k">Key:</b> <b>I hear</b> you’re <b>thrilled to bits</b> with your new flat.</div>
+</li>
+<li>Я не хочу, щоб ти панікував через цей дедлайн.<div class="key">
+<b class="k">Key:</b> I don’t want <b>you freaking out</b> / <b>you to freak out</b> about this deadline.</div>
+</li>
+<li>Ти сьогодні якийсь дуже напружений — щось сталося?<div class="key">
+<b class="k">Key:</b> <b>You’re</b> really <b>on edge</b> today — has something happened?</div>
+</li>
+<li>Отже, я заходжу в кімнату, а всі вибухають сміхом.<div class="key">
+<b class="k">Key:</b> So <b>I walk</b> into the room, and everyone <b>bursts out laughing</b>.</div>
+</li>
+<li>Мені було страшенно соромно, коли я зрозумів, що мікрофон увімкнений.<div class="key">
+<b class="k">Key:</b> I <b>was mortified</b> when I realised the mic was on.</div>
+</li>
+<li>Я бачив, як він почервонів, коли вона йому подякувала.<div class="key">
+<b class="k">Key:</b> I <b>saw him go red</b> when she thanked him.</div>
+</li>
+<li>Ми сподіваємося, що ви зможете надіслати договір до п'ятниці.<div class="key">
+<b class="k">Key:</b> <b>We’re hoping</b> you can send the contract by Friday.</div>
+</li>
+<li>Вона замовкає щоразу, коли хтось питає про її минуле.<div class="key">
+<b class="k">Key:</b> She <b>clams up</b> whenever anyone asks about her past.</div>
+</li>
+<li>Його промова мене дуже зворушила — я ледь не заплакав.<div class="key">
+<b class="k">Key:</b> I <b>was</b> really <b>moved</b> by his speech — I almost cried.</div>
+</li>
+<li>Я хочу, щоб цей баг був виправлений до ранку.<div class="key">
+<b class="k">Key:</b> <b>I want this bug fixed</b> by the morning.</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">11</span>Text 1 — The Pitch That Went Wrong<span class="score">Score <input type="number" min="0" max="20" data-max="20"> / 20</span>
+</h2>
+<p class="instr">A blog post by Oliver Grant, co-founder of a small AI start-up.</p>
+<div class="reading">
+<p>So, picture this. It’s 9 a.m., <b>I’m standing</b> outside a glass meeting room in London, and I’m completely <b>on edge</b>. Inside, three investors <b>are waiting</b> for my pitch — the pitch I’ve been rehearsing for two months. My co-founder, Ben, <b>is texting</b> me every thirty seconds: <i>'You’ve got this.'</i> <b>He’s always doing</b> that when I’m nervous, and today it’s driving me mad.</p>
+<p>
+<b>I walk</b> in, I smile, I plug in my laptop — and nothing happens. The screen stays black. I can feel myself <b>going red</b>. I start clicking everything, <b>I’m getting</b> more and more <b>flustered</b>, and for a second I almost <b>freak out</b>. Then the lead investor, a calm woman called Margaret Hale, looks at me and says, <i>'Take your time. <b>We want you to show</b> us the product, not the cable.'</i>
+</p>
+<p>Finally the slides appear. Except they’re not my slides. They’re the photos from my sister’s wedding. On a huge screen. Me, dancing. Badly. I’m <b>mortified</b>. I honestly want the floor to open up and swallow me. But then something strange happens: Margaret <b>bursts out laughing</b>, the other two investors <b>crack up</b>, and within ten seconds all four of us are <b>laughing our heads off</b>.</p>
+<p>
+<i>'I’m so sorry,'</i> I say. <i>'I don’t know what’s happening.'</i> <i>'<b>I don’t want you apologising</b>,'</i> Margaret replies. <i>'That’s the most honest start to a pitch I’ve seen this year.'</i>
+</p>
+<p>After that, I don’t <b>clam up</b> the way I usually do. I talk about our product as if I’m talking to friends. At the end, one of the investors asks me a question I’m not ready for — <i>'What happens if a big company copies you tomorrow?'</i> — and I’m a bit <b>taken aback</b>, but I answer it.</p>
+<p>Two weeks later we get the email: they’re in. I’m <b>thrilled to bits</b>. And these days, whenever someone in the team <b>is getting</b> nervous before a big meeting, I tell them this story. <b>I’m realising</b> that the moments that make us <b>cringe</b> are often the ones people remember — and like — the most.</p>
+</div>
+<h3>Questions</h3>
+<ol class="items">
+<li>Why is Oliver on edge before the meeting?<div class="key">
+<b class="k">Key:</b> Three investors are waiting for his pitch, which he has rehearsed for two months.<span class="cite">“Inside, three investors are waiting for my pitch — the pitch I’ve been rehearsing for two months.”</span>
+</div>
+</li>
+<li>What is Ben always doing when Oliver is nervous, and how does Oliver feel about it?<div class="key">
+<b class="k">Key:</b> He’s always texting him encouraging messages; today it’s driving Oliver mad.<span class="cite">“He’s always doing that when I’m nervous, and today it’s driving me mad.”</span>
+</div>
+</li>
+<li>What happens when Oliver plugs in his laptop, and how does his body react?<div class="key">
+<b class="k">Key:</b> Nothing — the screen stays black; he goes red.<span class="cite">“The screen stays black. I can feel myself going red.”</span>
+</div>
+</li>
+<li>What does Margaret want Oliver to do?<div class="key">
+<b class="k">Key:</b> She wants him to show them the product (not to worry about the cable).<span class="cite">“We want you to show us the product, not the cable.”</span>
+</div>
+</li>
+<li>What appears on the screen instead of the slides?<div class="key">
+<b class="k">Key:</b> Photos from his sister’s wedding — of him dancing badly.<span class="cite">“They’re the photos from my sister’s wedding… Me, dancing. Badly.”</span>
+</div>
+</li>
+<li>How does Oliver feel, and what does he wish?<div class="key">
+<b class="k">Key:</b> He’s mortified; he wants the floor to swallow him.<span class="cite">“I’m mortified. I honestly want the floor to open up and swallow me.”</span>
+</div>
+</li>
+<li>How do the investors react?<div class="key">
+<b class="k">Key:</b> Margaret bursts out laughing, the others crack up, and they all laugh their heads off.<span class="cite">“Margaret bursts out laughing, the other two investors crack up…”</span>
+</div>
+</li>
+<li>Why doesn’t Margaret want him apologising?<div class="key">
+<b class="k">Key:</b> She thinks it’s the most honest start to a pitch she’s seen this year.<span class="cite">“That’s the most honest start to a pitch I’ve seen this year.”</span>
+</div>
+</li>
+<li>How is this pitch different from the way Oliver usually behaves?<div class="key">
+<b class="k">Key:</b> Usually he clams up; this time he talks as if he’s talking to friends.<span class="cite">“After that, I don’t clam up the way I usually do.”</span>
+</div>
+</li>
+<li>What is Oliver starting to realise now?<div class="key">
+<b class="k">Key:</b> That embarrassing moments are often the ones people remember and like most.<span class="cite">“I’m realising that the moments that make us cringe are often the ones people remember…”</span>
+</div>
+</li>
+</ol>
+<h3>True or false?</h3>
+<ol class="items">
+<li>Oliver is calm and relaxed before the pitch.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“I’m completely on edge.”</span>
+</div>
+</li>
+<li>Ben texts Oliver only once before the meeting.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“every thirty seconds”</span>
+</div>
+</li>
+<li>Oliver’s screen stays black at first.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“The screen stays black.”</span>
+</div>
+</li>
+<li>Oliver completely freaks out and leaves the room.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“for a second I almost freak out”</span>
+</div>
+</li>
+<li>Margaret is the lead investor.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“the lead investor, a calm woman called Margaret Hale”</span>
+</div>
+</li>
+<li>The photos are from Oliver’s own wedding.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“my sister’s wedding”</span>
+</div>
+</li>
+<li>Margaret is the first person to start laughing.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“Margaret bursts out laughing, the other two investors crack up”</span>
+</div>
+</li>
+<li>Oliver clams up for the rest of the pitch.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“I don’t clam up the way I usually do.”</span>
+</div>
+</li>
+<li>A question about competitors takes Oliver aback.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“I’m a bit taken aback, but I answer it.”</span>
+</div>
+</li>
+<li>The investors decide not to invest.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“they’re in. I’m thrilled to bits.”</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">12</span>Dialogue 1 — 'That’s Not a Bug'<span class="score">Score <input type="number" min="0" max="17" data-max="17"> / 17</span>
+</h2>
+<p class="instr">Emma (product manager) and Jack (developer) in the office kitchen.</p>
+<div class="dlg">
+<div class="sp">Emma:</div>
+<div>Jack, have you got a minute? <b>I’m wondering</b> if we could talk about this morning’s call.</div>
+<div class="sp">Jack:</div>
+<div>Let me guess. Sarah <b>tells</b> you I <b>lost my temper</b> with the client.</div>
+<div class="sp">Emma:</div>
+<div>She does. And <b>I hear</b> you shouted, <i>'That’s not a bug, that’s a feature!'</i>
+</div>
+<div class="sp">Jack:</div>
+<div>Look, <b>I’m not denying</b> it. But the guy <b>is always changing</b> the requirements! Every week it’s a new idea.</div>
+<div class="sp">Emma:</div>
+<div>I know he’s difficult. But <b>you’re being</b> really impatient lately, and that’s not like you. Normally you’re the calmest person on the team.</div>
+<div class="sp">Jack:</div>
+<div>I suppose <b>I’m on edge</b> because of the release. <b>I’m working</b> till midnight every day, <b>I’m sleeping</b> five hours…</div>
+<div class="sp">Emma:</div>
+<div>That’s exactly the problem. <b>I don’t want you working</b> till midnight. <b>I want you to tell</b> me when it’s too much.</div>
+<div class="sp">Jack:</div>
+<div>Fair enough. Honestly, I’m starting to <b>feel overwhelmed</b>. And when he asked for another change, I just… snapped.</div>
+<div class="sp">Emma:</div>
+<div>Okay. Here’s what <b>I suggest</b>: I take the next call with him, and you get some sleep. Deal?</div>
+<div class="sp">Jack:</div>
+<div>Deal. And… <b>I apologise</b>. I’ll send him an email too.</div>
+<div class="sp">Emma:</div>
+<div>Good. And try not to <b>go red</b> when you see Sarah — she’s not angry. She was actually <b>cracking up</b> when she told me the 'feature' line.</div>
+<div class="sp">Jack:</div>
+<div>Great. Now I’m <b>mortified</b>.</div>
+</div>
+<h3>Questions</h3>
+<ol class="items">
+<li>Why does Emma want to talk to Jack?<div class="key">
+<b class="k">Key:</b> About the morning’s call with the client.<span class="cite">“I’m wondering if we could talk about this morning’s call.”</span>
+</div>
+</li>
+<li>How did Emma find out what happened?<div class="key">
+<b class="k">Key:</b> Sarah told her.<span class="cite">“Sarah tells you I lost my temper…” — “She does.”</span>
+</div>
+</li>
+<li>What exactly did Jack say to the client?<div class="key">
+<b class="k">Key:</b> 'That’s not a bug, that’s a feature!'<span class="cite">“I hear you shouted, 'That’s not a bug, that’s a feature!'”</span>
+</div>
+</li>
+<li>Why does Jack find the client annoying?<div class="key">
+<b class="k">Key:</b> He’s always changing the requirements.<span class="cite">“the guy is always changing the requirements!”</span>
+</div>
+</li>
+<li>How is Jack’s behaviour different from usual?<div class="key">
+<b class="k">Key:</b> He’s being impatient; normally he’s the calmest on the team.<span class="cite">“you’re being really impatient lately… Normally you’re the calmest…”</span>
+</div>
+</li>
+<li>Why is Jack on edge?<div class="key">
+<b class="k">Key:</b> Because of the release; he’s working till midnight and sleeping five hours.<span class="cite">“I’m on edge because of the release. I’m working till midnight…”</span>
+</div>
+</li>
+<li>What does Emma want Jack to do — and not to do?<div class="key">
+<b class="k">Key:</b> Tell her when it’s too much; not work till midnight.<span class="cite">“I don’t want you working till midnight. I want you to tell me…”</span>
+</div>
+</li>
+<li>What does Emma suggest?<div class="key">
+<b class="k">Key:</b> She takes the next call with the client, and Jack gets some sleep.<span class="cite">“I take the next call with him, and you get some sleep.”</span>
+</div>
+</li>
+<li>How did Sarah react when she told the story?<div class="key">
+<b class="k">Key:</b> She was cracking up / laughing.<span class="cite">“She was actually cracking up…”</span>
+</div>
+</li>
+</ol>
+<h3>True or false?</h3>
+<ol class="items">
+<li>Emma is angry and shouts at Jack.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">She asks politely: “I’m wondering if…”</span>
+</div>
+</li>
+<li>Sarah told Emma about the call.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“Sarah tells you…” — “She does.”</span>
+</div>
+</li>
+<li>Jack denies that he lost his temper.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“I’m not denying it.”</span>
+</div>
+</li>
+<li>According to Jack, the client keeps changing the requirements.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“is always changing the requirements”</span>
+</div>
+</li>
+<li>Emma thinks Jack is usually an impatient person.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“Normally you’re the calmest person on the team.”</span>
+</div>
+</li>
+<li>Jack is sleeping about five hours a night.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“I’m sleeping five hours”</span>
+</div>
+</li>
+<li>Emma wants Jack to keep working late until the release.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“I don’t want you working till midnight.”</span>
+</div>
+</li>
+<li>Sarah found Jack’s line funny.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“She was actually cracking up”</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">13</span>Text 2 — Founders Open Up About Stress<span class="score">Score <input type="number" min="0" max="18" data-max="18"> / 18</span>
+</h2>
+<p class="instr">A short news article.</p>
+<div class="reading">
+<div class="headline">SURVEY REVEALS 'SILENT BURNOUT' AS FOUNDERS OPEN UP</div>
+<p>A new survey of 1,200 start-up founders <b>shows</b> that more than half <b>feel overwhelmed</b> at least once a week. The report, published by the Brightwater Institute, suggests that the problem <b>is growing</b>: the number of founders who say they are 'constantly <b>on edge</b>' <b>is rising</b> every year.</p>
+<p>
+<i>'People hear the word "founder" and imagine someone who is <b>thrilled to bits</b> all the time,'</i> <b>says</b> Dr Hannah Cole, who led the research. <i>'In reality, many of them hide how they feel. When we ask about stress in interviews, a lot of them <b>clam up</b> at first.'</i>
+</p>
+<p>The survey also finds that founders <b>are becoming</b> more open. Younger founders in particular <b>are talking</b> about their emotions on podcasts and social media. <i>'<b>I’m realising</b> that pretending everything is fine doesn’t help anyone,'</i> one founder, Lucas Reed, told the researchers. <i>'Last year I lost a big client and I <b>felt</b> absolutely <b>gutted</b>. I didn’t tell anyone. Now <b>I’m trying</b> to be more honest with my team.'</i>
+</p>
+<p>Not everyone is convinced. Some investors say they are <b>taken aback</b> by how much founders share online. <i>'<b>I don’t want founders posting</b> every bad day on LinkedIn,'</i> one venture capitalist commented. <i>'<b>I want them to talk</b> to their mentors.'</i>
+</p>
+<p>Dr Cole disagrees. <i>'Investors <b>want founders to look</b> strong. But I’ve <b>seen founders cringe</b> at their own "perfect" posts from five years ago. Honesty <b>is moving</b> people — and it’s building trust.'</i>
+</p>
+<p>The institute <b>recommends</b> that companies offer regular coaching and that founders take at least one full day off every week. <i>'<b>We’re hoping</b> to repeat the survey next year,'</i> Dr Cole <b>adds</b>.</p>
+</div>
+<h3>Questions</h3>
+<ol class="items">
+<li>How often do more than half of the founders feel overwhelmed?<div class="key">
+<b class="k">Key:</b> At least once a week.<span class="cite">“more than half feel overwhelmed at least once a week”</span>
+</div>
+</li>
+<li>What shows that the problem is growing?<div class="key">
+<b class="k">Key:</b> The number of founders who are 'constantly on edge' is rising every year.<span class="cite">“the number of founders who say they are 'constantly on edge' is rising every year”</span>
+</div>
+</li>
+<li>What do people imagine when they hear the word 'founder'?<div class="key">
+<b class="k">Key:</b> Someone who is thrilled to bits all the time.<span class="cite">“imagine someone who is thrilled to bits all the time”</span>
+</div>
+</li>
+<li>How do many founders react when asked about stress?<div class="key">
+<b class="k">Key:</b> They clam up at first.<span class="cite">“a lot of them clam up at first”</span>
+</div>
+</li>
+<li>Who is becoming more open, and where?<div class="key">
+<b class="k">Key:</b> Younger founders — on podcasts and social media.<span class="cite">“Younger founders in particular are talking about their emotions on podcasts and social media.”</span>
+</div>
+</li>
+<li>What happened to Lucas Reed last year, and what is he trying to do now?<div class="key">
+<b class="k">Key:</b> He lost a big client and felt gutted; now he’s trying to be more honest with his team.<span class="cite">“I lost a big client and I felt absolutely gutted… Now I’m trying to be more honest”</span>
+</div>
+</li>
+<li>Why are some investors taken aback?<div class="key">
+<b class="k">Key:</b> Because of how much founders share online.<span class="cite">“taken aback by how much founders share online”</span>
+</div>
+</li>
+<li>What does the venture capitalist want founders to do instead?<div class="key">
+<b class="k">Key:</b> Talk to their mentors.<span class="cite">“I want them to talk to their mentors.”</span>
+</div>
+</li>
+<li>What two things does the institute recommend?<div class="key">
+<b class="k">Key:</b> Regular coaching, and at least one full day off every week.<span class="cite">“companies offer regular coaching and that founders take at least one full day off”</span>
+</div>
+</li>
+</ol>
+<h3>True or false?</h3>
+<ol class="items">
+<li>The survey included 1,200 founders.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“A new survey of 1,200 start-up founders”</span>
+</div>
+</li>
+<li>Fewer founders feel 'constantly on edge' every year.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“is rising every year”</span>
+</div>
+</li>
+<li>Dr Hannah Cole led the research.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“Dr Hannah Cole, who led the research”</span>
+</div>
+</li>
+<li>Most founders talk about stress openly from the start of the interview.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“a lot of them clam up at first”</span>
+</div>
+</li>
+<li>Lucas Reed told his team about losing the client straight away.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“I didn’t tell anyone.”</span>
+</div>
+</li>
+<li>All investors support founders sharing their emotions online.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“Not everyone is convinced.”</span>
+</div>
+</li>
+<li>Dr Cole believes honesty builds trust.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“it’s building trust”</span>
+</div>
+</li>
+<li>The institute recommends at least one full day off a week.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“at least one full day off every week”</span>
+</div>
+</li>
+<li>The institute has no plans to repeat the survey.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“We’re hoping to repeat the survey next year”</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">14</span>Dialogue 2 — The Wedding Speech<span class="score">Score <input type="number" min="0" max="20" data-max="20"> / 20</span>
+</h2>
+<p class="instr">Chloe and Ryan, two friends, having a drink after work.</p>
+<div class="dlg">
+<div class="sp">Ryan:</div>
+<div>So how was the wedding? <b>I hear</b> you gave a speech.</div>
+<div class="sp">Chloe:</div>
+<div>Oh, don’t. <b>I’m still cringing</b>.</div>
+<div class="sp">Ryan:</div>
+<div>That bad? <b>Do you mind me asking</b> what happened?</div>
+<div class="sp">Chloe:</div>
+<div>Okay, so… dinner’s over, everyone <b>is drinking</b> champagne, and my brother’s best friend, Tom, <b>stands up</b> to give his speech. He’s really nervous — <b>I can see his hands shaking</b>.</div>
+<div class="sp">Ryan:</div>
+<div>Poor guy.</div>
+<div class="sp">Chloe:</div>
+<div>He <b>starts</b> with a joke about the bride’s ex, and nobody laughs. Total silence. You can <b>see him getting</b> more and more <b>flustered</b>, and he <b>goes</b> bright <b>red</b>.</div>
+<div class="sp">Ryan:</div>
+<div>Oh no. <b>I can’t stand people telling</b> jokes like that at weddings.</div>
+<div class="sp">Chloe:</div>
+<div>Me neither. Anyway, then it’s my turn. <b>I’m on edge</b> because of what just happened, so I <b>decide</b> to skip my jokes and just talk about my brother — how he looked after me when our dad was ill, how <b>he’s always helping</b> people without telling anyone.</div>
+<div class="sp">Ryan:</div>
+<div>That sounds lovely.</div>
+<div class="sp">Chloe:</div>
+<div>Well, <b>I’m</b> halfway through, and <b>I notice my mum crying</b>. Then my brother<b>'s crying</b>. Then half the room is crying. Everyone<b>'s</b> really <b>moved</b>. And <b>I’m thinking</b>, 'Great, this is going well.'</div>
+<div class="sp">Ryan:</div>
+<div>So where’s the problem?</div>
+<div class="sp">Chloe:</div>
+<div>The ending. <b>I want everyone to raise</b> their glasses, so I say, 'To Michael and…' — and I completely <b>forget</b> the bride’s name.</div>
+<div class="sp">Ryan:</div>
+<div>No way. You forget the bride’s name? At her own wedding?</div>
+<div class="sp">Chloe:</div>
+<div>For about five seconds. <b>I’m standing</b> there with my glass in the air, <b>mortified</b>. And then the bride — Grace, by the way, I’ll never forget it again — she <b>bursts out laughing</b> and shouts, 'It’s Grace! Nice to meet you!'</div>
+<div class="sp">Ryan:</div>
+<div>Sorry, sorry — <b>I’m cracking up</b> just imagining it.</div>
+<div class="sp">Chloe:</div>
+<div>Go on, <b>laugh your head off</b>. Everyone else did. Even my grandma.</div>
+<div class="sp">Ryan:</div>
+<div>Was your brother upset?</div>
+<div class="sp">Chloe:</div>
+<div>That’s the funny part. He was <b>thrilled to bits</b>. He says it was the best moment of the whole day, and now Grace <b>is always telling</b> that story to her friends.</div>
+<div class="sp">Ryan:</div>
+<div>So, honestly, it’s a happy ending.</div>
+<div class="sp">Chloe:</div>
+<div>I suppose so. But <b>I promise</b> you — next time I’m writing the names on my hand.</div>
+<div class="sp">Ryan:</div>
+<div>
+<b>Do you want me to check</b> your speeches from now on?</div>
+<div class="sp">Chloe:</div>
+<div>Yes. <b>I want you to check</b> everything. And <b>I don’t want anyone filming</b> me ever again.</div>
+<div class="sp">Ryan:</div>
+<div>Filming? Wait… there’s a video?</div>
+<div class="sp">Chloe:</div>
+<div>There’s a video. My cousin posted it last night. I <b>feel</b> absolutely <b>gutted</b>.</div>
+</div>
+<h3>Questions</h3>
+<ol class="items">
+<li>Why is Chloe still cringing?<div class="key">
+<b class="k">Key:</b> Because of what happened during her wedding speech.<span class="cite">“Oh, don’t. I’m still cringing.”</span>
+</div>
+</li>
+<li>How does Chloe know that Tom is nervous?<div class="key">
+<b class="k">Key:</b> She can see his hands shaking.<span class="cite">“I can see his hands shaking.”</span>
+</div>
+</li>
+<li>What happens after Tom’s first joke, and how does he react?<div class="key">
+<b class="k">Key:</b> Nobody laughs; he gets flustered and goes bright red.<span class="cite">“You can see him getting more and more flustered, and he goes bright red.”</span>
+</div>
+</li>
+<li>What can’t Ryan stand?<div class="key">
+<b class="k">Key:</b> People telling jokes like that (about the bride’s ex) at weddings.<span class="cite">“I can’t stand people telling jokes like that at weddings.”</span>
+</div>
+</li>
+<li>Why does Chloe skip her jokes, and what does she talk about instead?<div class="key">
+<b class="k">Key:</b> She’s on edge after Tom’s failure; she talks about her brother.<span class="cite">“I’m on edge because of what just happened, so I decide to skip my jokes…”</span>
+</div>
+</li>
+<li>How do people react in the middle of her speech?<div class="key">
+<b class="k">Key:</b> They cry — everyone is really moved.<span class="cite">“Then half the room is crying. Everyone’s really moved.”</span>
+</div>
+</li>
+<li>What goes wrong at the end of her speech?<div class="key">
+<b class="k">Key:</b> She forgets the bride’s name.<span class="cite">“I completely forget the bride’s name.”</span>
+</div>
+</li>
+<li>How does the bride react?<div class="key">
+<b class="k">Key:</b> She bursts out laughing and shouts her name.<span class="cite">“she bursts out laughing and shouts, 'It’s Grace!…'”</span>
+</div>
+</li>
+<li>How does Chloe’s brother feel about the moment?<div class="key">
+<b class="k">Key:</b> He’s thrilled to bits — it was the best moment of the day for him.<span class="cite">“He was thrilled to bits. He says it was the best moment…”</span>
+</div>
+</li>
+<li>Why is Chloe gutted at the end?<div class="key">
+<b class="k">Key:</b> Her cousin posted a video of the speech.<span class="cite">“My cousin posted it last night. I feel absolutely gutted.”</span>
+</div>
+</li>
+</ol>
+<h3>True or false?</h3>
+<ol class="items">
+<li>Ryan heard that Chloe gave a speech.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“I hear you gave a speech.”</span>
+</div>
+</li>
+<li>Everyone laughs at Tom’s joke about the bride’s ex.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“nobody laughs. Total silence.”</span>
+</div>
+</li>
+<li>Tom goes red during his speech.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“he goes bright red”</span>
+</div>
+</li>
+<li>Chloe tells a lot of jokes in her speech.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“I decide to skip my jokes”</span>
+</div>
+</li>
+<li>Chloe’s mum cries during the speech.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“I notice my mum crying”</span>
+</div>
+</li>
+<li>Chloe forgets her brother’s name.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">She forgets the bride’s name.</span>
+</div>
+</li>
+<li>The bride is the one who reacts with laughter first.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“she bursts out laughing”</span>
+</div>
+</li>
+<li>Chloe’s grandma doesn’t laugh.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“Everyone else did. Even my grandma.”</span>
+</div>
+</li>
+<li>Grace often tells the story to her friends.<div class="key">
+<b class="k">Key:</b> <span class='ok'>TRUE</span>
+<span class="cite">“Grace is always telling that story to her friends”</span>
+</div>
+</li>
+<li>Chloe is happy that her cousin posted the video.<div class="key">
+<b class="k">Key:</b> <span class='no'>FALSE</span>
+<span class="cite">“I feel absolutely gutted.”</span>
+</div>
+</li>
+</ol>
+</section>
+<section>
+<h2>
+<span class="num">15</span>Speaking<span class="score">Score <input type="number" min="0" max="9" data-max="9"> / 9</span>
+</h2>
+<p class="instr">Speak for 1–2 minutes on each. Use today’s expressions and grammar.</p>
+<ol class="items">
+<li>Tell the story of the most embarrassing moment of your life in the <b>narrative present</b>: <i>So I’m standing…, and suddenly…</i> Use at least 4 words from today.</li>
+<li>What is someone in your life <b>always doing</b> that drives you mad?</li>
+<li>What <b>are you loving</b> — and what are you finding hard — about your life at the moment?</li>
+<li>Commentate your typical morning like a live football commentator: <i>And Danil gets up… he checks his phone…</i>
+</li>
+<li>Write three <b>headlines</b> about your company’s news this year.</li>
+<li>What <b>do you want your team to do</b> differently? What <b>don’t you want them doing</b>?</li>
+<li>What <b>are you realising</b> about emotions in business that you ignored before?</li>
+<li>Can you remember <b>seeing someone lose their temper</b> in public? What happened?</li>
+<li>Agree or disagree: founders should share their bad days online. Use <b>I hear… / They say… / I’m hoping…</b>
+</li>
+</ol>
+<div class="tip">💡 Note every correct use of the target grammar on the side; give 1 point per question where Danil uses at least one new expression + one advanced present form correctly.</div>
+</section>
+<div class="total">
+<span>📊 Lesson total</span>
+<span>
+<span class="big" id="tot">0 / 0</span> &nbsp;<span id="pct">
+</span>
+</span>
+</div>
+</div>
+<script>
+function tf(btn,v){const w=btn.parentElement;w.querySelectorAll('button').forEach(b=>b.classList.remove('on-t','on-f'));btn.classList.add(v==='T'?'on-t':'on-f');}
+function recalc(){let s=0,m=0;document.querySelectorAll('.score input').forEach(i=>{const v=parseFloat(i.value);m+=parseFloat(i.dataset.max);if(!isNaN(v))s+=Math.min(v,parseFloat(i.dataset.max));});
+document.getElementById('tot').textContent=s+' / '+m;document.getElementById('pct').textContent=m?Math.round(s/m*100)+'%':'';}
+document.addEventListener('input',e=>{if(e.target.closest('.score'))recalc();});
+document.addEventListener('DOMContentLoaded',recalc);
+</script>
+</body>
+</html>

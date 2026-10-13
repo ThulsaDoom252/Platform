@@ -1,5 +1,7 @@
 "use client";
 
+import { HomeworkReferenceText } from "./homework-reference-text";
+
 import {
   createContext,
   useEffect,
@@ -1224,6 +1226,7 @@ function HomeworkExerciseView({
             <IconChevronDown className="h-4 w-4 text-faint transition group-open:rotate-180" />
           </summary>
           <p className="mt-3 text-[13px] leading-relaxed text-muted">{instruction}</p>
+          <HomeworkReferenceText exercise={exercise} />
           {body}
         </details>
         {onTranslateLanguage && translationLanguage && (
@@ -1382,6 +1385,7 @@ function HomeworkExerciseView({
           onDelete={onDelete}
         />
       </div>
+      <HomeworkReferenceText exercise={exercise} />
       {body}
     </section>
   );
