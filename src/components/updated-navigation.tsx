@@ -46,28 +46,28 @@ export function UpdatedNavigation({
   const root = role === "TEACHER" ? "/teacher" : "/student";
   const content = (
     <>
-      <div className="flex items-center gap-3 border-b border-line pb-4">
+      <div className="updated-panel-account flex shrink-0 items-center gap-3 border-b border-line pb-4">
         <Link
           href={`${root}/profile`}
           title={t.topbar.profile}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl transition hover:bg-surface-2"
+          className="updated-panel-profile flex min-w-0 flex-1 items-center gap-3 rounded-xl transition hover:bg-surface-2"
         >
           <Avatar name={name} src={avatarUrl} className="h-11 w-11 shrink-0 text-base" />
-          <span className="min-w-0">
+          <span className="updated-panel-profile-copy min-w-0">
             <span className="block truncate text-sm font-bold text-content">{name}</span>
             <span className="block truncate text-[11px] text-faint">{roleLine}</span>
           </span>
         </Link>
-        <div className="shrink-0" data-panel-notifications>
+        <div className="updated-panel-notifications shrink-0" data-panel-notifications>
           {notifications}
         </div>
       </div>
-      <div className="updated-panel-search my-4">
+      <div className="updated-panel-search my-4 shrink-0">
         <GlobalSearch role={role} />
       </div>
-      {returnToTeacher}
+      {returnToTeacher && <div className="updated-panel-return shrink-0">{returnToTeacher}</div>}
       <div
-        className="min-w-0"
+        className="updated-panel-links flex min-h-0 min-w-0 flex-1 flex-col"
         onClickCapture={(event) => {
           if ((event.target as Element).closest("a[href]")) close();
         }}
@@ -76,7 +76,7 @@ export function UpdatedNavigation({
       </div>
       <Link
         href={`${root}/profile`}
-        className="mt-4 block rounded-xl border border-line px-4 py-3 text-sm font-semibold text-muted hover:text-accent"
+        className="updated-panel-profile-link mt-4 block shrink-0 rounded-xl border border-line px-4 py-3 text-sm font-semibold text-muted hover:text-accent"
       >
         {t.topbar.profile}
       </Link>
@@ -84,10 +84,10 @@ export function UpdatedNavigation({
   );
   return (
     <>
-      <div className="updated-navigation sticky top-0 z-40 hidden h-dvh w-64 shrink-0 lg:block">
+      <div className="updated-navigation updated-desktop-navigation sticky top-0 z-40 hidden h-dvh w-20 shrink-0 lg:block">
         <aside
           aria-label={t.settings.navigation}
-          className="flex h-full flex-col overflow-y-auto border-r border-line bg-surface p-4"
+          className="sidebar-rail updated-desktop-rail group/rail absolute left-0 top-0 flex h-dvh w-20 flex-col overflow-hidden border-r border-line bg-surface p-4 transition-[width,box-shadow] duration-150 ease-out"
         >
           {content}
         </aside>
@@ -104,7 +104,7 @@ export function UpdatedNavigation({
         <Avatar name={name} src={avatarUrl} className="h-7 w-7 text-xs" />
       </button>
       {open && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="updated-drawer-overlay fixed inset-0 z-40 lg:hidden">
           <button
             type="button"
             aria-label={t.common.close}
@@ -118,7 +118,7 @@ export function UpdatedNavigation({
             aria-label={t.settings.navigation}
             data-modal-layer="1"
             tabIndex={-1}
-            className="updated-navigation relative flex h-dvh w-[min(320px,calc(100vw-2rem))] flex-col overflow-y-auto border-r border-line bg-surface p-4 shadow-2xl"
+            className="updated-navigation updated-mobile-navigation relative flex h-dvh w-[min(320px,calc(100vw-2rem))] flex-col overflow-y-auto border-r border-line bg-surface p-4 shadow-2xl"
           >
             <button
               type="button"

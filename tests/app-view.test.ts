@@ -170,6 +170,29 @@ test("centered search fits every desktop, phone and short landscape viewport", (
   }
   assert.ok(Object.values(centeredSearchPosition({ width: NaN, height: Infinity })).every(Number.isFinite));
 });
+
+test("Updated reserves only the icon rail and expands on hover or keyboard focus, never ordinary click focus", () => {
+  const navigation = source("components/updated-navigation.tsx");
+  const css = source("app/globals.css");
+  assert.match(navigation, /updated-desktop-navigation[^"\n]*w-20 shrink-0 lg:block/);
+  assert.match(navigation, /sidebar-rail updated-desktop-rail group\/rail absolute left-0 top-0/);
+  assert.match(css, /\.updated-desktop-rail:is\(:hover, :has\(:focus-visible\)\)\s*\{\s*width: 17rem/);
+  assert.doesNotMatch(css, /\.updated-desktop-rail[^{}]*:focus-within/);
+  assert.match(css, /\.updated-mobile-navigation \.sidebar-rail-nav > a > span\s*\{ opacity: 1/);
+  assert.match(css, /\.updated-desktop-rail \.updated-panel-search > div > button\s*\{ min-width: 0/);
+  assert.match(css, /\[data-app-view="updated"\] \.class-utility-bar\s*\{ left: 5rem/);
+  assert.match(css, /\[data-app-view="updated"\] \[data-materials-tree-toggle\]\s*\{ left: 5\.75rem/);
+});
+
+test("large touch screens have an explicit Updated drawer instead of unreachable hover navigation", () => {
+  const css = source("app/globals.css");
+  const touch = css.match(/@media \(min-width: 1024px\) and \(hover: none\) and \(pointer: coarse\)\s*\{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(touch);
+  assert.match(touch, /\.updated-desktop-navigation\s*\{ display: none/);
+  assert.match(touch, /\.updated-menu-launcher\s*\{ display: flex/);
+  assert.match(touch, /\.updated-drawer-overlay\s*\{ display: block/);
+  assert.match(touch, /\.class-utility-bar\s*\{ left: 0/);
+});
 test("sidebar notification portal stays reachable and never clips off small screens", () => {
   for (const width of [320, 390, 896, 1024, 1920]) for (const height of [180, 390, 844]) {
     const p = notificationPanelPosition({ right: width - 12, bottom: 100 }, { width, height });

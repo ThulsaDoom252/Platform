@@ -629,16 +629,35 @@
 [data-app-view="updated"] [data-classic-header] {
   display: none;
 }
-.updated-navigation .sidebar-rail-nav { overflow: visible; flex: none; }
-.updated-navigation .sidebar-rail-nav > a {
+.updated-mobile-navigation .updated-panel-links { flex: none; }
+.updated-mobile-navigation .sidebar-rail-nav { overflow: visible; flex: none; }
+.updated-mobile-navigation .sidebar-rail-nav > a {
   min-height: 2.75rem;
   max-height: none;
   flex: none;
   padding-block: 0.625rem;
 }
-.updated-navigation .sidebar-rail-nav > a > span { opacity: 1; white-space: normal; }
+.updated-mobile-navigation .sidebar-rail-nav > a > span { opacity: 1; white-space: normal; }
 .updated-panel-search > div > button { width: 100%; justify-content: flex-start; }
 .updated-panel-search > div > button > span { display: inline; }
+/* Reserve only the icon rail. Expansion overlays the page, without reflow.
+   Mouse clicks must not pin it open: keyboard focus uses :focus-visible. */
+.updated-desktop-rail .updated-panel-account { position: relative; }
+.updated-desktop-rail .updated-panel-profile { flex: none; width: 100%; }
+.updated-desktop-rail .updated-panel-profile-copy,
+.updated-desktop-rail .updated-panel-profile-link,
+.updated-desktop-rail .updated-panel-return { display: none; }
+.updated-desktop-rail .updated-panel-notifications { position: absolute; right: 0; top: 0; visibility: hidden; }
+.updated-desktop-rail .updated-panel-search > div > button { min-width: 0; justify-content: center; padding-inline: 0; }
+.updated-desktop-rail .updated-panel-search > div > button > span { display: none; }
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) { width: 17rem; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); }
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) .updated-panel-profile { width: calc(100% - 3.25rem); }
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) .updated-panel-profile-copy,
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) .updated-panel-profile-link,
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) .updated-panel-return { display: block; }
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) .updated-panel-notifications { visibility: visible; }
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) .updated-panel-search > div > button { justify-content: flex-start; padding-inline: 0.875rem; }
+.updated-desktop-rail:is(:hover, :has(:focus-visible)) .updated-panel-search > div > button > span { display: inline; }
 [data-app-view="updated"] .class-participants > * { min-width: 0; max-width: 100%; }
 [data-app-view="updated"] .class-participants { overflow-wrap: anywhere; }
 .class-toolbar-container { container-type: inline-size; }
@@ -660,8 +679,18 @@
   [data-app-view="updated"] .materials-tree-panel,
   [data-app-view="updated"] .sticky.top-20,
   [data-app-view="updated"] [data-class-room] .lg\:top-20 { top: 1rem; }
-  [data-app-view="updated"] .class-utility-bar { left: 16rem; }
-  [data-app-view="updated"] [data-materials-tree-toggle] { left: 16.75rem; }
+  [data-app-view="updated"] .class-utility-bar { left: 5rem; }
+  [data-app-view="updated"] [data-materials-tree-toggle] { left: 5.75rem; }
+}
+/* Large touch screens use the same explicit drawer as phones; hover is not
+   available there and must never be needed to reach navigation labels. */
+@media (min-width: 1024px) and (hover: none) and (pointer: coarse) {
+  .updated-desktop-navigation { display: none; }
+  .updated-menu-launcher { display: flex; }
+  .updated-drawer-overlay { display: block; }
+  [data-app-view="updated"] [data-app-shell] > div > main { padding-top: 4.5rem; }
+  [data-app-view="updated"] .class-utility-bar { left: 0; }
+  [data-app-view="updated"] [data-materials-tree-toggle] { left: 0.75rem; }
 }
 
 /* ---------- Materials tree ----------
