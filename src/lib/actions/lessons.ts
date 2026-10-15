@@ -82,6 +82,7 @@ import {
   regularExerciseOverrideKey,
   regularHomeworkExerciseId,
   regularResponseKey,
+  regularLessonOpenSections,
   regularLessonSection,
   regularStatus,
   regularStatusKey,
@@ -838,6 +839,21 @@ function assignmentRegularSections(
 ): RegularLessonSection[] {
   const draft = normalizeAssignedLessonDraft(override, "Lesson");
   return draft ? draft.regularSections : normalizeRegularLessonSections(template);
+}
+
+/** Respect a student's complete content snapshot and subsequent homework edits. */
+function assignmentHomeworkAvailable(row: {
+  homework: unknown;
+  contentOverride: unknown;
+  answers: Record<string, string> | null;
+}): boolean {
+  const draft = normalizeAssignedLessonDraft(row.contentOverride, "Lesson");
+  const interactive = homeworkPlanForAssignment(
+    draft ? draft.interactiveHomework : interactiveHomeworkFromEntries(row.homework),
+    row.answers ?? {},
+  );
+  const legacy = draft ? draft.homework : legacyHomeworkFromEntries(row.homework);
+  return Boolean(interactive) || legacy.length > 0;
 }
 
 /** Словник урока — свой, не ссылка на материалы. */
@@ -1900,6 +1916,8 @@ export async function openSectionAction(
       contentOverride: lessonAssignments.contentOverride,
       kind: lessonUnits.kind,
       sections: lessonUnits.sections,
+      homework: lessonUnits.homework,
+      answers: lessonAssignments.answers,
     })
     .from(lessonAssignments)
     .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -1907,7 +1925,9 @@ export async function openSectionAction(
     .limit(1);
   if (!row) return { error: "Урок не закреплён" };
 
-  if (row.kind === "REGULAR") {
+  if (row.kind === "REGULAR" && section === "homework") {
+    if (!assignmentHomeworkAvailable(row)) return { error: "Неизвестная секция" };
+  } else if (row.kind === "REGULAR") {
     const target = regularLessonSection(
       section,
       assignmentRegularSections(row.sections, row.contentOverride),
@@ -1962,6 +1982,8 @@ export async function focusLessonSectionAction(
         kind: lessonUnits.kind,
         sections: lessonUnits.sections,
         contentOverride: lessonAssignments.contentOverride,
+        homework: lessonUnits.homework,
+        answers: lessonAssignments.answers,
       })
       .from(lessonAssignments)
       .innerJoin(lessonUnits, eq(lessonUnits.id, lessonAssignments.unitId))
@@ -1981,14 +2003,16 @@ export async function focusLessonSectionAction(
   }
   if (
     target.kind === "REGULAR"
-      ? !regularLessonSection(
-          section,
-          assignmentRegularSections(target.sections, target.contentOverride),
-        ) ||
-        regularLessonSection(
-          section,
-          assignmentRegularSections(target.sections, target.contentOverride),
-        )?.teacherOnly
+      ? section === "homework"
+        ? !assignmentHomeworkAvailable(target)
+        : !regularLessonSection(
+            section,
+            assignmentRegularSections(target.sections, target.contentOverride),
+          ) ||
+          regularLessonSection(
+            section,
+            assignmentRegularSections(target.sections, target.contentOverride),
+          )?.teacherOnly
       : !isSection(section) || !lessonSectionsForKind(target.kind).includes(section)
   ) {
     return { error: "Неизвестная секция" };
@@ -3304,10 +3328,11 @@ export async function assignedLessonAction(
     ...(await personalizeAssignedLearningContent(row.a.studentId, lesson, row.a.answers ?? {})),
     open:
       lesson.kind === "REGULAR"
-        ? [
-            ...stored.filter((key) => !!regularLessonSection(key, lesson.regularSections)),
-            ...(homeworkAvailable && context !== "class" ? ["homework"] : []),
-          ]
+        ? regularLessonOpenSections(
+            context === "class" ? stored : storedWithHomework,
+            lesson.regularSections,
+            homeworkAvailable,
+          )
         : openSections(context === "class" ? stored : storedWithHomework),
     showBritish: stored.includes(BRITISH_OPTION),
     vocabularyReveal: lessonVocabularyReveal(stored),

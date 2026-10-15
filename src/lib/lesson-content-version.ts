@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
 import { lessonAssignments, lessonUnits } from "@/lib/db/schema";
 
-/** Vocabulary edits count as content edits; marks and answers do not. */
+/** Template homework and vocabulary edits count as content edits; marks and answers do not. */
 export const lessonContentVersion = sql<string>`md5(
   ${lessonUnits.updatedAt}::text || coalesce(${lessonAssignments.contentOverride}::text, '') ||
+  coalesce(${lessonUnits.homework}::text, '') ||
   coalesce((select string_agg(e.key || ':' || e.value, '' order by e.key)
     from jsonb_each_text(${lessonAssignments.answers}) e
     where e.key = 'hw:plan-override' or e.key like 'hw:exercise-hidden:%'), '') ||

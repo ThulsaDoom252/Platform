@@ -18,7 +18,7 @@ import type { ClassTextSelection } from "./selection-translation-popover";
 import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { readClassLive } from "@/lib/class-live-request";
 import { openSections } from "@/lib/lesson-unit";
-import { regularLessonSection } from "@/lib/regular-lesson";
+import { regularLessonOpenSections } from "@/lib/regular-lesson";
 import { homeworkFocusTarget } from "@/lib/lesson-homework";
 
 type Assigned = NonNullable<Awaited<ReturnType<typeof assignedLessonAction>>>;
@@ -111,7 +111,11 @@ export function ClassLesson({
       answers: next.answers,
       assignment: { ...current.assignment, highlights: next.highlights, openSections: next.openSections },
       open: current.lesson.kind === "REGULAR"
-        ? next.openSections.filter((key) => Boolean(regularLessonSection(key, current.lesson.regularSections)))
+        ? regularLessonOpenSections(
+            next.openSections,
+            current.lesson.regularSections,
+            Boolean(current.lesson.interactiveHomework) || current.lesson.homework.length > 0,
+          )
         : openSections(next.openSections),
       showBritish: next.showBritish,
       vocabularyReveal: next.vocabularyReveal,

@@ -416,6 +416,18 @@ export function regularLessonSection(
   return normalizeRegularLessonSections(value).find((section) => section.id === id) ?? null;
 }
 
+/** Keep explicitly opened sections; homework is separate from the HTML sections. */
+export function regularLessonOpenSections(
+  keys: readonly string[],
+  sections: unknown,
+  homeworkAvailable: boolean,
+): string[] {
+  const validKeys = new Set(
+    normalizeRegularLessonSections(sections).map((section) => regularSectionKey(section.id)),
+  );
+  return keys.filter((key) => key === "homework" ? homeworkAvailable : validKeys.has(key));
+}
+
 export function isRegularLessonFocusId(
   id: unknown,
   section: RegularLessonSection,
