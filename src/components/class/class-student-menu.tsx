@@ -127,7 +127,7 @@ export function ClassStudentMenu({ student, summonBusy, onBringToClass }: {
 export function ClassLeaveButton({ busy, onLeave }: { busy: boolean; onLeave: () => void }) {
   const { t } = useT();
   return <button type="button" disabled={busy} onClick={onLeave} title={t.classRoom.leave} aria-label={t.classRoom.leave}
-    className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-45">
+    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-45">
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
       <path d="M3 21h11M4 21V3h10v18M18 21v-5l-3-3 1-5" />
       <circle cx="17" cy="4" r="1.5" />

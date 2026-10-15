@@ -147,11 +147,13 @@ test("loaded Updated classes have role-specific participant placement", () => {
   for (const placement of ["ABOVE", "TEACHER_INLINE", "STUDENT_INLINE"]) assert.ok(room.includes(`participantsPlacement === "${placement}"`));
 });
 
-const toolbar = compile("components/class/class-material-toolbar.tsx", { "react/jsx-runtime": jsx }).ClassMaterialToolbar as React.ComponentType<{ lesson?: React.ReactNode; actions?: React.ReactNode; participants?: React.ReactNode; student?: boolean }>;
-test("teacher toolbar puts live participants between Lesson and the other controls", () => {
+const toolbar = compile("components/class/class-material-toolbar.tsx", { "react/jsx-runtime": jsx }).ClassMaterialToolbar as React.ComponentType<{ lesson?: React.ReactNode; actions?: React.ReactNode; participants?: React.ReactNode; student?: boolean; groupSections?: boolean }>;
+test("Updated teacher toolbar groups all three sections before the right-aligned participants", () => {
   const html = renderToStaticMarkup(React.createElement(toolbar, { lesson: "LESSON", participants: "PARTICIPANTS", actions: "ACTIVITIES" }));
-  assert.ok(html.indexOf("LESSON") < html.indexOf("PARTICIPANTS"));
-  assert.ok(html.indexOf("PARTICIPANTS") < html.indexOf("ACTIVITIES"));
+  assert.ok(html.indexOf("LESSON") < html.indexOf("ACTIVITIES"));
+  assert.ok(html.indexOf("ACTIVITIES") < html.indexOf("PARTICIPANTS"));
+  assert.match(html, /class-toolbar-sections/);
+  assert.match(html, /class-toolbar-actions flex shrink-0 items-center gap-1/);
   assert.match(html, /data-participants-placement="teacher-inline"/);
 });
 test("student toolbar shows participants without exposing teacher-only Lesson controls", () => {
@@ -165,6 +167,14 @@ test("Classic toolbar retains the existing Lesson-left and actions-right structu
   assert.match(html, /flex flex-wrap items-center gap-x-3 gap-y-2/);
   assert.match(html, /ml-auto flex max-w-full flex-wrap items-center justify-end gap-1/);
   assert.ok(!html.includes("data-participants-placement"));
+});
+
+test("Updated sections stay grouped before loading materials without duplicating the participants above", () => {
+  const html = renderToStaticMarkup(React.createElement(toolbar, { lesson: "LESSON", actions: "TWISTER ACTIVITIES", groupSections: true }));
+  assert.match(html, /class-toolbar-sections/);
+  assert.ok(html.indexOf("LESSON") < html.indexOf("TWISTER ACTIVITIES"));
+  assert.ok(!html.includes("class-toolbar-participants") && !html.includes("data-participants-placement"));
+  assert.ok(source("components/class/class-room.tsx").includes('groupSections={view === "UPDATED"}'));
 });
 
 test("the actual ClassRoom renders participants exactly once for both views, roles and loading states", () => {
@@ -215,6 +225,9 @@ test("the actual ClassRoom renders participants exactly once for both views, rol
     const placement = classParticipantsPlacement(view, teacher, loaded).toLowerCase().replace("_", "-");
     assert.ok(html.includes(`data-participants-placement="${placement}"`), `${view}/${teacher}/${loaded}: placement`);
     assert.equal(html.includes('aria-haspopup="menu"'), teacher);
+    assert.equal(html.includes("class-participant-student"), teacher);
+    assert.equal((html.match(/aria-label="Leave the class"/g) ?? []).length, teacher ? 1 : 0);
+    if (teacher) assert.ok(html.indexOf('aria-haspopup="menu"') < html.indexOf('aria-label="Leave the class"'));
     assert.ok(!html.includes('/teacher/homeworks?student=partner-1'), "Student actions remain inside the closed dropdown");
     assert.ok(html.includes("class-utility-bar"));
   }

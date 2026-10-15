@@ -6,11 +6,13 @@ export function ClassMaterialToolbar({
   actions,
   participants,
   student = false,
+  groupSections = false,
 }: {
   lesson?: ReactNode;
   actions?: ReactNode;
   participants?: ReactNode;
   student?: boolean;
+  groupSections?: boolean;
 }) {
   if (student)
     return (
@@ -21,7 +23,7 @@ export function ClassMaterialToolbar({
         {participants}
       </div>
     );
-  if (!participants)
+  if (!participants && !groupSections)
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {lesson}
@@ -30,10 +32,12 @@ export function ClassMaterialToolbar({
     );
   return (
     <div className="class-toolbar-container min-w-0">
-      <div className="class-material-toolbar" data-participants-placement="teacher-inline">
-        <div className="class-toolbar-lesson">{lesson}</div>
-        <div className="class-toolbar-participants min-w-0">{participants}</div>
-        <div className="class-toolbar-actions flex max-w-full flex-wrap items-center justify-end gap-1">{actions}</div>
+      <div className="class-material-toolbar" data-participants-placement={participants ? "teacher-inline" : undefined}>
+        <div className="class-toolbar-sections flex min-w-0 max-w-full items-center gap-1 overflow-x-auto">
+          <div className="class-toolbar-lesson shrink-0">{lesson}</div>
+          <div className="class-toolbar-actions flex shrink-0 items-center gap-1">{actions}</div>
+        </div>
+        {participants && <div className="class-toolbar-participants min-w-0">{participants}</div>}
       </div>
     </div>
   );

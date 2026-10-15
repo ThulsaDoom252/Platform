@@ -2,14 +2,23 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-test("teacher lesson stays on the left while twister and activities share a right-aligned, wrapping group", () => {
+test("Updated groups Lesson, twister and activities on one row before the right-aligned participants", () => {
   const room = readFileSync("src/components/class/class-room.tsx", "utf8");
   const toolbar = readFileSync("src/components/class/class-material-toolbar.tsx", "utf8");
   assert.ok(room.includes("{lessonTabButton(LESSON_TABS[0])}"));
   assert.ok(room.includes("{LESSON_TABS.slice(1).map(lessonTabButton)}"));
   assert.ok(toolbar.includes('className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1"'));
   assert.ok(room.includes("<ClassMaterialToolbar lesson={lessonTabButton(LESSON_TABS[0])}"));
-  assert.ok(room.includes('"h-9 shrink-0 rounded-xl px-3.5 text-sm font-semibold transition"'));
+  assert.ok(room.includes('"h-9 shrink-0 whitespace-nowrap rounded-xl font-semibold transition"'));
+  assert.ok(room.includes('view === "UPDATED" ? "px-2 text-xs sm:px-3.5 sm:text-sm" : "px-3.5 text-sm"'));
+  const inline = toolbar.slice(toolbar.indexOf('className="class-toolbar-container'));
+  assert.ok(inline.indexOf("{lesson}") < inline.indexOf("{actions}"));
+  assert.ok(inline.indexOf("{actions}") < inline.indexOf("{participants}"));
+  assert.ok(inline.includes("class-toolbar-sections flex min-w-0 max-w-full items-center gap-1 overflow-x-auto"));
+  const css = readFileSync("src/app/globals.css", "utf8");
+  assert.match(css, /\.class-material-toolbar\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap/);
+  assert.match(css, /\.class-toolbar-participants\s*\{[^}]*margin-left: auto/);
+  assert.match(css, /\.class-toolbar-participants \.class-participants\s*\{ justify-content: flex-end/);
   assert.ok(room.includes("onClick={() => setLessonTab(tab.key)}"));
   assert.ok(room.includes("aria-pressed={lessonTab === tab.key}"));
   assert.ok(!room.includes("t.classRoom.onlyYou"));

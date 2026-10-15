@@ -695,30 +695,41 @@ export function ClassRoom({
   const materialsLoaded = Boolean(activeLessonId || focusedWordDeck || focusedRevisionId || twisterSession);
   const participantsPlacement = classParticipantsPlacement(view, teacher, materialsLoaded);
   const participants = (
-<div className="class-participants flex min-w-0 flex-wrap items-center gap-3" data-class-participants>
-        <div className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
+      <div className="class-participants flex min-w-0 flex-wrap items-center gap-3" data-class-participants>
+        <div className="flex min-w-0 max-w-full items-center gap-2 rounded-xl bg-surface px-3 py-2 ring-1 ring-line">
           <PresenceIndicator presence="online" />
-          <span className="text-sm font-semibold text-content">{selfName}</span>
-          <span className="text-[11px] text-faint">{t.classRoom.youAre}</span>
+          <span className="min-w-0 truncate text-sm font-semibold text-content">{selfName}</span>
+          <span className="shrink-0 text-[11px] text-faint">{t.classRoom.youAre}</span>
         </div>
 
         {partner ? (
           teacher ? (
-            <ClassStudentMenu key={partner.id} student={partner} summonBusy={summonBusy}
-              onBringToClass={() => startSummon(async () => {
-                const studentId = partner.id;
-                setSummonNotice(null);
-                try {
-                  const result = await sendClassSummons(studentId);
-                  if (result.error || !result.expiresAt) {
-                    setSummonNotice(result.error ?? t.classRoom.bringToClassRetry);
-                    return;
-                  }
-                  setSummonPending({ studentId, expiresAt: result.expiresAt });
-                  setSummonNotice(t.classRoom.bringToClassPending);
-                } catch { setSummonNotice(t.classRoom.bringToClassRetry); }
-              })}
-            />
+            <div className="class-participant-student flex min-w-0 max-w-full items-center gap-2">
+              <ClassStudentMenu key={partner.id} student={partner} summonBusy={summonBusy}
+                onBringToClass={() => startSummon(async () => {
+                  const studentId = partner.id;
+                  setSummonNotice(null);
+                  try {
+                    const result = await sendClassSummons(studentId);
+                    if (result.error || !result.expiresAt) {
+                      setSummonNotice(result.error ?? t.classRoom.bringToClassRetry);
+                      return;
+                    }
+                    setSummonPending({ studentId, expiresAt: result.expiresAt });
+                    setSummonNotice(t.classRoom.bringToClassPending);
+                  } catch { setSummonNotice(t.classRoom.bringToClassRetry); }
+                })}
+              />
+              <ClassLeaveButton busy={busy} onLeave={() => startBusy(async () => {
+                await leaveClassAction();
+                setPartner(null);
+                setActiveLessonId(null);
+                setTimerState(null);
+                setShowTimer(false);
+                setShowReactions(false);
+                setNonce((n) => n + 1);
+              })} />
+            </div>
           ) : (
             <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
               <button
@@ -753,23 +764,11 @@ export function ClassRoom({
         )}
 
         {profileError && (
-          <span className="text-xs font-semibold text-rose-500">{profileError}</span>
+          <span className="w-full text-xs font-semibold text-rose-500">{profileError}</span>
         )}
 
         {summonNotice && (
-          <span role="status" aria-live="polite" className="text-xs font-semibold text-accent">{summonNotice}</span>
-        )}
-
-        {teacher && partner && (
-          <ClassLeaveButton busy={busy} onLeave={() => startBusy(async () => {
-              await leaveClassAction();
-              setPartner(null);
-              setActiveLessonId(null);
-              setTimerState(null);
-              setShowTimer(false);
-              setShowReactions(false);
-              setNonce((n) => n + 1);
-            })} />
+          <span role="status" aria-live="polite" className="w-full text-xs font-semibold text-accent">{summonNotice}</span>
         )}
       </div>
   );
@@ -787,7 +786,8 @@ export function ClassRoom({
       onClick={() => setLessonTab(tab.key)}
       aria-pressed={lessonTab === tab.key}
       className={cn(
-        "h-9 shrink-0 rounded-xl px-3.5 text-sm font-semibold transition",
+        "h-9 shrink-0 whitespace-nowrap rounded-xl font-semibold transition",
+        view === "UPDATED" ? "px-2 text-xs sm:px-3.5 sm:text-sm" : "px-3.5 text-sm",
         lessonTab === tab.key
           ? "bg-accent text-white"
           : "text-muted hover:bg-surface-2 hover:text-content",
@@ -799,7 +799,7 @@ export function ClassRoom({
 
   const lessonSection = (
     <section className="flex min-h-[420px] flex-col gap-3 rounded-2xl bg-surface p-3.5 ring-1 ring-line">
-      <ClassMaterialToolbar lesson={lessonTabButton(LESSON_TABS[0])} actions={LESSON_TABS.slice(1).map(lessonTabButton)} participants={participantsPlacement === "TEACHER_INLINE" ? participants : undefined} />
+      <ClassMaterialToolbar lesson={lessonTabButton(LESSON_TABS[0])} groupSections={view === "UPDATED"} actions={LESSON_TABS.slice(1).map(lessonTabButton)} participants={participantsPlacement === "TEACHER_INLINE" ? participants : undefined} />
 
       <div className="flex flex-1 flex-col justify-center">
         {lessonTab === "lesson" && partner ? (

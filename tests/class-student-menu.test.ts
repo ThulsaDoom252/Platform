@@ -82,7 +82,7 @@ test("the student profile trigger starts closed with no loose Homework or Bring 
   assert(!html.includes("Homework") && !html.includes("Bring to class"));
   assert.equal((room.match(/<ClassStudentMenu /g) ?? []).length, 1);
   assert(!room.includes('href={`/teacher/homeworks?student='));
-  assert(/teacher\s*\?\s*\(\s*<ClassStudentMenu/.test(room));
+  assert(/teacher\s*\?\s*\(\s*<div[^>]*>\s*<ClassStudentMenu/.test(room));
 });
 
 test("opening the dropdown exposes profile, homework, materials and bring actions without avatar preview", () => {
@@ -139,6 +139,7 @@ test("all menu entries and icon-only leave action retain accessible localized na
     assert.equal(leave.props.title, t.classRoom.leave);
     assert.equal(flatten(leave).filter(node => node.type === "svg").length, 1);
     assert(leave.props.className?.toString().includes("bg-rose-500"));
+    assert(!leave.props.className?.toString().includes("ml-auto"));
     assert(!renderToStaticMarkup(leave).replace(/<[^>]*>/g, "").trim());
     assert.equal((h.leave(true) as Element).props.disabled, true);
   }
