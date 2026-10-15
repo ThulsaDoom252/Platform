@@ -81,20 +81,45 @@ test("class header and list consume the same live presence, including the summon
   assert.ok(source.includes("presence: livePresences[partnerSnapshot.id] ?? partnerSnapshot.presence"));
   assert.ok(source.includes("presence: livePresences[person.id] ?? person.presence"));
   assert.equal((source.match(/<PresenceIndicator presence=\{(?:p|partner)\.presence\} showClassStatus/g) ?? []).length, 3);
-  assert.ok(source.includes('disabled={busy || platformPresence(partner.presence) === "offline"}'));
+  assert.ok(source.includes('disabled={summonBusy}'));
+  assert.ok(!source.includes('disabled={busy || platformPresence(partner.presence) === "offline"}'));
+  assert.ok(source.includes('partner.presence === "in_class"'));
+  assert.ok(source.includes('setSummonNotice(t.classRoom.bringToClassPending)'));
 });
 
 test("route changes update presence member data without reconnecting and only observers read the membership list", () => {
   const realtime = readFileSync("src/lib/use-realtime.ts", "utf8");
   const source = readFileSync("src/components/student-presence.tsx", "utf8");
-  assert.ok(realtime.includes("await channel.presence.update(presenceData())"));
+  assert.ok(realtime.includes("await channel.presence.update(sentData)"));
   assert.ok(realtime.includes("}, [dataKey])"));
   assert.ok(realtime.includes("}, [configured, enabled, observesMembers])"));
   assert.ok(realtime.includes("if (!observesMembers) return true"));
   assert.ok(realtime.includes('status !== "unavailable"'));
   assert.ok(realtime.includes("window.setInterval(() => void recoverRef.current?.(), 15_000)"));
   assert.ok(source.includes('pathname === "/student/class" || pathname === "/teacher/class"'));
-  assert.ok(source.includes('data: { role: "STUDENT", name, inClass }'));
+  assert.ok(source.includes('data: { role: "STUDENT", name, ...location }'));
+});
+
+test("the active route wins over a hidden class tab without making old clients offline", () => {
+  const oldClass = { clientId: "student", data: { inClass: true, visible: false, activeAt: now - 10_000 } };
+  const currentSection = { clientId: "student", data: { inClass: false, visible: true, activeAt: now } };
+  for (const members of [[oldClass, currentSection], [currentSection, oldClass]]) {
+    assert.deepEqual(schoolPresenceMap(members), { student: "online" });
+  }
+  const newClass = { clientId: "student", data: { inClass: true, visible: true, activeAt: now + 1 } };
+  assert.deepEqual(schoolPresenceMap([oldClass, currentSection, newClass]), { student: "in_class" });
+  assert.deepEqual(schoolPresenceMap([newClass, currentSection, oldClass]), { student: "in_class" });
+  assert.deepEqual(schoolPresenceMap([oldClass]), { student: "in_class" });
+});
+
+test("global presence has an independent ordered transport and repairs incomplete connected sessions", () => {
+  const source = readFileSync("src/components/student-presence.tsx", "utf8");
+  assert.ok(source.includes('fetch("/api/presence"'));
+  assert.ok(source.includes("createPlatformPresenceWriter"));
+  assert.ok(source.includes("writer.current?.location(inClass)"));
+  assert.ok(source.includes("...snapshot.current, ...members"));
+  assert.ok(source.includes("SNAPSHOT_REFRESH_MS = 10_000"));
+  assert.ok(!source.includes('if (status === "connected") return'));
 });
 
 test("a single throttled layout beacon keeps server online checks fresh without changing student content or class selection", () => {

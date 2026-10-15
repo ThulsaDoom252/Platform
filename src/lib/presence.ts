@@ -13,12 +13,23 @@ export function platformPresence(presence: ClassPresence): Presence {
 
 export function schoolPresenceMap(members: SchoolPresenceMember[]): Record<string, ClassPresence> {
   const result: Record<string, ClassPresence> = {};
+  const active = new Map<string, { visible: boolean; at: number; inClass: boolean }>();
   for (const member of members) {
     if (!member.clientId) continue;
     const data = member.data && typeof member.data === "object" ? member.data as Record<string, unknown> : null;
+    if (typeof data?.visible === "boolean" && typeof data.activeAt === "number" && Number.isFinite(data.activeAt)) {
+      const previous = active.get(member.clientId);
+      if (!previous || (data.visible && !previous.visible) ||
+        (data.visible === previous.visible && data.activeAt >= previous.at)) {
+        active.set(member.clientId, { visible: data.visible, at: data.activeAt, inClass: data.inClass === true });
+      }
+    }
     if (data?.inClass === true) result[member.clientId] = "in_class";
     else if (result[member.clientId] !== "in_class") result[member.clientId] = "online";
   }
+  // Prefer the section on the active tab; an old hidden class tab must not
+  // keep saying "in class" after the student starts working elsewhere.
+  for (const [id, location] of active) result[id] = location.inClass ? "in_class" : "online";
   return result;
 }
 

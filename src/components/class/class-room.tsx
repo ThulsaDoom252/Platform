@@ -37,12 +37,12 @@ import {
   unreadMessagesAction,
   listClassPeopleAction,
   enterClassAction,
-  summonStudentToClassAction,
   leaveClassAction,
   type ClassPerson,
   type ClassPartnerProfile,
 } from "@/lib/actions/class";
-import { platformPresence, type ClassPresence } from "@/lib/presence";
+import { type ClassPresence } from "@/lib/presence";
+import { sendClassSummons } from "@/lib/class-summons-request";
 import { PresenceIndicator, usePresenceMap } from "@/components/student-presence";
 const ClassChat = dynamic(() => import("./class-chat").then((m) => m.ClassChat));
 const QuickVerbs = dynamic(() => import("./quick-verbs").then((m) => m.QuickVerbs));
@@ -198,6 +198,8 @@ export function ClassRoom({
   const [teacherProfile, setTeacherProfile] = useState<ClassPartnerProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [summonNotice, setSummonNotice] = useState<string | null>(null);
+  const [summonBusy, startSummon] = useTransition();
+  const [summonPending, setSummonPending] = useState<{ studentId: string; expiresAt: string } | null>(null);
   const chime = useRef<(() => void) | null>(null);
   const unreadRef = useRef(0);
   const boardOpen = useRef(false);
@@ -212,6 +214,24 @@ export function ClassRoom({
   const heartbeatRef = useRef<() => void>(() => {});
   const unreadRefreshRef = useRef<() => void>(() => {});
   const classSyncRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    if (!summonPending) return;
+    const entered = partner?.id === summonPending.studentId && partner.presence === "in_class";
+    const switched = partner?.id !== summonPending.studentId;
+    const frame = entered || switched ? requestAnimationFrame(() => {
+      setSummonPending(null);
+      setSummonNotice(entered ? t.classRoom.bringToClassSent : null);
+    }) : null;
+    const timer = !entered && !switched ? window.setTimeout(() => {
+      setSummonPending(null);
+      setSummonNotice(t.classRoom.bringToClassRetry);
+    }, Math.max(0, Date.parse(summonPending.expiresAt) - Date.now())) : null;
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [summonPending, partner?.id, partner?.presence, t]);
 
   useEffect(() => {
     boardOpen.current = open.board;
@@ -756,25 +776,31 @@ export function ClassRoom({
         {teacher && partner && (
           <button
             type="button"
-            disabled={busy || platformPresence(partner.presence) === "offline"}
-            onClick={() => startBusy(async () => {
-              const result = await summonStudentToClassAction();
-              setSummonNotice(result.error ?? t.classRoom.bringToClassSent);
+            disabled={summonBusy}
+            aria-busy={summonBusy}
+            onClick={() => startSummon(async () => {
+              const studentId = partner.id;
+              setSummonNotice(null);
+              try {
+                const result = await sendClassSummons(studentId);
+                if (result.error || !result.expiresAt) {
+                  setSummonNotice(result.error ?? t.classRoom.bringToClassRetry);
+                  return;
+                }
+                setSummonPending({ studentId, expiresAt: result.expiresAt });
+                setSummonNotice(t.classRoom.bringToClassPending);
+              } catch { setSummonNotice(t.classRoom.bringToClassRetry); }
             })}
-            title={
-              platformPresence(partner.presence) === "online"
-                ? t.classRoom.bringToClass
-                : t.classRoom.bringToClassOffline
-            }
+            title={t.classRoom.bringToClass}
             className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12px] font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <IconCap className="h-4 w-4" />
-            {t.classRoom.bringToClass}
+            {summonBusy ? t.classRoom.bringToClassSending : t.classRoom.bringToClass}
           </button>
         )}
 
         {summonNotice && (
-          <span className="text-xs font-semibold text-accent">{summonNotice}</span>
+          <span role="status" aria-live="polite" className="text-xs font-semibold text-accent">{summonNotice}</span>
         )}
 
         {teacher && partner && (

@@ -137,6 +137,8 @@ export const users = pgTable("users", {
     lessonElementId?: string | null;
     /** Одноразовая команда открыть класс на уже открытой вкладке ученика. */
     enterClassAt?: string;
+    /** Durable summon, removed only after its exact id reaches the class route. */
+    enterClassCommand?: { id: string; teacherId: string; requestedAt: string; expiresAt: string };
     /** Назначенная ученику колода, которую учитель открыл поверх урока. */
     gameId?: string;
     /** Практика слов, которую учитель открыл поверх урока. */

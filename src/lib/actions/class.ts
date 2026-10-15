@@ -7,6 +7,7 @@
  * резервом, чтобы живой урок не ломался при недоступности провайдера.
  */
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -33,7 +34,7 @@ import {
 } from "@/lib/class-video";
 import { scheduleNow } from "@/lib/schedule-time";
 import { liveClassTimerState, type ClassTimerState } from "@/lib/class-timer";
-import { classPresenceFromLastSeen, presenceFromLastSeen, type ClassPresence } from "@/lib/presence";
+import { classPresenceFromLastSeen, type ClassPresence } from "@/lib/presence";
 import {
   classActivityKey,
   normalizeClassGameReview,
@@ -41,6 +42,9 @@ import {
 } from "@/lib/class-game-meta";
 import { ensureClassActivityPreferencesTable } from "@/lib/db/ensure-class-activity-preferences";
 import { normalizeClassReactions, type ClassReaction } from "@/lib/class-reaction";
+import { CLASS_SUMMONS_TTL_MS, type StoredClassSummons } from "@/lib/class-summons";
+import { readStudentClassSummons } from "@/lib/class-summons-server";
+import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
 import {
   publishClassRealtime,
   publishUserRealtime,
@@ -96,8 +100,6 @@ async function requireUser() {
   if (!session) throw new Error("Нужно войти");
   return session;
 }
-
-const isOnline = (seen: Date | null) => presenceFromLastSeen(seen) === "online";
 
 async function countUnreadMessages(userId: string, studentId: string | null) {
   if (!studentId) return 0;
@@ -393,9 +395,13 @@ export async function enterClassFromScheduleAction(formData: FormData): Promise<
 }
 
 /** Одноразово открыть класс на уже активной вкладке выбранного ученика. */
-export async function summonStudentToClassAction(): Promise<{ error?: string }> {
+export async function summonStudentToClassAction(expectedStudentId?: string): Promise<{ error?: string; commandId?: string; expiresAt?: string }> {
   const session = await requireUser();
   if (session.role !== "TEACHER") return { error: "Класс ведёт учитель" };
+  if (expectedStudentId !== undefined && (typeof expectedStudentId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(expectedStudentId))) {
+    return { error: "Некорректный ученик" };
+  }
 
   const [teacher] = await db
     .select({ studentId: users.classWithId })
@@ -403,86 +409,47 @@ export async function summonStudentToClassAction(): Promise<{ error?: string }> 
     .where(and(eq(users.id, session.userId), eq(users.role, "TEACHER")))
     .limit(1);
   if (!teacher?.studentId) return { error: "Сначала выбери ученика" };
+  if (expectedStudentId !== undefined && expectedStudentId !== teacher.studentId) {
+    return { error: "Выбранный ученик изменился. Попробуй ещё раз" };
+  }
 
   const [student] = await db
-    .select({ lastSeenAt: users.lastSeenAt, classFocus: users.classFocus })
+    .select({ id: users.id })
     .from(users)
     .where(and(eq(users.id, teacher.studentId), eq(users.role, "STUDENT")))
     .limit(1);
   if (!student) return { error: "Ученик не найден" };
-  if (!isOnline(student.lastSeenAt)) return { error: "Ученик сейчас не на платформе" };
-
-  const now = new Date().toISOString();
-  await db
+  // Online status is a display hint, not an authority: a delayed heartbeat must
+  // not reject an active browser. Bounded expiry prevents a much later pull.
+  const now = Date.now();
+  const requestedAt = new Date(now).toISOString();
+  const command: StoredClassSummons = { id: randomUUID(), teacherId: session.userId,
+    requestedAt, expiresAt: new Date(now + CLASS_SUMMONS_TTL_MS).toISOString() };
+  const delivered = await db
     .update(users)
     .set({
-      classFocus: {
-        ...student.classFocus,
-        at: student.classFocus?.at ?? now,
-        enterClassAt: now,
-      },
+      classFocus: sql`coalesce(${users.classFocus}, '{}'::jsonb) || ${JSON.stringify({ enterClassCommand: command, enterClassAt: requestedAt })}::jsonb`,
     })
-    .where(and(eq(users.id, teacher.studentId), eq(users.role, "STUDENT")));
+    .where(and(eq(users.id, teacher.studentId), eq(users.role, "STUDENT"),
+      sql`exists (select 1 from ${users} as summon_teacher where summon_teacher.id = ${session.userId}::uuid and summon_teacher.role = 'TEACHER' and summon_teacher.class_with_id = ${teacher.studentId}::uuid)`))
+    .returning({ id: users.id });
+  if (!delivered.length) return { error: "Выбранный ученик изменился. Попробуй ещё раз" };
 
-  await publishUserRealtime(teacher.studentId, "summon");
+  await publishUserRealtime(teacher.studentId, "summon", { commandId: command.id, expiresAt: command.expiresAt });
 
-  return {};
+  return { commandId: command.id, expiresAt: command.expiresAt };
 }
 
 /**
- * Короткий глобальный такт ученика: отмечает присутствие и забирает
- * одноразовую команду перехода. Фокус урока при этом не очищается.
+ * Compatibility for already-open clients during deployment. Reading is
+ * non-consuming; the independent HTTP endpoint acknowledges route arrival.
  */
-export async function studentPlatformCommandAction(): Promise<{ enterClass: boolean }> {
+export async function studentPlatformCommandAction(): Promise<{ enterClass: boolean; commandId?: string; expiresAt?: string }> {
   const session = await requireUser();
   if (session.role !== "STUDENT") return { enterClass: false };
 
-  const [me] = await db
-    .select({ lastSeenAt: users.lastSeenAt, classFocus: users.classFocus })
-    .from(users)
-    .where(and(eq(users.id, session.userId), eq(users.role, "STUDENT")))
-    .limit(1);
-  if (!me) return { enterClass: false };
-
-  const requestedAt = me.classFocus?.enterClassAt;
-  const now = new Date();
-  const shouldRefreshPresence =
-    !me.lastSeenAt || now.getTime() - me.lastSeenAt.getTime() >= 20_000;
-
-  if (requestedAt) {
-    // Удаляем только служебное поле прямо в jsonb: параллельная команда
-    // фокуса не потеряет секцию, игру или объект доски.
-    await db
-      .update(users)
-      .set({
-        lastSeenAt: now,
-        classFocus: sql`coalesce(${users.classFocus}, '{}'::jsonb) - 'enterClassAt'`,
-      })
-      .where(and(eq(users.id, session.userId), eq(users.role, "STUDENT")));
-  } else if (shouldRefreshPresence) {
-    await db
-      .update(users)
-      .set({ lastSeenAt: now })
-      .where(and(eq(users.id, session.userId), eq(users.role, "STUDENT")));
-  }
-
-  if (!requestedAt) return { enterClass: false };
-  const requested = new Date(requestedAt).getTime();
-  if (!Number.isFinite(requested) || now.getTime() - requested > 30_000) {
-    return { enterClass: false };
-  }
-
-  const [teacher] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(
-      and(
-        eq(users.role, "TEACHER"),
-        eq(users.classWithId, session.userId),
-      ),
-    )
-    .limit(1);
-  return { enterClass: Boolean(teacher) };
+  const command = await readStudentClassSummons(session);
+  return command ? { enterClass: true, commandId: command.id, expiresAt: command.expiresAt } : { enterClass: false };
 }
 
 /** Выйти из класса — учитель возвращается к выбору ученика. */
@@ -853,7 +820,7 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
   const cutoff = new Date(Date.now() - 15_000);
   const updatePresence = me.classWhere !== classWhere || !me.lastSeenAt || me.lastSeenAt < cutoff
     ? db.update(users).set({ classWhere, lastSeenAt: new Date() })
-        .where(and(eq(users.id, session.userId), sql`(${users.classWhere} is distinct from ${classWhere} or ${users.lastSeenAt} is null or ${users.lastSeenAt} < ${cutoff})`))
+        .where(and(eq(users.id, session.userId), inArray(users.classWhere, ["class", "board"]), sql`(${users.classWhere} is distinct from ${classWhere} or ${users.lastSeenAt} is null or ${users.lastSeenAt} < ${cutoff})`))
     : Promise.resolve();
   const [partnerRows, vocabularyEvents, reviewRows] = await Promise.all([partnerQuery, vocabularyQuery, reviewQuery, updatePresence]);
   const [partner] = partnerRows;
@@ -1124,7 +1091,7 @@ export async function showGameToStudentAction(gameId?: string): Promise<{ error?
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         at: new Date().toISOString(),
         view: "GAME",
         ...(focusedGameId ? { gameId: focusedGameId } : {}),
@@ -1132,7 +1099,7 @@ export async function showGameToStudentAction(gameId?: string): Promise<{ error?
         ...(student.classFocus?.lessonAssignmentId
           ? { lessonAssignmentId: student.classFocus.lessonAssignmentId }
           : {}),
-      },
+      }),
     })
     .where(eq(users.id, me.classWithId));
 

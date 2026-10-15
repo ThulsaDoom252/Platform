@@ -36,6 +36,7 @@ import {
   type ClassReactionMode,
 } from "@/lib/class-reaction";
 import { publishClassRealtime } from "@/lib/realtime-server";
+import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
 
 async function requireTeacher() {
   const session = await getSession();
@@ -286,7 +287,7 @@ async function storeTimerState(studentId: string, timerState: ClassTimerState | 
   const next = { ...focus };
   if (timerState) next.timerState = timerState;
   else delete next.timerState;
-  await db.update(users).set({ classFocus: next }).where(eq(users.id, studentId));
+  await db.update(users).set({ classFocus: preserveClassSummonsSql(users.classFocus, next) }).where(eq(users.id, studentId));
   await publishClassRealtime(studentId, "class-sync");
 }
 
@@ -766,10 +767,10 @@ export async function focusClassLessonNoteAction(
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         ...focus,
         noteFocus: { id: note.id, at: new Date().toISOString() },
-      },
+      }),
     })
     .where(eq(users.id, studentId));
   await publishClassRealtime(studentId, "class-sync");

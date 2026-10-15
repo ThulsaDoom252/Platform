@@ -6,6 +6,7 @@ import { studentBoards, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { sanitizeBoardScene, type BoardScene } from "@/lib/board-scene";
 import { publishClassRealtime } from "@/lib/realtime-server";
+import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
 
 async function requireUser() {
   const session = await getSession();
@@ -101,7 +102,7 @@ async function commandBoard(objectId: number | null, boardCommand: BoardCommand)
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         at: new Date().toISOString(),
         view: "BOARD",
         boardObjectId: objectId,
@@ -109,7 +110,7 @@ async function commandBoard(objectId: number | null, boardCommand: BoardCommand)
         ...(student.classFocus?.lessonAssignmentId
           ? { lessonAssignmentId: student.classFocus.lessonAssignmentId }
           : {}),
-      },
+      }),
     })
     .where(eq(users.id, studentId));
   await publishClassRealtime(studentId, "class-sync");

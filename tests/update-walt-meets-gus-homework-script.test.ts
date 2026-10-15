@@ -20,7 +20,7 @@ import {
 } from "../src/lib/bundled-lessons/breaking-bad-walt-meets-gus";
 import { buildWaltMeetsGusHomework } from "../src/lib/bundled-lessons/breaking-bad-walt-meets-gus-homework";
 
-const script = readFileSync(new URL("../scripts/update-walt-meets-gus-homework.ts", import.meta.url), "utf8");
+const script = readFileSync(new URL("../scripts/update-walt-meets-gus-homework.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const canonical = () => ({
   id: "f0c4c1ec-347b-4529-a8d3-d54083105ca7", author_id: "324718ca-f381-4478-9555-2eff9f857528",
   kind: "ACTIVITY", title: WALT_MEETS_GUS_TITLE, description: WALT_MEETS_GUS_DESCRIPTION,

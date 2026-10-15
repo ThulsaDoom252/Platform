@@ -176,7 +176,7 @@ test("text fields distinguish clicks from drags without blocking normal native s
   assert.equal(isHighlightPointerClick({ x: 10, y: 20 }, 12, 22), true);
   assert.equal(isHighlightPointerClick({ x: 10, y: 20 }, 16, 20), false);
   assert.equal(isHighlightPointerClick({ x: 10, y: 20 }, 10, 60), false);
-  const field = readFileSync("src/components/lessons/highlightable-answer-field.tsx", "utf8");
+  const field = readFileSync("src/components/lessons/highlightable-answer-field.tsx", "utf8").replace(/\r\n/g, "\n");
   assert(field.includes("if (!choices || !active || !tools || event.button !== 0"));
   assert(field.includes("onMouseUp={highlightSelection}"));
   assert(field.includes("commitBeforeHighlight();\n    highlight(start, end, tools.color)"));

@@ -32,6 +32,7 @@ import { homeworkStateWithCurrentResultSql } from "@/lib/homework-feedback-persi
 import { HOMEWORK_TITLE_KEY } from "@/lib/homework-title";
 import { HOMEWORK_MEDIA_KEY } from "@/lib/homework-media";
 import { lessonContentVersion } from "@/lib/lesson-content-version";
+import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
 import { queueStudentNotification } from "@/lib/notifications";
 import { publishClassRealtime } from "@/lib/realtime-server";
 import { parseLexisDocuments } from "@/lib/keyed-parser";
@@ -1834,11 +1835,11 @@ export async function addLessonToClassAction(
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         panel: previous?.panel ?? "lesson",
         at: previous?.at ?? new Date().toISOString(),
         lessonAssignmentId: result.id,
-      },
+      }),
     })
     .where(eq(users.id, me.studentId));
 
@@ -2021,7 +2022,7 @@ export async function focusLessonSectionAction(
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         ...target.classFocus,
         at: new Date().toISOString(),
         view: "LESSON",
@@ -2029,7 +2030,7 @@ export async function focusLessonSectionAction(
         lessonAssignmentId: id,
         lessonSection: section,
         lessonElementId: null,
-      },
+      }),
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
@@ -2095,7 +2096,7 @@ export async function focusRegularLessonElementAction(
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         ...target.classFocus,
         at: new Date().toISOString(),
         view: "LESSON",
@@ -2103,7 +2104,7 @@ export async function focusRegularLessonElementAction(
         lessonAssignmentId: id,
         lessonSection: section,
         lessonElementId: focusId,
-      },
+      }),
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
@@ -2251,11 +2252,11 @@ export async function syncLessonVideoAction(
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         ...target.classFocus,
         at: target.classFocus?.at ?? now,
         videoState,
-      },
+      }),
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
@@ -2321,7 +2322,7 @@ export async function focusLessonVideoAction(
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         ...target.classFocus,
         at: now,
         view: "LESSON",
@@ -2329,7 +2330,7 @@ export async function focusLessonVideoAction(
         lessonAssignmentId: id,
         lessonSection: "video",
         videoState,
-      },
+      }),
     })
     .where(and(eq(users.id, target.studentId), eq(users.role, "STUDENT")));
 
@@ -2411,14 +2412,14 @@ export async function focusLessonWordAction(
     await db
       .update(users)
       .set({
-        classFocus: {
+        classFocus: preserveClassSummonsSql(users.classFocus, {
           at: now.toISOString(),
           view: "LESSON",
           boardObjectId: null,
           lessonAssignmentId: id,
           lessonSection,
           lessonElementId: focusKey,
-        },
+        }),
       })
       .where(and(eq(users.id, row.studentId), eq(users.role, "STUDENT")));
   }
@@ -2472,13 +2473,13 @@ export async function selectLessonLexisGroupAction(
     await db
       .update(users)
       .set({
-        classFocus: {
+        classFocus: preserveClassSummonsSql(users.classFocus, {
           at: new Date().toISOString(),
           view: "LESSON",
           boardObjectId: null,
           lessonAssignmentId: id,
           lessonSection: "lexis",
-        },
+        }),
       })
       .where(and(eq(users.id, row.studentId), eq(users.role, "STUDENT")));
   }

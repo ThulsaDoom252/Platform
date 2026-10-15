@@ -39,6 +39,7 @@ import { queueStudentNotification } from "@/lib/notifications";
 import { readHomeworkFeedback, type HomeworkFeedbackSettings, type HomeworkResultScore } from "@/lib/homework-feedback";
 import { revisionHomeworkScoreSql } from "@/lib/homework-feedback-persistence";
 import { revisionStrugglingWords, validateRevisionStrugglingIds, type RevisionStrugglingWord } from "@/lib/revision-struggling";
+import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
 
 export type RevisionState = { ok?: boolean; error?: string; id?: string };
 
@@ -733,14 +734,14 @@ export async function showRevisionToStudentAction(
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         at: new Date().toISOString(),
         view: "GAME",
         revisionId: revision.id,
         ...(student?.classFocus?.lessonAssignmentId
           ? { lessonAssignmentId: student.classFocus.lessonAssignmentId }
           : {}),
-      },
+      }),
     })
     .where(eq(users.id, teacher.studentId));
 

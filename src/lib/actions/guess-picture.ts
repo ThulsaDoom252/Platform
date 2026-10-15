@@ -41,6 +41,7 @@ import {
   type WordDeckSourceCard,
 } from "@/lib/word-deck";
 import { publishClassRealtime } from "@/lib/realtime-server";
+import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
 
 /** Чем спрашиваем. MIXED — обоими способами, по две карты на слово. */
 export type GameMode = "PICTURE" | "TRANSLATION" | "MIXED";
@@ -1161,13 +1162,13 @@ export async function playGameAction(gameId: string): Promise<GameActionState> {
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         ...student?.classFocus,
         at: new Date().toISOString(),
         view: "GAME",
         gameId: row.id,
         revisionId: undefined,
-      },
+      }),
     })
     .where(eq(users.id, row.studentId));
 

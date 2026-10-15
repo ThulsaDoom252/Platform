@@ -147,28 +147,47 @@ export function useSchoolPresence({
     void realtimeClient().then((client) => {
       if (!alive || !client) return;
       const channel = client.channels.get("presence:school");
+      let refreshVersion = 0;
       const refresh = async () => {
         if (!observesMembers) return true;
+        const version = ++refreshVersion;
         try {
           const members = await channel.presence.get();
-          if (alive) emitMembers(schoolPresenceMap(members));
-          if (alive && client.connection.state === "connected" && channel.state === "attached") setStatus("connected");
+          if (!alive || version !== refreshVersion) return false;
+          emitMembers(schoolPresenceMap(members));
+          if (client.connection.state === "connected" && channel.state === "attached") setStatus("connected");
           return true;
         } catch {
-          if (alive) setStatus("unavailable");
+          if (alive && version === refreshVersion) setStatus("unavailable");
           return false;
         }
       };
       const presenceChanged = () => void refresh();
-      const updateData = async () => {
-        if (!alive || client.connection.state !== "connected" || channel.state !== "attached") return false;
-        try {
-          await channel.presence.update(presenceData());
-          return true;
-        } catch {
-          if (alive) setStatus("unavailable");
-          return false;
-        }
+      let enterPromise: Promise<unknown> | null = null;
+      let updatePromise: Promise<boolean> | null = null;
+      let updateQueued = false;
+      const updateData = (): Promise<boolean> => {
+        if (!alive || client.connection.state !== "connected" || channel.state !== "attached") return Promise.resolve(false);
+        updateQueued = true;
+        if (updatePromise) return updatePromise;
+        updatePromise = (async () => {
+          try {
+            // A slow enter/update must never publish the old route after a newer one.
+            if (enterPromise) await enterPromise;
+            while (alive && updateQueued) {
+              if (client.connection.state !== "connected" || channel.state !== "attached") return false;
+              updateQueued = false;
+              const sentData = presenceData();
+              await channel.presence.update(sentData);
+              if (JSON.stringify(sentData) !== JSON.stringify(presenceData())) updateQueued = true;
+            }
+            return alive;
+          } catch {
+            if (alive) setStatus("unavailable");
+            return false;
+          }
+        })().finally(() => { updatePromise = null; });
+        return updatePromise;
       };
       const publishData = async () => { await updateData(); };
       updateDataRef.current = publishData;
@@ -184,14 +203,17 @@ export function useSchoolPresence({
           entering = true;
           try {
             const sentData = presenceData();
-            await channel.presence.enter(sentData);
+            enterPromise = channel.presence.enter(sentData);
+            await enterPromise;
+            enterPromise = null;
             if (!alive) return;
-            if (JSON.stringify(sentData) !== JSON.stringify(presenceData()) && !await updateData()) return;
+            if ((updatePromise || JSON.stringify(sentData) !== JSON.stringify(presenceData())) && !await updateData()) return;
             const refreshed = await refresh();
             if (alive && refreshed && client.connection.state === "connected" && channel.state === "attached") setStatus("connected");
           } catch {
             if (alive) setStatus("unavailable");
           } finally {
+            enterPromise = null;
             entering = false;
           }
         }
@@ -208,6 +230,7 @@ export function useSchoolPresence({
       });
       void connectionChanged();
       unsubscribe = () => {
+        refreshVersion++;
         if (updateDataRef.current === publishData) updateDataRef.current = null;
         if (recoverRef.current === connectionChanged) recoverRef.current = null;
         client.connection.off(connectionChanged);

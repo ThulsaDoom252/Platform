@@ -14,9 +14,11 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tongueTwisters, tongueTwisterAssignments, users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
-import { publishClassRealtime } from "@/lib/realtime-server";
+import { publishClassRealtime, publishUserRealtime } from "@/lib/realtime-server";
+import { CLASS_SUMMONS_TTL_MS, type StoredClassSummons } from "@/lib/class-summons";
 import { isStoredImage, removeStoredImage } from "@/lib/image-store";
 import { storePublicFile } from "@/lib/public-file-store";
+import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
 import {
   mergeTwisterStrokes,
   sanitizeTwisterStroke,
@@ -600,7 +602,7 @@ export async function focusTwisterInClassAction(
   twisterId: string,
   initialStrokes: TwisterStroke[] = [],
 ): Promise<{ session?: ClassTwisterSession; error?: string }> {
-  await requireTeacher();
+  const teacher = await requireTeacher();
   const target = await drawingTarget();
   const id = String(twisterId ?? "");
   if (!target || target.role !== "TEACHER") return { error: "Класс не начат" };
@@ -634,6 +636,8 @@ export async function focusTwisterInClassAction(
     cleanInitial,
   );
   const now = new Date().toISOString();
+  const enterClassCommand: StoredClassSummons = { id: randomUUID(), teacherId: teacher.userId,
+    requestedAt: now, expiresAt: new Date(Date.parse(now) + CLASS_SUMMONS_TTL_MS).toISOString() };
   await db
     .update(tongueTwisterAssignments)
     .set({ drawingStrokes: strokes.filter((stroke) => stroke.twisterId === id) })
@@ -648,6 +652,7 @@ export async function focusTwisterInClassAction(
         view: "TWISTER",
         at: now,
         enterClassAt: now,
+        enterClassCommand,
         twisterId: id,
         twisterSessionId: sameSession ? current.twisterSessionId : randomUUID(),
         twisterStrokes: strokes,
@@ -661,6 +666,7 @@ export async function focusTwisterInClassAction(
   await Promise.all([
     publishClassRealtime(target.id, "twister"),
     publishClassRealtime(target.id, "class-sync"),
+    publishUserRealtime(target.id, "summon", { commandId: enterClassCommand.id, expiresAt: enterClassCommand.expiresAt }),
   ]);
   return { session: (await twisterSessionAction()) ?? undefined };
 }
@@ -692,13 +698,13 @@ export async function closeTwisterInClassAction(sessionId: string): Promise<void
   await db
     .update(users)
     .set({
-      classFocus: {
+      classFocus: preserveClassSummonsSql(users.classFocus, {
         at: new Date().toISOString(),
         view: "LESSON",
         ...(target.classFocus.lessonAssignmentId
           ? { lessonAssignmentId: target.classFocus.lessonAssignmentId }
           : {}),
-      },
+      }),
     })
     .where(eq(users.id, target.id));
   await Promise.all([
@@ -729,7 +735,7 @@ export async function addTwisterStrokeAction(
   if (shared && focus) {
     await db
       .update(users)
-      .set({ classFocus: { ...focus, twisterStrokes: nextStrokes } })
+      .set({ classFocus: preserveClassSummonsSql(users.classFocus, { ...focus, twisterStrokes: nextStrokes }) })
       .where(eq(users.id, target.id));
   }
   const [assignment] = await db
@@ -781,7 +787,7 @@ export async function undoTwisterStrokeAction(
   if (shared && focus) {
     await db
       .update(users)
-      .set({ classFocus: { ...focus, twisterStrokes: strokes } })
+      .set({ classFocus: preserveClassSummonsSql(users.classFocus, { ...focus, twisterStrokes: strokes }) })
       .where(eq(users.id, target.id));
   }
   await db
@@ -804,12 +810,12 @@ export async function clearTwisterStrokesAction(
     await db
       .update(users)
       .set({
-        classFocus: {
+        classFocus: preserveClassSummonsSql(users.classFocus, {
           ...focus,
           twisterStrokes: (focus.twisterStrokes ?? []).filter(
             (stroke) => stroke.twisterId !== twisterId,
           ),
-        },
+        }),
       })
       .where(eq(users.id, target.id));
   }
@@ -838,7 +844,7 @@ export async function setStudentTwisterDrawingAction(
   await db
     .update(users)
     .set({
-      classFocus: { ...focus, twisterStudentDrawingAllowed: Boolean(allowed) },
+      classFocus: preserveClassSummonsSql(users.classFocus, { ...focus, twisterStudentDrawingAllowed: Boolean(allowed) }),
     })
     .where(eq(users.id, target.id));
   await publishClassRealtime(target.id, "twister");

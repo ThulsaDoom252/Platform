@@ -92,6 +92,7 @@ function harness(options: Options = {}) {
     ...tables, ...homework, normalizeRegularLessonSections, regularLessonSection, isSection, lessonSectionsForKind, HIDDEN_VOCAB_OPTION,
     MAX_INLINE_WORDS: 600, MAX_INLINE_TRANSCRIPT_LINES: 2000, MAX_INLINE_QUESTIONS: 500,
     db, getSession: async () => session,
+    preserveClassSummonsSql: (_column: string, next: Record<string, unknown>) => next,
     eq: (column: string, value: unknown): Filter => ({ column, value }), and: (...values: Filter[]) => values,
     revalidatePath: (value: string) => paths.push(value), publishClassRealtime: async (...args: unknown[]) => { events.push(args); },
     actions: undefined as unknown as {

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getSession } from "@/lib/session";
 import { classPresenceFromLastSeen, type ClassPresence } from "@/lib/presence";
+import { publishRealtime, realtimeChannels } from "@/lib/realtime-server";
 
 export type StudentPresenceSnapshot = {
   id: string;
@@ -23,10 +24,16 @@ export async function platformPresenceHeartbeatAction(inClass: boolean): Promise
   const locationChanged = inClass === true
     ? sql`(${users.classWhere} is null or ${users.classWhere} not in ('class', 'board'))`
     : sql`${users.classWhere} is not null`;
-  await db.update(users).set({ lastSeenAt: now, classWhere }).where(and(
+  const changed = await db.update(users).set({ lastSeenAt: now, classWhere }).where(and(
     eq(users.id, session.userId),
     sql`(${users.lastSeenAt} is null or ${users.lastSeenAt} < ${cutoff} or ${locationChanged})`,
-  ));
+  )).returning({ id: users.id });
+  if (changed.length) {
+    // Server-origin updates recover a failed student presence entry as well.
+    await publishRealtime(realtimeChannels.presence, "presence", {
+      userId: session.userId, presence: inClass ? "in_class" : "online", observedAt: now.getTime(),
+    });
+  }
 }
 
 /** Один лёгкий запрос для всех индикаторов в кабинете учителя. */

@@ -4,22 +4,23 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
 import {
-  platformPresenceHeartbeatAction,
-  studentPresenceSnapshotAction,
   type StudentPresenceSnapshot,
 } from "@/lib/actions/presence";
 import { useT } from "@/components/i18n-provider";
 import { cn } from "@/lib/utils";
 import { platformPresence, type ClassPresence, type Presence } from "@/lib/presence";
-import { useSchoolPresence } from "@/lib/use-realtime";
+import { useRealtimeSubscription, useSchoolPresence } from "@/lib/use-realtime";
+import { createPlatformPresenceWriter, postPlatformPresence } from "@/lib/platform-presence-client";
 
 const PresenceContext = createContext<Record<string, ClassPresence>>({});
 const FALLBACK_REFRESH_MS = 30_000;
+const SNAPSHOT_REFRESH_MS = 10_000;
 
 function asMap(rows: StudentPresenceSnapshot[]) {
   return Object.fromEntries(rows.map((row) => [row.id, row.presence]));
@@ -28,29 +29,50 @@ function asMap(rows: StudentPresenceSnapshot[]) {
 function usePlatformPresenceLocation() {
   const pathname = usePathname();
   const inClass = pathname === "/student/class" || pathname === "/teacher/class";
+  const writer = useRef<ReturnType<typeof createPlatformPresenceWriter> | null>(null);
+  const [activity, setActivity] = useState({ visible: true, activeAt: 0 });
   useEffect(() => {
-    let running = false;
-    const beat = async () => {
-      if (running) return;
-      running = true;
-      try {
-        await platformPresenceHeartbeatAction(inClass);
-      } catch {
-        // Realtime remains authoritative; the next beacon recovers the fallback.
-      } finally {
-        running = false;
-      }
+    let controller: AbortController | null = null;
+    const current = createPlatformPresenceWriter(async (location) => {
+      controller = new AbortController();
+      const timeout = window.setTimeout(() => controller?.abort(), 8_000);
+      try { await postPlatformPresence(location, controller.signal); }
+      finally { window.clearTimeout(timeout); }
+    });
+    writer.current = current;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") current.heartbeat();
+    }, FALLBACK_REFRESH_MS);
+    const retry = window.setInterval(() => current.retry(), 3_000);
+    const wake = () => {
+      const visible = document.visibilityState !== "hidden";
+      setActivity({ visible, activeAt: Date.now() });
+      if (visible) current.heartbeat();
     };
-    void beat();
-    const timer = window.setInterval(() => void beat(), FALLBACK_REFRESH_MS);
-    const wake = () => document.visibilityState === "visible" && void beat();
+    const frame = requestAnimationFrame(wake);
     document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    window.addEventListener("pageshow", wake);
     return () => {
+      current.stop();
+      controller?.abort();
+      if (writer.current === current) writer.current = null;
+      cancelAnimationFrame(frame);
       window.clearInterval(timer);
+      window.clearInterval(retry);
       document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("online", wake);
+      window.removeEventListener("pageshow", wake);
     };
+  }, []);
+  useEffect(() => {
+    writer.current?.location(inClass);
+    const frame = requestAnimationFrame(() => setActivity({ visible: document.visibilityState !== "hidden", activeAt: Date.now() }));
+    return () => cancelAnimationFrame(frame);
   }, [inClass]);
-  return inClass;
+  return { inClass, ...activity };
 }
 
 /** Все точки статуса используют один опрос, независимо от их количества. */
@@ -63,44 +85,86 @@ export function StudentPresenceProvider({
   self: { id: string; name: string; role: "TEACHER" | "STUDENT" };
   children: ReactNode;
 }) {
-  const inClass = usePlatformPresenceLocation();
+  const location = usePlatformPresenceLocation();
   const [presences, setPresences] = useState<Record<string, ClassPresence>>(() => asMap(initial));
+  const [fallbackPresences, setFallbackPresences] = useState<Record<string, ClassPresence>>(() => asMap(initial));
+  const snapshot = useRef(asMap(initial));
+  const membersRef = useRef<Record<string, ClassPresence>>({});
+  const snapshotVersion = useRef(0);
+  const serverEventAt = useRef<Record<string, number>>({});
   const status = useSchoolPresence({
-    data: { role: self.role, name: self.name, inClass },
+    data: { role: self.role, name: self.name, ...location },
     onMembers: (members) => {
-      setPresences((current) => Object.fromEntries(
-        [...new Set([...Object.keys(current), ...Object.keys(members)])].map((id) => [id, members[id] ?? "offline"]),
-      ));
+      membersRef.current = members;
+      // A partial/failed school entry must not erase a fresh server heartbeat.
+      setPresences({ ...snapshot.current, ...members });
+    },
+  });
+  useRealtimeSubscription({
+    channel: "presence:school", events: "presence",
+    onMessage: (message) => {
+      const data = message.data as { userId?: unknown; presence?: unknown; observedAt?: unknown } | undefined;
+      if (typeof data?.userId !== "string" || !["online", "in_class"].includes(String(data.presence)) ||
+        typeof data.observedAt !== "number" || !Number.isFinite(data.observedAt)) return;
+      if (data.observedAt <= (serverEventAt.current[data.userId] ?? 0)) return;
+      serverEventAt.current[data.userId] = data.observedAt;
+      const presence = data.presence as ClassPresence;
+      snapshotVersion.current++;
+      snapshot.current = { ...snapshot.current, [data.userId]: presence };
+      setFallbackPresences(snapshot.current);
+      // Server beacons repair missing members, never override the active tab
+      // chosen by a real school-presence update (including a hidden class tab).
+      setPresences({ ...snapshot.current, ...membersRef.current });
     },
   });
 
   useEffect(() => {
-    if (status === "connected") return;
     let alive = true;
     let loading = false;
+    let controller: AbortController | null = null;
     const refresh = async () => {
       if (loading || document.visibilityState === "hidden") return;
       loading = true;
+      const version = snapshotVersion.current;
       try {
-        const rows = await studentPresenceSnapshotAction();
-        if (alive) setPresences(asMap(rows));
+        controller = new AbortController();
+        const timeout = window.setTimeout(() => controller?.abort(), 8_000);
+        try {
+          const response = await fetch("/api/presence", { credentials: "same-origin", cache: "no-store", signal: controller.signal });
+          if (!response.ok) return;
+          const rows: StudentPresenceSnapshot[] = await response.json();
+          if (alive && version === snapshotVersion.current && Array.isArray(rows)) {
+            snapshot.current = asMap(rows);
+            setFallbackPresences(snapshot.current);
+            setPresences({ ...snapshot.current, ...membersRef.current });
+          }
+        } finally { window.clearTimeout(timeout); }
       } catch {
         // Keep the last known snapshot on a transient server failure.
       } finally {
         loading = false;
       }
     };
-    const timer = window.setInterval(() => void refresh(), FALLBACK_REFRESH_MS);
+    void refresh();
+    // Realtime is instant; this cheap safety net also runs during a connected
+    // but incomplete presence session, not only a disconnected websocket.
+    const timer = window.setInterval(() => void refresh(), SNAPSHOT_REFRESH_MS);
     const visible = () => document.visibilityState === "visible" && void refresh();
     document.addEventListener("visibilitychange", visible);
+    window.addEventListener("focus", visible);
+    window.addEventListener("online", visible);
     return () => {
       alive = false;
+      controller?.abort();
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("focus", visible);
+      window.removeEventListener("online", visible);
     };
-  }, [status]);
+  }, []);
 
-  return <PresenceContext.Provider value={presences}>{children}</PresenceContext.Provider>;
+  // Never let a disconnected socket's cached member map override the safety snapshot.
+  return <PresenceContext.Provider value={status === "connected" ? presences : fallbackPresences}>{children}</PresenceContext.Provider>;
 }
 
 /** Keeps a student visible online even outside the class page. */
@@ -109,8 +173,8 @@ export function RealtimePresenceBeacon({
 }: {
   name: string;
 }) {
-  const inClass = usePlatformPresenceLocation();
-  useSchoolPresence({ data: { role: "STUDENT", name, inClass } });
+  const location = usePlatformPresenceLocation();
+  useSchoolPresence({ data: { role: "STUDENT", name, ...location } });
   return null;
 }
 
