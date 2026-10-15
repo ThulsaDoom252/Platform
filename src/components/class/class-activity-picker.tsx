@@ -31,6 +31,7 @@ import {
 } from "@/lib/actions/word-deck";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { CLASS_ACTIVITY_CARD_SECONDS, CLASS_ACTIVITY_WORD_DECK_DEFAULTS } from "@/lib/class-activity-defaults";
 import {
   assignRevisionPresetAction,
   listRevisionPresetsAction,
@@ -202,7 +203,10 @@ export function ClassActivityPicker({
   if (stage === "WORD_CREATE") {
     return (
       <WordDeckForm
+        key={studentId}
         activity={null}
+        defaultStudentId={studentId}
+        defaultSettings={CLASS_ACTIVITY_WORD_DECK_DEFAULTS}
         busy={busy}
         externalError={error}
         onCancel={() => go("WORD_PRESETS")}
@@ -218,7 +222,10 @@ export function ClassActivityPicker({
   if (stage === "GUESS_CREATE") {
     return (
       <GuessPicturePresetForm
+        key={studentId}
         preset={null}
+        defaultStudentId={studentId}
+        defaultSeconds={CLASS_ACTIVITY_CARD_SECONDS}
         busy={busy}
         externalError={error}
         onCancel={() => go("GUESS_PRESETS")}

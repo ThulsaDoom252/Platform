@@ -40,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { StudentPresence } from "@/components/student-presence";
 import { useUiChoice } from "@/components/ui-preferences-provider";
+import { initialActivityMaterialSource } from "@/lib/activity-material-source";
 
 type Branch = CopyNode & { children: Branch[] };
 
@@ -240,7 +241,7 @@ function GuessAssignDialog({ preset, onClose, onDone }: { preset: GuessPicturePr
   );
 }
 
-export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint }: {
+export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint, defaultStudentId, defaultSeconds }: {
   preset: GuessPicturePreset | null;
   busy: boolean;
   externalError: string | null;
@@ -249,11 +250,14 @@ export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, 
   heading?: string;
   submitLabel?: string;
   footerHint?: string;
+  defaultStudentId?: string;
+  defaultSeconds?: number;
 }) {
   const { t } = useT();
   const startingNodes = useMemo(() => presetNodeIds(preset), [preset]);
   const [trees, setTrees] = useState<CopyTree[] | null>(null);
-  const [source, setSource] = useState<"MINE" | "STUDENTS">("MINE");
+  const preferredStudentId = preset ? undefined : defaultStudentId;
+  const [source, setSource] = useState<"MINE" | "STUDENTS">(preferredStudentId ? "STUDENTS" : "MINE");
   const [studentTreeKey, setStudentTreeKey] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [nodeIds, setNodeIds] = useState(startingNodes);
@@ -265,7 +269,7 @@ export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, 
   const [mode, setMode] = useState<GameMode>(preset?.mode ?? "PICTURE");
   const [shuffleWords, setShuffleWords] = useState(preset?.shuffleWords ?? true);
   const [shuffleDecks, setShuffleDecks] = useState(preset?.shuffleDecks ?? false);
-  const [seconds, setSeconds] = useState(preset?.seconds ?? DEFAULT_TIMER_SECONDS);
+  const [seconds, setSeconds] = useState(preset?.seconds ?? defaultSeconds ?? DEFAULT_TIMER_SECONDS);
   const [customTitle, setCustomTitle] = useState<string | null>(preset?.title ?? null);
   const [error, setError] = useState<string | null>(null);
 
@@ -275,12 +279,12 @@ export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, 
       if (!alive) return;
       const usable = rows.filter((tree) => tree.scope === "PERSONAL" || tree.scope === "STUDENT");
       setTrees(usable);
-      const initialTree = usable.find((tree) => startingNodes.some((id) => tree.nodes.some((node) => node.id === id)));
-      if (initialTree?.scope === "STUDENT") { setSource("STUDENTS"); setStudentTreeKey(initialTree.key); }
-      else setStudentTreeKey(usable.find((tree) => tree.scope === "STUDENT")?.key ?? "");
+      const initial = initialActivityMaterialSource(usable, startingNodes, preferredStudentId);
+      setSource(initial.source);
+      setStudentTreeKey(initial.studentTreeKey);
     }).catch(() => alive && setError(t.wordDeck.materialsFailed));
     return () => { alive = false; };
-  }, [startingNodes, t.wordDeck.materialsFailed]);
+  }, [startingNodes, preferredStudentId, t.wordDeck.materialsFailed]);
 
   const nodeKey = nodeIds.join("|");
   useEffect(() => {
@@ -343,8 +347,8 @@ export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, 
   return (
     <section className="activity-panel-in rounded-3xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-6">
       <div className="flex items-center gap-3"><button type="button" onClick={onCancel} className="rounded-xl border border-line px-3 py-2 text-sm font-bold text-muted">← {t.wordDeck.back}</button><h2 className="text-xl font-black text-content">{heading ?? (preset ? t.game.editPreset : t.game.newPreset)}</h2></div>
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
-        <div className="flex flex-col gap-5">
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
+        <div className="flex min-w-0 flex-col gap-5">
           <label><span className="text-xs font-bold text-muted">{t.wordDeck.gameTitle}</span><input value={title} onChange={(event) => setCustomTitle(event.target.value)} placeholder={t.wordDeck.titlePlaceholder} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none focus:border-accent" /></label>
           <div><p className="text-xs font-bold text-muted">{t.game.modeTitle}</p><div className="mt-2 grid gap-2 sm:grid-cols-3">{(["PICTURE", "TRANSLATION", "MIXED"] as const).map((value) => <button key={value} type="button" onClick={() => setMode(value)} className={cn("rounded-xl p-3 text-left ring-1", mode === value ? "bg-accent-soft text-accent ring-accent" : "bg-surface-2 text-muted ring-line")}><span className="block text-sm font-black">{value === "PICTURE" ? t.game.modePicture : value === "TRANSLATION" ? t.game.modeTranslation : t.game.modeMixed}</span></button>)}</div></div>
           <div>
@@ -360,7 +364,7 @@ export function GuessPicturePresetForm({ preset, busy, externalError, onCancel, 
             {!loadingWords && currentGroup && <><div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3"><span className="text-xs text-faint">{fmt(t.wordDeck.selectedInVocab, { selected: currentGroup.words.filter((word) => selected.has(word.phraseId) && readyForMode(word, mode)).length, total: currentGroup.words.filter((word) => readyForMode(word, mode)).length })}</span><div className="flex gap-2"><button type="button" onClick={() => setSelected((current) => { const next = new Set(current); currentGroup.words.filter((word) => readyForMode(word, mode)).forEach((word) => next.add(word.phraseId)); return next; })} className="text-xs font-bold text-accent">{t.wordDeck.selectAll}</button><button type="button" onClick={() => setSelected((current) => { const next = new Set(current); currentGroup.words.forEach((word) => next.delete(word.phraseId)); return next; })} className="text-xs font-bold text-muted">{t.wordDeck.selectNone}</button></div></div><div className="mt-2 grid max-h-64 gap-1 overflow-y-auto sm:grid-cols-2">{currentGroup.words.map((word) => { const unavailable = !readyForMode(word, mode); const checked = selected.has(word.phraseId) && !unavailable; return <button key={word.phraseId} type="button" disabled={unavailable} onClick={() => toggleWord(word.phraseId)} className={cn("flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold", checked ? "bg-accent-soft text-accent" : "bg-surface text-muted", unavailable && "opacity-40")}><span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", checked ? "border-accent bg-accent text-white" : "border-line")}>{checked && <IconCheck className="h-3 w-3" />}</span><span className="truncate">{word.word}</span></button>; })}</div></>}
           </div>
         </div>
-        <aside className="flex flex-col gap-3">
+        <aside className="flex min-w-0 flex-col gap-3">
           <label className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 p-3"><span className="text-sm font-bold text-content">{t.game.seconds}</span><TimerNumberInput min={0} max={120} value={seconds} onChange={setSeconds} className="h-9 w-20 rounded-xl border border-line bg-surface px-3 text-sm text-content" /></label>
           <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-surface-2 p-3"><input type="checkbox" checked={shuffleWords} onChange={(event) => setShuffleWords(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)]" /><span><span className="block text-sm font-bold text-content">{t.game.shuffleWords}</span><span className="block text-xs text-faint">{t.game.shuffleWordsHint}</span></span></label>
           <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-surface-2 p-3"><input type="checkbox" checked={shuffleDecks} onChange={(event) => setShuffleDecks(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent)]" /><span><span className="block text-sm font-bold text-content">{t.game.shuffleDecks}</span><span className="block text-xs text-faint">{t.game.shuffleDecksHint}</span></span></label>

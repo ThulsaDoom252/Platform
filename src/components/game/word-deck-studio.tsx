@@ -50,6 +50,7 @@ import { TenseCorrectionForm } from "./tense-correction-studio";
 import { StudentPresence } from "@/components/student-presence";
 import { cn } from "@/lib/utils";
 import { useUiChoice } from "@/components/ui-preferences-provider";
+import { initialActivityMaterialSource } from "@/lib/activity-material-source";
 
 const input =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition focus:border-accent";
@@ -375,7 +376,7 @@ export function WordDeckForm(props: ComponentProps<typeof VocabularyWordDeckForm
     : <VocabularyWordDeckForm {...props} />;
 }
 
-function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint, forcedGameType, includeSpellingType = false }: {
+function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSave, heading, submitLabel, footerHint, forcedGameType, includeSpellingType = false, defaultStudentId, defaultSettings }: {
   activity: WordDeckActivity | null;
   busy: boolean;
   externalError: string | null;
@@ -386,12 +387,15 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
   footerHint?: string;
   forcedGameType?: "SPELLING";
   includeSpellingType?: boolean;
+  defaultStudentId?: string;
+  defaultSettings?: Partial<WordDeckSettings>;
 }) {
   const { t, locale } = useT();
   const startingNodes = useMemo(() => initialNodeIds(activity), [activity]);
   const [customTitle, setCustomTitle] = useState<string | null>(activity?.title ?? null);
   const [trees, setTrees] = useState<CopyTree[] | null>(null);
-  const [source, setSource] = useState<"MINE" | "STUDENTS">("MINE");
+  const preferredStudentId = activity ? undefined : defaultStudentId;
+  const [source, setSource] = useState<"MINE" | "STUDENTS">(preferredStudentId ? "STUDENTS" : "MINE");
   const [studentTreeKey, setStudentTreeKey] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [nodeIds, setNodeIds] = useState<string[]>(startingNodes);
@@ -403,8 +407,9 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
   const [activeGroup, setActiveGroup] = useState(0);
   const [loadingWords, setLoadingWords] = useState(startingNodes.length > 0);
   const [settings, setSettings] = useState<WordDeckSettings>(() => normalizeWordDeckSettings({
-    ...(activity?.settings ?? DEFAULT_WORD_DECK_SETTINGS),
+    ...(activity?.settings ?? { ...DEFAULT_WORD_DECK_SETTINGS, ...defaultSettings }),
     ...(forcedGameType ? { gameType: forcedGameType } : {}),
+    ...(forcedGameType === "SPELLING" ? { alternate: false } : {}),
   }));
   const [combinedTimersConfigured, setCombinedTimersConfigured] = useState(
     activity?.settings.gameType === "DESCRIPTION_SENTENCE" || Boolean(activity && (
@@ -435,17 +440,13 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
         if (!alive) return;
         const usable = rows.filter((tree) => tree.scope === "PERSONAL" || tree.scope === "STUDENT");
         setTrees(usable);
-        const initialTree = usable.find((tree) => startingNodes.some((id) => tree.nodes.some((node) => node.id === id)));
-        if (initialTree?.scope === "STUDENT") {
-          setSource("STUDENTS");
-          setStudentTreeKey(initialTree.key);
-        } else {
-          setStudentTreeKey(usable.find((tree) => tree.scope === "STUDENT")?.key ?? "");
-        }
+        const initial = initialActivityMaterialSource(usable, startingNodes, preferredStudentId);
+        setSource(initial.source);
+        setStudentTreeKey(initial.studentTreeKey);
       })
       .catch(() => alive && setError(t.wordDeck.materialsFailed));
     return () => { alive = false; };
-  }, [startingNodes, t.wordDeck.materialsFailed]);
+  }, [startingNodes, preferredStudentId, t.wordDeck.materialsFailed]);
 
   const nodeKey = nodeIds.join("|");
   useEffect(() => {
@@ -598,8 +599,8 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
         <h2 className="text-xl font-black text-content">{heading ?? (activity ? t.wordDeck.editGame : t.wordDeck.newGame)}</h2>
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="flex flex-col gap-5">
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-5">
           {!forcedGameType && <div>
             <p className="text-xs font-bold text-muted">{t.wordDeck.gameType}</p>
             <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
@@ -651,10 +652,10 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
           <div>
             <p className="text-xs font-bold text-muted">{t.wordDeck.chooseSource}</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setSource("MINE")} className={cn("flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold ring-1 transition", source === "MINE" ? "bg-accent text-white ring-accent" : "bg-surface-2 text-muted ring-line")}>
+              <button type="button" aria-pressed={source === "MINE"} onClick={() => setSource("MINE")} className={cn("flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold ring-1 transition", source === "MINE" ? "bg-accent text-white ring-accent" : "bg-surface-2 text-muted ring-line")}>
                 <IconFolder className="h-4 w-4" /> {t.wordDeck.myMaterials}
               </button>
-              <button type="button" onClick={() => setSource("STUDENTS")} className={cn("flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold ring-1 transition", source === "STUDENTS" ? "bg-accent text-white ring-accent" : "bg-surface-2 text-muted ring-line")}>
+              <button type="button" aria-pressed={source === "STUDENTS"} onClick={() => setSource("STUDENTS")} className={cn("flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold ring-1 transition", source === "STUDENTS" ? "bg-accent text-white ring-accent" : "bg-surface-2 text-muted ring-line")}>
                 <IconUsers className="h-4 w-4" /> {t.wordDeck.students}
               </button>
             </div>
@@ -662,7 +663,7 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
             {source === "STUDENTS" && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {studentTrees.map((student) => (
-                  <button key={student.key} type="button" onClick={() => setStudentTreeKey(student.key)} className={cn("rounded-lg px-3 py-1.5 text-xs font-bold", student.key === studentTreeKey ? "bg-accent-soft text-accent ring-1 ring-accent" : "bg-surface-2 text-muted")}>{student.short}</button>
+                  <button key={student.key} type="button" aria-pressed={student.key === studentTreeKey} onClick={() => setStudentTreeKey(student.key)} className={cn("rounded-lg px-3 py-1.5 text-xs font-bold", student.key === studentTreeKey ? "bg-accent-soft text-accent ring-1 ring-accent" : "bg-surface-2 text-muted")}>{student.short}</button>
                 ))}
               </div>
             )}
@@ -750,7 +751,7 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
               <span className="text-xs font-bold text-muted">{t.wordDeck.timer}</span>
               <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1">
                 {(["NONE", "GAME", "CARD"] as const).map((mode) => (
-                  <button key={mode} type="button" onClick={() => setSettings((value) => ({ ...value, timerMode: mode }))} className={cn("rounded-lg px-2 py-2 text-[11px] font-bold", settings.timerMode === mode ? "bg-accent text-white" : "text-muted")}>{mode === "NONE" ? t.wordDeck.timerNone : mode === "GAME" ? t.wordDeck.timerGame : t.wordDeck.timerCard}</button>
+                  <button key={mode} type="button" aria-pressed={settings.timerMode === mode} onClick={() => setSettings((value) => ({ ...value, timerMode: mode }))} className={cn("rounded-lg px-2 py-2 text-[11px] font-bold", settings.timerMode === mode ? "bg-accent text-white" : "text-muted")}>{mode === "NONE" ? t.wordDeck.timerNone : mode === "GAME" ? t.wordDeck.timerGame : t.wordDeck.timerCard}</button>
                 ))}
               </div>
             </div>
@@ -818,14 +819,14 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
                 <div className="flex justify-between text-xs font-bold text-muted"><span>{t.wordDeck.forTeacher}</span><span>{t.wordDeck.forStudent}: {settings.studentPercent}%</span></div>
                 <input type="range" min={0} max={100} step={5} value={settings.studentPercent} onChange={(event) => setSettings((value) => ({ ...value, studentPercent: Number(event.target.value) }))} className="mt-2 w-full accent-[var(--accent)]" />
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {ratioPresets.map((preset) => <button key={preset.value} type="button" onClick={() => setSettings((value) => ({ ...value, studentPercent: preset.value }))} className={cn("rounded-full px-2.5 py-1 text-[10px] font-bold", settings.studentPercent === preset.value ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{preset.label}</button>)}
+                  {ratioPresets.map((preset) => <button key={preset.value} type="button" aria-pressed={settings.studentPercent === preset.value} onClick={() => setSettings((value) => ({ ...value, studentPercent: preset.value }))} className={cn("rounded-full px-2.5 py-1 text-[10px] font-bold", settings.studentPercent === preset.value ? "bg-accent text-white" : "bg-surface-2 text-muted")}>{preset.label}</button>)}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        <aside>
+        <aside className="min-w-0">
           <p className="text-xs font-bold text-muted">{t.wordDeck.backgrounds}</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {backgroundChoices.map((choice) => (
