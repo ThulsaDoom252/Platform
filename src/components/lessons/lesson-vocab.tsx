@@ -15,7 +15,6 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/i18n-provider";
-import { fmt } from "@/lib/i18n";
 import { hasTranscription } from "@/lib/phrase-words";
 import { SpeakPair, useSpeech } from "@/components/materials/speech";
 import { LessonVocabToMaterials } from "@/components/lessons/lesson-vocab-to-materials";
@@ -164,6 +163,7 @@ export function LessonVocab({
           <h2 data-focus-id={integratedHeader ? "heading" : undefined} onClick={onHeadingClick}
             title={onHeadingClick ? t.lessonUnits.focusElement : undefined} className="min-w-0 break-words text-base font-black text-content">
             {sectionTitle ?? t.lessonUnits.secVocab}
+            {teacher && <span className="whitespace-nowrap text-sm font-semibold text-muted"> ({words.length})</span>}
           </h2>
           {teacher && unitId && lessonTitle && <span data-no-lesson-highlight className="shrink-0">
             <LessonVocabToMaterials iconOnly unitId={unitId} lessonTitle={lessonTitle} defaultStudentId={defaultStudentId} />
@@ -234,7 +234,6 @@ export function LessonVocab({
         )}
       </div>
       <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col gap-3", integratedHeader && "p-4 pt-1 sm:p-6 sm:pt-2")}>
-      <p className="text-[12px] font-semibold text-faint">{fmt(t.lessonUnits.words, { n: words.length })}</p>
       {translationError && (
         <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200">
           {translationError}
