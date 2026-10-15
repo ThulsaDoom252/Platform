@@ -246,10 +246,7 @@ export function AssignedLesson({
       data-lesson-highlight-scope="lesson-topic"
       className="overflow-hidden rounded-2xl border border-line bg-gradient-to-r from-accent-soft via-surface to-surface px-4 py-3 shadow-sm sm:px-5 sm:py-4"
     >
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">
-        {t.lessonUnits.topic}
-      </p>
-      <div className="mt-1 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="min-w-0 basis-full flex-1 text-xl font-black leading-tight text-content sm:basis-auto sm:text-2xl">
           {data.lesson.title}
         </h1>

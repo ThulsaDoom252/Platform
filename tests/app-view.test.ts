@@ -206,13 +206,16 @@ test("the actual ClassRoom renders participants exactly once for both views, rol
       "@/lib/utils": { cn: (...values: unknown[]) => values.filter(Boolean).join(" ") },
       "@/lib/use-realtime": { useRealtimeSubscription() {} },
     });
+    imports["./class-student-menu"] = compile("components/class/class-student-menu.tsx", {
+      ...imports, react: React, "react-dom": { createPortal: (child: React.ReactNode) => child },
+    });
     const Room = compile("components/class/class-room.tsx", imports).ClassRoom as React.ComponentType<{ role: string; selfId: string; selfName: string }>;
     const html = renderToStaticMarkup(React.createElement(Room, { role: teacher ? "TEACHER" : "STUDENT", selfId: "self", selfName: "Self" }));
     assert.equal(html.match(/data-class-participants=/g)?.length, 1);
     const placement = classParticipantsPlacement(view, teacher, loaded).toLowerCase().replace("_", "-");
     assert.ok(html.includes(`data-participants-placement="${placement}"`), `${view}/${teacher}/${loaded}: placement`);
-    if (teacher) assert.ok(html.includes('/teacher/homeworks?student=partner-1'));
-    else assert.ok(!html.includes('/teacher/homeworks?student='));
+    assert.equal(html.includes('aria-haspopup="menu"'), teacher);
+    assert.ok(!html.includes('/teacher/homeworks?student=partner-1'), "Student actions remain inside the closed dropdown");
     assert.ok(html.includes("class-utility-bar"));
   }
 });

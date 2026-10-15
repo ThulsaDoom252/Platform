@@ -18,6 +18,7 @@ import { NotebookPen } from "lucide-react";
 import { useAppView } from "@/components/app-view-provider";
 import { classParticipantsPlacement } from "@/lib/app-view";
 import { ClassMaterialToolbar } from "./class-material-toolbar";
+import { ClassLeaveButton, ClassStudentMenu } from "./class-student-menu";
 import { useT } from "@/components/i18n-provider";
 import { fmt } from "@/lib/i18n";
 import {
@@ -63,7 +64,6 @@ import {
   IconList,
   IconX,
   IconUser,
-  IconCap,
 } from "@/components/icons";
 const ClassScript = dynamic(() => import("./class-script").then((m) => m.ClassScript));
 const ClassBoard = dynamic(() => import("./class-board").then((m) => m.ClassBoard));
@@ -704,40 +704,23 @@ export function ClassRoom({
         </div>
 
         {partner ? (
-          /* Аватар ученика раскрывается отдельно и не уводит учителя из
-             класса. Имя по-прежнему ведёт в рабочую карточку ученика. */
           teacher ? (
-            <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
-              <button
-                type="button"
-                onClick={() => setAvatarPreview(true)}
-                title={fmt(t.classRoom.viewAvatar, { name: partner.name })}
-                aria-label={fmt(t.classRoom.viewAvatar, { name: partner.name })}
-                className="relative rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                <Avatar
-                  name={partner.name}
-                  src={partner.avatarUrl}
-                  className="h-9 w-9 text-sm ring-1 ring-line"
-                />
-                <span className="absolute -bottom-0.5 -right-0.5">
-                  <PresenceIndicator presence={partner.presence} showClassStatus />
-                </span>
-              </button>
-              <Link
-                href={`/teacher/students/${partner.id}`}
-                title={fmt(t.classRoom.profileOf, { name: partner.name })}
-                className="group flex items-center gap-2"
-              >
-                <span className="text-sm font-semibold text-content group-hover:text-accent">
-                  {partner.name}
-                </span>
-                <span className="text-[11px] text-faint">
-                  {presenceLabel(partner.presence)}
-                </span>
-                <IconUser className="h-3.5 w-3.5 text-faint transition group-hover:text-accent" />
-              </Link>
-            </div>
+            <ClassStudentMenu key={partner.id} student={partner} summonBusy={summonBusy}
+              onViewAvatar={() => setAvatarPreview(true)}
+              onBringToClass={() => startSummon(async () => {
+                const studentId = partner.id;
+                setSummonNotice(null);
+                try {
+                  const result = await sendClassSummons(studentId);
+                  if (result.error || !result.expiresAt) {
+                    setSummonNotice(result.error ?? t.classRoom.bringToClassRetry);
+                    return;
+                  }
+                  setSummonPending({ studentId, expiresAt: result.expiresAt });
+                  setSummonNotice(t.classRoom.bringToClassPending);
+                } catch { setSummonNotice(t.classRoom.bringToClassRetry); }
+              })}
+            />
           ) : (
             <div className="flex items-center gap-2 rounded-xl bg-surface py-1.5 pl-1.5 pr-3 ring-1 ring-line">
               <button
@@ -775,53 +758,12 @@ export function ClassRoom({
           <span className="text-xs font-semibold text-rose-500">{profileError}</span>
         )}
 
-        {teacher && partner && (
-          <Link
-            href={`/teacher/homeworks?student=${encodeURIComponent(partner.id)}`}
-            title={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
-            aria-label={fmt(t.classRoom.studentHomeworkTitle, { name: partner.name })}
-            className="flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-bold text-content transition hover:border-accent hover:text-accent"
-          >
-            <IconFile className="h-4 w-4" />
-            {t.classRoom.studentHomework}
-          </Link>
-        )}
-
-        {teacher && partner && (
-          <button
-            type="button"
-            disabled={summonBusy}
-            aria-busy={summonBusy}
-            onClick={() => startSummon(async () => {
-              const studentId = partner.id;
-              setSummonNotice(null);
-              try {
-                const result = await sendClassSummons(studentId);
-                if (result.error || !result.expiresAt) {
-                  setSummonNotice(result.error ?? t.classRoom.bringToClassRetry);
-                  return;
-                }
-                setSummonPending({ studentId, expiresAt: result.expiresAt });
-                setSummonNotice(t.classRoom.bringToClassPending);
-              } catch { setSummonNotice(t.classRoom.bringToClassRetry); }
-            })}
-            title={t.classRoom.bringToClass}
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12px] font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <IconCap className="h-4 w-4" />
-            {summonBusy ? t.classRoom.bringToClassSending : t.classRoom.bringToClass}
-          </button>
-        )}
-
         {summonNotice && (
           <span role="status" aria-live="polite" className="text-xs font-semibold text-accent">{summonNotice}</span>
         )}
 
         {teacher && partner && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => startBusy(async () => {
+          <ClassLeaveButton busy={busy} onLeave={() => startBusy(async () => {
               await leaveClassAction();
               setPartner(null);
               setActiveLessonId(null);
@@ -829,11 +771,7 @@ export function ClassRoom({
               setShowTimer(false);
               setShowReactions(false);
               setNonce((n) => n + 1);
-            })}
-            className="ml-auto flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-content transition hover:border-rose-400 hover:text-rose-500"
-          >
-            <IconX className="h-4 w-4" /> {t.classRoom.leave}
-          </button>
+            })} />
         )}
       </div>
   );

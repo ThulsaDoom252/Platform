@@ -80,8 +80,11 @@ test("class header and list consume the same live presence, including the summon
   const source = readFileSync("src/components/class/class-room.tsx", "utf8");
   assert.ok(source.includes("presence: livePresences[partnerSnapshot.id] ?? partnerSnapshot.presence"));
   assert.ok(source.includes("presence: livePresences[person.id] ?? person.presence"));
-  assert.equal((source.match(/<PresenceIndicator presence=\{(?:p|partner)\.presence\} showClassStatus/g) ?? []).length, 3);
-  assert.ok(source.includes('disabled={summonBusy}'));
+  assert.equal((source.match(/<PresenceIndicator presence=\{(?:p|partner)\.presence\} showClassStatus/g) ?? []).length, 2);
+  const menu = readFileSync("src/components/class/class-student-menu.tsx", "utf8");
+  assert.ok(menu.includes('<PresenceIndicator presence={student.presence} showClassStatus'));
+  assert.ok(source.includes('student={partner} summonBusy={summonBusy}'));
+  assert.ok(menu.includes('disabled={summonBusy}'));
   assert.ok(!source.includes('disabled={busy || platformPresence(partner.presence) === "offline"}'));
   assert.ok(source.includes('partner.presence === "in_class"'));
   assert.ok(source.includes('setSummonNotice(t.classRoom.bringToClassPending)'));

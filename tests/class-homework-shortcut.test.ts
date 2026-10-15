@@ -24,19 +24,21 @@ function compile(source: string, require: (name: string) => unknown) {
 const Link = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => React.createElement("a", props, children);
 const Icon = () => React.createElement("svg", { "aria-hidden": true });
 const room = readFileSync("src/components/class/class-room.tsx", "utf8");
-const ast = ts.createSourceFile("class-room.tsx", room, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const menu = readFileSync("src/components/class/class-student-menu.tsx", "utf8");
+const ast = ts.createSourceFile("class-student-menu.tsx", menu, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const candidates: string[] = [];
 function visit(node: ts.Node) {
-  if (ts.isJsxExpression(node)) {
+  if (ts.isJsxElement(node)) {
     const text = node.getText(ast);
-    if (text.startsWith("{teacher && partner && (") && text.includes('href={`/teacher/homeworks?student=')) candidates.push(text);
+    if (node.openingElement.tagName.getText(ast) === "Link" && node.openingElement.getText(ast).includes('href={`/teacher/homeworks?student=')) candidates.push(text);
   }
   ts.forEachChild(node, visit);
 }
 visit(ast);
-assert.equal(candidates.length, 1, "class header must expose one teacher-only student shortcut");
+assert.equal(candidates.length, 1, "student menu must expose one homework shortcut");
+assert(room.includes('<ClassStudentMenu key={partner.id} student={partner}'));
 const shortcutModule = compile(`import Link from 'next/link'; import {IconFile} from '@/components/icons'; import {fmt} from '@/lib/i18n';
-export default function Shortcut({teacher,partner,t}) { return <>${candidates[0]}</>; }`, name => {
+export default function Shortcut({teacher,partner,t}) { const student=partner; const row='menu-row'; const close=()=>{}; return <>{teacher && partner && (${candidates[0]})}</>; }`, name => {
   if (name === "react/jsx-runtime") return jsxRuntime;
   if (name === "next/link") return { default: Link };
   if (name === "@/components/icons") return { IconFile: Icon };

@@ -33,6 +33,7 @@ test("both lesson types share responsive topic actions, restricted to the teache
   assert.ok(topic.includes("onClick={() => setEditingLesson(true)}"));
   assert.ok(topic.includes("{t.lessonUnits.changeClass}"));
   assert.ok(topic.includes('data-no-lesson-highlight className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2"'));
-  assert.ok(topic.includes('className="mt-1 flex flex-wrap items-center gap-3"'));
+  assert.ok(topic.includes('className="flex flex-wrap items-center gap-3"'));
+  assert.ok(!topic.includes("t.lessonUnits.topic"));
   assert.equal((assigned.match(/\{topic\}/g) ?? []).length, 2);
 });
