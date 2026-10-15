@@ -13,6 +13,7 @@ import * as homeworkMedia from "../src/lib/homework-media";
 import { buildWaltMeetsGusHomework } from "../src/lib/bundled-lessons/breaking-bad-walt-meets-gus-homework";
 import { feelingsLessonFromHtml } from "../src/lib/bundled-lessons/c1-feelings-and-emotions";
 import { buildC1VagueLanguageLesson } from "../src/lib/bundled-lessons/c1-vague-language";
+import { buildPopularQuestionsHomework } from "../src/lib/bundled-lessons/a2-popular-questions-homework";
 import type { LessonView } from "../src/lib/actions/lessons";
 import type { InteractiveHomeworkSession } from "../src/components/lessons/interactive-homework";
 
@@ -25,6 +26,7 @@ const definitions = [
   { name: "Walt meets Gus", kind: "ACTIVITY" as const, plan: buildWaltMeetsGusHomework(), blocks: 8, items: 39 },
   { name: feelings.title, kind: "REGULAR" as const, plan: feelings.homework[0], blocks: 19, items: 189 },
   { name: vague.title, kind: "REGULAR" as const, plan: vague.homework[0], blocks: 5, items: 17 },
+  { name: "A2 · Popular questions", kind: "REGULAR" as const, plan: buildPopularQuestionsHomework(), blocks: 7, items: 20 },
 ];
 
 function compile(code: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}) {
@@ -111,7 +113,7 @@ function assignedLessonHarness() {
   };
 }
 
-test("all three reusable lessons expose complete homework before any new student assignment is created", () => {
+test("all reusable lessons expose complete homework before any new student assignment is created", () => {
   for (const definition of definitions) {
     const plan = homework.interactiveHomeworkFromEntries([definition.plan]);
     assert.ok(plan, definition.name);

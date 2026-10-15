@@ -1,4 +1,4 @@
-import type { InteractiveHomeworkPlan } from "../lesson-homework";
+import { buildPopularQuestionsHomework } from "./a2-popular-questions-homework";
 import type { LessonWord } from "../lesson-unit";
 import {
   addRegularLessonFocusIds,
@@ -212,8 +212,7 @@ export function buildA2PopularQuestionsLesson(studentSource: string, teacherSour
     title: POPULAR_QUESTIONS_LESSON_TITLE,
     description: "Getting to Know People · 9 popular questions & helper words · can / should / had better · conditionals 0 / 1 / 2 · translation · a complete reading & two dialogues.",
     sections: normalized, words,
-    // The supplied teacher notes name a separate DOCX, which was not supplied. Do not invent homework.
-    homework: [] as InteractiveHomeworkPlan[],
+    homework: [buildPopularQuestionsHomework()],
   };
 }
 

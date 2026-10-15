@@ -72,7 +72,7 @@ async function main() {
   assert(lesson.sections.length === 12, "All source sections and native support sections are required");
   assert(publicRegularLessonSections(lesson.sections).length === 11, "Teacher notes must remain private");
   assert(lesson.sections.reduce((sum, section) => sum + regularAnswerMap(section).size, 0) === 81, "All 81 keyed lesson controls are required");
-  assert(lesson.homework.length === 0, "Do not invent homework absent from the supplied lesson");
+  assert(lesson.homework.length === 1 && lesson.homework[0].exercises.length === 7, "Popular questions includes its reviewed short homework");
   const openSections = defaultRegularOpenSections(lesson.sections);
   assert(openSections.length > 0, "New assignments need an initial visible section");
 
@@ -204,7 +204,7 @@ async function main() {
       title: lesson.title, lessonId, lessonAlreadyExisted: Boolean(existingLesson), wouldCreateLesson: !existingLesson,
       assignmentId, assignmentAlreadyExisted: Boolean(existingAssignment), wouldCreateAssignment: !existingAssignment,
       words: lesson.words.length, studentSections: publicRegularLessonSections(lesson.sections).length,
-      teacherSections: lesson.sections.length, automaticLessonAnswers: 81, homeworkExercises: 0,
+      teacherSections: lesson.sections.length, automaticLessonAnswers: 81, homeworkExercises: lesson.homework[0].exercises.length,
       activeLessonChanged: apply && switchActive, wouldChangeActiveLesson: switchActive,
       previousActiveAssignmentId: previousActiveId, previousActiveTitle: previousAssignment?.title ?? null,
       previousAnswerFieldsPreserved: Object.keys(previousAssignment?.answers ?? {}).length,

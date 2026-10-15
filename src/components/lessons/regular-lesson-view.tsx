@@ -123,19 +123,35 @@ function homeworkInstruction(value: string) {
   return value.replace(/\s*Then press Check\.?\s*$/i, "").trim();
 }
 
+/** A copied comprehension exercise needs the complete public passage, not its keys. */
+function homeworkReference(section: RegularLessonSection, parser: DOMParser) {
+  if (section.teacherOnly || !["reading", "dialogue"].includes(section.tone)) return {};
+  const passage = section.studentHtml.split(/<h3\b|<ol\b/i)[0];
+  const doc = parser.parseFromString(passage, "text/html");
+  const paragraphs = [...doc.querySelectorAll("p")].filter(
+    (paragraph) => !paragraph.closest(".key, .key-wrap, .teacher-note, .instr, .note, .tip"),
+  );
+  const referenceText = paragraphs.map((paragraph) => cleanText(paragraph.textContent))
+    .filter(Boolean).join("\n\n");
+  return referenceText ? { referenceTitle: section.title, referenceText } : {};
+}
+
 /** Extract a real exercise from the imported HTML, never a grammar explanation. */
 function homeworkCandidates(
   section: RegularLessonSection,
   state: Record<string, string>,
 ): HomeworkCandidate[] {
-  if (typeof DOMParser === "undefined") return [];
+  if (section.teacherOnly || section.tone === "teacher" || typeof DOMParser === "undefined") return [];
   const parser = new DOMParser();
   const studentDoc = parser.parseFromString(`<main>${section.studentHtml}</main>`, "text/html");
   const teacherDoc = parser.parseFromString(`<main>${section.teacherHtml}</main>`, "text/html");
-  const studentLists = [...studentDoc.querySelectorAll("ol")];
+  const studentLists = [...studentDoc.querySelectorAll("ol")].filter(
+    (list) => !list.closest(".key, .key-wrap, .teacher-note"),
+  );
   const teacherLists = [...teacherDoc.querySelectorAll("ol")].filter(
     (list) => !list.closest(".key, .key-wrap, .teacher-note"),
   );
+  const reference = homeworkReference(section, parser);
   const candidates: HomeworkCandidate[] = [];
 
   studentLists.forEach((list, listIndex) => {
@@ -144,9 +160,7 @@ function homeworkCandidates(
     const hasTrueFalse = !!list.querySelector(".tfbox");
     const translation = list.classList.contains("translation-check");
     const heading = headingBefore(list);
-    const isOpenQuestions = /questions|small talk|personal questions/i.test(
-      `${heading} ${section.title}`,
-    );
+    const isOpenQuestions = isOpenQuestionList(list, section);
     if (!hasBlank && !hasTrueFalse && !isOpenQuestions) return;
 
     const studentItems = [...list.querySelectorAll(":scope > li")];
@@ -263,7 +277,7 @@ function homeworkCandidates(
     candidates.push({
       label: title,
       listIndex: listIndex + 1,
-      exercise,
+      exercise: { ...exercise, ...reference },
       editor,
       translation,
     });
@@ -272,10 +286,14 @@ function homeworkCandidates(
   return candidates;
 }
 
-function isOpenQuestionList(list: HTMLOListElement, section: RegularLessonSection) {
-  return /questions|small talk|personal questions/i.test(
-    `${headingBefore(list)} ${section.title}`,
-  );
+function isOpenQuestionList(list: Element, section: RegularLessonSection) {
+  if (section.teacherOnly || section.tone === "teacher" ||
+    list.closest(".key, .key-wrap, .teacher-note, .instr, .note, .tip, .support, .vcard")) return false;
+  if (/questions|small talk|personal questions/i.test(`${headingBefore(list)} ${section.title}`)) return true;
+  // Revision/warm-up headings do not necessarily say "Questions". Recognise
+  // a real set of question prompts without treating ordinary numbered notes as tasks.
+  const items = [...list.querySelectorAll(":scope > li")];
+  return items.length > 0 && items.every((item) => /\?\s*$/.test(cleanText(item.textContent)));
 }
 
 export function RegularLessonView({

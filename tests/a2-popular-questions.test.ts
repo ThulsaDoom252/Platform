@@ -25,11 +25,12 @@ const items = (html: string) => [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g
 const matches = (number: number, id: string, answer: string) => regularAnswerMap(section(number)).get(id)?.accepted
   .map(normalizeHomeworkAnswer).includes(normalizeHomeworkAnswer(answer));
 
-test("Popular questions preserves all ten lesson blocks, a visible guidance block and private teacher notes without invented homework", () => {
+test("Popular questions preserves all ten lesson blocks, a visible guidance block and private teacher notes alongside its short homework", () => {
   assert.equal(lesson.title, "A2 · Popular questions");
   assert.equal(lesson.title, POPULAR_QUESTIONS_LESSON_TITLE);
   assert.equal(lesson.sections.length, 12);
-  assert.equal(lesson.homework.length, 0);
+  assert.equal(lesson.homework.length, 1);
+  assert.equal(lesson.homework[0].exercises.length, 7);
   assert.equal(regularLessonReaderSections(lesson.sections, false).length, 11);
   assert.equal(regularLessonReaderSections(lesson.sections, true).length, 11);
   assert.deepEqual(defaultRegularOpenSections(lesson.sections), ["regular:popular-questions-02"]);
