@@ -693,6 +693,8 @@ export async function quickVerbsAction(): Promise<QuickVerb[]> {
 /* ------------------------------------------------------------------ */
 
 export type ClassSync = {
+  /** The student whose live snapshot this is, including vocabulary events. */
+  studentId: string | null;
   /** Какой выданный урок сейчас открыт в классе. */
   lessonAssignmentId: string | null;
   /** Явная команда только для доски или возврата к уроку. */
@@ -760,6 +762,7 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
 
   if (!me) {
     return {
+      studentId: null,
       lessonAssignmentId: null,
       view: null,
       partnerOnBoard: false,
@@ -993,6 +996,7 @@ export async function classSyncAction(onBoard = false): Promise<ClassSync> {
   }
 
   return {
+    studentId,
     lessonAssignmentId:
       me.role === "TEACHER"
         ? (partner?.classFocus?.lessonAssignmentId ?? null)

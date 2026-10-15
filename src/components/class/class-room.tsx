@@ -11,7 +11,7 @@
  * Изменения класса приходят по WebSocket. Серверные чтения выполняются
  * только после события или как редкая страховка при недоступном realtime.
  */
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
@@ -77,6 +77,7 @@ const ClassActivities = dynamic(() => import("./class-activities").then((m) => m
 const ClassLesson = dynamic(() => import("./class-lesson").then((m) => m.ClassLesson));
 const ClassVocabulary = dynamic(() => import("./class-vocabulary").then((m) => m.ClassVocabulary));
 import type { ClassVocabularyWord } from "@/lib/actions/class-vocabulary";
+import { createClassVocabularyNoticeTracker } from "@/lib/class-vocabulary-notices";
 import {
   SelectionTranslationPopover,
   type ClassTextSelection,
@@ -186,11 +187,12 @@ export function ClassRoom({
     elementId: string | null;
     at: string;
   } | null>(null);
-  const [textSelection, setTextSelection] = useState<ClassTextSelection | null>(null);
+  const [textSelection, setTextSelection] = useState<(ClassTextSelection & { session: object }) | null>(null);
   const [vocabularyNotice, setVocabularyNotice] = useState<{
     id: string;
     english: string;
     translation: string;
+    session: object;
   } | null>(null);
   const [busy, startBusy] = useTransition();
   const [profileBusy, startProfile] = useTransition();
@@ -208,8 +210,7 @@ export function ClassRoom({
   const appliedGameReviewNotice = useRef<string | null>(null);
   const seenReactionIds = useRef(new Set<string>());
   const reactionHistoryReady = useRef(false);
-  const seenVocabularyEvents = useRef(new Set<string>());
-  const vocabularyEventsReady = useRef(false);
+  const activeVocabularyTracker = useRef<ReturnType<typeof createClassVocabularyNoticeTracker> | null>(null);
   const vocabularyNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatRef = useRef<() => void>(() => {});
   const unreadRefreshRef = useRef<() => void>(() => {});
@@ -314,6 +315,8 @@ export function ClassRoom({
 
   // У учителя разговор принадлежит ученику, у ученика — ему самому.
   const conversation = teacher ? (partner?.id ?? null) : selfId;
+  const vocabularyTracker = useMemo(() => conversation
+    ? createClassVocabularyNoticeTracker(conversation) : null, [conversation]);
   const unread = unreadState.conversation === conversation ? unreadState.count : 0;
 
   useEffect(() => {
@@ -356,28 +359,41 @@ export function ClassRoom({
   });
 
   useEffect(() => {
-    seenVocabularyEvents.current.clear();
-    vocabularyEventsReady.current = false;
-  }, [conversation]);
-
-  useEffect(() => () => {
+    activeVocabularyTracker.current = vocabularyTracker;
     if (vocabularyNoticeTimer.current) clearTimeout(vocabularyNoticeTimer.current);
-  }, []);
+    const frame = requestAnimationFrame(() => {
+      setVocabularyNotice((current) => current?.session === vocabularyTracker ? current : null);
+      setTextSelection((current) => current?.session === vocabularyTracker ? current : null);
+    });
+    return () => {
+      if (activeVocabularyTracker.current === vocabularyTracker) activeVocabularyTracker.current = null;
+      if (vocabularyNoticeTimer.current) clearTimeout(vocabularyNoticeTimer.current);
+      cancelAnimationFrame(frame);
+    };
+  }, [vocabularyTracker]);
 
   const showVocabularyNotice = useCallback((word: {
     id: string;
     english: string;
     translation: string;
   }) => {
-    setVocabularyNotice(word);
+    if (!vocabularyTracker || activeVocabularyTracker.current !== vocabularyTracker) return;
+    const notice = { ...word, session: vocabularyTracker };
+    setVocabularyNotice(notice);
     chime.current?.();
     if (vocabularyNoticeTimer.current) clearTimeout(vocabularyNoticeTimer.current);
-    vocabularyNoticeTimer.current = setTimeout(() => setVocabularyNotice(null), 6_000);
-  }, []);
+    vocabularyNoticeTimer.current = setTimeout(() => setVocabularyNotice((current) => current === notice ? null : current), 6_000);
+  }, [vocabularyTracker]);
+
+  const vocabularyAdded = useCallback((word: Pick<ClassVocabularyWord, "id" | "english" | "translation">) => {
+    if (!vocabularyTracker || activeVocabularyTracker.current !== vocabularyTracker || !vocabularyTracker.added(word)) return;
+    showVocabularyNotice(word);
+  }, [vocabularyTracker, showVocabularyNotice]);
 
   const translateSelectedText = useCallback((selection: ClassTextSelection) => {
-    setTextSelection(selection);
-  }, []);
+    if (!vocabularyTracker || activeVocabularyTracker.current !== vocabularyTracker) return;
+    setTextSelection({ ...selection, session: vocabularyTracker });
+  }, [vocabularyTracker]);
 
   const closeSelectionTranslation = useCallback(() => {
     setTextSelection(null);
@@ -436,12 +452,18 @@ export function ClassRoom({
    * урока. Текущее положение нужно только для подписи на кнопке доски.
    */
   useEffect(() => {
+    // A picker/unknown partner has no word history to initialize. Scope both
+    // the shared HTTP cache and the response to the actual student.
+    if (!conversation || !vocabularyTracker) {
+      classSyncRef.current = async () => {};
+      return;
+    }
     let alive = true;
 
     const tick = () => {
-      return readClassLive("focus", "", boardOpen.current)
+      return readClassLive("focus", conversation, boardOpen.current)
         .then((sync) => {
-          if (!alive) return;
+          if (!alive || sync.studentId !== conversation) return;
           setActiveLessonId(sync.lessonAssignmentId);
           setPartnerOnBoard(sync.partnerOnBoard);
           setVideoSync(sync.video);
@@ -494,16 +516,8 @@ export function ClassRoom({
             setFocusedNote(sync.noteFocus);
           }
 
-          if (!vocabularyEventsReady.current) {
-            sync.vocabularyEvents.forEach((event) => seenVocabularyEvents.current.add(event.id));
-            vocabularyEventsReady.current = true;
-          } else {
-            const fresh = sync.vocabularyEvents.filter(
-              (event) => !seenVocabularyEvents.current.has(event.id),
-            );
-            sync.vocabularyEvents.forEach((event) => seenVocabularyEvents.current.add(event.id));
-            if (fresh.length > 0) showVocabularyNotice(fresh[0]);
-          }
+          const freshWord = vocabularyTracker.receive(sync.studentId, sync.vocabularyEvents);
+          if (freshWord) showVocabularyNotice(freshWord);
 
           if (teacher || !sync.view || appliedView.current === sync.view.at) return;
           if (sync.view.target === "TWISTER") {
@@ -583,7 +597,7 @@ export function ClassRoom({
     return () => {
       alive = false;
     };
-  }, [conversation, open.board, selfId, showVocabularyNotice, teacher]);
+  }, [conversation, open.board, selfId, showVocabularyNotice, teacher, vocabularyTracker]);
 
   useRealtimeSubscription({
     channel: conversation ? `class:${conversation}` : null,
@@ -1114,11 +1128,7 @@ export function ClassRoom({
               studentId={conversation}
               ready={!!conversation}
               compact
-              onAdded={(word: ClassVocabularyWord) => {
-                const alreadyShown = seenVocabularyEvents.current.has(word.id);
-                seenVocabularyEvents.current.add(word.id);
-                if (!alreadyShown) showVocabularyNotice(word);
-              }}
+              onAdded={vocabularyAdded}
             />
           </DockablePanel>
         )}
@@ -1353,13 +1363,10 @@ export function ClassRoom({
       )}
 
       <SelectionTranslationPopover
-        key={textSelection?.nonce ?? "closed-selection"}
-        request={textSelection}
+        key={`${conversation ?? "no-student"}:${textSelection?.nonce ?? "closed-selection"}`}
+        request={textSelection?.session === vocabularyTracker ? textSelection : null}
         onClose={closeSelectionTranslation}
-        onAdded={(word) => {
-          seenVocabularyEvents.current.add(word.id);
-          showVocabularyNotice(word);
-        }}
+        onAdded={vocabularyAdded}
       />
 
       {!teacher && <StudentClassTimer state={timerState} />}
@@ -1395,7 +1402,7 @@ export function ClassRoom({
         <TeacherReactionPanel onClose={() => setShowReactions(false)} />
       )}
 
-      {vocabularyNotice && (
+      {vocabularyNotice && vocabularyNotice.session === vocabularyTracker && (
         <div className="fixed right-4 top-4 z-[80] w-[min(24rem,calc(100vw-2rem))] rounded-2xl bg-emerald-500 p-4 text-white shadow-2xl ring-4 ring-emerald-300/40">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xl">✓</span>

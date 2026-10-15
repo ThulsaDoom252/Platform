@@ -25,12 +25,18 @@ export async function POST(request: Request) {
     return new Response(null, { status: 400, headers });
   }
   const id = typeof input.id === "string" ? input.id : "";
-  if (input.resource !== "focus" && !uuid.test(id)) return new Response(null, { status: 400, headers });
+  if (input.resource === "focus"
+    ? input.id !== undefined && input.id !== "" && !uuid.test(id)
+    : !uuid.test(id)) return new Response(null, { status: 400, headers });
 
   return withRequestSession(session, async () => {
     let data: unknown;
     if (input.resource === "focus") {
-      data = await (await import("@/lib/actions/class")).classSyncAction(input.onBoard === true);
+      const snapshot = await (await import("@/lib/actions/class")).classSyncAction(input.onBoard === true);
+      // A teacher may switch students while an older class poll is in flight.
+      // Never label the newly selected student's snapshot as the older pair.
+      if (id && snapshot.studentId !== id) return new Response(null, { status: 409, headers });
+      data = snapshot;
     } else {
       const [teacher] = session.role === "TEACHER" ? await db.select({ studentId: users.classWithId })
         .from(users).where(and(eq(users.id, session.userId), eq(users.role, "TEACHER"))).limit(1) : [];
