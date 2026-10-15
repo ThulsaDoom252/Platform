@@ -180,10 +180,13 @@ export function buildC1VagueLanguageLesson(feelingsStudentSource: string) {
   if (!homework || homework.exercises.reduce((sum, exercise) => sum + exercise.items.length, 0) !== 17) {
     throw new Error("Vague language homework must stay a light seventeen-item plan after native normalization");
   }
+  // Native normalizers may include optional keys with undefined values. JSONB
+  // omits them, so freeze the portable definition exactly as it will be stored.
+  const portableHomework = JSON.parse(JSON.stringify(homework)) as InteractiveHomeworkPlan;
   return {
     title: VAGUE_LANGUAGE_LESSON_TITLE,
     description: "20 vague-language expressions + 16 Feelings review cards · Past Perfect & Future Perfect · advanced present/object-pattern recap · two original texts, two dialogues, discussion & light 15–20-minute homework.",
     sections: normalized, words,
-    homework: [homework] as InteractiveHomeworkPlan[],
+    homework: [portableHomework],
   };
 }

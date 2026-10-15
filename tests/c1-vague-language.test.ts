@@ -130,6 +130,12 @@ test("homework stays 16 quick automatic checks plus one short production after r
   }
 });
 
+test("the stored homework definition survives a JSONB transport round trip without undefined-property drift", () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(lesson.homework)), lesson.homework);
+  const stored = JSON.parse(JSON.stringify(lesson.homework));
+  assert.deepEqual(normalizeInteractiveHomework(stored[0]), normalizeInteractiveHomework(VAGUE_LANGUAGE_HOMEWORK));
+});
+
 test("vocabulary highlighting never turns supplied text into active HTML", () => {
   const html = highlightVagueLanguageText('<img src=x onerror=alert(1)> Roughly 50; she had gone red and felt gutted.');
   assert(html.includes("&lt;img"));
