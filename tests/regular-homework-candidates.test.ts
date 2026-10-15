@@ -4,6 +4,7 @@ import { runInNewContext } from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import { buildA2PopularQuestionsLesson } from "../src/lib/bundled-lessons/a2-popular-questions";
+import { buildB1MoreDailyRoutinesLesson } from "../src/lib/bundled-lessons/b1-more-daily-routines";
 import * as regular from "../src/lib/regular-lesson";
 import { regularHomeworkShowsWordBank } from "../src/lib/lesson-homework";
 import { detectTranslationLang } from "../src/lib/translation-lang";
@@ -179,4 +180,24 @@ test("the actual classroom open-answer block creates and saves response fields f
   assert.deepEqual(saves, [[regular.regularResponseKey(active.id, "list-2-item-1-open"), "I eat apples."]]);
   context.cleanups.forEach(cleanup => cleanup());
   assert(fields.every(field => field.listeners.size === 0));
+});
+
+test("all More daily routines classroom groups can be copied individually and comprehension retains its full text", () => {
+  const daily = buildB1MoreDailyRoutinesLesson();
+  const groups = daily.sections.flatMap(section => exports.homeworkCandidates(section, {}));
+  assert.equal(groups.length, 13);
+  assert.equal(new Set(groups.map(group => group.exercise.id)).size, 13);
+  const ids = groups.flatMap(group => group.exercise.items.map(item => item.id));
+  assert.equal(ids.length, 112);
+  assert.equal(new Set(ids).size, ids.length);
+  assert(!groups.some(group => /teacher/i.test(group.exercise.id)));
+  for (const section of daily.sections.filter(section => section.tone === "reading" || section.tone === "dialogue")) {
+    const copies = exports.homeworkCandidates(section, {});
+    assert.equal(copies.length, 2);
+    assert(copies.every(copy => copy.exercise.items.length === 8));
+    const expected = [...section.studentHtml.split(/<h3\b|<ol\b/i)[0].matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+      .map(match => plain(match[1]).replace(/\s+/g, " ").trim()).filter(Boolean).join("\n\n");
+    assert(copies.every(copy => copy.exercise.referenceText === expected && copy.exercise.referenceTitle === section.title));
+    assert(!copies.some(copy => copy.exercise.referenceText!.includes("Suggested answer:")));
+  }
 });

@@ -14,6 +14,7 @@ import { buildWaltMeetsGusHomework } from "../src/lib/bundled-lessons/breaking-b
 import { feelingsLessonFromHtml } from "../src/lib/bundled-lessons/c1-feelings-and-emotions";
 import { buildC1VagueLanguageLesson } from "../src/lib/bundled-lessons/c1-vague-language";
 import { buildPopularQuestionsHomework } from "../src/lib/bundled-lessons/a2-popular-questions-homework";
+import { buildB1MoreDailyRoutinesLesson } from "../src/lib/bundled-lessons/b1-more-daily-routines";
 import type { LessonView } from "../src/lib/actions/lessons";
 import type { InteractiveHomeworkSession } from "../src/components/lessons/interactive-homework";
 
@@ -27,6 +28,7 @@ const definitions = [
   { name: feelings.title, kind: "REGULAR" as const, plan: feelings.homework[0], blocks: 19, items: 189 },
   { name: vague.title, kind: "REGULAR" as const, plan: vague.homework[0], blocks: 5, items: 17 },
   { name: "A2 · Popular questions", kind: "REGULAR" as const, plan: buildPopularQuestionsHomework(), blocks: 7, items: 20 },
+  { name: "B1 · More daily routines", kind: "REGULAR" as const, plan: buildB1MoreDailyRoutinesLesson().homework[0], blocks: 7, items: 22 },
 ];
 
 function compile(code: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}) {
