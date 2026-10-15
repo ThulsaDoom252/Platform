@@ -417,6 +417,7 @@ export function LessonView({
             >
               {section === "vocab" && (
                 <LessonVocab
+                  sectionTitle={t.lessonUnits.secVocab}
                   words={lesson.words}
                   highlights={highlights}
                   focus={focus}

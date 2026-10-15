@@ -1212,7 +1212,7 @@ export function RegularLessonView({
             onFocusElement && "regular-lesson-can-focus",
           )}
         >
-          <div className="regular-lesson-heading">
+          {!nativeVocabulary && <div className="regular-lesson-heading">
             <h2
               data-focus-id="heading"
               onClick={() => chooseElement("heading")}
@@ -1355,7 +1355,7 @@ export function RegularLessonView({
                 </button>
               )}
             </div>
-          </div>
+          </div>}
           {homeworkMessage && (
             <p className="mx-4 mt-3 rounded-xl bg-accent-soft px-3 py-2 text-xs font-semibold text-accent sm:mx-6">
               {homeworkMessage}
@@ -1367,8 +1367,11 @@ export function RegularLessonView({
             </p>
           )}
           {nativeVocabulary ? (
-            <div className="p-4 sm:p-6">
+            <div className="min-w-0">
               <LessonVocab
+                sectionTitle={active.title}
+                integratedHeader
+                onHeadingClick={onFocusElement ? () => chooseElement("heading") : undefined}
                 words={words}
                 highlights={vocabularyHighlights}
                 focus={vocabularyFocus}

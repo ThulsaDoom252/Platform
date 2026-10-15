@@ -26,7 +26,9 @@ test("Show UK sits with vocabulary reveal controls and is teacher-only, controll
   assert.ok(header.includes("bg-accent text-white"));
   assert.ok(header.includes("bg-surface-2 text-muted hover:text-content"));
   assert.ok(header.indexOf("toggleAllLessonVocabularyReveal") < header.indexOf("onShowBritishChange &&"));
-  assert.ok(header.indexOf("onShowBritishChange &&") < header.indexOf("<LessonVocabToMaterials"));
+  assert.ok(header.indexOf("<LessonVocabToMaterials iconOnly") < header.indexOf('className="lesson-vocab-controls'));
+  assert.ok(header.indexOf('className="lesson-vocab-controls') < header.indexOf("onShowBritishChange &&"));
+  assert.ok(header.includes("sectionTitle ?? t.lessonUnits.secVocab"));
   for (const dictionary of Object.values(dictionaries)) assert.ok(dictionary.lessonUnits.showBritish.trim());
 });
 

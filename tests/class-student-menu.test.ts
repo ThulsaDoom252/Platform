@@ -53,9 +53,9 @@ function harness(t = en) {
       throw Error(`Unexpected import: ${name}`);
     },
   });
-  let brought = 0, previewed = 0, focused = 0;
+  let brought = 0, focused = 0;
   const props = { student: { id: "student & other?", name: "Victoria", avatarUrl: null, presence: "offline" }, summonBusy: false,
-    onBringToClass: () => brought++, onViewAvatar: () => previewed++ };
+    onBringToClass: () => brought++ };
   const render = (patch: Record<string, unknown> = {}) => {
     stateCursor = 0; refCursor = 0; effects.length = 0;
     return exports.ClassStudentMenu({ ...props, ...patch });
@@ -68,7 +68,7 @@ function harness(t = en) {
     return render();
   };
   return { render, open, trigger, state, refs, effects, events, windowEvents, document,
-    counts: () => ({ brought, previewed, focused }),
+    counts: () => ({ brought, focused }),
     leave: (busy = false) => exports.ClassLeaveButton({ busy, onLeave: () => brought++ }),
   };
 }
@@ -85,7 +85,7 @@ test("the student profile trigger starts closed with no loose Homework or Bring 
   assert(/teacher\s*\?\s*\(\s*<ClassStudentMenu/.test(room));
 });
 
-test("opening the dropdown exposes student-scoped profile, homework, materials and preserved avatar/bring actions", () => {
+test("opening the dropdown exposes profile, homework, materials and bring actions without avatar preview", () => {
   const h = harness(); const tree = h.open();
   const html = renderToStaticMarkup(tree);
   assert.equal(h.trigger(tree).props["aria-expanded"], true);
@@ -93,7 +93,9 @@ test("opening the dropdown exposes student-scoped profile, homework, materials a
   assert(html.includes('href="/teacher/homeworks?student=student%20%26%20other%3F"'));
   assert(html.includes('href="/teacher/students/student%20%26%20other%3F/materials"'));
   assert(html.includes('href="/teacher/students/student%20%26%20other%3F"'));
-  assert.equal(flatten(tree).filter(node => node.props.role === "menuitem").length, 5);
+  assert.equal(flatten(tree).filter(node => node.props.role === "menuitem").length, 4);
+  assert(!html.includes("View Victoria") && !source.includes("onViewAvatar"));
+  assert(!room.includes("avatarPreview"));
   const bring = flatten(tree).find(node => node.type === "button" && node.props.role === "menuitem" && !node.props.className?.toString().includes("border"))!;
   (bring.props.onClick as () => void)();
   assert.equal(h.counts().brought, 1);

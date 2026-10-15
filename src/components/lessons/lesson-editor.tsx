@@ -285,7 +285,7 @@ function ActivityLessonEditor({
       </div>
 
       {/* Словник: свой у урока, наполняется из материалов по желанию. */}
-      <Section title={t.lessonUnits.secVocab}>
+      <Section title={t.lessonUnits.secVocab} actions={lesson.words.length > 0 ? <LessonVocabToMaterials iconOnly unitId={lesson.id} lessonTitle={lesson.title} /> : undefined}>
         <div className="flex flex-wrap items-center gap-2">
           {vocabs.length === 0 ? (
             <p className="text-sm text-faint">{t.lessonUnits.noVocab}</p>
@@ -331,9 +331,6 @@ function ActivityLessonEditor({
 
         {lesson.words.length > 0 && (
           <>
-            <div className="mt-3 flex justify-end">
-              <LessonVocabToMaterials unitId={lesson.id} lessonTitle={lesson.title} />
-            </div>
             <VocabPreview words={lesson.words} />
           </>
         )}
@@ -847,16 +844,18 @@ function Section({
   id,
   title,
   hint,
+  actions,
   children,
 }: {
   id?: string;
   title: string;
   hint?: string;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section id={id} className="scroll-mt-24 rounded-2xl bg-surface p-4 ring-1 ring-line shadow-sm sm:p-5">
-      <p className="text-sm font-bold text-content">{title}</p>
+      <div className="flex min-w-0 flex-wrap items-center gap-2"><p className="min-w-0 break-words text-sm font-bold text-content">{title}</p>{actions}</div>
       {hint && <p className="mb-2 mt-0.5 text-[12px] text-faint">{hint}</p>}
       <div className={hint ? "" : "mt-3"}>{children}</div>
     </section>

@@ -196,7 +196,6 @@ export function ClassRoom({
   } | null>(null);
   const [busy, startBusy] = useTransition();
   const [profileBusy, startProfile] = useTransition();
-  const [avatarPreview, setAvatarPreview] = useState(false);
   const [teacherProfile, setTeacherProfile] = useState<ClassPartnerProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [summonNotice, setSummonNotice] = useState<string | null>(null);
@@ -706,7 +705,6 @@ export function ClassRoom({
         {partner ? (
           teacher ? (
             <ClassStudentMenu key={partner.id} student={partner} summonBusy={summonBusy}
-              onViewAvatar={() => setAvatarPreview(true)}
               onBringToClass={() => startSummon(async () => {
                 const studentId = partner.id;
                 setSummonNotice(null);
@@ -1219,38 +1217,6 @@ export function ClassRoom({
           realtimeChannel={`class:${selfId}`}
           onClose={() => setTwisterSession(null)}
         />
-      )}
-
-      {teacher && partner && avatarPreview && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={fmt(t.classRoom.viewAvatar, { name: partner.name })}
-          className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-        >
-          <button
-            type="button"
-            onClick={() => setAvatarPreview(false)}
-            aria-label={t.common.close}
-            className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm"
-          />
-          <div className="relative flex max-h-[90dvh] w-full max-w-xl flex-col items-center rounded-3xl bg-surface p-6 shadow-2xl ring-1 ring-line sm:p-8">
-            <button
-              type="button"
-              onClick={() => setAvatarPreview(false)}
-              aria-label={t.common.close}
-              className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-content"
-            >
-              <IconX className="h-5 w-5" />
-            </button>
-            <Avatar
-              name={partner.name}
-              src={partner.avatarUrl}
-              className="h-64 w-64 max-w-full text-7xl shadow-xl ring-4 ring-accent-soft sm:h-80 sm:w-80"
-            />
-            <p className="mt-5 text-xl font-black text-content">{partner.name}</p>
-          </div>
-        </div>
       )}
 
       {!teacher && teacherProfile && (

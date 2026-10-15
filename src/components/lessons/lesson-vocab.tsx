@@ -51,6 +51,9 @@ export function LessonVocab({
   unitId,
   lessonTitle,
   defaultStudentId,
+  sectionTitle,
+  integratedHeader = false,
+  onHeadingClick,
 }: {
   words: LessonWord[];
   highlights: Record<string, string>;
@@ -69,6 +72,9 @@ export function LessonVocab({
   unitId?: string;
   lessonTitle?: string;
   defaultStudentId?: string | null;
+  sectionTitle?: string;
+  integratedHeader?: boolean;
+  onHeadingClick?: () => void;
 }) {
   const { t } = useT();
   const router = useRouter();
@@ -153,13 +159,19 @@ export function LessonVocab({
   return (
     <div className="flex h-full flex-col gap-3">
       {/* Шапка: сколько слов и общие переключатели видимости. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12px] font-semibold text-faint">
-          {fmt(t.lessonUnits.words, { n: words.length })}
-        </span>
+      <div className={cn("lesson-vocab-heading flex min-w-0 flex-wrap items-center gap-3", integratedHeader ? "regular-lesson-heading" : "py-1")}>
+        <div className="lesson-vocab-title flex min-w-0 flex-1 basis-56 items-center gap-2">
+          <h2 data-focus-id={integratedHeader ? "heading" : undefined} onClick={onHeadingClick}
+            title={onHeadingClick ? t.lessonUnits.focusElement : undefined} className="min-w-0 break-words text-base font-black text-content">
+            {sectionTitle ?? t.lessonUnits.secVocab}
+          </h2>
+          {teacher && unitId && lessonTitle && <span data-no-lesson-highlight className="shrink-0">
+            <LessonVocabToMaterials iconOnly unitId={unitId} lessonTitle={lessonTitle} defaultStudentId={defaultStudentId} />
+          </span>}
+        </div>
 
         {canReveal && (
-          <span className="ml-auto flex flex-wrap items-center justify-end gap-1">
+          <span data-no-lesson-highlight className="lesson-vocab-controls ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
             <Toggle on={reveal.allTranslations} onClick={() => toggleReveal("translation")} label={t.lessonUnits.showTranslations} />
             <Toggle on={reveal.allDescriptions} onClick={() => toggleReveal("description")} label={t.lessonUnits.showDescriptions} />
             <Toggle on={reveal.allExamples} onClick={() => toggleReveal("example")} label={t.lessonUnits.vocabExamples} />
@@ -216,16 +228,13 @@ export function LessonVocab({
                     </button>
                   ))}
                 </span>
-                <LessonVocabToMaterials
-                  unitId={unitId}
-                  lessonTitle={lessonTitle}
-                  defaultStudentId={defaultStudentId}
-                />
               </>
             )}
           </span>
         )}
       </div>
+      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col gap-3", integratedHeader && "p-4 pt-1 sm:p-6 sm:pt-2")}>
+      <p className="text-[12px] font-semibold text-faint">{fmt(t.lessonUnits.words, { n: words.length })}</p>
       {translationError && (
         <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 ring-1 ring-rose-200">
           {translationError}
@@ -469,6 +478,7 @@ export function LessonVocab({
             </div>
           </section>
         ))}
+      </div>
       </div>
     </div>
   );

@@ -11,11 +11,10 @@ import type { ClassPresence } from "@/lib/presence";
 import { fmt } from "@/lib/i18n";
 
 /** The menu is portalled so the responsive class toolbar cannot clip it. */
-export function ClassStudentMenu({ student, summonBusy, onBringToClass, onViewAvatar }: {
+export function ClassStudentMenu({ student, summonBusy, onBringToClass }: {
   student: { id: string; name: string; avatarUrl: string | null; presence: ClassPresence };
   summonBusy: boolean;
   onBringToClass: () => void;
-  onViewAvatar: () => void;
 }) {
   const { t } = useT();
   const id = useId();
@@ -120,10 +119,6 @@ export function ClassStudentMenu({ student, summonBusy, onBringToClass, onViewAv
       <button type="button" role="menuitem" disabled={summonBusy} aria-busy={summonBusy}
         onClick={() => { close(true); onBringToClass(); }} className={`${row} text-accent disabled:cursor-wait disabled:opacity-45`}>
         <IconCap className="h-4 w-4 shrink-0" aria-hidden="true" />{summonBusy ? t.classRoom.bringToClassSending : t.classRoom.bringToClass}
-      </button>
-      <div role="separator" className="my-1 border-t border-line" />
-      <button type="button" role="menuitem" className={row} onClick={() => { close(true); onViewAvatar(); }}>
-        <Avatar name={student.name} src={student.avatarUrl} className="h-5 w-5 shrink-0 text-[9px]" />{fmt(t.classRoom.viewAvatar, { name: student.name })}
       </button>
     </div>, document.body)}
   </>;
