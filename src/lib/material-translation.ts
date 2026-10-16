@@ -2,10 +2,13 @@ import "server-only";
 import type { RuleBlock } from "@/lib/db/schema";
 import {
   KEEP_TAG,
+  escapeXml,
   needsProtection,
   protectTerms,
   restoreTerms,
 } from "@/lib/protect-terms";
+import { detectTranslationLang } from "@/lib/translation-lang";
+import { validLearningTranslation } from "@/lib/learning-language-content";
 
 export type MaterialTranslationLang = "RU" | "UK";
 
@@ -76,7 +79,7 @@ async function requestDeepL(
       text: payload,
       target_lang: target,
       ...(source && source !== target ? { source_lang: source } : {}),
-      ...(context?.trim() ? { context: context.slice(0, 12_000) } : {}),
+      ...(context?.trim() ? { context: keep ? escapeXml(context.slice(0, 12_000)) : context.slice(0, 12_000) } : {}),
       ...(keep ? { tag_handling: "xml", ignore_tags: [KEEP_TAG] } : {}),
       model_type: "prefer_quality_optimized",
       preserve_formatting: true,
@@ -192,11 +195,23 @@ export async function translateLearningSegments(
   target: MaterialTranslationLang,
 ): Promise<string[]> {
   const result = await translateSegments(values.map((value, index) => ({ id: String(index), ...value })), target);
-  return values.map((_, index) => {
-    const text = result.get(String(index));
+  const translated: string[] = [];
+  for (const [index, segment] of values.entries()) {
+    let text = result.get(String(index));
+    // A broad batch context can make DeepL retain an English headword. Retry
+    // that field alone; never cache the original as a Russian/Ukrainian answer.
+    if (text && !validLearningTranslation(segment, text)) {
+      [text] = await requestDeepL([segment.text], target, segment.source, segment.context);
+    }
     if (!text) throw new Error("DeepL вернул неполный перевод");
-    return text;
-  });
+    if (!validLearningTranslation(segment, text)) throw new Error(`DeepL не перевёл «${segment.text.slice(0, 120)}». Попробуйте ещё раз.`);
+    translated.push(text);
+  }
+  return translated;
+}
+
+function vocabularySource(text: string, fallback?: MaterialTranslationLang): SourceLanguage | undefined {
+  return detectTranslationLang([text]) ?? (CYRILLIC.test(text) ? fallback : "EN");
 }
 
 /**
@@ -224,14 +239,14 @@ export async function translateVocabulary(
       segments.push({
         id: `${item.id}:phrase`,
         text: item.phrase,
-        source: sourceLanguage,
+        source: vocabularySource(item.phrase, sourceLanguage),
         context,
       });
       if (item.currentTranslation?.trim()) {
         segments.push({
           id: `${item.id}:translation`,
           text: item.currentTranslation,
-          source: sourceLanguage,
+          source: vocabularySource(item.currentTranslation, sourceLanguage),
           context,
         });
       }
@@ -240,7 +255,7 @@ export async function translateVocabulary(
       segments.push({
         id: `${item.id}:translation`,
         text: existing || item.phrase,
-        source: existing ? sourceLanguage : "EN",
+        source: vocabularySource(existing || item.phrase, sourceLanguage),
         context,
       });
     }
@@ -249,7 +264,7 @@ export async function translateVocabulary(
       segments.push({
         id: `${item.id}:note`,
         text: item.note,
-        source: sourceLanguage,
+        source: vocabularySource(item.note, sourceLanguage),
         context,
       });
     }
@@ -260,7 +275,7 @@ export async function translateVocabulary(
       segments.push({
         id: `${item.id}:example:${index}`,
         text: existing || example.en,
-        source: existing ? sourceLanguage : "EN",
+        source: vocabularySource(existing || example.en, sourceLanguage),
         context,
       });
     });
@@ -283,6 +298,9 @@ export async function translateVocabulary(
 
     if (item.kind !== "NOTE" && !translation) {
       throw new Error(`DeepL не вернул перевод для «${item.phrase}»`);
+    }
+    if (item.kind !== "NOTE" && CYRILLIC.test(item.currentTranslation ?? "") && !CYRILLIC.test(translation)) {
+      throw new Error(`DeepL не перевёл «${item.phrase}». Исходный перевод сохранён.`);
     }
     const note = translated.get(`${item.id}:note`) ?? item.note?.trim() ?? "";
     result.set(item.id, { id: item.id, phrase, translation, note, examples });

@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { studentLearningTranslations, users } from "@/lib/db/schema";
 import { translateLearningSegments } from "@/lib/material-translation";
-import { applyLearningTranslations, collectLearningTranslations, learningLanguage, type LearningLanguage, type LearningSegment } from "@/lib/learning-language-content";
+import { applyLearningTranslations, collectLearningTranslations, learningLanguage, validLearningTranslation, type LearningLanguage, type LearningSegment } from "@/lib/learning-language-content";
 import { learningRegularOverrides } from "@/lib/learning-language-regular";
 
 export async function studentLearningLanguage(studentId: string): Promise<LearningLanguage | null> {
@@ -23,11 +23,15 @@ export async function resolveLearningSegments(studentId: string, language: Learn
   const keys = segments.map(segment => learningSegmentId(studentId, language, segment));
   const unique = new Map(keys.map((key, index) => [key, segments[index]]));
   const translated = new Map<string, string>();
+  const invalidCached = new Map<string, string>();
   const ids = [...unique.keys()];
   for (let offset = 0; offset < ids.length; offset += 500) {
     const rows = await db.select({ id: studentLearningTranslations.id, text: studentLearningTranslations.translation })
       .from(studentLearningTranslations).where(and(eq(studentLearningTranslations.studentId, studentId), eq(studentLearningTranslations.language, language), inArray(studentLearningTranslations.id, ids.slice(offset, offset + 500))));
-    rows.forEach(row => translated.set(row.id, row.text));
+    rows.forEach(row => {
+      if (validLearningTranslation(unique.get(row.id)!, row.text)) translated.set(row.id, row.text);
+      else invalidCached.set(row.id, row.text);
+    });
   }
   const missing = ids.filter(id => !translated.has(id));
   if (missing.length) {
@@ -36,8 +40,19 @@ export async function resolveLearningSegments(studentId: string, language: Learn
     if (!request) {
       request = (async () => {
         const values = await translateLearningSegments(missing.map(id => unique.get(id)!), language);
+        if (values.length !== missing.length || values.some((text, index) => !validLearningTranslation(unique.get(missing[index])!, text))) {
+          throw new Error("Перевод не завершён: английское слово не может заменять готовый перевод.");
+        }
         for (let offset = 0; offset < missing.length; offset += 500) {
           await db.insert(studentLearningTranslations).values(missing.slice(offset, offset + 500).map((id, index) => ({ id, studentId, language, translation: values[offset + index] }))).onConflictDoNothing();
+        }
+        // Repair only the exact stale machine-generated cache value we read.
+        // A concurrent valid replacement and all learner answers remain intact.
+        for (const [index, id] of missing.entries()) if (invalidCached.has(id)) {
+          await db.update(studentLearningTranslations).set({ translation: values[index] }).where(and(
+            eq(studentLearningTranslations.id, id), eq(studentLearningTranslations.studentId, studentId),
+            eq(studentLearningTranslations.language, language), eq(studentLearningTranslations.translation, invalidCached.get(id)!),
+          ));
         }
         return values;
       })();

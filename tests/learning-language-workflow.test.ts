@@ -23,7 +23,7 @@ function compile<T>(path: string, imports: Record<string, unknown>, globals: Rec
 }
 function fixture(count = 1) {
   const state = { rows: { users: [{ id, role: "STUDENT", learningLanguage: "RU", answers: { q: "unchanged" } }, { id: otherId, role: "STUDENT", learningLanguage: null }] as Row[], cache: [] as Row[], jobs: [] as Row[] }, session: { userId: id, role: "STUDENT" } as { userId: string; role: string } | null,
-    segments: Array.from({ length: count }, (_, i): content.LearningSegment => ({ text: `word-${i}`, source: "EN", context: "learning" })), requests: 0, readCount: 0, translationFailure: false, beforeTranslation: null as (() => Promise<void>) | null, events: [] as string[] };
+    segments: Array.from({ length: count }, (_, i): content.LearningSegment => ({ text: `word-${i}`, source: "EN", context: "learning" })), requests: 0, readCount: 0, translationFailure: false, returnUntranslated: false, beforeTranslation: null as (() => Promise<void>) | null, events: [] as string[] };
   const rowsFor = (source: Record<string, unknown>) => state.rows[source.name as keyof typeof state.rows];
   const project = (row: Row, fields?: Record<string, Column>) => fields ? Object.fromEntries(Object.entries(fields).map(([key, column]) => [key, row[column.key]])) : structuredClone(row);
   const ops = {
@@ -72,6 +72,7 @@ function fixture(count = 1) {
     "@/lib/material-translation": { translateLearningSegments: async (segments: content.LearningSegment[], language: content.LearningLanguage) => {
       state.requests++; if (state.beforeTranslation) await state.beforeTranslation();
       if (state.translationFailure) throw new Error("Translation unavailable");
+      if (state.returnUntranslated) return segments.map(segment => segment.text);
       return segments.map(segment => language === "UK" ? `Український: ${segment.text}` : `Русский: ${segment.text}`);
     } },
   });
@@ -179,6 +180,27 @@ test("cache is student/language/source specific; content remains fresh and dupli
 test("accounts with no explicit learning preference remain unchanged and do not trigger bulk translation", async () => {
   const f = fixture(0); const value = { word: "cat", translation: "кот" };
   assert.equal(await f.service.personalizeLearningContent(otherId, value), value); assert.equal(f.state.requests, 0);
+});
+
+test("English-only cached headwords are repaired without touching other cached values or learner history", async () => {
+  const f = fixture(0);
+  const segment: content.LearningSegment = { text: "be flustered", source: "EN", context: "Feelings vocabulary", requiresCyrillic: true };
+  const key = f.service.learningSegmentId(id, "RU", segment);
+  f.state.rows.cache.push({ id: key, studentId: id, language: "RU", translation: "be flustered" },
+    { id: "unrelated", studentId: otherId, language: "RU", translation: "unchanged" });
+  assert.deepEqual(await f.service.resolveLearningSegments(id, "RU", [segment]), ["Русский: be flustered"]);
+  assert.equal(f.state.rows.cache[0].translation, "Русский: be flustered");
+  assert.equal(f.state.rows.cache[1].translation, "unchanged");
+  assert.deepEqual(f.state.rows.users[0].answers, { q: "unchanged" });
+  await f.service.resolveLearningSegments(id, "RU", [segment]); assert.equal(f.state.requests, 1);
+});
+
+test("an untranslated response cannot poison new or existing cache entries", async () => {
+  const f = fixture(0); f.state.returnUntranslated = true;
+  const segment: content.LearningSegment = { text: "be mortified", source: "EN", context: "Feelings vocabulary", requiresCyrillic: true };
+  await assert.rejects(f.service.resolveLearningSegments(id, "RU", [segment]), /Перевод не завершён/);
+  assert.equal(f.state.rows.cache.length, 0);
+  assert.equal(content.validLearningTranslation({ text: "API", source: "EN", context: "Brand" }, "API"), true);
 });
 
 test("assigned worksheet overlays preserve answer/grade/attempt JSON byte for byte", async () => {

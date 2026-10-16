@@ -22,7 +22,8 @@ const TERM = /-?[A-Za-z][A-Za-z0-9'’]*(?:[ \t]*[/–—-][ \t]*[A-Za-z0-9'’-
 /** Тег выбран коротким и таким, какого в учебном тексте не бывает. */
 export const KEEP_TAG = "k";
 
-const escapeXml = (text: string) =>
+/** DeepL v2 parses context as XML too when tag_handling=xml is enabled. */
+export const escapeXml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 const unescapeXml = (text: string) =>

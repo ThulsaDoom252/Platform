@@ -6,7 +6,7 @@ export type LearningLanguage = TranslationLang;
 export function learningLanguage(value: unknown): LearningLanguage | null {
   return value === "RU" || value === "UK" ? value : null;
 }
-export type LearningSegment = { text: string; source?: LearningLanguage | "EN"; context: string };
+export type LearningSegment = { text: string; source?: LearningLanguage | "EN"; context: string; requiresCyrillic?: true };
 type Path = (string | number)[];
 type TextPatch = { path: Path; segment: number; htmlToken?: number };
 export type LearningTranslationPlan = {
@@ -15,6 +15,10 @@ export type LearningTranslationPlan = {
   languagePaths: Path[];
 };
 const cyrillic = /[\u0400-\u04ff]/;
+/** A previously localized field must not silently regress to an English copy. */
+export function validLearningTranslation(segment: LearningSegment, text: unknown): text is string {
+  return typeof text === "string" && Boolean(text.trim()) && (!segment.requiresCyrillic || cyrillic.test(text));
+}
 const ignored = new Set(["answers", "attempts", "results", "state", "sourceText", "contentBackup", "teacherFeedback", "teacherNote", "transcript", "questions"]);
 const ruleTypes = new Set(["heading", "text", "callout", "formula", "example", "list", "table", "word", "form", "marker", "grid", "link"]);
 const htmlTokens = (html: string) => html.match(/<!--[\s\S]*?-->|<[^>]*>|[^<]+/g) ?? [];
@@ -44,13 +48,14 @@ export function collectLearningTranslations(value: unknown, target: LearningLang
     const text = typeof current === "string" ? current.trim() : "";
     const en = typeof english === "string" ? english.trim() : "";
     const source = detectTranslationLang([text]) ?? hint ?? undefined;
-    if (text && source === target) return;
+    if (text && cyrillic.test(text) && source === target) return;
     // Latin-only examples/definitions are originals, not Russian/Ukrainian explanations.
     if (text && !cyrillic.test(text) && !en) return;
     const sourceText = en || text;
     if (!sourceText) return;
     const segment = plan.segments.length;
-    plan.segments.push({ text: sourceText, source: en ? "EN" : source, context });
+    plan.segments.push({ text: sourceText, source: en ? "EN" : source, context,
+      ...(en && cyrillic.test(text) ? { requiresCyrillic: true as const } : {}) });
     plan.patches.push({ path, segment, ...(htmlToken === undefined ? {} : { htmlToken }) });
   };
   const explanatory = (path: Path, text: unknown, hint?: LearningLanguage | null) => {

@@ -28,6 +28,18 @@ test("already correct human translations and unrelated English definitions are p
   assert.deepEqual(result, { ...source, words: source.words.map(word => ({ ...word, translationLang: "UK" })) });
 });
 
+test("an RU or UK flag cannot hide an English duplicate in a translation field", () => {
+  for (const language of ["RU", "UK"] as const) {
+    const source = { translationLang: language, words: [{ word: "be flustered", translation: "be flustered", examples: [] }] };
+    const plan = collectLearningTranslations(source, language);
+    assert.equal(plan.segments.length, 1); assert.equal(plan.segments[0].source, "EN");
+    const translated = applyLearningTranslations(source, language, plan, [language === "RU" ? "быть растерянным" : "бути розгубленим"]);
+    assert.notEqual(translated.words[0].translation, translated.words[0].word);
+  }
+  const source = { words: [{ word: "be mortified", translation: "згорати від сорому" }] };
+  assert.equal(collectLearningTranslations(source, "RU").segments[0].requiresCyrillic, true);
+});
+
 test("real keyed grammar/lexis fixtures include every Cyrillic explanation and every translatable tr field", () => {
   for (const fixture of ["keyed-rule.txt", "keyed-lexis.txt", "keyed-tense.txt"]) {
     const parsed = parseKeyed(readFileSync(`scripts/fixtures/${fixture}`, "utf8"));
