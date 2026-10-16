@@ -5,8 +5,9 @@ import test from "node:test";
 import ts from "typescript";
 import { buildA2PopularQuestionsLesson } from "../src/lib/bundled-lessons/a2-popular-questions";
 import { buildB1MoreDailyRoutinesLesson } from "../src/lib/bundled-lessons/b1-more-daily-routines";
+import { buildB1TransportLesson } from "../src/lib/bundled-lessons/b1-transport";
 import * as regular from "../src/lib/regular-lesson";
-import { regularHomeworkShowsWordBank } from "../src/lib/lesson-homework";
+import { regularHomeworkShowsWordBank, normalizeInteractiveHomework, homeworkAnswerMatches } from "../src/lib/lesson-homework";
 import { detectTranslationLang } from "../src/lib/translation-lang";
 
 const source = readFileSync(new URL("../src/components/lessons/regular-lesson-view.tsx", import.meta.url), "utf8");
@@ -200,4 +201,30 @@ test("all More daily routines classroom groups can be copied individually and co
     assert(copies.every(copy => copy.exercise.referenceText === expected && copy.exercise.referenceTitle === section.title));
     assert(!copies.some(copy => copy.exercise.referenceText!.includes("Suggested answer:")));
   }
+});
+
+test("every Transport exercise copies natively with private alternatives and complete comprehension reference text", () => {
+  const transport = buildB1TransportLesson();
+  const groups = transport.sections.flatMap(section => exports.homeworkCandidates(section, {}));
+  assert.equal(groups.length, 15);
+  assert.equal(new Set(groups.map(group => group.exercise.id)).size, 15);
+  assert.equal(groups.reduce((sum, group) => sum + group.exercise.items.length, 0), 150);
+  assert(!groups.some(group => /teacher|guide|vocabulary/.test(group.exercise.id)));
+  const normalized = normalizeInteractiveHomework({ kind: "INTERACTIVE_HOMEWORK_V1", title: "Copied practice", exercises: groups.map(group => group.exercise) })!;
+  const guess = normalized.exercises.find(e => e.id === "regular-transport-guess-1")!;
+  assert.equal(guess.items.length, 26); assert.equal(guess.wordBank, undefined);
+  const invitation = guess.items[9];
+  for (const answer of ["to jump in", "to hop in", "jump in", "hop in"]) assert(homeworkAnswerMatches(invitation, answer), answer);
+  for (const section of transport.sections.filter(s => s.tone === "reading" || s.tone === "dialogue")) {
+    const copies = normalized.exercises.filter(e => e.id.startsWith(`regular-${section.id}-`));
+    assert.equal(copies.length, 2);
+    assert(copies.every(copy => copy.items.length === 8 && copy.referenceTitle === section.title && copy.referenceText));
+    assert(!copies.some(copy => copy.referenceText!.includes("Suggested answer:")));
+    const tf = copies.find(copy => copy.kind === "fill")!;
+    assert(tf.items.every(item => homeworkAnswerMatches(item, item.answer === "True" ? "T" : "F")));
+  }
+  const translation = normalized.exercises.find(e => e.id === "regular-transport-translation-1")!;
+  assert.equal(translation.kind, "translate");
+  assert.equal(translation.translationLanguage, "UK");
+  assert.deepEqual(normalizeInteractiveHomework(normalized), normalized);
 });

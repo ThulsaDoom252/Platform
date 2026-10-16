@@ -815,7 +815,14 @@ const cleanItem = (value: unknown): HomeworkItem | null => {
   const id = cleanId(raw.id);
   const prompt = typeof raw.prompt === "string" ? raw.prompt.trim().slice(0, 1_500) : "";
   if (!id || !prompt) return null;
-  const answer = typeof raw.answer === "string" ? raw.answer.trim().slice(0, 300) : undefined;
+  const rawAnswer = typeof raw.answer === "string" ? raw.answer.trim().slice(0, 300) : undefined;
+  // Native lesson keys join alternatives with " / ". A homework copy must
+  // accept each alternative, not require the learner to type the whole key.
+  // Limit this compatibility rule to native regular-lesson item identities.
+  const alternatives = id.startsWith("regular-") && rawAnswer ? rawAnswer.split(/\s+\/\s+/).map(value => value.trim()).filter(Boolean) : [];
+  const answer = alternatives.length > 1 ? alternatives[0] : rawAnswer;
+  const accepted = [...alternatives.slice(1), ...(Array.isArray(raw.accepted) ? raw.accepted : [])]
+    .map(String).map(item => item.trim().slice(0, 300)).filter(Boolean).slice(0, 20);
   const choices = Array.isArray(raw.choices)
     ? [...new Set(raw.choices
         .filter((choice): choice is string => typeof choice === "string")
@@ -836,13 +843,9 @@ const cleanItem = (value: unknown): HomeworkItem | null => {
     ...(safeQuestionAudioUrl ? { questionAudioUrl: safeQuestionAudioUrl } : {}),
     ...(answer ? { answer } : {}),
     ...(choices.length >= 2 && (!answer || choices.includes(answer)) ? { choices } : {}),
-    ...(Array.isArray(raw.accepted)
+    ...(Array.isArray(raw.accepted) || alternatives.length > 1
       ? {
-          accepted: raw.accepted
-            .map(String)
-            .map((item) => item.trim().slice(0, 300))
-            .filter(Boolean)
-            .slice(0, 20),
+          accepted,
         }
       : {}),
     ...(typeof raw.word === "string" && raw.word.trim()
