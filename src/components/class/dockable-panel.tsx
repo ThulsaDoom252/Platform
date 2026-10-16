@@ -7,10 +7,10 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { IconGrip } from "@/components/icons";
+import { IconGrip, IconX } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
-export type ClassUtilityPanel = "dictionary" | "chat" | "verbs" | "notes" | "script";
+export type ClassUtilityPanel = "dictionary" | "chat" | "verbs" | "notes" | "script" | "reactions";
 
 export type ClassPanelPlacement = {
   floating: boolean;
@@ -23,6 +23,7 @@ export type ClassPanelPlacement = {
 export const DEFAULT_CLASS_PANEL_LAYOUT: Record<ClassUtilityPanel, ClassPanelPlacement> = {
   dictionary: { floating: false, x: 16, y: 88, width: 360, height: 620 },
   chat: { floating: false, x: 760, y: 88, width: 360, height: 420 },
+  reactions: { floating: false, x: 760, y: 88, width: 360, height: 420 },
   verbs: { floating: false, x: 760, y: 528, width: 360, height: 360 },
   notes: { floating: false, x: 760, y: 88, width: 380, height: 520 },
   script: { floating: false, x: 700, y: 88, width: 520, height: 620 },
@@ -59,6 +60,8 @@ export function DockablePanel({
   onResize,
   allowWidthToggle = false,
   widthToggleLabel,
+  onClose,
+  closeLabel,
   children,
 }: {
   title: string;
@@ -73,6 +76,8 @@ export function DockablePanel({
   onResize: (width: number, height: number) => void;
   allowWidthToggle?: boolean;
   widthToggleLabel?: string;
+  onClose?: () => void;
+  closeLabel?: string;
   children: ReactNode;
 }) {
   const panel = useRef<HTMLElement>(null);
@@ -211,6 +216,7 @@ export function DockablePanel({
   return (
     <section
       ref={panel}
+      aria-label={title}
       className={cn(
         "flex min-h-0 flex-col overflow-hidden rounded-2xl bg-surface ring-1 ring-line",
         placement.floating
@@ -282,6 +288,18 @@ export function DockablePanel({
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base font-bold text-muted transition hover:bg-surface-2 hover:text-accent"
           >
             ⇔
+          </button>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={onClose}
+            title={closeLabel}
+            aria-label={closeLabel}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-content"
+          >
+            <IconX className="h-4 w-4" />
           </button>
         )}
       </header>

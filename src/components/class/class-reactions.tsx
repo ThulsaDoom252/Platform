@@ -3,15 +3,16 @@
 import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import { ScanLine, SmilePlus, Sparkles, Volume2, VolumeX, Wind } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
+import { useUiChoice, useUiPreference } from "@/components/ui-preferences-provider";
 import { sendClassReactionAction } from "@/lib/actions/class-tools";
 import {
   CLASS_REACTION_KINDS,
+  CLASS_REACTION_MODES,
   type ClassReaction,
   type ClassReactionKind,
   type ClassReactionMode,
 } from "@/lib/class-reaction";
 import { cn } from "@/lib/utils";
-import { IconX } from "@/components/icons";
 
 const REACTION_LOOK: Record<
   ClassReactionKind,
@@ -111,10 +112,10 @@ function playReactionSound(kind: ClassReactionKind) {
   }
 }
 
-export function TeacherReactionPanel({ onClose }: { onClose: () => void }) {
+export function TeacherReactionPanel() {
   const { t } = useT();
-  const [withSound, setWithSound] = useState(false);
-  const [mode, setMode] = useState<ClassReactionMode>("emerge");
+  const [withSound, setWithSound] = useUiPreference<boolean>("class:reactions:sound", false, (value) => typeof value === "boolean");
+  const [mode, setMode] = useUiChoice<ClassReactionMode>("class:reactions:mode", CLASS_REACTION_MODES, "emerge");
   const [sent, setSent] = useState<ClassReactionKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -133,31 +134,18 @@ export function TeacherReactionPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <section
-      role="dialog"
+    <div
       aria-label={t.classRoom.reactionsTitle}
-      className="fixed inset-x-3 bottom-[7.25rem] z-50 mx-auto w-[min(44rem,calc(100vw-1.5rem))] overflow-hidden rounded-3xl bg-surface/95 shadow-2xl ring-1 ring-line backdrop-blur-xl lg:bottom-[4.75rem]"
+      data-class-reaction-controls
+      className="h-full min-w-0 overflow-y-auto overscroll-contain p-3"
     >
-      <div className="flex items-start gap-3 border-b border-line px-4 py-3.5 sm:px-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-          <Sparkles className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-black text-content sm:text-base">{t.classRoom.reactionsTitle}</h2>
-          <p className="mt-0.5 text-xs text-muted">{t.classRoom.reactionsHint}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t.common.close}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-content"
-        >
-          <IconX className="h-5 w-5" />
-        </button>
+      <div className="mb-3 flex items-start gap-2 text-muted">
+        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
+        <p className="min-w-0 text-xs leading-relaxed">{t.classRoom.reactionsHint}</p>
       </div>
 
-      <div className="p-3.5 sm:p-5">
-        <div className="mb-3 grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
+      <div>
+        <div className="mb-3 grid min-w-0 gap-2">
           <div className="grid grid-cols-2 rounded-2xl bg-surface-2 p-1 ring-1 ring-line">
             {([
               ["emerge", ScanLine, t.classRoom.reactionEmerge],
@@ -167,20 +155,16 @@ export function TeacherReactionPanel({ onClose }: { onClose: () => void }) {
                 key={value}
                 type="button"
                 onClick={() => setMode(value)}
+                aria-pressed={mode === value}
                 className={cn(
-                  "flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-black transition",
+                  "flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-1 text-xs font-bold transition",
                   mode === value
                     ? "bg-accent text-white shadow-md"
                     : "text-muted hover:bg-surface hover:text-content",
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {label}
-                {value === "emerge" && (
-                  <span className="hidden text-[9px] font-black uppercase tracking-wide opacity-65 md:inline">
-                    {t.classRoom.reactionDefault}
-                  </span>
-                )}
+                <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="min-w-0 break-words">{label}</span>
               </button>
             ))}
           </div>
@@ -189,22 +173,22 @@ export function TeacherReactionPanel({ onClose }: { onClose: () => void }) {
             type="button"
             role="switch"
             aria-checked={withSound}
-            onClick={() => setWithSound((value) => !value)}
+            onClick={() => setWithSound(!withSound)}
             className={cn(
-              "flex min-h-12 w-full items-center gap-3 rounded-2xl px-3.5 py-2.5 text-left ring-1 transition sm:w-auto",
+              "flex min-h-10 w-full min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-left ring-1 transition",
               withSound
                 ? "bg-accent-soft text-accent ring-accent/30"
                 : "bg-surface-2 text-muted ring-line hover:text-content",
             )}
           >
             {withSound ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
-            <span className="flex-1 text-sm font-bold">
+            <span className="min-w-0 flex-1 text-xs font-bold">
               {withSound ? t.classRoom.reactionsSoundOn : t.classRoom.reactionsSoundOff}
             </span>
             <span
               aria-hidden
               className={cn(
-                "relative h-6 w-11 rounded-full transition",
+                "relative h-6 w-11 shrink-0 rounded-full transition",
                 withSound ? "bg-accent" : "bg-line",
               )}
             >
@@ -218,7 +202,7 @@ export function TeacherReactionPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+        <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 5rem), 1fr))" }}>
           {CLASS_REACTION_KINDS.map((kind) => {
             const look = REACTION_LOOK[kind];
             return (
@@ -227,15 +211,15 @@ export function TeacherReactionPanel({ onClose }: { onClose: () => void }) {
                 type="button"
                 onClick={() => send(kind)}
                 className={cn(
-                  "group relative min-h-28 overflow-hidden rounded-2xl bg-gradient-to-br p-3 text-white shadow-lg transition duration-200 hover:-translate-y-1 hover:shadow-xl active:translate-y-0 active:scale-[.97]",
+                  "group relative min-h-[5.5rem] min-w-0 overflow-hidden rounded-xl bg-gradient-to-br p-2 text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-[.97]",
                   look.surface,
                 )}
               >
                 <span className={cn("absolute -right-5 -top-5 h-16 w-16 rounded-full blur-2xl", look.glow)} />
-                <span className="block text-4xl transition duration-200 group-hover:scale-110" aria-hidden>
+                <span className="block text-3xl transition duration-200 group-hover:scale-110" aria-hidden>
                   {sent === kind ? "✨" : look.emoji}
                 </span>
-                <span className="mt-2 block text-xs font-black leading-tight sm:text-[13px]">{look.panelLabel}</span>
+                <span className="mt-1.5 block break-words text-[11px] font-bold leading-tight">{look.panelLabel}</span>
               </button>
             );
           })}
@@ -248,7 +232,7 @@ export function TeacherReactionPanel({ onClose }: { onClose: () => void }) {
           </p>
         )}
       </div>
-    </section>
+    </div>
   );
 }
 

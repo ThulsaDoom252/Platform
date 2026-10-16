@@ -999,12 +999,14 @@ export function ClassRoom({
   const verbsPlacement = placementOf("verbs");
   const notesPlacement = placementOf("notes");
   const scriptPlacement = placementOf("script");
+  const reactionsPlacement = placementOf("reactions");
   const dockedDictionary = open.dictionary && !dictionaryPlacement.floating;
   const dockedRight =
     (open.chat && !chatPlacement.floating) ||
     (open.verbs && !verbsPlacement.floating) ||
     Boolean(teacher && partner && open.script && !scriptPlacement.floating) ||
-    Boolean(teacher && partner && open.notes && !notesPlacement.floating);
+    Boolean(teacher && partner && open.notes && !notesPlacement.floating) ||
+    Boolean(teacher && partner && showReactions && !reactionsPlacement.floating);
   const chatTitle = partner
     ? fmt(t.classRoom.chatWith, { name: partner.name })
     : t.classRoom.chat;
@@ -1115,6 +1117,25 @@ export function ClassRoom({
               : "contents",
           )}
         >
+          {teacher && partner && showReactions && (
+            <DockablePanel
+              title={t.classRoom.reactionsTitle}
+              placement={reactionsPlacement}
+              dockedClassName="h-[420px] shrink-0"
+              detachLabel={t.classRoom.detachPanel}
+              dockLabel={t.classRoom.dockPanel}
+              resizeLabel={t.classRoom.resizePanel}
+              onDetach={() => detachPanel("reactions")}
+              onDock={() => dockPanel("reactions")}
+              onMove={(x, y) => movePanel("reactions", x, y)}
+              onResize={(width, height) => resizePanel("reactions", width, height)}
+              onClose={() => setShowReactions(false)}
+              closeLabel={t.common.close}
+            >
+              <TeacherReactionPanel />
+            </DockablePanel>
+          )}
+
           {open.chat && (
             <DockablePanel
               title={chatTitle}
@@ -1300,10 +1321,6 @@ export function ClassRoom({
           onClose={() => setShowTimer(false)}
           notes={<ClassNotes studentName={partner.name} compact />}
         />
-      )}
-
-      {teacher && partner && showReactions && (
-        <TeacherReactionPanel onClose={() => setShowReactions(false)} />
       )}
 
       {vocabularyNotice && vocabularyNotice.session === vocabularyTracker && (
