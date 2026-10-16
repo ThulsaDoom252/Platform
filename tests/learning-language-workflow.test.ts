@@ -23,7 +23,7 @@ function compile<T>(path: string, imports: Record<string, unknown>, globals: Rec
 }
 function fixture(count = 1) {
   const state = { rows: { users: [{ id, role: "STUDENT", learningLanguage: "RU", answers: { q: "unchanged" } }, { id: otherId, role: "STUDENT", learningLanguage: null }] as Row[], cache: [] as Row[], jobs: [] as Row[] }, session: { userId: id, role: "STUDENT" } as { userId: string; role: string } | null,
-    segments: Array.from({ length: count }, (_, i): content.LearningSegment => ({ text: `word-${i}`, source: "EN", context: "learning" })), requests: 0, readCount: 0, translationFailure: false, returnUntranslated: false, beforeTranslation: null as (() => Promise<void>) | null, events: [] as string[] };
+    segments: Array.from({ length: count }, (_, i): content.LearningSegment => ({ text: `word-${i}`, source: "EN", context: "learning" })), requests: 0, readCount: 0, translationFailure: false, cacheFailure: false, returnUntranslated: false, beforeTranslation: null as (() => Promise<void>) | null, events: [] as string[] };
   const rowsFor = (source: Record<string, unknown>) => state.rows[source.name as keyof typeof state.rows];
   const project = (row: Row, fields?: Record<string, Column>) => fields ? Object.fromEntries(Object.entries(fields).map(([key, column]) => [key, row[column.key]])) : structuredClone(row);
   const ops = {
@@ -38,7 +38,7 @@ function fixture(count = 1) {
     select: (fields?: Record<string, Column>) => {
       state.readCount++;
       let source: Record<string, unknown>, predicate: Predicate = () => true, limit = Infinity;
-      const execute = () => rowsFor(source).filter(predicate).slice(0, limit).map(row => project(row, fields));
+      const execute = () => { if (source.name === "cache" && state.cacheFailure) throw Error("Cache unavailable"); return rowsFor(source).filter(predicate).slice(0, limit).map(row => project(row, fields)); };
       const query = { from: (next: Record<string, unknown>) => { source = next; return query; }, where: (next: Predicate) => { predicate = next; return query; }, limit: (next: number) => { limit = next; return query; }, then: (resolve: (rows: Row[]) => unknown) => Promise.resolve(execute()).then(resolve) };
       return query;
     },
@@ -212,4 +212,42 @@ test("assigned worksheet overlays preserve answer/grade/attempt JSON byte for by
   const override = JSON.parse(result.answers["regular-exercise-override:a:1"]);
   assert.equal(override.translationLanguage, "UK"); assert.deepEqual(override.items[0].answers, ["She works."]);
   assert.notEqual(override.items[0].prompt, "Она работает."); assert.equal(lesson.regularSections[0].studentHtml, '<ol class="translation-check"><li>Она работает.</li></ol>');
+});
+
+test("read-only localization failures retain the entire saved payload and report a warning without caching a fake translation", async () => {
+  for (const cause of ["translationFailure", "cacheFailure", "returnUntranslated"] as const) {
+    const f = fixture(0); f.state[cause] = true;
+    const value = { words: [{ word: "gut", translation: "кишка", translationLang: "RU" }],
+      plan: [{ mode: "choose", word: { word: "gut", translation: "кишка" }, options: ["кишка", "кот"] }],
+      answers: { q: "exact student answer", score: "90" }, attempts: [{ finishedAt: "unchanged" }] };
+    const before = JSON.stringify(value); let warnings = 0;
+    const result = await f.service.personalizeLearningContent(id, value, "UK", { onWarning: () => { warnings++; } });
+    assert.equal(result, value); assert.equal(JSON.stringify(result), before); assert.equal(warnings, 1);
+    assert.equal(f.state.rows.cache.length, 0); assert.equal(f.language(), "RU");
+    assert.deepEqual(f.state.rows.users[0].answers, { q: "unchanged" });
+  }
+});
+
+test("strict assignments/grading still reject unavailable or invalid translations before writes", async () => {
+  for (const cause of ["translationFailure", "returnUntranslated"] as const) {
+    const f = fixture(0); f.state[cause] = true;
+    await assert.rejects(f.service.personalizeLearningContent(id, { word: "pretty", translation: "красивый" }, "UK", { strict: true }));
+    assert.equal(f.state.rows.cache.length, 0); assert.equal(f.language(), "RU");
+  }
+});
+
+test("failed assigned lesson reads preserve raw override JSON, grades and attempts, and recover on the next successful read", async () => {
+  const f = fixture(0); f.state.rows.users[0].learningLanguage = "UK"; f.state.translationFailure = true;
+  const lesson = { words: [{ word: "going to → gonna", translation: "разговорная форма going to" }], regularSections: [{ id: "a", title: "Translate", tone: "exercise", studentHtml: '<ol class="translation-check"><li>Она работает.</li></ol>', teacherHtml: "", defaultOpen: true }] };
+  const answers = { "regular-exercise-override:a:1": '{ "title": "Custom", "items": [{"prompt":"Она работает.","answers":["She works."]}] }',
+    "regular-answer:a:1": "She worked", "regular-attempts:a:1": '["She worked"]', "hw:score": "92", "hw:plan-override": '{"kind":"old"}' };
+  const before = JSON.stringify({ lesson, answers });
+  const failed = await f.service.personalizeAssignedLearningContent(id, lesson, answers);
+  assert.equal(failed.lesson, lesson); assert.equal(failed.answers, answers); assert.equal(failed.translationWarning, true);
+  assert.equal(f.state.rows.cache.length, 0); assert.equal(JSON.stringify({ lesson, answers }), before);
+  f.state.translationFailure = false;
+  const recovered = await f.service.personalizeAssignedLearningContent(id, lesson, answers);
+  assert.notEqual(recovered.lesson.words[0].translation, lesson.words[0].translation); assert.equal(recovered.translationWarning, undefined);
+  assert.equal(recovered.answers["hw:score"], "92"); assert.equal(recovered.answers["regular-attempts:a:1"], '["She worked"]');
+  assert.equal(JSON.stringify({ lesson, answers }), before);
 });

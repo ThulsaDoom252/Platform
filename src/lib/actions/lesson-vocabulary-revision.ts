@@ -39,7 +39,7 @@ async function sourceFor(teacherId: string, input: LessonRevisionSourceInput) {
   if (!lesson) throw new LessonRevisionIssue("Урок не найден");
   // Resolve the saved personal lesson version and the recipient's language on
   // the server, never the reusable template's words or client-edited text.
-  const words = lessonRevisionWords(await personalizeLearningContent(student.id, lesson.words));
+  const words = lessonRevisionWords(await personalizeLearningContent(student.id, lesson.words, undefined, { strict: true }));
   if (!words.length) throw new LessonRevisionIssue("В словаре нет слов для игры");
   return { unitId: unit.id, studentId: student.id, studentName: student.name, assignmentId: input.assignmentId ?? null,
     id: `lesson:${unit.id}`, name: lesson.title, words,

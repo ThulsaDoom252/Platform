@@ -94,6 +94,21 @@ test("English copies are retried alone and never accepted as a localized headwor
   await assert.rejects(bad.translateLearningSegments([segment], "RU"), /не перевёл/);
 });
 
+test("going to → gonna can retain its English form while its saved explanation is correctly localized", async () => {
+  const calls: { text: string[]; source_lang: string; tag_handling?: string }[] = [];
+  const segment: LearningSegment = { text: "going to → gonna", source: "EN", context: "Informal grammar form", requiresCyrillic: true,
+    fallback: { text: "Разговорная форма going to → gonna", source: "RU" } };
+  const api = translator(async (_input, options) => {
+    const payload = JSON.parse(String(options!.body)); calls.push(payload);
+    return new Response(JSON.stringify({ translations: payload.text.map((text: string) => ({ text: text.replace("Разговорная форма", "Розмовна форма") })) }));
+  });
+  assert.deepEqual(Array.from(await api.translateLearningSegments([segment], "UK")), ["Розмовна форма going to → gonna"]);
+  assert.equal(calls.length, 3); assert.equal(calls[2].source_lang, "RU"); assert.equal(calls[2].tag_handling, "xml");
+  assert.ok(calls[2].text[0].includes("<k>going to</k>"));
+  const bad = translator(async () => new Response(JSON.stringify({ translations: [{ text: "going to → gonna" }] })));
+  await assert.rejects(bad.translateLearningSegments([segment], "UK"), /не перевёл/);
+});
+
 test("vocabulary detects English fields individually instead of labelling them RU or UK", async () => {
   const sources: string[] = [];
   const api = translator(async (_input, options) => {

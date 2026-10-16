@@ -899,9 +899,12 @@ export async function startRevisionAction(
     .limit(1);
   if (running) return { ok: true, attemptId: running.id };
 
-  const words = await personalizeLearningContent(revision.studentId, revision.wordsSnapshot
+  const savedWords = revision.wordsSnapshot
     ? revisionSnapshotWords(revision.wordsSnapshot, revision.phraseIds ?? [])
-    : await wordsOf(revision.phraseIds ?? []));
+    : await wordsOf(revision.phraseIds ?? []);
+  let words: RevisionWord[];
+  try { words = await personalizeLearningContent(revision.studentId, savedWords, undefined, { strict: true }); }
+  catch { return { error: "Автоперевод временно недоступен. Новая попытка не создана. Попробуй ещё раз позже." }; }
   const plan = buildRevision(words, (revision.modes ?? []) as RevisionMode[], {
     byMode: revision.modeWords ?? undefined,
   });
@@ -954,6 +957,7 @@ async function wordsOf(phraseIds: string[]): Promise<RevisionWord[]> {
 }
 
 export type AttemptView = {
+  translationWarning?: boolean;
   id: string;
   revisionId: string;
   title: string;
@@ -986,11 +990,15 @@ export async function attemptAction(attemptId: string): Promise<AttemptView | nu
     return null;
   }
 
+  let translationWarning = false;
+  const plan = await personalizeLearningContent(row.revision.studentId, (row.attempt.plan ?? []) as RevisionSection[], undefined,
+    { onWarning: () => { translationWarning = true; } });
   return {
+    ...(translationWarning ? { translationWarning: true } : {}),
     id: row.attempt.id,
     revisionId: row.revision.id,
     title: row.revision.title,
-    plan: await personalizeLearningContent(row.revision.studentId, (row.attempt.plan ?? []) as RevisionSection[]),
+    plan,
     answers: (row.attempt.answers ?? []) as RevisionAnswer[],
     strugglingWords: validateRevisionStrugglingIds((row.attempt.plan ?? []) as RevisionSection[], row.attempt.strugglingWords) ?? [],
     startedAt: row.attempt.startedAt.toISOString(),

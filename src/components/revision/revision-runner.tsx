@@ -1,4 +1,5 @@
 "use client";
+import { LearningTranslationNotice } from "@/components/learning-translation-notice";
 
 /**
  * Прохождение повторения слов.
@@ -295,6 +296,7 @@ export function RevisionRunner({
 
   return (
     <div className="revision-game-theme mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <LearningTranslationNotice show={attempt.translationWarning} />
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-content">{card.title}</p>

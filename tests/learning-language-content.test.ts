@@ -38,6 +38,7 @@ test("an RU or UK flag cannot hide an English duplicate in a translation field",
   }
   const source = { words: [{ word: "be mortified", translation: "згорати від сорому" }] };
   assert.equal(collectLearningTranslations(source, "RU").segments[0].requiresCyrillic, true);
+  assert.deepEqual(collectLearningTranslations(source, "RU").segments[0].fallback, { text: "згорати від сорому", source: "UK" });
 });
 
 test("real keyed grammar/lexis fixtures include every Cyrillic explanation and every translatable tr field", () => {

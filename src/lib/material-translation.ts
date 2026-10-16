@@ -203,6 +203,13 @@ export async function translateLearningSegments(
     if (text && !validLearningTranslation(segment, text)) {
       [text] = await requestDeepL([segment.text], target, segment.source, segment.context);
     }
+    if (text && !validLearningTranslation(segment, text) && segment.fallback) {
+      // Grammar labels such as "going to → gonna" should retain their English
+      // forms. Translate the saved explanation, not an invented headword sense.
+      const saved = segment.fallback;
+      text = saved.source === target ? saved.text
+        : (await requestDeepL([saved.text], target, saved.source, segment.context))[0];
+    }
     if (!text) throw new Error("DeepL вернул неполный перевод");
     if (!validLearningTranslation(segment, text)) throw new Error(`DeepL не перевёл «${segment.text.slice(0, 120)}». Попробуйте ещё раз.`);
     translated.push(text);

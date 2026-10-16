@@ -267,6 +267,7 @@ export async function listWordDeckStudentsAction(): Promise<WordDeckStudent[]> {
 }
 
 export type ClassWordDeckActivity = {
+  translationWarning?: boolean;
   id: string;
   templateId: string | null;
   title: string;
@@ -511,7 +512,10 @@ export async function wordDeckHomeworkAction(id: string): Promise<WordDeckHomewo
     eq(activityGames.studentId, session.userId),
     eq(activityGames.kind, "WORD_DECK_HOMEWORK"),
   )).limit(1);
-  return row ? personalizeLearningContent(session.userId, homeworkWordDeckOf(row)) : null;
+  if (!row) return null;
+  let translationWarning = false;
+  const item = await personalizeLearningContent(session.userId, homeworkWordDeckOf(row), undefined, { onWarning: () => { translationWarning = true; } });
+  return item && translationWarning ? { ...item, translationWarning: true } : item;
 }
 
 function teacherOwnsWordDeckHomework(
@@ -614,12 +618,14 @@ export async function teacherWordDeckHomeworkAction(id: string): Promise<Teacher
   ]);
   if (!row || !teacherOwnsWordDeckHomework(session.userId, row, legacyOwnerId)) return null;
   const item = homeworkWordDeckOf(row.game);
-  return item ? personalizeLearningContent(row.game.studentId, {
+  let translationWarning = false;
+  const result = item ? await personalizeLearningContent(row.game.studentId, {
     ...item,
     studentId: row.game.studentId,
     studentName: row.studentName,
     studentAvatarUrl: row.studentAvatarUrl,
-  }) : null;
+  }, undefined, { onWarning: () => { translationWarning = true; } }) : null;
+  return result && translationWarning ? { ...result, translationWarning: true } : result;
 }
 
 /**
@@ -999,7 +1005,10 @@ export async function focusedClassWordDeckAction(): Promise<ClassWordDeckActivit
       ),
     )
     .limit(1);
-  return row ? personalizeLearningContent(session.userId, classWordDeckOf(row)) : null;
+  if (!row) return null;
+  let translationWarning = false;
+  const item = await personalizeLearningContent(session.userId, classWordDeckOf(row), undefined, { onWarning: () => { translationWarning = true; } });
+  return item && translationWarning ? { ...item, translationWarning: true } : item;
 }
 
 /** Текущий стол для учителя и наблюдающего ученика выбранного класса. */

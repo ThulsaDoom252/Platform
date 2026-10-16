@@ -64,23 +64,36 @@ export async function resolveLearningSegments(studentId: string, language: Learn
   return keys.map(key => translated.get(key)!);
 }
 
-/** Call only after the existing resource ownership/grant checks. */
-export async function personalizeLearningContent<T>(studentId: string, value: T, language?: LearningLanguage | null): Promise<T> {
-  const target = language === undefined ? await studentLearningLanguage(studentId) : language;
-  if (!target) return value;
-  const plan = collectLearningTranslations(value, target);
-  const translated = await resolveLearningSegments(studentId, target, plan.segments);
-  return applyLearningTranslations(value, target, plan, translated);
+export type LearningContentOptions = { strict?: boolean; onWarning?: () => void };
+
+/** Call only after resource authorization. Translation is optional for reads,
+ * never for writes/grading that explicitly request strict validation. */
+export async function personalizeLearningContent<T>(studentId: string, value: T, language?: LearningLanguage | null, options: LearningContentOptions = {}): Promise<T> {
+  try {
+    const target = language === undefined ? await studentLearningLanguage(studentId) : language;
+    if (!target) return value;
+    const plan = collectLearningTranslations(value, target);
+    const translated = await resolveLearningSegments(studentId, target, plan.segments);
+    return applyLearningTranslations(value, target, plan, translated);
+  } catch (error) {
+    if (options.strict) throw error;
+    // Preserve the entire saved payload, including matching options/keys. Do
+    // not cache a fallback, relabel its language, or expose provider details.
+    console.warn("[learning-language] Translation unavailable; saved content retained", { type: error instanceof Error ? error.name : "Error" });
+    options.onWarning?.();
+    return value;
+  }
 }
 
 /** Instruction overrides live beside answers, but answers themselves must remain byte-for-byte intact. */
 export async function personalizeAssignedLearningContent<T>(studentId: string, lesson: T, answers: Record<string, string>) {
-  const language = await studentLearningLanguage(studentId);
-  if (!language) return { lesson, answers };
   const sections = (lesson as { regularSections?: unknown })?.regularSections;
   const overrides = learningRegularOverrides(sections, answers);
-  const translated = await personalizeLearningContent(studentId, { lesson, overrides }, language);
+  let translationWarning = false;
+  const saved = { lesson, overrides };
+  const translated = await personalizeLearningContent(studentId, saved, undefined, { onWarning: () => { translationWarning = true; } });
+  if (translated === saved) return { lesson, answers, ...(translationWarning ? { translationWarning: true } : {}) };
   const state = { ...answers };
   for (const [key, override] of Object.entries(translated.overrides)) state[key] = JSON.stringify(override);
-  return { lesson: translated.lesson, answers: state };
+  return { lesson: translated.lesson, answers: state, ...(translationWarning ? { translationWarning: true } : {}) };
 }

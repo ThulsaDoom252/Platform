@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { useT } from "@/components/i18n-provider";
+import { LearningTranslationNotice } from "@/components/learning-translation-notice";
 import {
   answerAction,
   focusLessonWordAction,
@@ -67,6 +68,7 @@ export function AssignedLesson({
     open: string[];
     showBritish: boolean;
     vocabularyReveal: LessonVocabularyReveal;
+    translationWarning?: boolean;
   };
   teacher: boolean;
   /** Есть только внутри живого класса; вне класса видео остаётся обычным. */
@@ -321,6 +323,7 @@ export function AssignedLesson({
         onReplaceHighlights={teacher ? replaceHighlightedText : undefined}
       >
         <div className="flex flex-col gap-4">
+          <LearningTranslationNotice show={data.translationWarning} />
           {topic}
           {highlightToolbar}
           {liveEditor}
@@ -403,6 +406,7 @@ export function AssignedLesson({
       onReplaceHighlights={teacher ? replaceHighlightedText : undefined}
     >
       <div className="flex flex-col gap-4">
+        <LearningTranslationNotice show={data.translationWarning} />
         {topic}
         {highlightToolbar}
         {liveEditor}

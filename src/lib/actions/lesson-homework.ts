@@ -1122,7 +1122,9 @@ export async function submitHomeworkAutoAnswerAction(
     return { error: "Домашняя работа не найдена" };
   }
 
-  const localizedPlan = await personalizeLearningContent(row.assignment.studentId, row.plan);
+  let localizedPlan: typeof row.plan;
+  try { localizedPlan = await personalizeLearningContent(row.assignment.studentId, row.plan, undefined, { strict: true }); }
+  catch { return { error: "Не удалось подготовить перевод для проверки. Ответ и попытки не изменены. Попробуй ещё раз позже." }; }
   const found = findHomeworkItem(localizedPlan, String(itemId ?? ""));
   if (!found || !isHomeworkAutoKind(found.exercise.kind) || !found.item.answer) {
     return { error: "Задание не найдено" };

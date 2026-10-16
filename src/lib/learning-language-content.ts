@@ -6,7 +6,11 @@ export type LearningLanguage = TranslationLang;
 export function learningLanguage(value: unknown): LearningLanguage | null {
   return value === "RU" || value === "UK" ? value : null;
 }
-export type LearningSegment = { text: string; source?: LearningLanguage | "EN"; context: string; requiresCyrillic?: true };
+export type LearningSegment = {
+  text: string; source?: LearningLanguage | "EN"; context: string; requiresCyrillic?: true;
+  /** A saved localized explanation can be translated when an English form is intentionally retained. */
+  fallback?: { text: string; source?: LearningLanguage };
+};
 type Path = (string | number)[];
 type TextPatch = { path: Path; segment: number; htmlToken?: number };
 export type LearningTranslationPlan = {
@@ -55,7 +59,7 @@ export function collectLearningTranslations(value: unknown, target: LearningLang
     if (!sourceText) return;
     const segment = plan.segments.length;
     plan.segments.push({ text: sourceText, source: en ? "EN" : source, context,
-      ...(en && cyrillic.test(text) ? { requiresCyrillic: true as const } : {}) });
+      ...(en && cyrillic.test(text) ? { requiresCyrillic: true as const, fallback: { text, source } } : {}) });
     plan.patches.push({ path, segment, ...(htmlToken === undefined ? {} : { htmlToken }) });
   };
   const explanatory = (path: Path, text: unknown, hint?: LearningLanguage | null) => {

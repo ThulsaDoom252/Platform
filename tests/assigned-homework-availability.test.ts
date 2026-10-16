@@ -62,6 +62,10 @@ function assignedLessonHarness() {
   };
   const Wrapper = ({ children }: React.PropsWithChildren) => React.createElement(React.Fragment, null, children);
   const Icon = () => React.createElement("svg");
+  const notice = compile(source("components/learning-translation-notice.tsx"), {
+    "react/jsx-runtime": jsx,
+    "@/components/i18n-provider": { useT: () => ({ locale: "en" }) },
+  });
   const actions = Object.fromEntries([
     "answerAction", "focusLessonWordAction", "focusRegularLessonElementAction", "lessonPresentationStateAction",
     "lessonVocabularyRevealAction", "selectLessonLexisGroupAction", "setLessonHighlightsAction",
@@ -72,6 +76,7 @@ function assignedLessonHarness() {
     "react/jsx-runtime": jsx,
     "next/dynamic": { default: () => () => null },
     "@/components/i18n-provider": { useT: () => ({ t: en }) },
+    "@/components/learning-translation-notice": notice,
     "@/lib/actions/lessons": actions,
     "@/lib/lesson-unit": lessonUnit,
     "@/components/lessons/lesson-view": { LessonView: Probe },
@@ -87,9 +92,10 @@ function assignedLessonHarness() {
     "@/lib/use-realtime": { useRealtimeSubscription() {} },
   }).AssignedLesson as React.ComponentType<Record<string, unknown>>;
   return {
-    render(definition: typeof definitions[number], teacher: boolean, state: Record<string, string>): {
+    render(definition: typeof definitions[number], teacher: boolean, state: Record<string, string>, translationWarning = false): {
       received: HomeworkProbeProps;
       mutations: number;
+      html: string;
     } {
       received = undefined;
       const lesson: LessonView = {
@@ -98,7 +104,7 @@ function assignedLessonHarness() {
         videoUrl: null, videoTitle: null, transcript: [], questions: { afterVideo: [], afterReading: [] },
         homework: [], interactiveHomework: definition.plan, activities: [], regularSections: [],
       };
-      renderToStaticMarkup(React.createElement(component, {
+      const html = renderToStaticMarkup(React.createElement(component, {
         teacher, liveClass: true, presentationManaged: true,
         data: {
           assignment: {
@@ -106,11 +112,11 @@ function assignedLessonHarness() {
             title: lesson.title, studentName: "Student", openSections: [], highlights: {},
             finishedAt: null, createdAt: "2026-10-01T09:00:00.000Z",
           },
-          lesson, answers: state, open: [], showBritish: false, vocabularyReveal: "word",
+          lesson, answers: state, open: [], showBritish: false, vocabularyReveal: "word", translationWarning,
         },
       }));
       assert.ok(received, "The native assigned lesson must render its existing activity or regular reader");
-      return { received, mutations };
+      return { received, mutations, html };
     },
   };
 }
@@ -142,6 +148,18 @@ test("existing ACTIVITY and REGULAR class copies pass their plan and teacher ass
     assert.equal(received.homeworkSession.state, state);
     assert.equal(mutations, 0, "Viewing available homework must not save, reassign, or notify anyone");
     assert.deepEqual(state, { "lesson:existing-answer": "Keep this answer" });
+  }
+});
+
+test("both native lesson kinds show a non-blocking saved-content warning to teachers and students after a translation outage", () => {
+  const harness = assignedLessonHarness();
+  for (const definition of definitions) for (const teacher of [true, false]) {
+    const state = { "lesson:existing-answer": "Keep this answer" };
+    const result = harness.render(definition, teacher, state, true);
+    assert.match(result.html, /role="status"/);
+    assert.match(result.html, /Automatic translation is temporarily unavailable/);
+    assert.equal(result.mutations, 0); assert.equal(result.received.homeworkSession.state, state);
+    assert.doesNotMatch(harness.render(definition, teacher, state).html, /Automatic translation is temporarily unavailable/);
   }
 });
 

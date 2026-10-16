@@ -1152,7 +1152,7 @@ export async function addLessonVocabularyToMaterialsAction(
 
   const language = await studentLearningLanguage(studentId);
   let studentWords = words;
-  try { studentWords = await personalizeLearningContent(studentId, words, language); }
+  try { studentWords = await personalizeLearningContent(studentId, words, language, { strict: true }); }
   catch { return { error: "Не удалось подготовить перевод словника. Попробуй ещё раз." }; }
 
   const [{ value: lastOrder } = { value: 0 }] = await db
@@ -3255,6 +3255,7 @@ export async function assignedLessonAction(
       showBritish: boolean;
       vocabularyReveal: LessonVocabularyReveal;
       contentVersion: string;
+      translationWarning?: boolean;
     }
   | null
 > {

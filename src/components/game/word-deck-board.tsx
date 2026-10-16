@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { LearningTranslationNotice } from "@/components/learning-translation-notice";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { useT } from "@/components/i18n-provider";
 import {
@@ -32,6 +33,7 @@ import { wordDeckTextSize } from "@/lib/word-deck-display";
 import { TENSE_NAMES, tenseCorrectionExplanation } from "@/lib/tense-correction-settings";
 
 export type WordDeckPlayable = {
+  translationWarning?: boolean;
   id: string;
   title: string;
   cards: WordDeckSourceCard[];
@@ -458,6 +460,7 @@ export function WordDeckBoard({
       )}
       style={{ background }}
     >
+      <LearningTranslationNotice show={activity.translationWarning} />
       <div className="pointer-events-none absolute inset-0 -z-10 opacity-30 [background-image:linear-gradient(rgba(255,255,255,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] [background-size:28px_28px]" />
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">

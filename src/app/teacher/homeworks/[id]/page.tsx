@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LearningTranslationNotice } from "@/components/learning-translation-notice";
 import { IconChevronLeft } from "@/components/icons";
 import { InteractiveHomework } from "@/components/lessons/interactive-homework";
 import {
@@ -36,6 +37,7 @@ export default async function TeacherHomeworkReviewPage({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+      <LearningTranslationNotice show={data.translationWarning} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/teacher/homeworks"
