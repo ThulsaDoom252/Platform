@@ -18,6 +18,7 @@ import { useT } from "@/components/i18n-provider";
 import { hasTranscription } from "@/lib/phrase-words";
 import { SpeakPair, useSpeech } from "@/components/materials/speech";
 import { LessonVocabToMaterials } from "@/components/lessons/lesson-vocab-to-materials";
+import { LessonVocabToHomework } from "@/components/lessons/lesson-vocab-to-homework";
 import { categoryColor } from "@/lib/category-color";
 import {
   categoryKey,
@@ -50,6 +51,7 @@ export function LessonVocab({
   unitId,
   lessonTitle,
   defaultStudentId,
+  assignmentId,
   sectionTitle,
   integratedHeader = false,
   onHeadingClick,
@@ -71,6 +73,7 @@ export function LessonVocab({
   unitId?: string;
   lessonTitle?: string;
   defaultStudentId?: string | null;
+  assignmentId?: string;
   sectionTitle?: string;
   integratedHeader?: boolean;
   onHeadingClick?: () => void;
@@ -165,8 +168,9 @@ export function LessonVocab({
             {sectionTitle ?? t.lessonUnits.secVocab}
             {teacher && <span className="whitespace-nowrap text-sm font-semibold text-muted"> ({words.length})</span>}
           </h2>
-          {teacher && unitId && lessonTitle && <span data-no-lesson-highlight className="shrink-0">
+          {teacher && unitId && lessonTitle && <span data-no-lesson-highlight className="flex shrink-0 items-center gap-1.5">
             <LessonVocabToMaterials iconOnly unitId={unitId} lessonTitle={lessonTitle} defaultStudentId={defaultStudentId} />
+            {words.length > 0 && <LessonVocabToHomework key={`${unitId}:${assignmentId ?? ""}:${defaultStudentId ?? ""}`} unitId={unitId} lessonTitle={lessonTitle} defaultStudentId={defaultStudentId} assignmentId={assignmentId} />}
           </span>}
         </div>
 

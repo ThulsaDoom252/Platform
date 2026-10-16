@@ -1101,6 +1101,8 @@ export const wordRevisions = pgTable("word_revisions", {
   }),
   /** Как назвал задание учитель: по нему ученик его и узнаёт. */
   title: text("title").notNull(),
+  /** Lesson shortcut: immutable words, independent of Materials or later lesson edits. Older material assignments stay null. */
+  wordsSnapshot: jsonb("words_snapshot").$type<import("@/lib/lesson-vocabulary-revision").LessonRevisionSnapshot>(),
   /** Какие слова участвуют — объединение по всем режимам. */
   phraseIds: jsonb("phrase_ids").$type<string[]>().default([]).notNull(),
   /** Режимы в том порядке, какой задал учитель. */

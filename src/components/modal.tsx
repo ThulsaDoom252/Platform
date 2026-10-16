@@ -41,6 +41,9 @@ export function Modal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={`max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-surface shadow-2xl sm:rounded-2xl ${wide ? "max-w-3xl" : "max-w-md"}`}
         onClick={(e) => e.stopPropagation()}
       >

@@ -1386,6 +1386,7 @@ export function RegularLessonView({
                 unitId={unitId}
                 lessonTitle={lessonTitle}
                 defaultStudentId={defaultStudentId}
+                assignmentId={assignmentId}
               />
             </div>
           ) : nativeVoice && assignmentId ? (

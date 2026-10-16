@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import type { WordDeckActivity } from "@/lib/actions/word-deck";
 import { RegularLessonView } from "@/components/lessons/regular-lesson-view";
 import { LessonVocabToMaterials } from "@/components/lessons/lesson-vocab-to-materials";
+import { LessonVocabToHomework } from "@/components/lessons/lesson-vocab-to-homework";
 import { regularSectionKey } from "@/lib/regular-lesson";
 
 const inputCls =
@@ -285,7 +286,7 @@ function ActivityLessonEditor({
       </div>
 
       {/* Словник: свой у урока, наполняется из материалов по желанию. */}
-      <Section title={t.lessonUnits.secVocab} actions={lesson.words.length > 0 ? <LessonVocabToMaterials iconOnly unitId={lesson.id} lessonTitle={lesson.title} /> : undefined}>
+      <Section title={t.lessonUnits.secVocab} actions={lesson.words.length > 0 ? <span className="flex items-center gap-1.5"><LessonVocabToMaterials iconOnly unitId={lesson.id} lessonTitle={lesson.title} /><LessonVocabToHomework unitId={lesson.id} lessonTitle={lesson.title} /></span> : undefined}>
         <div className="flex flex-wrap items-center gap-2">
           {vocabs.length === 0 ? (
             <p className="text-sm text-faint">{t.lessonUnits.noVocab}</p>

@@ -42,7 +42,7 @@ export function HomeworkActivityTransfer(props: Props) {
       return;
     }
     startBusy(async () => {
-      const found = await revisionSourcesForPhrasesAction(props.activity.phraseIds);
+      const found = await revisionSourcesForPhrasesAction(props.activity.phraseIds, props.activity.id);
       const fallback = props.activity.nodeId
         ? [{
             id: props.activity.nodeId,

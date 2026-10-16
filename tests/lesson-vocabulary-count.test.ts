@@ -10,9 +10,10 @@ import { dictionaries } from "../src/lib/i18n";
 import * as lessonUnit from "../src/lib/lesson-unit";
 
 const source = readFileSync("src/components/lessons/lesson-vocab.tsx", "utf8");
-function render({ teacher, count, integratedHeader, locale, sectionTitle }: {
+function render({ teacher, count, integratedHeader, locale, sectionTitle, withSource }: {
   teacher?: boolean; count: number; integratedHeader: boolean;
   locale: keyof typeof dictionaries; sectionTitle?: string;
+  withSource?: boolean;
 }) {
   const exports: { LessonVocab?: React.ComponentType<Record<string, unknown>> } = {};
   const Icon = () => React.createElement("svg");
@@ -28,6 +29,7 @@ function render({ teacher, count, integratedHeader, locale, sectionTitle }: {
     if (name === "@/lib/phrase-words") return { hasTranscription: () => false };
     if (name === "@/components/materials/speech") return { useSpeech: () => ({}), SpeakPair: () => null };
     if (name === "@/components/lessons/lesson-vocab-to-materials") return { LessonVocabToMaterials: () => null };
+    if (name === "@/components/lessons/lesson-vocab-to-homework") return { LessonVocabToHomework: (props: Record<string, unknown>) => React.createElement("button", { "data-testid": "lesson-game-shortcut", "data-student": props.defaultStudentId, "data-assignment": props.assignmentId }) };
     if (name === "@/lib/category-color") return { categoryColor: () => "#818cf8" };
     if (name === "@/components/icons") return new Proxy({}, { get: () => Icon });
     if (name === "@/lib/utils") return { cn: (...values: unknown[]) => values.filter(Boolean).join(" ") };
@@ -39,6 +41,7 @@ function render({ teacher, count, integratedHeader, locale, sectionTitle }: {
   }));
   return renderToStaticMarkup(React.createElement(exports.LessonVocab!, {
     teacher, words, highlights: {}, integratedHeader, sectionTitle,
+    ...(withSource ? { unitId: "lesson-id", lessonTitle: "Transport", defaultStudentId: "student-id", assignmentId: "assignment-id" } : {}),
   }));
 }
 
@@ -63,4 +66,11 @@ test("students, including callers that omit the teacher flag, never see a vocabu
     assert(!html.includes("(22)") && !html.includes("22 words"));
   }
   assert(!source.includes("fmt(t.lessonUnits.words"));
+});
+
+test("the vocabulary game icon is beside the dictionary heading only for teachers with words, with the exact student context", () => {
+  const teacher = render({ teacher: true, count: 4, integratedHeader: true, locale: "en", withSource: true });
+  assert(teacher.includes('data-testid="lesson-game-shortcut"') && teacher.includes('data-student="student-id"') && teacher.includes('data-assignment="assignment-id"'));
+  for (const flag of [false, undefined]) assert(!render({ teacher: flag, count: 4, integratedHeader: true, locale: "en", withSource: true }).includes("lesson-game-shortcut"));
+  assert(!render({ teacher: true, count: 0, integratedHeader: false, locale: "en", withSource: true }).includes("lesson-game-shortcut"));
 });

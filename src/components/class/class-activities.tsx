@@ -635,14 +635,14 @@ export function ClassActivities({ studentId }: { studentId: string }) {
                     {item.revision.attempts > 0 && <button type="button" onClick={() => setOpenRevisionId(openRevisionId === item.revision.id ? null : item.revision.id)} className="h-9 rounded-xl bg-surface-2 px-3 text-xs font-bold text-content transition hover:text-accent">{t.revision.results}</button>}
                     {!item.revision.open && <button type="button" disabled={busy} onClick={() => startBusy(async () => { await reopenRevisionAction(item.revision.id, true); await reload(); })} className="h-9 rounded-xl border border-line px-3 text-xs font-bold text-content transition hover:border-accent hover:text-accent disabled:opacity-50">{t.revision.reopen}</button>}
                     <button type="button" disabled={busy} onClick={() => startBusy(async () => {
-                      const found = await revisionSourcesForPhrasesAction(item.revision.phraseIds);
+                      const found = await revisionSourcesForPhrasesAction(item.revision.phraseIds, item.revision.id);
                       const fallback = item.revision.nodeId ? [{ id: item.revision.nodeId, name: item.revision.nodeName ?? item.revision.title, path: item.revision.nodeName ?? item.revision.title }] : [];
                       const nextSources = found.length > 0 ? found : fallback;
                       if (nextSources.length === 0) return setShowError(t.wordDeck.saveFailed);
                       setRevisionSources(nextSources); setEditingRevision(item.revision);
                     })} title={t.wordDeck.edit} className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-faint transition hover:border-emerald-500 hover:text-emerald-500 disabled:opacity-50"><IconPencil className="h-4 w-4" /></button>
                     <button type="button" disabled={busy} onClick={() => startBusy(async () => {
-                      const found = await revisionSourcesForPhrasesAction(item.revision.phraseIds);
+                      const found = await revisionSourcesForPhrasesAction(item.revision.phraseIds, item.revision.id);
                       const fallback = item.revision.nodeId ? [{ id: item.revision.nodeId, name: item.revision.nodeName ?? item.revision.title, path: item.revision.nodeName ?? item.revision.title }] : [];
                       const nextSources = found.length > 0 ? found : fallback;
                       if (nextSources.length === 0) return setShowError(t.wordDeck.saveFailed);

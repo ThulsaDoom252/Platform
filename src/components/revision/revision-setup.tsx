@@ -28,6 +28,8 @@ import {
   updateClassRevisionAction,
   type RevisionPresetSetup,
   type RevisionWordGroup,
+  type RevisionSetup as RevisionAssignment,
+  type RevisionState,
 } from "@/lib/actions/revision";
 import {
   canStartWith,
@@ -84,6 +86,8 @@ export function RevisionSetup({
   purpose = "ASSIGN",
   copySourceId,
   copyDestination,
+  wordGroupsOverride,
+  onAssign,
 }: {
   studentId: string;
   studentName: string;
@@ -97,6 +101,9 @@ export function RevisionSetup({
   purpose?: "ASSIGN" | "PRESET" | "CLASS_EDIT" | "COPY";
   copySourceId?: string;
   copyDestination?: "CLASS" | "HOMEWORK";
+  /** Authorized lesson words supplied directly, without a Materials copy. */
+  wordGroupsOverride?: RevisionWordGroup[];
+  onAssign?: (setup: RevisionAssignment) => Promise<RevisionState>;
 }) {
   const { t } = useT();
   const sourceList = useMemo<RevisionVocabularySource[]>(
@@ -137,7 +144,7 @@ export function RevisionSetup({
   useEffect(() => {
     let alive = true;
     const ids = sourceKey.split(":").filter(Boolean);
-    revisionWordGroupsAction(ids)
+    (wordGroupsOverride ? Promise.resolve(wordGroupsOverride) : revisionWordGroupsAction(ids))
       .then((groups) => {
         if (!alive) return;
         setWordGroups(groups);
@@ -173,7 +180,7 @@ export function RevisionSetup({
     return () => {
       alive = false;
     };
-  }, [sourceKey, initial]);
+  }, [sourceKey, initial, wordGroupsOverride]);
 
   const sourceOf = useMemo(
     () => new Map(sourceList.map((source) => [source.id, source])),
@@ -300,7 +307,9 @@ export function RevisionSetup({
         answerSeconds: perAnswer,
         totalSeconds: wholeTimerEnabled ? Math.max(0, minutes * 60) : null,
       };
-      const result = purpose === "PRESET"
+      const result = onAssign
+        ? await onAssign({ ...common, studentId, dueAt: due ? new Date(due).toISOString() : null })
+        : purpose === "PRESET"
         ? await saveRevisionPresetAction(common)
         : purpose === "CLASS_EDIT" && initial?.id
           ? await updateClassRevisionAction(initial.id, common)
@@ -337,7 +346,7 @@ export function RevisionSetup({
   return (
     <Modal
       open
-      onClose={onClose}
+      onClose={busy && onAssign ? () => undefined : onClose}
       wide
       title={purpose === "PRESET"
         ? (initial ? t.game.editPreset : t.revision.newPreset)
@@ -734,6 +743,7 @@ export function RevisionSetup({
           <button
             type="button"
             onClick={onClose}
+            disabled={busy && Boolean(onAssign)}
             className="h-11 flex-1 rounded-xl border border-line text-sm font-semibold text-muted transition hover:bg-surface-2"
           >
             <IconX className="mr-1 inline h-4 w-4" />

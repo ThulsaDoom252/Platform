@@ -9,6 +9,7 @@
  * останется повторением, а не заучиванием последовательности.
  */
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNull, isNotNull, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -40,6 +41,7 @@ import { readHomeworkFeedback, type HomeworkFeedbackSettings, type HomeworkResul
 import { revisionHomeworkScoreSql } from "@/lib/homework-feedback-persistence";
 import { revisionStrugglingWords, validateRevisionStrugglingIds, type RevisionStrugglingWord } from "@/lib/revision-struggling";
 import { preserveClassSummonsSql } from "@/lib/class-summons-persistence";
+import { prepareLessonRevision, revisionSnapshotWords } from "@/lib/lesson-vocabulary-revision";
 
 export type RevisionState = { ok?: boolean; error?: string; id?: string };
 
@@ -54,9 +56,15 @@ export type RevisionWordGroup = { nodeId: string; words: RevisionWord[] };
 
 /** Слова нескольких словников одним запросом, сгруппированные для формы выбора. */
 export async function revisionWordGroupsAction(nodeIds: string[]): Promise<RevisionWordGroup[]> {
-  await requireTeacher();
+  const session = await requireTeacher();
   const ids = [...new Set((nodeIds ?? []).map(String).filter(Boolean))].slice(0, 30);
   if (ids.length === 0) return [];
+  const uuid = /^[0-9a-f-]{36}$/i;
+  const materialIds = ids.filter(id => uuid.test(id));
+  const revisionIds = ids.filter(id => id.startsWith("revision-") && uuid.test(id.slice(9))).map(id => id.slice(9));
+  const snapshots = revisionIds.length ? await db.select({ id: wordRevisions.id, snapshot: wordRevisions.wordsSnapshot, phraseIds: wordRevisions.phraseIds }).from(wordRevisions)
+    .where(and(inArray(wordRevisions.id, revisionIds), eq(wordRevisions.assignedByTeacherId, session.userId))) : [];
+  const snapshotGroups = snapshots.flatMap(row => row.snapshot ? [{ nodeId: `revision-${row.id}`, words: revisionSnapshotWords(row.snapshot, row.phraseIds) }] : []);
 
   const rows = await db
     .select({
@@ -70,12 +78,12 @@ export async function revisionWordGroupsAction(nodeIds: string[]): Promise<Revis
       kind: materialPhrases.kind,
     })
     .from(materialPhrases)
-    .where(inArray(materialPhrases.nodeId, ids))
+    .where(inArray(materialPhrases.nodeId, materialIds))
     .orderBy(asc(materialPhrases.sortOrder));
 
   // Заметки 💡 словами не считаются: повторять в них нечего.
   const words = rows.filter((r) => r.kind !== "NOTE");
-  if (words.length === 0) return ids.map((nodeId) => ({ nodeId, words: [] }));
+  if (words.length === 0) return ids.map(nodeId => snapshotGroups.find(group => group.nodeId === nodeId) ?? { nodeId, words: [] });
 
   const images = await db
     .select({ phraseId: phraseImages.phraseId, url: phraseImages.url })
@@ -88,7 +96,7 @@ export async function revisionWordGroupsAction(nodeIds: string[]): Promise<Revis
     );
   const imageOf = new Map(images.map((i) => [i.phraseId, i.url]));
 
-  return ids.map((nodeId) => ({
+  return ids.map((nodeId) => snapshotGroups.find(group => group.nodeId === nodeId) ?? ({
     nodeId,
     words: words
       .filter((word) => word.nodeId === nodeId)
@@ -204,8 +212,14 @@ export type RevisionSource = { id: string; name: string; path?: string };
 /** Resolve all vocabulary sources represented by a saved snapshot. */
 export async function revisionSourcesForPhrasesAction(
   phraseIds: string[],
+  revisionId?: string,
 ): Promise<RevisionSource[]> {
-  await requireTeacher();
+  const session = await requireTeacher();
+  if (revisionId && /^[0-9a-f-]{36}$/i.test(revisionId)) {
+    const [row] = await db.select({ id: wordRevisions.id, title: wordRevisions.title, snapshot: wordRevisions.wordsSnapshot })
+      .from(wordRevisions).where(and(eq(wordRevisions.id, revisionId), eq(wordRevisions.assignedByTeacherId, session.userId))).limit(1);
+    if (row?.snapshot) return [{ id: `revision-${row.id}`, name: row.title }];
+  }
   const ids = [...new Set((phraseIds ?? []).map(String).filter(Boolean))];
   if (ids.length === 0) return [];
   const rows = await db.select({
@@ -479,15 +493,20 @@ export async function copyRevisionBetweenClassAndHomeworkAction(
       .filter((phraseId) => inTask.has(phraseId));
     if (own.length > 0) modeWords[mode] = own;
   }
-  if (!nodeId) return { error: "Не выбран словник" };
+  if (!nodeId && !source.wordsSnapshot) return { error: "Не выбран словник" };
   if (!title) return { error: "Дай игре название" };
   if (phraseIds.length === 0) return { error: "Не выбрано ни одного слова" };
   if (modes.length === 0) return { error: "Не выбран ни один режим" };
 
+  if (source.wordsSnapshot) {
+    try { prepareLessonRevision(revisionSnapshotWords(source.wordsSnapshot, source.phraseIds), { ...setup, dueAt: null }); }
+    catch (error) { return { error: error instanceof Error ? error.message : "Не удалось подготовить игру" }; }
+  }
   const [created] = await db.insert(wordRevisions).values({
     studentId: source.studentId,
     assignedByTeacherId: session.userId,
-    nodeId,
+    nodeId: source.wordsSnapshot ? source.nodeId : nodeId,
+    wordsSnapshot: source.wordsSnapshot ? { ...source.wordsSnapshot, requestId: randomUUID() } : null,
     title,
     phraseIds,
     modes,
@@ -662,13 +681,17 @@ export async function updateClassRevisionAction(
   if (phraseIds.length === 0) return { error: "Не выбрано ни одного слова" };
   if (modes.length === 0) return { error: "Не выбран ни один режим" };
 
-  const [revision] = await db.select({ id: wordRevisions.id }).from(wordRevisions).where(and(
+  const [revision] = await db.select({ id: wordRevisions.id, wordsSnapshot: wordRevisions.wordsSnapshot, nodeId: wordRevisions.nodeId, phraseIds: wordRevisions.phraseIds }).from(wordRevisions).where(and(
     eq(wordRevisions.id, id),
     eq(wordRevisions.studentId, teacher.classWithId),
     eq(wordRevisions.placement, "CLASS"),
     or(eq(wordRevisions.assignedByTeacherId, session.userId), isNull(wordRevisions.assignedByTeacherId)),
   )).limit(1);
   if (!revision) return { error: "Игра в классе не найдена" };
+  if (revision.wordsSnapshot) {
+    try { prepareLessonRevision(revisionSnapshotWords(revision.wordsSnapshot, revision.phraseIds), { ...setup, dueAt: null }); }
+    catch (error) { return { error: error instanceof Error ? error.message : "Не удалось подготовить игру" }; }
+  }
 
   await db.transaction(async (tx) => {
     await tx.delete(wordRevisionAttempts).where(and(
@@ -676,7 +699,7 @@ export async function updateClassRevisionAction(
       isNull(wordRevisionAttempts.finishedAt),
     ));
     await tx.update(wordRevisions).set({
-      nodeId,
+      nodeId: revision.wordsSnapshot ? revision.nodeId : nodeId,
       title,
       phraseIds,
       modes,
@@ -876,7 +899,9 @@ export async function startRevisionAction(
     .limit(1);
   if (running) return { ok: true, attemptId: running.id };
 
-  const words = await personalizeLearningContent(revision.studentId, await wordsOf(revision.phraseIds ?? []));
+  const words = await personalizeLearningContent(revision.studentId, revision.wordsSnapshot
+    ? revisionSnapshotWords(revision.wordsSnapshot, revision.phraseIds ?? [])
+    : await wordsOf(revision.phraseIds ?? []));
   const plan = buildRevision(words, (revision.modes ?? []) as RevisionMode[], {
     byMode: revision.modeWords ?? undefined,
   });

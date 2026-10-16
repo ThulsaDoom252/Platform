@@ -432,6 +432,7 @@ export function LessonView({
                   unitId={lesson.id}
                   lessonTitle={lesson.title}
                   defaultStudentId={defaultStudentId}
+                  assignmentId={homeworkSession?.assignmentId ?? videoSession?.assignmentId}
                 />
               )}
               {section === "lexis" &&
