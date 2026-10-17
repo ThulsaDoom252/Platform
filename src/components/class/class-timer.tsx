@@ -476,7 +476,7 @@ export function ClassTimerManager({
 
   return (
     <div className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/70 p-2 backdrop-blur-sm sm:p-5">
-      <section className="relative max-h-[96dvh] w-full max-w-6xl overflow-y-auto rounded-3xl bg-surface p-4 shadow-2xl ring-1 ring-line sm:p-6">
+      <section role="dialog" aria-modal="true" aria-label={t.classRoom.timer} className="relative max-h-[96dvh] w-full max-w-6xl overflow-y-auto rounded-3xl bg-surface p-4 shadow-2xl ring-1 ring-line sm:p-6">
         <button
           type="button"
           onClick={closeManager}

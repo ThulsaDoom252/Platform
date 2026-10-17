@@ -33,6 +33,12 @@ function finite(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/** A wrapped utility bar (including quick Notes) must never cover a floating panel's resize handle. */
+function bottomInset() {
+  const bar = typeof document === "undefined" ? null : document.querySelector("[data-class-utility-bar]")?.getBoundingClientRect();
+  return bar ? Math.max(72, window.innerHeight - bar.top + 12) : 72;
+}
+
 /** Старые или повреждённые настройки не могут утащить окно за экран. */
 export function normalizeClassPanelPlacement(
   value: Partial<ClassPanelPlacement> | null | undefined,
@@ -137,12 +143,12 @@ export function DockablePanel({
           Math.max(280, sizeRef.current.width),
         ),
         height: Math.min(
-          Math.max(220, window.innerHeight - 84),
+          Math.max(220, window.innerHeight - bottomInset() - 12),
           Math.max(220, sizeRef.current.height),
         ),
       };
       const maxX = Math.max(12, window.innerWidth - nextSize.width - 12);
-      const maxY = Math.max(12, window.innerHeight - nextSize.height - 72);
+      const maxY = Math.max(12, window.innerHeight - nextSize.height - bottomInset());
       const current = positionRef.current;
       const next = {
         x: Math.min(maxX, Math.max(12, current.x)),
@@ -161,9 +167,13 @@ export function DockablePanel({
     };
     const frame = requestAnimationFrame(keepOnScreen);
     window.addEventListener("resize", keepOnScreen);
+    const bar = document.querySelector("[data-class-utility-bar]");
+    const observer = bar && typeof ResizeObserver !== "undefined" ? new ResizeObserver(keepOnScreen) : null;
+    if (bar) observer?.observe(bar);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", keepOnScreen);
+      observer?.disconnect();
     };
   }, [placement.floating]);
 
@@ -175,7 +185,7 @@ export function DockablePanel({
     const height = box?.height ?? size.height;
     const maxX = Math.max(12, window.innerWidth - width - 12);
     // Нижняя панель класса остаётся доступной даже у перемещённого окна.
-    const maxY = Math.max(12, window.innerHeight - height - 72);
+    const maxY = Math.max(12, window.innerHeight - height - bottomInset());
     const x = Math.min(maxX, Math.max(12, event.clientX - active.offsetX));
     const y = Math.min(maxY, Math.max(12, event.clientY - active.offsetY));
     active.x = x;
@@ -188,7 +198,7 @@ export function DockablePanel({
     const active = resize.current;
     if (!active || active.pointerId !== event.pointerId) return;
     const maxWidth = Math.max(280, window.innerWidth - positionRef.current.x - 12);
-    const maxHeight = Math.max(220, window.innerHeight - positionRef.current.y - 72);
+    const maxHeight = Math.max(220, window.innerHeight - positionRef.current.y - bottomInset());
     const width = Math.min(maxWidth, Math.max(280, active.startWidth + event.clientX - active.startX));
     const height = Math.min(maxHeight, Math.max(220, active.startHeight + event.clientY - active.startY));
     active.width = width;

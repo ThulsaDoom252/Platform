@@ -15,6 +15,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { NotebookPen } from "lucide-react";
+import { ClassNoteQuickEntry } from "./class-note-quick-entry";
+import type { ClassNoteKind } from "@/lib/class-note-entry";
 import { useAppView } from "@/components/app-view-provider";
 import { classParticipantsPlacement } from "@/lib/app-view";
 import { ClassMaterialToolbar } from "./class-material-toolbar";
@@ -155,6 +157,9 @@ export function ClassRoom({
   const [panelLayout, setPanelLayout] = useLocalJson<
     Record<ClassUtilityPanel, ClassPanelPlacement>
   >(`class-panel-layout:${selfId}`, DEFAULT_CLASS_PANEL_LAYOUT);
+  const [notesHistoryFor, setNotesHistoryFor] = useState<string | null>(null);
+  const [notesKind, setNotesKind] = useState<ClassNoteKind>("NOTE");
+  const [notesRefresh, setNotesRefresh] = useState(0);
   const [lessonTab, setLessonTab] = useState<LessonTab>("lesson");
   // Порядок в списке — привычка учителя, поэтому живёт в браузере.
   const [sort, setSort] = useUiChoice<ClassSortKey>("class:sort", CLASS_SORTS, "lessons", "class-sort");
@@ -404,6 +409,7 @@ export function ClassRoom({
 
   const toggle = (key: PanelKey) => {
     setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
+    if (key === "notes") setNotesHistoryFor(null);
     if (key === "chat" && !open.chat) {
       unreadRef.current = 0;
       setUnreadState({ conversation, count: 0 });
@@ -662,9 +668,13 @@ export function ClassRoom({
       <button
         key={key}
         type="button"
+        title={label}
+        aria-label={label}
+        aria-pressed={open[key]}
+        disabled={key === "notes" && !partner}
         onClick={() => toggle(key)}
         className={cn(
-          "relative flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition",
+          "relative flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition disabled:opacity-35",
           open[key] ? "bg-accent text-white" : "text-muted hover:bg-surface-2 hover:text-content",
           key === "chat" && !open.chat && !!badge && badge > 0 && "class-chat-unread",
         )}
@@ -998,6 +1008,7 @@ export function ClassRoom({
   const chatPlacement = placementOf("chat");
   const verbsPlacement = placementOf("verbs");
   const notesPlacement = placementOf("notes");
+  const notesExpanded = Boolean(teacher && partner && open.notes && notesHistoryFor === partner.id);
   const scriptPlacement = placementOf("script");
   const reactionsPlacement = placementOf("reactions");
   const dockedDictionary = open.dictionary && !dictionaryPlacement.floating;
@@ -1005,7 +1016,7 @@ export function ClassRoom({
     (open.chat && !chatPlacement.floating) ||
     (open.verbs && !verbsPlacement.floating) ||
     Boolean(teacher && partner && open.script && !scriptPlacement.floating) ||
-    Boolean(teacher && partner && open.notes && !notesPlacement.floating) ||
+    Boolean(notesExpanded && !notesPlacement.floating) ||
     Boolean(teacher && partner && showReactions && !reactionsPlacement.floating);
   const chatTitle = partner
     ? fmt(t.classRoom.chatWith, { name: partner.name })
@@ -1020,7 +1031,7 @@ export function ClassRoom({
     : "lg:order-none";
 
   return (
-    <div className="flex min-h-[70vh] flex-col gap-4 pb-20 lg:pb-24" data-class-room>
+    <div className={cn("flex min-h-[70vh] flex-col gap-4", teacher && partner && open.notes ? "pb-60 sm:pb-44 lg:pb-32" : "pb-20 lg:pb-24")} data-class-room>
       {!teacher && gameReviewNotice && (
         <ClassGameReviewBanner review={gameReviewNotice} floating onClose={() => setGameReviewNotice(null)} />
       )}
@@ -1193,7 +1204,7 @@ export function ClassRoom({
             </DockablePanel>
           )}
 
-          {teacher && partner && open.notes && (
+          {teacher && partner && notesExpanded && <div id="class-notes-history" className="contents">
             <DockablePanel
               title={notesTitle}
               placement={notesPlacement}
@@ -1207,10 +1218,12 @@ export function ClassRoom({
               onDock={() => dockPanel("notes")}
               onMove={(x, y) => movePanel("notes", x, y)}
               onResize={(width, height) => resizePanel("notes", width, height)}
+              onClose={() => setNotesHistoryFor(null)}
+              closeLabel={t.common.close}
             >
-              <ClassNotes studentName={partner.name} compact embedded />
+              <ClassNotes key={partner.id} studentName={partner.name} studentId={partner.id} kind={notesKind} onKindChange={setNotesKind} refreshKey={notesRefresh} compact embedded historyOnly />
             </DockablePanel>
-          )}
+          </div>}
         </div>
       </div>
 
@@ -1319,7 +1332,7 @@ export function ClassRoom({
           studentName={partner.name}
           onStateChange={setTimerState}
           onClose={() => setShowTimer(false)}
-          notes={<ClassNotes studentName={partner.name} compact />}
+          notes={<ClassNotes key={partner.id} studentName={partner.name} studentId={partner.id} kind={notesKind} onKindChange={setNotesKind} refreshKey={notesRefresh} compact />}
         />
       )}
 
@@ -1343,7 +1356,7 @@ export function ClassRoom({
       )}
 
       {/* Нижняя панель — её видят оба, таймер только у учителя. */}
-      <div className="class-utility-bar fixed inset-x-0 bottom-[56px] z-20 border-t border-line bg-surface/95 px-4 py-2 backdrop-blur-md lg:bottom-0">
+      <div className="class-utility-bar fixed inset-x-0 bottom-[56px] z-[70] border-t border-line bg-surface/95 px-4 py-2 backdrop-blur-md lg:bottom-0" data-class-utility-bar>
         {/* Всё одной группой по центру: таймер такой же элемент панели. */}
         <div className="mx-auto flex max-w-[1920px] flex-wrap items-center justify-center gap-2">
           {tabBtn("chat", <IconMessage className="h-4 w-4" />, t.classRoom.chat, unread)}
@@ -1352,6 +1365,9 @@ export function ClassRoom({
           {teacher && tabBtn("script", <IconFile className="h-4 w-4" />, t.classRoom.script)}
           {tabBtn("board", <IconGrid className="h-4 w-4" />, t.classRoom.board)}
           {teacher && tabBtn("notes", <NotebookPen className="h-4 w-4" />, t.classRoom.notes)}
+          {teacher && partner && <ClassNoteQuickEntry key={partner.id} studentId={partner.id} enabled={open.notes} kind={notesKind} onKindChange={setNotesKind}
+            expanded={notesExpanded} onToggleHistory={() => setNotesHistoryFor(current => current === partner.id ? null : partner.id)}
+            onSaved={() => setNotesRefresh(value => value + 1)} />}
           {teacher && <div data-class-highlight-launcher className="contents" />}
 
           {teacher && (

@@ -154,6 +154,25 @@ test("shared floating header moves, resizes within viewport, docks and closes wi
   assert.equal(closed, 1); assert.equal(docked, 1); assert.equal(captured, 2); assert.equal(released, 2); assert.equal(stopped, 2);
 });
 
+test("floating panels leave space for a wrapped Notes utility bar when moving and resizing", () => {
+  const compiled = compile("src/components/class/dockable-panel.tsx", {
+    ...shared, react: { ...React, useRef: (value: unknown) => ({ current: value }), useState: (value: unknown) => [value, () => {}], useEffect: () => {} },
+  }, { window: { innerWidth: 1000, innerHeight: 800 }, document: { querySelector: () => ({ getBoundingClientRect: () => ({ top: 650 }) }) } });
+  const Panel = compiled.DockablePanel as (props: Record<string, unknown>) => Element;
+  const moves: number[][] = [], sizes: number[][] = [];
+  const tree = Panel({ title: "Notes", placement: { floating: true, x: 20, y: 30, width: 360, height: 420 }, dockedClassName: "",
+    detachLabel: "Detach", dockLabel: "Dock", resizeLabel: "Resize", onDetach() {}, onDock() {},
+    onMove: (...point: number[]) => moves.push(point), onResize: (...size: number[]) => sizes.push(size), children: null });
+  (tree.props.ref as { current: unknown }).current = { getBoundingClientRect: () => ({ width: 360, height: 420 }) };
+  const header = children(tree).find(node => node.type === "header")!;
+  const resize = children(tree).find(node => node.props["aria-label"] === "Resize")!;
+  const call = (node: Element, handler: string, y: number) => (node.props[handler] as (event: unknown) => void)({ pointerId: 1, button: 0, clientX: 40, clientY: y, currentTarget: { setPointerCapture() {}, releasePointerCapture() {} }, stopPropagation() {} });
+  call(header, "onPointerDown", 40); call(header, "onPointerMove", 790); call(header, "onPointerUp", 790);
+  assert.equal(moves[0][1] + 420, 638, "Panel stays above the toolbar with a 12px gap");
+  call(resize, "onPointerDown", 650); call(resize, "onPointerMove", 1200); call(resize, "onPointerUp", 1200);
+  assert.equal(moves[0][1] + sizes[0][1], 638, "The resize handle cannot slip under Notes");
+});
+
 test("classroom only exposes the dockable reaction panel to the teacher with a selected student", () => {
   const room = readFileSync("src/components/class/class-room.tsx", "utf8");
   assert.equal((room.match(/<TeacherReactionPanel\s*\/>/g) ?? []).length, 1);

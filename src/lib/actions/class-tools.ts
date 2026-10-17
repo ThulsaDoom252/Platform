@@ -524,9 +524,9 @@ const noteCard = (row: typeof classLessonNotes.$inferSelect): ClassLessonNote =>
   updatedAt: row.updatedAt.toISOString(),
 });
 
-export async function listClassLessonNotesAction(): Promise<ClassLessonNote[]> {
+export async function listClassLessonNotesAction(expectedStudentId?: string): Promise<ClassLessonNote[]> {
   const { session, studentId } = await teacherWithStudent();
-  if (!studentId) return [];
+  if (!studentId || expectedStudentId && expectedStudentId !== studentId) return [];
   const rows = await db
     .select()
     .from(classLessonNotes)
@@ -563,11 +563,26 @@ async function currentLessonContext(studentId: string) {
 export async function createClassLessonNoteAction(
   text: string,
   kind: "NOTE" | "SPELLING" = "NOTE",
+  expectedStudentId?: string,
+  requestId?: string,
 ): Promise<{ note?: ClassLessonNote; error?: string }> {
   const { session, studentId } = await teacherWithStudent();
   if (!studentId) return { error: "Pick a student first" };
+  if (expectedStudentId && expectedStudentId !== studentId) return { error: "The student has changed. The note was not saved." };
+  if (kind !== "NOTE" && kind !== "SPELLING") return { error: "Unknown note type" };
+  if (requestId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) return { error: "Invalid note request" };
   const body = String(text ?? "").trim().slice(0, 4_000);
   if (!body) return { error: "Write a note" };
+  const previousRequest = async () => {
+    const [existing] = await db.select().from(classLessonNotes).where(and(
+      eq(classLessonNotes.id, requestId!), eq(classLessonNotes.teacherId, session.userId), eq(classLessonNotes.studentId, studentId), eq(classLessonNotes.kind, kind),
+    )).limit(1);
+    return existing ? { note: noteCard(existing) } : { error: "Could not save the note. Retry the same entry." };
+  };
+  if (requestId) {
+    const previous = await previousRequest();
+    if (previous.note) return previous;
+  }
   const context = await currentLessonContext(studentId);
   let spelling: Awaited<ReturnType<typeof enrichSpellingMistake>> | null = null;
   if (kind === "SPELLING") {
@@ -585,9 +600,10 @@ export async function createClassLessonNoteAction(
       };
     }
   }
-  const [row] = await db
+  const insert = db
     .insert(classLessonNotes)
     .values({
+      ...(requestId ? { id: requestId } : {}),
       teacherId: session.userId,
       studentId,
       ...context,
@@ -598,9 +614,9 @@ export async function createClassLessonNoteAction(
       partOfSpeech: spelling?.partOfSpeech,
       icon: spelling?.icon,
       examples: spelling?.examples ?? [],
-    })
-    .returning();
-  return { note: noteCard(row) };
+    });
+  const [row] = requestId ? await insert.onConflictDoNothing().returning() : await insert.returning();
+  return row ? { note: noteCard(row) } : requestId ? previousRequest() : { error: "Could not save the note" };
 }
 
 export async function updateClassLessonNoteAction(

@@ -17,6 +17,7 @@ import {
 import { assignSpellingNotesHomeworkAction } from "@/lib/actions/word-deck";
 import { SCHEDULE_FORMAT_TIME_ZONE } from "@/lib/schedule-time";
 import { cn } from "@/lib/utils";
+import type { ClassNoteKind } from "@/lib/class-note-entry";
 
 export type FocusedClassNote = {
   id: string;
@@ -32,18 +33,30 @@ export type FocusedClassNote = {
 
 export function ClassNotes({
   studentName,
+  studentId,
+  kind,
+  onKindChange,
+  refreshKey = 0,
+  historyOnly = false,
   compact = false,
   embedded = false,
   onClose,
 }: {
   studentName: string;
+  studentId?: string;
+  kind?: ClassNoteKind;
+  onKindChange?: (kind: ClassNoteKind) => void;
+  refreshKey?: number;
+  historyOnly?: boolean;
   compact?: boolean;
   embedded?: boolean;
   onClose?: () => void;
 }) {
   const { t, locale } = useT();
   const [notes, setNotes] = useState<ClassLessonNote[]>([]);
-  const [activeTab, setActiveTab] = useState<"NOTE" | "SPELLING">("NOTE");
+  const [localTab, setLocalTab] = useState<ClassNoteKind>("NOTE");
+  const activeTab = kind ?? localTab;
+  const setActiveTab = onKindChange ?? setLocalTab;
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -51,15 +64,16 @@ export function ClassNotes({
   const [wide, setWide] = useState(false);
   const [homeworkDay, setHomeworkDay] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+  const loadError = { en: "Could not load notes. Please try again.", ru: "Не удалось загрузить записи. Попробуй ещё раз.", uk: "Не вдалося завантажити записи. Спробуй ще раз." }[locale];
 
-  const load = () => listClassLessonNotesAction().then(setNotes);
+  const load = () => listClassLessonNotesAction(studentId).then(setNotes).catch(() => setMessage(loadError));
   useEffect(() => {
     let alive = true;
-    void listClassLessonNotesAction().then((items) => {
+    void listClassLessonNotesAction(studentId).then((items) => {
       if (alive) setNotes(items);
-    });
+    }).catch(() => { if (alive) setMessage(loadError); });
     return () => { alive = false; };
-  }, [studentName]);
+  }, [studentId, studentName, refreshKey, loadError]);
 
   const groups = useMemo(() => {
     const map = new Map<string, ClassLessonNote[]>();
@@ -87,7 +101,7 @@ export function ClassNotes({
     if (!text || busy) return;
     setMessage(null);
     startTransition(async () => {
-      const result = await createClassLessonNoteAction(text, activeTab);
+      const result = await createClassLessonNoteAction(text, activeTab, studentId);
       if (result.error) return setMessage(result.error);
       setDraft("");
       await load();
@@ -174,6 +188,7 @@ export function ClassNotes({
         <div className="mb-2 grid grid-cols-2 rounded-xl bg-surface-2 p-1 ring-1 ring-line">
           <button
             type="button"
+            aria-pressed={activeTab === "NOTE"}
             onClick={() => { setActiveTab("NOTE"); setDraft(""); setMessage(null); }}
             className={cn(
               "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-black transition",
@@ -184,6 +199,7 @@ export function ClassNotes({
           </button>
           <button
             type="button"
+            aria-pressed={activeTab === "SPELLING"}
             onClick={() => { setActiveTab("SPELLING"); setDraft(""); setMessage(null); }}
             className={cn(
               "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-black transition",
@@ -193,7 +209,7 @@ export function ClassNotes({
             <SpellCheck2 className="h-3.5 w-3.5" /> {t.classRoom.spellingTab}
           </button>
         </div>
-        <div className="flex items-center gap-2 rounded-xl bg-surface-2 p-1.5 ring-1 ring-line focus-within:ring-accent">
+        {!historyOnly && <div className="flex items-center gap-2 rounded-xl bg-surface-2 p-1.5 ring-1 ring-line focus-within:ring-accent">
           <input
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -209,10 +225,10 @@ export function ClassNotes({
           <button type="button" onClick={create} disabled={!draft.trim() || busy} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition hover:brightness-95 disabled:opacity-35" aria-label={activeTab === "SPELLING" ? t.classRoom.spellingCreate : t.classRoom.notesAdd}>
             {activeTab === "SPELLING" ? <SpellCheck2 className="h-4 w-4" /> : <Send className="h-4 w-4" />}
           </button>
-        </div>
-        <p className="mt-1.5 text-[10px] text-faint">
+        </div>}
+        {!historyOnly && <p className="mt-1.5 text-[10px] text-faint">
           {activeTab === "SPELLING" ? t.classRoom.spellingHint : t.classRoom.notesEnterHint}
-        </p>
+        </p>}
         {message && <p className="mt-1 text-[11px] font-bold text-rose-500">{message}</p>}
       </div>
 
@@ -396,7 +412,7 @@ function SpellingHomeworkDialog({ notes, onClose, onDone }: {
   const extraWords = extra.split(/[\n,;]+/).map((word) => word.trim()).filter(Boolean);
   return (
     <div className="fixed inset-0 z-[170] flex items-start justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm sm:p-10" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="w-full max-w-2xl rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line sm:p-6">
+      <section role="dialog" aria-modal="true" aria-label={t.classRoom.spellingHomeworkTitle} className="w-full max-w-2xl rounded-3xl bg-surface p-5 shadow-2xl ring-1 ring-line sm:p-6">
         <div className="flex items-start gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/10 text-2xl">🔤</span>
           <div className="min-w-0 flex-1"><h3 className="text-lg font-black text-content">{t.classRoom.spellingHomeworkTitle}</h3><p className="mt-1 text-xs text-muted">{t.classRoom.spellingHomeworkHint}</p></div>
