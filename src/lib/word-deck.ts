@@ -18,6 +18,10 @@ export type WordDeckBackground =
   | "EMERALD"
   | "VIOLET"
   | "SUNSET"
+  | "FOOD"
+  | "CHORES"
+  | "TALK"
+  | "WEATHER"
   | "CUSTOM";
 
 export type WordDeckSourceCard = {
@@ -79,6 +83,9 @@ export type WordDeckLiveState = {
   readDescriptions: boolean;
   verdict: WordDeckVerdict;
   feedback: WordDeckFeedback;
+  /** Teacher judgement per dealt instance; repeats count as separate turns. */
+  ratings?: Record<string, Exclude<WordDeckVerdict, null>>;
+  showScores?: boolean;
   updatedAt: string;
 };
 
@@ -254,6 +261,10 @@ export function normalizeWordDeckSettings(
     "EMERALD",
     "VIOLET",
     "SUNSET",
+    "FOOD",
+    "CHORES",
+    "TALK",
+    "WEATHER",
     "CUSTOM",
   ];
   return {
@@ -419,6 +430,7 @@ export function normalizeWordDeckLiveState(
     value.feedback === "WRONG" || value.feedback === "TIME_UP"
     ? value.feedback
     : null;
+  const ratings = normalizeWordDeckRatings(deck, settings.alternate ? value.ratings : undefined);
   return {
     deck,
     at,
@@ -431,6 +443,30 @@ export function normalizeWordDeckLiveState(
     readDescriptions: value.readDescriptions === true,
     verdict,
     feedback,
+    ratings,
+    showScores: settings.alternate && value.showScores === true,
     updatedAt: String(value.updatedAt ?? "").slice(0, 64) || new Date().toISOString(),
   };
+}
+
+/** Only real instances and explicit thumbs are accepted, never client-supplied totals. */
+export function normalizeWordDeckRatings(deck: readonly WordDeckRuntimeCard[], value: unknown): Record<string, "RIGHT" | "WRONG"> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  return Object.fromEntries(deck.flatMap(card => Object.hasOwn(input, card.instanceId) &&
+    (input[card.instanceId] === "RIGHT" || input[card.instanceId] === "WRONG")
+    ? [[card.instanceId, input[card.instanceId] as "RIGHT" | "WRONG"]] : []));
+}
+
+export function wordDeckScores(deck: readonly WordDeckRuntimeCard[], ratings: Record<string, "RIGHT" | "WRONG"> = {}) {
+  const result = { TEACHER: { right: 0, wrong: 0, total: 0 }, STUDENT: { right: 0, wrong: 0, total: 0 } };
+  for (const card of deck) {
+    if (!card.owner) continue;
+    const score = result[card.owner];
+    score.total++;
+    const rating = Object.hasOwn(ratings, card.instanceId) ? ratings[card.instanceId] : null;
+    if (rating === "RIGHT") score.right++;
+    if (rating === "WRONG") score.wrong++;
+  }
+  return result;
 }

@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { LearningTranslationNotice } from "@/components/learning-translation-notice";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ThumbsDown, ThumbsUp, Trophy } from "lucide-react";
 import { useT } from "@/components/i18n-provider";
 import {
   buildWordDeck,
@@ -31,6 +32,8 @@ import { useRealtimeSubscription } from "@/lib/use-realtime";
 import { readClassLive } from "@/lib/class-live-request";
 import { wordDeckTextSize } from "@/lib/word-deck-display";
 import { TENSE_NAMES, tenseCorrectionExplanation } from "@/lib/tense-correction-settings";
+import { WORD_DECK_SKINS } from "@/lib/word-deck-skins";
+import { WordDeckScoreboard, wordDeckScoreCopy } from "./word-deck-scoreboard";
 
 export type WordDeckPlayable = {
   translationWarning?: boolean;
@@ -40,17 +43,6 @@ export type WordDeckPlayable = {
   settings: WordDeckSettings;
   backgroundImageUrl: string | null;
   liveState?: WordDeckLiveState | null;
-};
-
-const backgrounds: Record<Exclude<WordDeckSettings["background"], "CUSTOM">, string> = {
-  MIDNIGHT:
-    "radial-gradient(circle at 18% 18%,rgba(45,212,191,.24),transparent 32%),radial-gradient(circle at 82% 12%,rgba(99,102,241,.28),transparent 35%),linear-gradient(145deg,#0f172a,#111827 52%,#172554)",
-  EMERALD:
-    "radial-gradient(circle at 80% 20%,rgba(253,224,71,.24),transparent 28%),linear-gradient(145deg,#064e3b,#047857 54%,#0f766e)",
-  VIOLET:
-    "radial-gradient(circle at 20% 10%,rgba(244,114,182,.28),transparent 30%),linear-gradient(145deg,#312e81,#6d28d9 55%,#701a75)",
-  SUNSET:
-    "radial-gradient(circle at 70% 18%,rgba(254,240,138,.34),transparent 28%),linear-gradient(145deg,#7c2d12,#ea580c 55%,#9f1239)",
 };
 
 function beep(kind: "deal" | "shuffle") {
@@ -129,7 +121,7 @@ export function WordDeckBoard({
   teacherSeesAnswers?: boolean;
   /** Teacher-only timer controls. Students keep their existing game controls. */
   timerControls?: boolean;
-  /** Teacher rating control shown only after the last card. */
+  /** Teacher's overall grade is available before the last card too. */
   reviewEditor?: ReactNode;
 }) {
   const { t, locale } = useT();
@@ -156,6 +148,10 @@ export function WordDeckBoard({
   const [readDescriptions, setReadDescriptions] = useState(saved?.readDescriptions ?? false);
   const [verdict, setVerdict] = useState(saved?.verdict ?? null);
   const [feedback, setFeedback] = useState(saved?.feedback ?? null);
+  const [ratings, setRatings] = useState(saved?.ratings ?? {});
+  const [showScores, setShowScores] = useState(saved?.showScores ?? false);
+  const scoreLabels = wordDeckScoreCopy[locale];
+  const canRateCards = settings.alternate && (live || timerControls) && !observer && !homework;
   const started = at >= 0;
   const canControlTimer = timerControls && !observer && !homework && settings.timerMode !== "NONE";
   const descriptionGame = isWordDeckDescriptionGame(settings.gameType);
@@ -225,7 +221,6 @@ export function WordDeckBoard({
     const frame = requestAnimationFrame(() => {
       setExpired(true);
       if (descriptionGame) setFeedback("TIME_UP");
-      if (pictureGame) setFaceUp(true);
     });
     return () => cancelAnimationFrame(frame);
   }, [combinedGame, descriptionGame, expired, finished, pictureGame, settings.timerMode, started, time, timerPaused]);
@@ -239,7 +234,6 @@ export function WordDeckBoard({
       if (time <= 1) {
         setExpired(true);
         if (descriptionGame) setFeedback("TIME_UP");
-        if (pictureGame) setFaceUp(true);
       }
     }, 1000);
     return () => window.clearTimeout(timer);
@@ -292,6 +286,8 @@ export function WordDeckBoard({
     setReadDescriptions(state.readDescriptions);
     setVerdict(state.verdict);
     setFeedback(state.feedback);
+    setRatings(state.ratings ?? {});
+    setShowScores(state.showScores ?? false);
   }, [settings]);
 
   const pullRemoteState = useCallback(async () => {
@@ -330,6 +326,8 @@ export function WordDeckBoard({
       readDescriptions,
       verdict,
       feedback,
+      ratings,
+      showScores,
       updatedAt: new Date().toISOString(),
     }));
 
@@ -342,7 +340,7 @@ export function WordDeckBoard({
       });
     }, 50);
     return () => window.clearTimeout(timer);
-  }, [activity.id, at, deck, expired, faceUp, feedback, live, observer, phase, readDescriptions, sound, timerPaused, timerVersion, verdict]);
+  }, [activity.id, at, deck, expired, faceUp, feedback, live, observer, phase, ratings, showScores, readDescriptions, sound, timerPaused, timerVersion, verdict]);
 
   useEffect(() => {
     if (!homework || observer) return;
@@ -353,7 +351,7 @@ export function WordDeckBoard({
       });
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [activity.id, at, deck, expired, faceUp, feedback, homework, observer, phase, readDescriptions, sound, time, timerPaused, verdict]);
+  }, [activity.id, at, deck, expired, faceUp, feedback, homework, observer, phase, ratings, showScores, readDescriptions, sound, time, timerPaused, verdict]);
 
   const shuffle = () => {
     if (observer) return;
@@ -387,6 +385,8 @@ export function WordDeckBoard({
     setVerdict(null);
     setFeedback(null);
     setTime(wordDeckTimerSeconds(settings));
+    setRatings({});
+    setShowScores(false);
   };
 
   const toggleTimerPause = () => {
@@ -428,8 +428,14 @@ export function WordDeckBoard({
     }
   };
 
+  const rateCard = (next: "RIGHT" | "WRONG") => {
+    if (!canRateCards || !current) return;
+    setRatings(previous => ({ ...previous, [current.instanceId]: next }));
+  };
+
   const judge = (next: "RIGHT" | "WRONG", reveal: boolean) => {
     if (observer || !descriptionGame || !started || faceUp || verdict) return;
+    rateCard(next);
     setVerdict(next);
     if (settings.timerMode === "CARD") setTimerPaused(true);
     setFeedback(next);
@@ -446,10 +452,12 @@ export function WordDeckBoard({
     else setFaceUp(true);
   };
 
+  const skin = WORD_DECK_SKINS[settings.background === "CUSTOM" ? "MIDNIGHT" : settings.background];
   const background =
     settings.background === "CUSTOM" && activity.backgroundImageUrl
       ? `linear-gradient(rgba(5,10,24,.38),rgba(5,10,24,.56)),url(${JSON.stringify(activity.backgroundImageUrl)}) center/cover`
-      : backgrounds[settings.background === "CUSTOM" ? "MIDNIGHT" : settings.background];
+      : skin.background;
+  const skinStyle = { background, "--deck-card": skin.card, "--deck-back": skin.back, "--deck-ink": skin.ink, "--deck-accent": skin.accent } as CSSProperties;
 
   return (
     <section
@@ -457,11 +465,14 @@ export function WordDeckBoard({
         "relative isolate min-w-0 w-full overflow-hidden rounded-[1.75rem] text-white shadow-2xl ring-1 ring-white/10",
         compact ? "min-h-[28rem] p-4 sm:p-6" : "min-h-[36rem] p-5 sm:p-8",
         feedback === "WRONG" && "word-deck-shake",
+        skin.card && "word-deck-themed",
       )}
-      style={{ background }}
+      style={skinStyle}
+      data-word-deck-skin={settings.background}
     >
       <LearningTranslationNotice show={activity.translationWarning} />
       <div className="pointer-events-none absolute inset-0 -z-10 opacity-30 [background-image:linear-gradient(rgba(255,255,255,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] [background-size:28px_28px]" />
+      {skin.card && <div aria-hidden="true" className="word-deck-skin-art pointer-events-none absolute inset-0 -z-10 overflow-hidden"><span>{skin.icon}</span><span>{skin.icon}</span></div>}
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
           <p className="text-[11px] font-black uppercase tracking-[.22em] text-white/55">
@@ -478,7 +489,7 @@ export function WordDeckBoard({
             {Math.floor(time / 60).toString().padStart(2, "0")}:{(time % 60).toString().padStart(2, "0")}
           </span>
           <span role="status" aria-live="polite" className="text-xs font-bold text-white/85">
-            {expired ? t.wordDeck.timeUp : timerPaused ? t.wordDeck.timerPaused : ""}
+            {!expired && timerPaused ? t.wordDeck.timerPaused : ""}
           </span>
           {canControlTimer && <>
             <button type="button" onClick={toggleTimerPause} disabled={!started || (combinedGame && finished) || expired || time <= 0}
@@ -517,8 +528,12 @@ export function WordDeckBoard({
         )}
       </div>
 
+      {settings.timerMode !== "NONE" && <div className="mt-3 flex min-h-14 items-center justify-center" data-word-deck-time-notice>
+        {expired && <div key={`${current?.instanceId}:${phase}:${timerVersion}`} role="status" aria-live="assertive" aria-label={t.wordDeck.timeUp} className="word-deck-time-stamp pointer-events-none inline-flex items-center gap-3 rounded-lg border-[3px] border-double border-amber-200 bg-amber-100 px-5 py-1.5 text-xl font-black uppercase tracking-[.12em] text-amber-950 shadow-lg sm:text-2xl"><span aria-hidden="true">⌛</span>Time is up</div>}
+      </div>}
+
       <div className={cn(
-        "relative mx-auto mt-7 flex items-center justify-center",
+        "relative mx-auto mt-3 flex items-center justify-center",
         spellingGame
           ? "min-h-[25rem] max-w-3xl sm:min-h-[29rem]"
           : "min-h-[18rem] max-w-xl sm:min-h-[23rem]",
@@ -528,12 +543,12 @@ export function WordDeckBoard({
             {[2, 1, 0].map((layer) => (
               <span
                 key={layer}
-                className="absolute inset-0 rounded-[1.6rem] border border-white/25 bg-gradient-to-br from-white/24 to-white/8 shadow-2xl backdrop-blur-md transition duration-300 group-hover:-translate-y-2"
+                className="word-deck-stack absolute inset-0 rounded-[1.6rem] border border-white/25 bg-gradient-to-br from-white/24 to-white/8 shadow-2xl backdrop-blur-md transition duration-300 group-hover:-translate-y-2"
                 style={{ transform: `translate(${layer * 6}px,${layer * -7}px) rotate(${layer * 1.5}deg)` }}
               />
             ))}
-            <span className="absolute inset-0 flex flex-col items-center justify-center rounded-[1.6rem] border border-white/30 bg-black/15 p-5 shadow-2xl backdrop-blur-md">
-              <span className="text-5xl">{spellingGame ? "🔤" : "♠"}</span>
+            <span className="word-deck-cover absolute inset-0 flex flex-col items-center justify-center rounded-[1.6rem] border border-white/30 bg-black/15 p-5 shadow-2xl backdrop-blur-md">
+              <span className="text-5xl">{skin.card ? skin.icon : spellingGame ? "🔤" : "♠"}</span>
               <span className="mt-5 text-sm font-black uppercase tracking-[.18em]">{t.wordDeck.tapDeck}</span>
               <span className="mt-2 text-xs text-white/60">{deck.length} {t.wordDeck.cardsShort}</span>
             </span>
@@ -555,12 +570,13 @@ export function WordDeckBoard({
               "relative grid min-h-[inherit] w-full transition-transform duration-500 [transform-style:preserve-3d]",
               faceUp && "[transform:rotateY(180deg)]",
             )}>
-              <span aria-hidden={faceUp} className={cn(
-                "relative flex min-h-[inherit] min-w-0 [grid-area:1/1] flex-col items-center justify-center rounded-[1.75rem] border shadow-2xl [backface-visibility:hidden]",
+              <span aria-hidden={faceUp} data-prompt={descriptionGame || pictureGame ? "content" : "back"} className={cn(
+                "word-deck-front relative flex min-h-[inherit] min-w-0 [grid-area:1/1] flex-col items-center justify-center rounded-[1.75rem] border shadow-2xl [backface-visibility:hidden]",
                 descriptionGame || pictureGame
                   ? "border-slate-200 bg-[#fffdf7] px-6 pb-12 pt-14 text-slate-950"
                   : "border-white/25 bg-gradient-to-br from-white/22 to-black/10 backdrop-blur-xl",
               )}>
+                {skin.card && <span aria-hidden="true" className="word-deck-corner">{skin.icon}</span>}
                 {descriptionGame ? (
                   <>
                     {current?.owner && (
@@ -593,13 +609,14 @@ export function WordDeckBoard({
                     <span className="absolute bottom-4 left-0 right-0 text-center text-[11px] font-bold uppercase tracking-[.2em] text-slate-400">{at + 1} / {deck.length}</span>
                   </>
                 ) : (
-                  <span className="text-6xl">♠</span>
+                  <span className="text-6xl">{skin.card ? skin.icon : "♠"}</span>
                 )}
               </span>
               <span aria-hidden={!faceUp} className={cn(
-                "relative flex min-h-[inherit] min-w-0 [grid-area:1/1] [transform:rotateY(180deg)] flex-col items-center justify-center rounded-[1.75rem] bg-[#fffdf7] text-slate-950 shadow-2xl [backface-visibility:hidden]",
+                "word-deck-answer relative flex min-h-[inherit] min-w-0 [grid-area:1/1] [transform:rotateY(180deg)] flex-col items-center justify-center rounded-[1.75rem] bg-[#fffdf7] text-slate-950 shadow-2xl [backface-visibility:hidden]",
                 spellingGame ? "px-5 pb-10 pt-6 sm:px-10 sm:pb-12 sm:pt-8" : "px-6 pb-12 pt-14",
               )}>
+                {skin.card && <span aria-hidden="true" className="word-deck-corner">{skin.icon}</span>}
                 {current?.owner && (
                   <span className={cn(
                     "absolute right-4 top-4 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide",
@@ -670,6 +687,14 @@ export function WordDeckBoard({
           </div>
         )}
       </div>
+
+      {canRateCards && current?.owner && <div className="mx-auto mt-3 flex max-w-xl flex-wrap items-center justify-center gap-2" data-word-deck-rating>
+        <span className="mr-1 text-xs font-bold text-white/80">{current.owner === "STUDENT" ? scoreLabels.student : scoreLabels.teacher}</span>
+        {(["RIGHT", "WRONG"] as const).map(value => <button key={value} type="button" aria-label={value === "RIGHT" ? scoreLabels.right : scoreLabels.wrong} aria-pressed={ratings[current.instanceId] === value}
+          onClick={() => rateCard(value)} className={cn("flex h-11 min-w-14 items-center justify-center gap-2 rounded-xl border px-4 font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white", ratings[current.instanceId] === value ? value === "RIGHT" ? "border-emerald-200 bg-emerald-400 text-emerald-950" : "border-rose-200 bg-rose-400 text-rose-950" : "border-white/25 bg-black/20 text-white hover:bg-white/20")}>
+          {value === "RIGHT" ? <ThumbsUp className="h-5 w-5" /> : <ThumbsDown className="h-5 w-5" />}<span className="text-xs">{value === "RIGHT" ? "+1" : "0"}</span>
+        </button>)}
+      </div>}
 
       {correctionGame && started && !faceUp && <p className="mx-auto mt-3 max-w-xl text-center text-sm font-semibold text-white/80">{t.tenseCorrection.prompt}</p>}
 
@@ -775,7 +800,9 @@ export function WordDeckBoard({
           {finished ? `↻ ${t.wordDeck.again}` : combinedGame && started ? `✓ ${t.wordDeck.finishSentence}` : `➜ ${t.wordDeck.deal}`}
         </button>
       </div>}
-      {!observer && finished && reviewEditor && <div className="mt-4">{reviewEditor}</div>}
+      {settings.alternate && started && !finished && !observer && !homework && <button type="button" onClick={() => setShowScores(value => !value)} aria-expanded={showScores} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-black hover:bg-white/20"><Trophy className="h-4 w-4 text-amber-200" />{showScores ? scoreLabels.hide : scoreLabels.results}</button>}
+      {settings.alternate && started && (showScores || finished) && <WordDeckScoreboard deck={deck} ratings={ratings} final={finished} canEdit={canRateCards} />}
+      {!observer && reviewEditor && <div className="mt-4">{reviewEditor}</div>}
     </section>
   );
 }

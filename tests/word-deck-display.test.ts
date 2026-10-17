@@ -17,7 +17,7 @@ test("both card faces grow with complete words, descriptions and translations, w
   assert.ok(source.includes("min-w-0 w-full overflow-hidden"));
   assert.ok(source.includes("basis-full sm:flex-1 sm:basis-auto"));
 });
-test("expired timers show one message in the header, never over the card text", () => {
+test("expired timers show one stamp above the card, never over the card text", () => {
   assert.equal((source.match(/t\.wordDeck\.timeUp/g) ?? []).length, 1);
   assert.ok(source.indexOf("t.wordDeck.timeUp") < source.indexOf("word-deck-card word-deck-deal-in"));
   assert.ok(source.includes('role="status" aria-live="polite"'));

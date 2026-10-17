@@ -30,7 +30,6 @@ import {
   normalizeWordDeckSettings,
   randomWordDeckPercentage,
   suggestedWordDeckTitle,
-  type WordDeckBackground,
   type WordDeckGameType,
   type WordDeckSettings,
 } from "@/lib/word-deck";
@@ -51,16 +50,12 @@ import { StudentPresence } from "@/components/student-presence";
 import { cn } from "@/lib/utils";
 import { useUiChoice } from "@/components/ui-preferences-provider";
 import { initialActivityMaterialSource } from "@/lib/activity-material-source";
+import { WORD_DECK_SKINS } from "@/lib/word-deck-skins";
 
 const input =
   "h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-sm text-content outline-none transition focus:border-accent";
 
-const backgroundChoices: { id: Exclude<WordDeckBackground, "CUSTOM">; swatch: string }[] = [
-  { id: "MIDNIGHT", swatch: "from-slate-950 via-indigo-950 to-blue-950" },
-  { id: "EMERALD", swatch: "from-emerald-950 via-emerald-700 to-teal-700" },
-  { id: "VIOLET", swatch: "from-indigo-950 via-violet-700 to-fuchsia-900" },
-  { id: "SUNSET", swatch: "from-orange-950 via-orange-600 to-rose-800" },
-];
+const backgroundChoices = Object.entries(WORD_DECK_SKINS).map(([id, skin]) => ({ id: id as keyof typeof WORD_DECK_SKINS, ...skin }));
 
 export function WordDeckStudio({ initialActivities, initialActivityId, mode = "WORD_DECK" }: {
   initialActivities: WordDeckActivity[];
@@ -830,7 +825,10 @@ function VocabularyWordDeckForm({ activity, busy, externalError, onCancel, onSav
           <p className="text-xs font-bold text-muted">{t.wordDeck.backgrounds}</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {backgroundChoices.map((choice) => (
-              <button key={choice.id} type="button" onClick={() => setSettings((value) => ({ ...value, background: choice.id }))} className={cn("h-20 rounded-xl bg-gradient-to-br ring-offset-2 ring-offset-[var(--surface)] transition", choice.swatch, settings.background === choice.id ? "ring-2 ring-accent" : "ring-1 ring-white/10")} title={choice.id} />
+              <button key={choice.id} type="button" onClick={() => setSettings((value) => ({ ...value, background: choice.id }))} style={{ background: choice.background }} className={cn("flex min-h-24 flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-3 text-white ring-offset-2 ring-offset-[var(--surface)] transition hover:brightness-110", settings.background === choice.id ? "ring-2 ring-accent" : "ring-1 ring-white/10")} title={choice.label} aria-label={choice.label} aria-pressed={settings.background === choice.id}>
+                <span aria-hidden="true" style={{ background: choice.card ?? "#ffffff22", color: choice.ink ?? "white", borderColor: choice.accent ?? "#ffffff44" }} className="flex h-10 w-8 rotate-6 items-center justify-center rounded-md border text-lg shadow-md">{choice.icon}</span>
+                <span className="text-[11px] font-black">{choice.label}</span>
+              </button>
             ))}
           </div>
           <label className={cn("mt-2 flex min-h-20 cursor-pointer items-center justify-center rounded-xl border border-dashed px-3 text-center text-xs font-bold transition", settings.background === "CUSTOM" ? "border-accent bg-accent-soft text-accent" : "border-line text-muted")}>

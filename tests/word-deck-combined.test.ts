@@ -140,7 +140,7 @@ test("UI and homework use the shared completion logic, and live updates include 
   assert.ok(board.includes("isWordDeckFinished({ deck, at, faceUp, phase }, settings)"));
   assert.ok(action.includes("const finished = isWordDeckFinished(state, settings)"));
   assert.ok(board.includes('setPhase(state.phase ?? "GUESS")'));
-  assert.ok(board.includes("observer, phase, readDescriptions"));
+  assert.ok(board.includes("observer, phase, ratings, showScores, readDescriptions"));
   assert.ok(board.includes("startWordDeckSentence({ time, expired, timerPaused, feedback }, settings)"));
   assert.ok(board.includes("!combinedGame && feedback"));
   assert.ok(form.includes('["guessSeconds", t.wordDeck.guessSeconds]'));

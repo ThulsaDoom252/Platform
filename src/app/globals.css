@@ -1617,6 +1617,31 @@ body {
   animation: word-deck-deal-in 0.38s ease-out;
 }
 
+/* Themed tables and matching cards: ornaments stay outside the reading area. */
+.word-deck-skin-art > span { position: absolute; font-size: clamp(5rem, 13vw, 12rem); opacity: .1; filter: saturate(.7); transform: rotate(-18deg); left: -1.5rem; top: 24%; }
+.word-deck-skin-art > span + span { left: auto; top: auto; right: -1rem; bottom: 6%; transform: rotate(18deg); }
+.word-deck-themed .word-deck-stack { background: var(--deck-back); box-shadow: 0 10px 35px #0003, inset 0 0 0 6px #ffffff12; }
+.word-deck-themed .word-deck-cover,
+.word-deck-themed .word-deck-front[data-prompt="back"] { background: repeating-linear-gradient(135deg,#ffffff09 0 1px,transparent 1px 10px),var(--deck-back); box-shadow: 0 16px 45px #0004,inset 0 0 0 7px #ffffff12,inset 0 0 0 9px #ffffff20; }
+.word-deck-themed .word-deck-answer,
+.word-deck-themed .word-deck-front[data-prompt="content"] { color: var(--deck-ink); background: var(--deck-card); border: 1px solid var(--deck-accent); box-shadow: 0 18px 48px #0004,inset 0 0 0 7px var(--deck-card),inset 0 0 0 8px var(--deck-accent); }
+.word-deck-corner { position: absolute; top: 17px; left: 18px; font-size: 20px; line-height: 1; pointer-events: none; }
+[data-word-deck-skin="FOOD"] .word-deck-cover { background: repeating-conic-gradient(#ffffff0c 0 25%,transparent 0 50%) 0 / 22px 22px,var(--deck-back); }
+[data-word-deck-skin="FOOD"] .word-deck-answer,
+[data-word-deck-skin="FOOD"] .word-deck-front[data-prompt="content"] { border-bottom: 6px solid var(--deck-accent); }
+[data-word-deck-skin="CHORES"] .word-deck-cover { background: radial-gradient(circle at 20% 30%,#ffffff20 0 14px,transparent 15px),radial-gradient(circle at 78% 70%,#ffffff12 0 30px,transparent 31px),var(--deck-back); }
+[data-word-deck-skin="TALK"] .word-deck-cover { border-radius: 1.6rem 1.6rem .5rem 1.6rem; }
+[data-word-deck-skin="TALK"] .word-deck-answer,
+[data-word-deck-skin="TALK"] .word-deck-front[data-prompt="content"] { border-radius: 1.75rem 1.75rem .6rem 1.75rem; }
+[data-word-deck-skin="WEATHER"] .word-deck-cover { background: radial-gradient(circle at 75% 20%,#ffe39799 0 24px,transparent 25px),linear-gradient(25deg,#ffffff12 25%,transparent 25% 75%,#ffffff0a 75%),var(--deck-back); }
+@keyframes word-deck-time-stamp {
+  0% { opacity: 0; transform: scale(1.7) rotate(-14deg); filter: blur(3px); }
+  55% { opacity: 1; transform: scale(.94) rotate(-4deg); filter: blur(0); }
+  78% { transform: scale(1.04) rotate(-4deg); }
+  100% { transform: scale(1) rotate(-4deg); }
+}
+.word-deck-time-stamp { animation: word-deck-time-stamp .55s cubic-bezier(.2,.8,.2,1) both; transform: rotate(-4deg); }
+
 /* ---------- Live class reactions ---------- */
 @keyframes class-reaction-backdrop {
   0% { opacity: 0; }
@@ -1690,6 +1715,7 @@ body {
   .activity-panel-in,
   .word-deck-correct,
   .word-deck-verdict,
+  .word-deck-time-stamp,
   .word-deck-deal-in {
     animation: none;
     opacity: 1;
